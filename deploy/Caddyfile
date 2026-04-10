@@ -1,0 +1,26 @@
+# If DASH_DOMAIN is a hostname (e.g. dash.example.com), Caddy auto-provisions
+# a Let's Encrypt certificate. If it stays as :80, Caddy serves plain HTTP
+# (useful for local testing).
+{$DASH_DOMAIN} {
+    encode zstd gzip
+
+    # Backend API
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend SPA (nginx)
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "no-referrer"
+        Permissions-Policy        "geolocation=(), microphone=(), camera=()"
+        -Server
+    }
+}
