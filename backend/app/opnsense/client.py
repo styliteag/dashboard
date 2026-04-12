@@ -13,9 +13,14 @@ from typing import Any
 import httpx
 
 from app.opnsense.schemas import (
+    ActionResult,
     CpuUsage,
     DiskUsage,
+    FirmwareStatus,
+    FirmwareUpgradeStatus,
     InterfaceStats,
+    IPsecServiceStatus,
+    IPsecTunnel,
     MemoryUsage,
     SystemInformation,
     SystemStatus,
@@ -71,6 +76,15 @@ class OPNsenseClient:
             raise OPNsenseError(f"GET {path}: {exc}") from exc
         if resp.status_code >= 400:
             raise OPNsenseError(f"GET {path}: HTTP {resp.status_code}")
+        return resp.json()
+
+    async def _post(self, path: str, body: dict | None = None) -> Any:
+        try:
+            resp = await self._http.post(path, json=body or {})
+        except httpx.HTTPError as exc:
+            raise OPNsenseError(f"POST {path}: {exc}") from exc
+        if resp.status_code >= 400:
+            raise OPNsenseError(f"POST {path}: HTTP {resp.status_code}")
         return resp.json()
 
     # ----- diagnostics ----------------------------------------------------
@@ -189,4 +203,101 @@ class OPNsenseClient:
             memory=mem,
             disks=disks,
             interfaces=ifaces,
+        )
+
+    # ----- IPsec --------------------------------------------------------------
+
+    async def ipsec_status(self) -> IPsecServiceStatus:
+        """Get IPsec service status and tunnel list."""
+        try:
+            data = await self._get("/api/ipsec/service/status")
+            running = str(data.get("status", "")).lower() in ("running", "1", "true")
+        except OPNsenseError:
+            running = False
+
+        tunnels: list[IPsecTunnel] = []
+        try:
+            ph1 = await self._get("/api/ipsec/sessions/searchPhase1")
+            rows = ph1.get("rows", []) if isinstance(ph1, dict) else []
+            for row in rows:
+                tunnels.append(
+                    IPsecTunnel(
+                        id=str(row.get("id", row.get("ikeid", ""))),
+                        description=row.get("description", row.get("phase1desc", "")),
+                        phase1_status=row.get("connected", row.get("status", "unknown")),
+                        phase2_status="",
+                        remote=row.get("remote-host", row.get("remote_host", "")),
+                        local=row.get("local-host", row.get("local_host", "")),
+                        bytes_in=int(row.get("bytes-in", row.get("bytes_in", 0))),
+                        bytes_out=int(row.get("bytes-out", row.get("bytes_out", 0))),
+                        established=row.get("established"),
+                    )
+                )
+        except OPNsenseError:
+            pass
+
+        return IPsecServiceStatus(running=running, tunnels=tunnels)
+
+    async def ipsec_connect(self, tunnel_id: str) -> ActionResult:
+        data = await self._post(f"/api/ipsec/sessions/connect/{tunnel_id}")
+        return ActionResult(
+            success="ok" in str(data).lower() or data.get("status", "") == "ok",
+            message=str(data.get("message", data.get("status", ""))),
+        )
+
+    async def ipsec_disconnect(self, tunnel_id: str) -> ActionResult:
+        data = await self._post(f"/api/ipsec/sessions/disconnect/{tunnel_id}")
+        return ActionResult(
+            success="ok" in str(data).lower() or data.get("status", "") == "ok",
+            message=str(data.get("message", data.get("status", ""))),
+        )
+
+    async def ipsec_restart(self) -> ActionResult:
+        data = await self._post("/api/ipsec/service/restart")
+        return ActionResult(
+            success="ok" in str(data).lower(),
+            message=str(data.get("message", data.get("response", ""))),
+        )
+
+    # ----- Firmware -----------------------------------------------------------
+
+    async def firmware_status(self) -> FirmwareStatus:
+        data = await self._get("/api/core/firmware/status")
+        pkgs = data.get("all_packages", data.get("package", []))
+        new_pkgs = []
+        if isinstance(pkgs, list):
+            for p in pkgs:
+                if p.get("new") and p.get("new") != p.get("current"):
+                    new_pkgs.append(p)
+
+        return FirmwareStatus(
+            product_name=data.get("product_name", data.get("product", {}).get("product_name", "")),
+            product_version=data.get("product_version", ""),
+            product_latest=data.get("product_latest", ""),
+            needs_reboot=bool(data.get("needs_reboot")),
+            upgrade_available=bool(data.get("upgrade_needs_reboot") or new_pkgs),
+            updates_available=int(data.get("updates", len(new_pkgs))),
+            packages=new_pkgs,
+        )
+
+    async def firmware_check(self) -> ActionResult:
+        data = await self._post("/api/core/firmware/check")
+        return ActionResult(
+            success=True,
+            message=str(data.get("status", "check triggered")),
+        )
+
+    async def firmware_update(self) -> ActionResult:
+        data = await self._post("/api/core/firmware/update")
+        return ActionResult(
+            success="ok" in str(data).lower() or data.get("status", "") == "ok",
+            message=str(data.get("msg", data.get("status", ""))),
+        )
+
+    async def firmware_upgrade_status(self) -> FirmwareUpgradeStatus:
+        data = await self._get("/api/core/firmware/upgradestatus")
+        log_lines = data.get("log", "").splitlines() if isinstance(data.get("log"), str) else []
+        return FirmwareUpgradeStatus(
+            status=data.get("status", "unknown"),
+            log=log_lines,
         )

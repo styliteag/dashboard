@@ -21,6 +21,8 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
+import IPsecSection from "../components/IPsecSection";
+import FirmwareSection from "../components/FirmwareSection";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Range = (typeof RANGES)[number];
@@ -198,6 +200,12 @@ export default function InstanceDetailPage() {
           ))}
         </div>
       </section>
+
+      {/* IPsec (US-4.1..4.5) */}
+      <IPsecSection instanceId={Number(id)} />
+
+      {/* Firmware (US-5.1..5.3) */}
+      <FirmwareSection instanceId={Number(id)} instanceName={instance?.name ?? ""} />
     </div>
   );
 }

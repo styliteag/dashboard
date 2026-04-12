@@ -12,7 +12,9 @@ from app.auth.bootstrap import ensure_admin
 from app.auth.routes import router as auth_router
 from app.config import get_settings
 from app.db.base import dispose_engine
+from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
+from app.ipsec.routes import router as ipsec_router
 from app.metrics.routes import router as metrics_router
 from app.opnsense.registry import registry
 from app.poller.scheduler import start_scheduler, stop_scheduler
@@ -78,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api")
     app.include_router(instances_router, prefix="/api")
     app.include_router(metrics_router, prefix="/api")
+    app.include_router(ipsec_router, prefix="/api")
+    app.include_router(firmware_router, prefix="/api")
     return app
 
 

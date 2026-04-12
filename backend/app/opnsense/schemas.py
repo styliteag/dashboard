@@ -73,3 +73,57 @@ class SystemStatus(BaseModel):
     memory: MemoryUsage = MemoryUsage()
     disks: list[DiskUsage] = []
     interfaces: list[InterfaceStats] = []
+
+
+# --- IPsec ------------------------------------------------------------------
+
+class IPsecTunnel(BaseModel):
+    """One IPsec tunnel (Phase 1 + Phase 2 combined)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str = ""
+    description: str = ""
+    phase1_status: str = ""  # "established" / "connecting" / "down" / ...
+    phase2_status: str = ""
+    remote: str = ""
+    local: str = ""
+    bytes_in: int = 0
+    bytes_out: int = 0
+    established: str | None = None  # timestamp or duration string
+
+
+class IPsecServiceStatus(BaseModel):
+    running: bool = False
+    tunnels: list[IPsecTunnel] = []
+
+
+class ActionResult(BaseModel):
+    """Generic result for start/stop/update actions."""
+    success: bool
+    message: str = ""
+
+
+# --- Firmware ----------------------------------------------------------------
+
+class FirmwareStatus(BaseModel):
+    """Firmware/update status."""
+
+    model_config = ConfigDict(extra="allow")
+
+    product_name: str = ""
+    product_version: str = ""
+    product_latest: str = ""
+    needs_reboot: bool = False
+    upgrade_available: bool = False
+    updates_available: int = 0
+    packages: list[dict] = []  # list of package dicts with name, current, new
+
+
+class FirmwareUpgradeStatus(BaseModel):
+    """Progress while an upgrade is running."""
+
+    model_config = ConfigDict(extra="allow")
+
+    status: str = ""  # "running", "done", "error"
+    log: list[str] = []
