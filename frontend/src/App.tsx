@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import LoginPage from "./pages/LoginPage";
 import InstancesPage from "./pages/InstancesPage";
 import InstanceDetailPage from "./pages/InstanceDetailPage";
+import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<InstancesPage />} />
           <Route path="instances/:id" element={<InstanceDetailPage />} />
+          <Route path="audit" element={<AuditPage />} />
           <Route path="password" element={<PasswordPage />} />
         </Route>
       </Route>

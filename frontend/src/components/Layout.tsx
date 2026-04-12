@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, Server, Shield, KeyRound } from "lucide-react";
+import { LogOut, Server, Shield, KeyRound, FileText } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 
 export default function Layout() {
@@ -30,6 +30,13 @@ export default function Layout() {
           >
             <Server className="h-4 w-4" />
             Instances
+          </Link>
+          <Link
+            to="/audit"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <FileText className="h-4 w-4" />
+            Audit
           </Link>
           <Link
             to="/password"
