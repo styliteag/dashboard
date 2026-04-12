@@ -2,7 +2,7 @@
 
 These shapes are pinned to what we have observed; if you change OPNsense
 versions and a field disappears, expect a Pydantic validation error rather
-than silent data loss.
+than silent data loss. We use ``extra="allow"`` so unknown keys don't blow up.
 """
 from __future__ import annotations
 
@@ -16,5 +16,60 @@ class SystemInformation(BaseModel):
 
     name: str | None = None
     versions: list[str] | None = None
-    # OPNsense returns either a structured object or a friendly string here
-    # depending on version; we keep it loose for the skeleton.
+
+
+class CpuUsage(BaseModel):
+    """GET /api/diagnostics/cpu_usage/getCPUType or stream endpoint.
+
+    OPNsense returns various shapes depending on version; we normalize to a
+    single total percentage.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    total: float = 0.0  # 0..100
+
+
+class MemoryUsage(BaseModel):
+    """Derived from /api/diagnostics/system/systemResources."""
+
+    model_config = ConfigDict(extra="allow")
+
+    used_pct: float = 0.0  # 0..100
+    total_mb: float = 0.0
+    used_mb: float = 0.0
+
+
+class DiskUsage(BaseModel):
+    """Derived from /api/diagnostics/system/systemDisk."""
+
+    model_config = ConfigDict(extra="allow")
+
+    device: str = ""
+    mountpoint: str = ""
+    used_pct: float = 0.0  # 0..100
+
+
+class InterfaceStats(BaseModel):
+    """One interface from /api/diagnostics/interface/getInterfaceStatistics."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str = ""
+    status: str = ""  # "up" / "down" / ...
+    address: str | None = None
+    bytes_received: int = 0
+    bytes_transmitted: int = 0
+    # Rates are computed by the poller by diffing two consecutive polls.
+
+
+class SystemStatus(BaseModel):
+    """Aggregated poll snapshot for one instance."""
+
+    name: str | None = None
+    version: str | None = None
+    uptime: str | None = None
+    cpu: CpuUsage = CpuUsage()
+    memory: MemoryUsage = MemoryUsage()
+    disks: list[DiskUsage] = []
+    interfaces: list[InterfaceStats] = []

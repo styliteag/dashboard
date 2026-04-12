@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity } from "lucide-react";
 import { api } from "../lib/api";
-import type { Instance } from "../lib/types";
+import type { Instance, Overview } from "../lib/types";
 import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
@@ -17,6 +18,12 @@ export default function InstancesPage() {
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.get<Instance[]>("/api/instances"),
+    refetchInterval: 30_000,
+  });
+
+  const { data: overview } = useQuery({
+    queryKey: ["overview"],
+    queryFn: () => api.get<Overview>("/api/overview"),
     refetchInterval: 30_000,
   });
 
@@ -39,6 +46,16 @@ export default function InstancesPage() {
           <Plus className="h-4 w-4" /> Hinzufuegen
         </button>
       </div>
+
+      {/* KPI Tiles (US-3.4) */}
+      {overview && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <KpiTile label="Total" value={overview.total} color="text-slate-100" />
+          <KpiTile label="Online" value={overview.online} color="text-emerald-400" />
+          <KpiTile label="Degraded" value={overview.degraded} color="text-amber-400" />
+          <KpiTile label="Offline" value={overview.offline} color="text-red-400" />
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mt-4 max-w-md">
@@ -123,7 +140,7 @@ function InstanceCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           {statusIcon}
-          <h3 className="font-medium">{inst.name}</h3>
+          <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">{inst.name}</Link>
         </div>
         {inst.tags && inst.tags.length > 0 && (
           <div className="flex gap-1">
@@ -160,6 +177,12 @@ function InstanceCard({
       {/* Actions */}
       <div className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3">
         <TestConnectionButton instanceId={inst.id} />
+        <Link
+          to={`/instances/${inst.id}`}
+          className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200 flex items-center gap-1"
+        >
+          <Activity className="h-3 w-3" /> Details
+        </Link>
         <button
           onClick={onEdit}
           className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -173,6 +196,15 @@ function InstanceCard({
           Loeschen
         </button>
       </div>
+    </div>
+  );
+}
+
+function KpiTile({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className={`text-2xl font-bold ${color}`}>{value}</p>
     </div>
   );
 }
