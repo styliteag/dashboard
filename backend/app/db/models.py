@@ -107,5 +107,5 @@ class Metric(Base):
         ForeignKey("instances.id", ondelete="CASCADE"), primary_key=True
     )
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
-    metric: Mapped[str] = mapped_column(String(64), primary_key=True)
+    metric: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[float] = mapped_column(nullable=False)

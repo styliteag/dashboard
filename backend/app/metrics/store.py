@@ -35,8 +35,11 @@ async def write_poll_metrics(
         add(f"disk.{label}.used_pct", disk.used_pct)
 
     for iface in status.interfaces:
-        add(f"iface.{iface.name}.bytes_rx", float(iface.bytes_received))
-        add(f"iface.{iface.name}.bytes_tx", float(iface.bytes_transmitted))
+        # Sanitize name: "[LAN] vmx0" -> "lan_vmx0", keep under 128 chars total
+        safe = iface.name.replace("[", "").replace("]", "").replace(" ", "_").replace("(", "").replace(")", "").lower()
+        safe = safe[:40]  # cap at 40 chars to stay well within VARCHAR(128) with prefix+suffix
+        add(f"iface.{safe}.bytes_rx", float(iface.bytes_received))
+        add(f"iface.{safe}.bytes_tx", float(iface.bytes_transmitted))
 
     if rows:
         await session.execute(

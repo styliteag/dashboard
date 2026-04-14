@@ -117,7 +117,10 @@ class FirmwareStatus(BaseModel):
     needs_reboot: bool = False
     upgrade_available: bool = False
     updates_available: int = 0
-    packages: list[dict] = []  # list of package dicts with name, current, new
+    packages: list[dict] = []  # list of package/set dicts with name, current, new
+    status_msg: str = ""
+    download_size: str = ""
+    last_check: str = ""
 
 
 class FirmwareUpgradeStatus(BaseModel):

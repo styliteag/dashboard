@@ -99,7 +99,7 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
             </div>
             <div>
               <p className="text-xs text-slate-500">Neueste</p>
-              <p className="font-mono text-sm">{fw.product_latest || "—"}</p>
+              <p className="font-mono text-sm">{fw.product_latest || fw.product_version || "—"}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500">Updates</p>
@@ -116,8 +116,38 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
             </div>
           </div>
 
+          {fw.status_msg && (
+            <p className="mt-3 text-sm text-slate-300">{fw.status_msg}</p>
+          )}
+          {fw.last_check && (
+            <p className="mt-1 text-xs text-slate-500">Letzter Check: {fw.last_check}</p>
+          )}
           {fw.needs_reboot && (
-            <p className="mt-3 text-sm text-amber-400">Reboot erforderlich.</p>
+            <p className="mt-2 text-sm text-amber-400">Reboot erforderlich.</p>
+          )}
+
+          {/* Package/set list */}
+          {fw.packages.length > 0 && (
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-900 text-left text-slate-500">
+                  <tr>
+                    <th className="px-3 py-1.5">Paket</th>
+                    <th className="px-3 py-1.5">Aktuell</th>
+                    <th className="px-3 py-1.5">Neu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fw.packages.map((p, i) => (
+                    <tr key={i} className="border-t border-slate-800">
+                      <td className="px-3 py-1.5 font-mono">{String(p.name)}</td>
+                      <td className="px-3 py-1.5 text-slate-400">{String(p.current || "—")}</td>
+                      <td className="px-3 py-1.5 text-emerald-400">{String(p.new || "—")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
           <div className="mt-4 flex gap-2">

@@ -96,43 +96,82 @@ class OPNsenseClient:
         data = await self._get("/api/diagnostics/system/system_information")
         return SystemInformation.model_validate(data)
 
+    async def _system_resources(self) -> dict:
+        """Fetch /api/diagnostics/system/systemResources (cached per poll cycle)."""
+        return await self._get("/api/diagnostics/system/systemResources")
+
     async def cpu_usage(self) -> CpuUsage:
-        """Parse CPU usage from systemResources or activity endpoint."""
+        """Parse CPU usage.
+
+        Primary source: systemResources (if it has a cpu section).
+        Fallback: activity endpoint headers contain a line like:
+          "CPU: 11.1% user,  0.0% nice,  3.9% system,  0.0% interrupt, 85.0% idle"
+        We compute total = 100 - idle.
+        """
+        # Try systemResources first
         try:
-            data = await self._get("/api/diagnostics/system/systemResources")
-            # OPNsense systemResources returns {"cpu": {"used": "12", ...}, ...}
+            data = await self._system_resources()
             cpu_raw = data.get("cpu", {})
-            total = float(cpu_raw.get("used", 0))
-            return CpuUsage(total=total)
-        except (ValueError, TypeError, KeyError):
-            return CpuUsage(total=0.0)
+            if cpu_raw and "used" in cpu_raw:
+                return CpuUsage(total=float(cpu_raw["used"]))
+        except (OPNsenseError, ValueError, TypeError, KeyError):
+            pass
+
+        # Fallback: parse activity headers
+        try:
+            data = await self._get("/api/diagnostics/activity/getActivity")
+            headers = data.get("headers", []) if isinstance(data, dict) else []
+            for line in headers:
+                if "idle" in str(line).lower():
+                    # Parse "85.0% idle" → idle=85.0 → total=15.0
+                    import re
+                    match = re.search(r"([\d.]+)%\s*idle", str(line))
+                    if match:
+                        idle = float(match.group(1))
+                        return CpuUsage(total=round(100.0 - idle, 1))
+        except (OPNsenseError, ValueError, TypeError, KeyError):
+            pass
+        return CpuUsage(total=0.0)
 
     async def memory_usage(self) -> MemoryUsage:
-        """Parse memory from systemResources."""
+        """Parse memory from systemResources.
+
+        OPNsense returns:
+          {"memory": {"total": "4248293376", "used": 1870169729, "total_frmt": "4051", "used_frmt": "1783", ...}}
+        total/used are in BYTES, *_frmt are in MB.
+        """
         try:
-            data = await self._get("/api/diagnostics/system/systemResources")
+            data = await self._system_resources()
             mem = data.get("memory", {})
-            used_pct = float(mem.get("used", 0))
-            # OPNsense may report total/used in various units; normalize to MB.
-            total = float(mem.get("total", 0))
-            used = float(mem.get("used_raw", total * used_pct / 100 if total else 0))
-            return MemoryUsage(used_pct=used_pct, total_mb=total, used_mb=used)
+            # Use the _frmt fields (in MB) if available, else convert from bytes
+            total_mb = float(mem.get("total_frmt", 0)) or (float(mem.get("total", 0)) / 1024 / 1024)
+            used_mb = float(mem.get("used_frmt", 0)) or (float(mem.get("used", 0)) / 1024 / 1024)
+            used_pct = (used_mb / total_mb * 100) if total_mb > 0 else 0.0
+            return MemoryUsage(used_pct=round(used_pct, 1), total_mb=round(total_mb, 1), used_mb=round(used_mb, 1))
         except (ValueError, TypeError, KeyError):
             return MemoryUsage()
 
     async def disk_usage(self) -> list[DiskUsage]:
-        """Parse disk info from systemDisk."""
+        """Parse disk info from systemDisk.
+
+        OPNsense returns:
+          {"devices": [{"device": "zroot/ROOT/default", "used_pct": 42, "mountpoint": "/", ...}]}
+        The used_pct field is already a number (not a string with %).
+        """
         try:
             data = await self._get("/api/diagnostics/system/systemDisk")
             devices = data if isinstance(data, list) else data.get("devices", [])
             result: list[DiskUsage] = []
             for d in devices:
-                used_str = str(d.get("capacity", "0")).rstrip("%")
+                # used_pct can be int/float directly, or a string like "42%"
+                raw = d.get("used_pct", d.get("capacity", 0))
+                if isinstance(raw, str):
+                    raw = raw.rstrip("%")
                 result.append(
                     DiskUsage(
                         device=d.get("device", ""),
                         mountpoint=d.get("mountpoint", d.get("type", "")),
-                        used_pct=float(used_str) if used_str else 0.0,
+                        used_pct=float(raw) if raw else 0.0,
                     )
                 )
             return result
@@ -140,29 +179,70 @@ class OPNsenseClient:
             return []
 
     async def interface_statistics(self) -> list[InterfaceStats]:
-        """Parse interface statistics."""
+        """Parse interface statistics.
+
+        OPNsense returns:
+          {"statistics": {"[LAN] (vmx0) / 00:50:56:be:dd:5b": {"name": "vmx0", "flags": "0x8843", ...}}}
+        The outer key is a human-readable label; the inner "name" has the short BSD name.
+        We deduplicate by short name (same iface appears multiple times for each address).
+        """
         try:
             data = await self._get(
                 "/api/diagnostics/interface/getInterfaceStatistics"
             )
             stats = data.get("statistics", data) if isinstance(data, dict) else data
-            result: list[InterfaceStats] = []
+            # Deduplicate: keep the first entry per short interface name
+            seen: dict[str, InterfaceStats] = {}
             if isinstance(stats, dict):
-                for iface_name, info in stats.items():
-                    result.append(
-                        InterfaceStats(
-                            name=iface_name,
-                            status=info.get("status", info.get("flags", "")),
-                            address=info.get("address"),
-                            bytes_received=int(info.get("bytes received", 0)),
-                            bytes_transmitted=int(info.get("bytes transmitted", 0)),
-                        )
+                for label, info in stats.items():
+                    short_name = info.get("name", label[:60])
+                    if short_name in seen:
+                        continue
+                    # Extract the zone/role from the label, e.g. "[LAN]" from "[LAN] (vmx0) / ..."
+                    zone = ""
+                    if label.startswith("["):
+                        zone = label.split("]")[0] + "]"
+                    display_name = f"{zone} {short_name}".strip() if zone else short_name
+                    seen[short_name] = InterfaceStats(
+                        name=display_name,
+                        status=info.get("status", info.get("flags", "")),
+                        address=info.get("address"),
+                        bytes_received=int(info.get("received-bytes", info.get("bytes received", 0))),
+                        bytes_transmitted=int(info.get("sent-bytes", info.get("bytes transmitted", 0))),
                     )
-            return result
+            return list(seen.values())
         except (ValueError, TypeError, KeyError):
             return []
 
     # ----- combined poll --------------------------------------------------
+
+    async def _parse_uptime(self) -> str | None:
+        """Extract uptime from the activity endpoint header.
+
+        Header line: "last pid: 80943;  load averages:  0.45,  0.33,  0.26  up 1+18:18:17    10:16:21"
+        """
+        try:
+            import re
+
+            data = await self._get("/api/diagnostics/activity/getActivity")
+            headers = data.get("headers", []) if isinstance(data, dict) else []
+            for line in headers:
+                match = re.search(r"up\s+([\d+:]+)", str(line))
+                if match:
+                    raw = match.group(1)
+                    # "1+18:18:17" → "1d 18h 18m" or just return raw
+                    if "+" in raw:
+                        days, rest = raw.split("+", 1)
+                        parts = rest.split(":")
+                        return f"{days}d {parts[0]}h {parts[1]}m"
+                    else:
+                        parts = raw.split(":")
+                        if len(parts) == 3:
+                            return f"{parts[0]}h {parts[1]}m"
+                        return raw
+        except (OPNsenseError, ValueError, TypeError, KeyError):
+            pass
+        return None
 
     async def poll_status(self) -> SystemStatus:
         """Gather all diagnostics in one call. Individual failures are swallowed
@@ -172,6 +252,7 @@ class OPNsenseClient:
         mem = MemoryUsage()
         disks: list[DiskUsage] = []
         ifaces: list[InterfaceStats] = []
+        uptime: str | None = None
 
         try:
             info = await self.system_information()
@@ -198,10 +279,15 @@ class OPNsenseClient:
         except OPNsenseError:
             pass
 
+        try:
+            uptime = await self._parse_uptime()
+        except OPNsenseError:
+            pass
+
         return SystemStatus(
             name=info.name,
             version=(info.versions[0] if info.versions else None),
-            uptime=info.model_extra.get("uptime") if info.model_extra else None,
+            uptime=uptime,
             cpu=cpu,
             memory=mem,
             disks=disks,
@@ -266,21 +352,46 @@ class OPNsenseClient:
 
     async def firmware_status(self) -> FirmwareStatus:
         data = await self._get("/api/core/firmware/status")
-        pkgs = data.get("all_packages", data.get("package", []))
-        new_pkgs = []
-        if isinstance(pkgs, list):
-            for p in pkgs:
-                if p.get("new") and p.get("new") != p.get("current"):
-                    new_pkgs.append(p)
+
+        # Collect updateable items from multiple sources
+        upgrade_sets = data.get("upgrade_sets", [])
+        upgrade_pkgs = data.get("upgrade_packages", [])
+        new_pkgs = data.get("new_packages", [])
+        all_updates: list[dict] = []
+        for s in upgrade_sets:
+            all_updates.append({
+                "name": s.get("name", ""),
+                "current": s.get("current_version", ""),
+                "new": s.get("new_version", ""),
+                "size": s.get("size", ""),
+            })
+        for p in upgrade_pkgs + new_pkgs:
+            all_updates.append({
+                "name": p.get("name", ""),
+                "current": p.get("current_version", p.get("installed", "")),
+                "new": p.get("new_version", p.get("provided", "")),
+            })
+
+        # Determine latest version from sets or product_latest
+        product_latest = data.get("product_latest", "")
+        if not product_latest and upgrade_sets:
+            product_latest = upgrade_sets[0].get("new_version", "")
+
+        status_val = data.get("status", "")
+        needs_reboot = data.get("needs_reboot", "0")
+        upgrade_needs_reboot = data.get("upgrade_needs_reboot", "0")
 
         return FirmwareStatus(
-            product_name=data.get("product_name", data.get("product", {}).get("product_name", "")),
+            product_name=data.get("product_name", data.get("product_id", "")),
             product_version=data.get("product_version", ""),
-            product_latest=data.get("product_latest", ""),
-            needs_reboot=bool(data.get("needs_reboot")),
-            upgrade_available=bool(data.get("upgrade_needs_reboot") or new_pkgs),
-            updates_available=int(data.get("updates", len(new_pkgs))),
-            packages=new_pkgs,
+            product_latest=product_latest,
+            needs_reboot=str(needs_reboot) not in ("0", "", "false", "False"),
+            upgrade_available=status_val in ("upgrade", "update") or bool(all_updates),
+            updates_available=len(all_updates),
+            packages=all_updates,
+            status_msg=data.get("status_msg", ""),
+            download_size=data.get("download_size", ""),
+            last_check=data.get("last_check", ""),
         )
 
     async def firmware_check(self) -> ActionResult:
