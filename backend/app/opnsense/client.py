@@ -178,6 +178,26 @@ class OPNsenseClient:
         except (ValueError, TypeError, KeyError):
             return []
 
+    @staticmethod
+    def _parse_iface_flags(raw: str) -> str:
+        """Convert FreeBSD hex flags like '0x8843' to a human-readable status."""
+        if not raw:
+            return "unknown"
+        # If it's already a word like "up" or "down", keep it
+        if not raw.startswith("0x"):
+            return raw
+        try:
+            flags = int(raw, 16)
+        except ValueError:
+            return raw
+        up = bool(flags & 0x1)
+        running = bool(flags & 0x40)
+        if up and running:
+            return "up"
+        if up:
+            return "up (not running)"
+        return "down"
+
     async def interface_statistics(self) -> list[InterfaceStats]:
         """Parse interface statistics.
 
@@ -203,9 +223,11 @@ class OPNsenseClient:
                     if label.startswith("["):
                         zone = label.split("]")[0] + "]"
                     display_name = f"{zone} {short_name}".strip() if zone else short_name
+                    raw_flags = info.get("flags", info.get("status", ""))
+                    status = self._parse_iface_flags(raw_flags)
                     seen[short_name] = InterfaceStats(
                         name=display_name,
-                        status=info.get("status", info.get("flags", "")),
+                        status=status,
                         address=info.get("address"),
                         bytes_received=int(info.get("received-bytes", info.get("bytes received", 0))),
                         bytes_transmitted=int(info.get("sent-bytes", info.get("bytes transmitted", 0))),
