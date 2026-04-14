@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, Server, Shield, KeyRound, FileText } from "lucide-react";
+import { LogOut, Server, Shield, KeyRound, FileText, Package } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 
 export default function Layout() {
@@ -13,7 +13,6 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Top bar */}
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-slate-800 bg-slate-950/80 px-6 py-3 backdrop-blur">
         <Link
           to="/"
@@ -24,26 +23,20 @@ export default function Layout() {
         </Link>
 
         <nav className="flex items-center gap-4 text-sm">
-          <Link
-            to="/"
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
-          >
-            <Server className="h-4 w-4" />
-            Instances
+          <Link to="/" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <Server className="h-4 w-4" /> Instances
           </Link>
-          <Link
-            to="/audit"
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
-          >
-            <FileText className="h-4 w-4" />
-            Audit
+          <Link to="/vpn" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <Shield className="h-4 w-4" /> VPN
           </Link>
-          <Link
-            to="/password"
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
-          >
-            <KeyRound className="h-4 w-4" />
-            Password
+          <Link to="/firmware" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <Package className="h-4 w-4" /> Firmware
+          </Link>
+          <Link to="/audit" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <FileText className="h-4 w-4" /> Audit
+          </Link>
+          <Link to="/password" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <KeyRound className="h-4 w-4" /> Password
           </Link>
           <span className="text-slate-600">|</span>
           <span className="text-slate-500">{user?.username}</span>
@@ -56,7 +49,6 @@ export default function Layout() {
         </nav>
       </header>
 
-      {/* Page content */}
       <main className="mx-auto max-w-7xl px-6 py-8">
         <Outlet />
       </main>

@@ -18,6 +18,7 @@ from app.opnsense.schemas import (
     DiskUsage,
     FirmwareStatus,
     FirmwareUpgradeStatus,
+    GatewayStatus,
     InterfaceStats,
     IPsecServiceStatus,
     IPsecTunnel,
@@ -437,3 +438,59 @@ class OPNsenseClient:
             status=data.get("status", "unknown"),
             log=log_lines,
         )
+
+    # ----- Gateway ------------------------------------------------------------
+
+    async def gateway_status(self) -> list[GatewayStatus]:
+        """Get WAN gateway status."""
+        try:
+            data = await self._get("/api/routes/gateway/status")
+            items = data.get("items", []) if isinstance(data, dict) else []
+            return [
+                GatewayStatus(
+                    name=g.get("name", ""),
+                    address=g.get("address", g.get("gateway", "")),
+                    status=g.get("status_translated", g.get("status", "")),
+                    delay=g.get("delay", ""),
+                    stddev=g.get("stddev", ""),
+                    loss=g.get("loss", ""),
+                    interface=g.get("interface", ""),
+                )
+                for g in items
+            ]
+        except OPNsenseError:
+            return []
+
+    # ----- Config Backup ------------------------------------------------------
+
+    async def download_config(self) -> str:
+        """Download config.xml from the OPNsense."""
+        try:
+            resp = await self._http.get("/api/core/backup/download/this")
+            if resp.status_code >= 400:
+                raise OPNsenseError(f"config download: HTTP {resp.status_code}")
+            return resp.text
+        except httpx.HTTPError as exc:
+            raise OPNsenseError(f"config download: {exc}") from exc
+
+    # ----- System control -----------------------------------------------------
+
+    async def reboot(self) -> ActionResult:
+        data = await self._post("/api/core/system/reboot")
+        return ActionResult(
+            success="ok" in str(data).lower() or data.get("status", "") == "ok",
+            message=str(data.get("message", data.get("status", "reboot triggered"))),
+        )
+
+    # ----- Firewall Log -------------------------------------------------------
+
+    async def firewall_log(self, limit: int = 50) -> list[dict]:
+        """Fetch recent firewall log entries."""
+        try:
+            data = await self._post(
+                "/api/diagnostics/firewall/log",
+                {"current": 1, "rowCount": limit, "sort": {}},
+            )
+            return data.get("rows", []) if isinstance(data, dict) else []
+        except OPNsenseError:
+            return []

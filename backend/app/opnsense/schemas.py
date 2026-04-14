@@ -130,3 +130,19 @@ class FirmwareUpgradeStatus(BaseModel):
 
     status: str = ""  # "running", "done", "error"
     log: list[str] = []
+
+
+# --- Gateway ----------------------------------------------------------------
+
+class GatewayStatus(BaseModel):
+    """One WAN gateway."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str = ""
+    address: str = ""
+    status: str = ""  # "none" (up), "down", "force_down", "unknown"
+    delay: str = ""  # e.g. "1.234ms"
+    stddev: str = ""
+    loss: str = ""  # e.g. "0.0%"
+    interface: str = ""

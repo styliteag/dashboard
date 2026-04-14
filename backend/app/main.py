@@ -19,7 +19,10 @@ from app.ipsec.routes import router as ipsec_router
 from app.metrics.routes import router as metrics_router
 from app.opnsense.registry import registry
 from app.poller.scheduler import start_scheduler, stop_scheduler
+from app.bulk.routes import router as bulk_router
 from app.routes import health
+from app.system.routes import router as system_router
+from app.views.routes import router as views_router
 
 
 def _configure_logging(level: str) -> None:
@@ -84,6 +87,9 @@ def create_app() -> FastAPI:
     app.include_router(ipsec_router, prefix="/api")
     app.include_router(firmware_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
+    app.include_router(views_router, prefix="/api")
+    app.include_router(system_router, prefix="/api")
+    app.include_router(bulk_router, prefix="/api")
     return app
 
 

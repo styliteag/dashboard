@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity } from "lucide-react";
+import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity, Download } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Instance, Overview } from "../lib/types";
 import AddInstanceDialog from "../components/AddInstanceDialog";
@@ -27,12 +28,45 @@ export default function InstancesPage() {
     refetchInterval: 30_000,
   });
 
-  const filtered = instances.filter(
-    (i) =>
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  const toggleSelect = (id: number) => {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAll = () => setSelected(new Set(filtered.map((i) => i.id)));
+  const selectNone = () => setSelected(new Set());
+
+  const bulkMut = useMutation({
+    mutationFn: (action: string) =>
+      api.post<{ succeeded: number; failed: number }>("/api/bulk/action", {
+        instance_ids: [...selected],
+        action,
+      }),
+    onSuccess: (data) => {
+      setBulkMsg(`${data.succeeded} erfolgreich, ${data.failed} fehlgeschlagen`);
+      setTimeout(() => setBulkMsg(null), 5000);
+    },
+  });
+
+  // Collect all unique tags across instances
+  const allTags = [...new Set(instances.flatMap((i) => i.tags ?? []))].sort();
+
+  const filtered = instances.filter((i) => {
+    const matchSearch =
+      !search ||
       i.name.toLowerCase().includes(search.toLowerCase()) ||
       (i.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (i.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase())),
-  );
+      (i.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()));
+    const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
+    return matchSearch && matchTag;
+  });
 
   return (
     <div>
@@ -69,6 +103,72 @@ export default function InstancesPage() {
         />
       </div>
 
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveTag(null)}
+            className={`rounded-full px-3 py-1 text-xs ${
+              !activeTag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            Alle
+          </button>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+              className={`rounded-full px-3 py-1 text-xs ${
+                activeTag === tag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-2">
+          <span className="text-sm text-emerald-300">{selected.size} ausgewaehlt</span>
+          <button
+            onClick={() => bulkMut.mutate("firmware_check")}
+            disabled={bulkMut.isPending}
+            className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
+          >
+            Firmware-Check
+          </button>
+          <button
+            onClick={() => bulkMut.mutate("ipsec_restart")}
+            disabled={bulkMut.isPending}
+            className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
+          >
+            IPsec Restart
+          </button>
+          <button onClick={selectAll} className="ml-auto text-xs text-slate-400 hover:text-slate-200">
+            Alle
+          </button>
+          <button onClick={selectNone} className="text-xs text-slate-400 hover:text-slate-200">
+            Keine
+          </button>
+        </div>
+      )}
+
+      {bulkMsg && (
+        <div className="mt-2 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">{bulkMsg}</div>
+      )}
+
+      {/* Export */}
+      <div className="mt-4 flex justify-end">
+        <a
+          href="/api/export/instances.csv"
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+        >
+          <Download className="h-3.5 w-3.5" /> CSV Export
+        </a>
+      </div>
+
       {/* Grid */}
       {isLoading ? (
         <p className="mt-8 text-slate-500">Laden…</p>
@@ -84,6 +184,8 @@ export default function InstancesPage() {
             <InstanceCard
               key={inst.id}
               instance={inst}
+              selected={selected.has(inst.id)}
+              onToggleSelect={() => toggleSelect(inst.id)}
               onEdit={() => setEditTarget(inst)}
               onDelete={() => setDeleteTarget(inst)}
             />
@@ -111,10 +213,14 @@ export default function InstancesPage() {
 
 function InstanceCard({
   instance: inst,
+  selected,
+  onToggleSelect,
   onEdit,
   onDelete,
 }: {
   instance: Instance;
+  selected: boolean;
+  onToggleSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -136,9 +242,15 @@ function InstanceCard({
   })();
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow">
+    <div className={`rounded-xl border p-4 shadow ${selected ? "border-emerald-600 bg-emerald-900/10" : "border-slate-800 bg-slate-900/60"}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="rounded border-slate-600"
+          />
           {statusIcon}
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">{inst.name}</Link>
         </div>

@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.metrics.store import write_poll_metrics
+from app.notifications.notifier import send_notification
 from app.opnsense.registry import registry
 
 log = structlog.get_logger("app.poller")
@@ -42,12 +43,22 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
             inst = await session.get(Instance, instance_id)
             if inst is None:
                 return
+            # Detect recovery: was offline, now back
+            was_offline = inst.last_error_at and (
+                not inst.last_success_at or inst.last_error_at > inst.last_success_at
+            )
             await write_poll_metrics(session, instance_id, ts, status)
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None
             await session.commit()
 
+        if was_offline:
+            await send_notification(
+                f"✅ {instance_name} is back online",
+                f"Instance {instance_name} recovered.",
+                level="info",
+            )
         log.debug("poll.ok", instance=instance_name, cpu=status.cpu.total)
 
     except Exception as exc:  # noqa: BLE001
@@ -56,9 +67,19 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
             async with sessionmaker() as session:
                 inst = await session.get(Instance, instance_id)
                 if inst is not None:
+                    # Detect transition to offline: was online, now failing
+                    was_online = inst.last_success_at and (
+                        not inst.last_error_at or inst.last_success_at > inst.last_error_at
+                    )
                     inst.last_error_at = ts
                     inst.last_error_message = str(exc)[:500]
                     await session.commit()
+                    if was_online:
+                        await send_notification(
+                            f"🔴 {instance_name} is offline",
+                            f"Instance {instance_name} failed: {str(exc)[:200]}",
+                            level="error",
+                        )
         except Exception:  # noqa: BLE001
             log.error("poll.error_update_failed", instance=instance_name)
 

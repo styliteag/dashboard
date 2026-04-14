@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = 30
     poll_concurrency: int = 20
 
+    # Notifications (all optional)
+    notify_webhook_url: str = ""
+    notify_telegram_token: str = ""
+    notify_telegram_chat_id: str = ""
+    notify_ntfy_url: str = ""
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -21,8 +21,11 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
+import GatewaySection from "../components/GatewaySection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
+import FirewallLogSection from "../components/FirewallLogSection";
+import SystemActions from "../components/SystemActions";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Range = (typeof RANGES)[number];
@@ -201,11 +204,20 @@ export default function InstanceDetailPage() {
         </div>
       </section>
 
+      {/* Gateways */}
+      <GatewaySection instanceId={Number(id)} />
+
       {/* IPsec (US-4.1..4.5) */}
       <IPsecSection instanceId={Number(id)} />
 
       {/* Firmware (US-5.1..5.3) */}
       <FirmwareSection instanceId={Number(id)} instanceName={instance?.name ?? ""} />
+
+      {/* Firewall Log */}
+      <FirewallLogSection instanceId={Number(id)} />
+
+      {/* System Actions: Config Backup + Reboot */}
+      <SystemActions instanceId={Number(id)} instanceName={instance?.name ?? ""} />
     </div>
   );
 }
