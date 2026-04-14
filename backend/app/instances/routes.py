@@ -105,7 +105,7 @@ async def update(
         target_type="instance",
         target_id=inst.id,
         source_ip=_client_ip(request),
-        detail=payload.model_dump(exclude_none=True, exclude={"api_key", "api_secret"}),
+        detail=payload.model_dump(mode="json", exclude_none=True, exclude={"api_key", "api_secret"}),
     )
     await session.commit()
     await session.refresh(inst)

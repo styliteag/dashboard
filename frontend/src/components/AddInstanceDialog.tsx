@@ -16,6 +16,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     api_key: "",
     api_secret: "",
     ca_bundle: "",
+    ssl_verify: true,
     location: "",
     notes: "",
     tags: "",
@@ -33,6 +34,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
         api_key: form.api_key,
         api_secret: form.api_secret,
         ca_bundle: form.ca_bundle || null,
+        ssl_verify: form.ssl_verify,
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
@@ -78,6 +80,15 @@ export default function AddInstanceDialog({ onClose }: Props) {
             placeholder="-----BEGIN CERTIFICATE-----"
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-400">
+          <input
+            type="checkbox"
+            checked={!form.ssl_verify}
+            onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
+            className="rounded border-slate-600"
+          />
+          SSL-Pruefung ueberspringen (Self-Signed Certs)
+        </label>
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Notizen</label>
           <textarea

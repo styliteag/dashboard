@@ -37,6 +37,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
         api_key_enc=encrypt(payload.api_key),
         api_secret_enc=encrypt(payload.api_secret),
         ca_bundle=payload.ca_bundle,
+        ssl_verify=payload.ssl_verify,
         location=payload.location,
         notes=payload.notes,
         tags=payload.tags,
@@ -59,6 +60,8 @@ async def update_instance(
         inst.api_secret_enc = encrypt(payload.api_secret)
     if payload.ca_bundle is not None:
         inst.ca_bundle = payload.ca_bundle or None
+    if payload.ssl_verify is not None:
+        inst.ssl_verify = payload.ssl_verify
     if payload.location is not None:
         inst.location = payload.location or None
     if payload.notes is not None:
@@ -86,6 +89,7 @@ async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None,
         api_key=decrypt(inst.api_key_enc),
         api_secret=decrypt(inst.api_secret_enc),
         ca_bundle_pem=inst.ca_bundle,
+        ssl_verify=inst.ssl_verify,
         timeout=10.0,
     )
     start = time.monotonic()

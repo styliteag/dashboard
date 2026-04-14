@@ -38,12 +38,15 @@ class OPNsenseClient:
         api_key: str,
         api_secret: str,
         ca_bundle_pem: str | None = None,
+        ssl_verify: bool = True,
         timeout: float = 10.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
 
         verify: ssl.SSLContext | bool
-        if ca_bundle_pem:
+        if not ssl_verify:
+            verify = False
+        elif ca_bundle_pem:
             ctx = ssl.create_default_context(cadata=ca_bundle_pem)
             verify = ctx
         else:

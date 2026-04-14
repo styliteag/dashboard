@@ -16,6 +16,7 @@ class InstanceCreate(BaseModel):
     api_key: str = Field(min_length=1)
     api_secret: str = Field(min_length=1)
     ca_bundle: str | None = None
+    ssl_verify: bool = True
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
@@ -28,6 +29,7 @@ class InstanceUpdate(BaseModel):
     api_key: str | None = None
     api_secret: str | None = None
     ca_bundle: str | None = None
+    ssl_verify: bool | None = None
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
@@ -39,6 +41,7 @@ class InstanceResponse(BaseModel):
     id: int
     name: str
     base_url: str
+    ssl_verify: bool
     location: str | None
     notes: str | None
     tags: list[str] | None

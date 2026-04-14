@@ -46,6 +46,8 @@ class Instance(Base):
     api_secret_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     # Optional pinned CA bundle in PEM format. NULL means use system trust store.
     ca_bundle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # When False, skip TLS certificate verification (self-signed certs).
+    ssl_verify: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)

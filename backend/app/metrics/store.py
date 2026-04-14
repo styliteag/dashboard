@@ -61,14 +61,16 @@ async def read_metrics(
     """Read metric time-series. If bucket_seconds > 0 use Timescale time_bucket
     for server-side downsampling; otherwise return raw rows."""
     if bucket_seconds > 0:
+        # Interval must be inlined — asyncpg cannot bind a string as INTERVAL.
+        # bucket_seconds comes from our own RANGE_BUCKETS dict, never from user input.
         query = text(
-            "SELECT time_bucket(:bucket, ts) AS ts, avg(value) AS value "
+            f"SELECT time_bucket(INTERVAL '{bucket_seconds} seconds', ts) AS ts, "
+            "avg(value) AS value "
             "FROM metrics "
             "WHERE instance_id = :iid AND metric = :m AND ts >= :start AND ts <= :end "
             "GROUP BY 1 ORDER BY 1"
         )
         params = {
-            "bucket": f"{bucket_seconds} seconds",
             "iid": instance_id,
             "m": metric,
             "start": start,

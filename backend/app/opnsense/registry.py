@@ -26,6 +26,7 @@ class ClientRegistry:
                     api_key=decrypt(instance.api_key_enc),
                     api_secret=decrypt(instance.api_secret_enc),
                     ca_bundle_pem=instance.ca_bundle,
+                    ssl_verify=instance.ssl_verify,
                 )
                 self._clients[instance.id] = client
             return client

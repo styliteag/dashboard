@@ -16,6 +16,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     base_url: instance.base_url,
     api_key: "",
     api_secret: "",
+    ssl_verify: instance.ssl_verify,
     location: instance.location ?? "",
     tags: (instance.tags ?? []).join(", "),
     notes: instance.notes ?? "",
@@ -30,6 +31,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       const body: Record<string, unknown> = {
         name: form.name,
         base_url: form.base_url,
+        ssl_verify: form.ssl_verify,
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
@@ -80,6 +82,15 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         />
         <Input label="Standort" value={form.location} onChange={set("location")} />
         <Input label="Tags (kommasepariert)" value={form.tags} onChange={set("tags")} />
+        <label className="flex items-center gap-2 text-sm text-slate-400">
+          <input
+            type="checkbox"
+            checked={!form.ssl_verify}
+            onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
+            className="rounded border-slate-600"
+          />
+          SSL-Pruefung ueberspringen (Self-Signed Certs)
+        </label>
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Notizen</label>
           <textarea
