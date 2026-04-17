@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# PROVIDE: opnsense_dash_agent
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+#
+# Add the following line to /etc/rc.conf to enable the agent:
+#   opnsense_dash_agent_enable="YES"
+
+. /etc/rc.subr
+
+name="opnsense_dash_agent"
+rcvar="${name}_enable"
+desc="OPNsense Dashboard Agent"
+
+: ${opnsense_dash_agent_enable:="NO"}
+: ${opnsense_dash_agent_config:="/usr/local/etc/opnsense-dash-agent.conf"}
+: ${opnsense_dash_agent_pidfile:="/var/run/${name}.pid"}
+: ${opnsense_dash_agent_logfile:="/var/log/${name}.log"}
+
+pidfile="${opnsense_dash_agent_pidfile}"
+command="/usr/sbin/daemon"
+command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} /usr/local/bin/python3 /usr/local/opnsense-dash-agent/opnsense_agent.py"
+
+start_precmd="${name}_prestart"
+
+opnsense_dash_agent_prestart() {
+    if [ ! -f "${opnsense_dash_agent_config}" ]; then
+        echo "Config file ${opnsense_dash_agent_config} not found."
+        echo "Copy the example: cp /usr/local/opnsense-dash-agent/opnsense-dash-agent.conf.example ${opnsense_dash_agent_config}"
+        return 1
+    fi
+    # Ensure log file exists
+    touch "${opnsense_dash_agent_logfile}"
+}
+
+load_rc_config $name
+run_rc_command "$1"

@@ -42,6 +42,8 @@ class InstanceResponse(BaseModel):
     name: str
     base_url: str
     ssl_verify: bool
+    agent_mode: bool
+    agent_last_seen: datetime | None
     location: str | None
     notes: str | None
     tags: list[str] | None

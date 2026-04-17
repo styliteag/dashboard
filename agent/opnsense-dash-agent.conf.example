@@ -1,0 +1,7 @@
+{
+    "dashboard_url": "wss://dashboard.example.com/ws/agent",
+    "agent_token": "PASTE_TOKEN_FROM_DASHBOARD_HERE",
+    "agent_id": "",
+    "push_interval": 30,
+    "log_level": "INFO"
+}

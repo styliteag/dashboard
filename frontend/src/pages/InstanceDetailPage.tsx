@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
+import AgentSection from "../components/AgentSection";
 import GatewaySection from "../components/GatewaySection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
@@ -218,6 +219,12 @@ export default function InstanceDetailPage() {
 
       {/* System Actions: Config Backup + Reboot */}
       <SystemActions instanceId={Number(id)} instanceName={instance?.name ?? ""} />
+
+      {/* Agent Mode */}
+      <AgentSection
+        instanceId={Number(id)}
+        agentMode={instance?.agent_mode ?? false}
+      />
     </div>
   );
 }

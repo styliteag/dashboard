@@ -48,6 +48,12 @@ class Instance(Base):
     ca_bundle: Mapped[str | None] = mapped_column(Text, nullable=True)
     # When False, skip TLS certificate verification (self-signed certs).
     ssl_verify: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
+    # Agent-based mode: if True, data comes via WebSocket push, not polling.
+    agent_mode: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    agent_last_seen: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)

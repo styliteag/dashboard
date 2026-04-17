@@ -92,7 +92,10 @@ async def _poll_all() -> None:
     async with sessionmaker() as session:
         rows = (
             await session.execute(
-                select(Instance.id, Instance.name).where(Instance.deleted_at.is_(None))
+                select(Instance.id, Instance.name).where(
+                    Instance.deleted_at.is_(None),
+                    Instance.agent_mode.is_(False),  # skip agent-based instances
+                )
             )
         ).all()
 
