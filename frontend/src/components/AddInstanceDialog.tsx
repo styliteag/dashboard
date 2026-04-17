@@ -13,6 +13,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const [form, setForm] = useState({
     name: "",
     base_url: "https://",
+    agent_mode: false,
     api_key: "",
     api_secret: "",
     ca_bundle: "",
@@ -28,11 +29,12 @@ export default function AddInstanceDialog({ onClose }: Props) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const body = {
+      const body: Record<string, unknown> = {
         name: form.name,
         base_url: form.base_url,
-        api_key: form.api_key,
-        api_secret: form.api_secret,
+        agent_mode: form.agent_mode,
+        ...(!form.agent_mode && form.api_key ? { api_key: form.api_key } : {}),
+        ...(!form.agent_mode && form.api_secret ? { api_secret: form.api_secret } : {}),
         ca_bundle: form.ca_bundle || null,
         ssl_verify: form.ssl_verify,
         location: form.location || null,
@@ -43,7 +45,19 @@ export default function AddInstanceDialog({ onClose }: Props) {
       };
       return api.post<Instance>("/api/instances", body);
     },
-    onSuccess: () => {
+    onSuccess: async (inst) => {
+      // If agent mode, auto-enable agent to generate token
+      if (form.agent_mode) {
+        try {
+          await api.post<{ agent_token: string }>(`/api/instances/${inst.id}/agent/enable`);
+          // Redirect to detail page so user sees the token
+          queryClient.invalidateQueries({ queryKey: ["instances"] });
+          window.location.href = `/instances/${inst.id}`;
+          return;
+        } catch {
+          // Token generation failed, but instance was created
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["instances"] });
       onClose();
     },
@@ -66,8 +80,37 @@ export default function AddInstanceDialog({ onClose }: Props) {
         )}
         <Input label="Name *" value={form.name} onChange={set("name")} required />
         <Input label="Base-URL (HTTPS) *" value={form.base_url} onChange={set("base_url")} required />
-        <Input label="API Key *" value={form.api_key} onChange={set("api_key")} required type="password" />
-        <Input label="API Secret *" value={form.api_secret} onChange={set("api_secret")} required type="password" />
+
+        {/* Mode toggle */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, agent_mode: false }))}
+            className={`flex-1 rounded-lg py-2 text-sm ${!form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
+          >
+            Polling (API-Key)
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, agent_mode: true }))}
+            className={`flex-1 rounded-lg py-2 text-sm ${form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
+          >
+            Agent (kein API-Key)
+          </button>
+        </div>
+
+        {!form.agent_mode && (
+          <>
+            <Input label="API Key *" value={form.api_key} onChange={set("api_key")} required type="password" />
+            <Input label="API Secret *" value={form.api_secret} onChange={set("api_secret")} required type="password" />
+          </>
+        )}
+        {form.agent_mode && (
+          <p className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">
+            Im Agent-Modus wird kein API-Key benoetigt. Nach dem Anlegen erhaeltst du einen
+            Agent-Token zum Installieren auf der Firewall.
+          </p>
+        )}
         <Input label="Standort" value={form.location} onChange={set("location")} />
         <Input label="Tags (kommasepariert)" value={form.tags} onChange={set("tags")} />
         <div className="space-y-1">

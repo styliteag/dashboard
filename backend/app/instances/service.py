@@ -31,13 +31,21 @@ async def get_instance(session: AsyncSession, instance_id: int) -> Instance | No
 
 
 async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Instance:
+    # In agent mode, API key/secret are not needed (agent collects data locally).
+    # Store a placeholder so the NOT NULL constraint is satisfied.
+    api_key = payload.api_key or ""
+    api_secret = payload.api_secret or ""
+    placeholder = encrypt("agent-mode-no-key") if not api_key else encrypt(api_key)
+    placeholder_secret = encrypt("agent-mode-no-secret") if not api_secret else encrypt(api_secret)
+
     inst = Instance(
         name=payload.name,
         base_url=str(payload.base_url),
-        api_key_enc=encrypt(payload.api_key),
-        api_secret_enc=encrypt(payload.api_secret),
+        api_key_enc=placeholder,
+        api_secret_enc=placeholder_secret,
         ca_bundle=payload.ca_bundle,
         ssl_verify=payload.ssl_verify,
+        agent_mode=payload.agent_mode,
         location=payload.location,
         notes=payload.notes,
         tags=payload.tags,

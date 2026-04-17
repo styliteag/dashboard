@@ -13,8 +13,10 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 class InstanceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     base_url: AnyHttpUrl
-    api_key: str = Field(min_length=1)
-    api_secret: str = Field(min_length=1)
+    # API key/secret are optional when using agent mode (agent collects data locally).
+    api_key: str | None = None
+    api_secret: str | None = None
+    agent_mode: bool = False
     ca_bundle: str | None = None
     ssl_verify: bool = True
     location: str | None = None
