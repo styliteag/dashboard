@@ -39,7 +39,7 @@ class Instance(Base):
     __tablename__ = "instances"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     base_url: Mapped[str] = mapped_column(String(512), nullable=False)
     # Encrypted with Fernet at rest. Stored as base64 token bytes.
     api_key_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
