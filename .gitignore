@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Scoped to Python venvs; do NOT match frontend/src/lib (TS modules).
+/lib/
+/lib64/
+backend/lib/
+backend/lib64/
 parts/
 sdist/
 var/
@@ -210,6 +213,8 @@ __marimo__/
 node_modules/
 frontend/dist/
 *.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
