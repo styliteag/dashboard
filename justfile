@@ -38,17 +38,35 @@ frontend-lint:
 frontend-fmt:
     cd frontend && npm run fmt
 
-# --- Stack -----------------------------------------------------------------
+# --- Stack (production: single combined image) -----------------------------
 
 up:
-    docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+    docker compose up -d --build
 
 down:
-    docker compose -f deploy/docker-compose.yml --env-file deploy/.env down
+    docker compose down
 
 logs:
-    docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs -f --tail=200
+    docker compose logs -f --tail=200
+
+# --- Stack (development: backend + frontend separate, src bind-mounted) ----
+
+dev-up:
+    docker compose -f compose-dev.yml up -d --build
+
+dev-down:
+    docker compose -f compose-dev.yml down
+
+dev-logs:
+    docker compose -f compose-dev.yml logs -f --tail=200
+
+# --- Release ----------------------------------------------------------------
+
+# Bump version, update CHANGELOG.md, tag, push. CI builds + publishes image.
+# Usage: just release patch|minor|major
+release type="patch":
+    ./release.sh {{type}}
 
 # Generate a Fernet master key for DASH_MASTER_KEY
 gen-key:
-    python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    cd backend && uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
