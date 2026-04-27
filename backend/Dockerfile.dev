@@ -1,0 +1,28 @@
+# Backend dev image: uv-managed venv, uvicorn --reload, src bind-mounted at runtime.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tzdata curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir uv
+
+ENV TZ=UTC \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install deps (cache layer)
+COPY pyproject.toml uv.lock ./
+COPY src ./src
+RUN uv sync --frozen || uv sync
+
+# Alembic (overridden by bind mount in compose-dev)
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --reload --reload-dir /app/src --host 0.0.0.0 --port 8000"]

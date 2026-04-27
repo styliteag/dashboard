@@ -1,0 +1,79 @@
+# Development compose. Backend and frontend run as separate containers,
+# both with their src/ bind-mounted from the host so saving a file triggers
+# uvicorn --reload (backend) or Vite HMR (frontend).
+#
+# Quickstart:
+#   cp .env.example .env   # set DASH_MASTER_KEY (just gen-key), DASH_ADMIN_PASSWORD
+#   docker compose -f compose-dev.yml up --build
+#
+# Browse: http://localhost:5173 (frontend, proxies /api to backend)
+# Direct: http://localhost:8000/api/health (backend)
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-dash}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${DASH_DB_PORT:-5432}:5432"
+    volumes:
+      - dev_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-dash} -d $${POSTGRES_DB:-dash}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      DASH_ENV: dev
+      DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
+      DASH_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dash}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-dash}
+      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
+      DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-admin}
+      DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}
+      DASH_POLL_CONCURRENCY: ${DASH_POLL_CONCURRENCY:-20}
+      DASH_NOTIFY_WEBHOOK_URL: ${DASH_NOTIFY_WEBHOOK_URL:-}
+      DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
+      DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
+      DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${DASH_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini:ro
+      - ./backend/pyproject.toml:/app/pyproject.toml:ro
+      - ./VERSION:/app/VERSION:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${DASH_FRONTEND_PORT:-5173}:5173"
+    volumes:
+      # Bind the whole frontend dir so Vite sees config + src + index.html.
+      # Anonymous volume on node_modules prevents the empty host dir from
+      # shadowing the container's installed deps.
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  dev_db_data:
