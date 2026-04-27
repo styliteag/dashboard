@@ -23,11 +23,11 @@ export default function LoginPage() {
       if (err instanceof ApiError) {
         setError(
           err.status === 429
-            ? "Zu viele Fehlversuche. Bitte warten."
-            : "Login fehlgeschlagen. Zugangsdaten pruefen."
+            ? "Too many failed attempts. Please wait."
+            : "Login failed. Check your credentials."
         );
       } else {
-        setError("Verbindung zum Backend nicht moeglich.");
+        setError("Cannot connect to the backend.");
       }
     } finally {
       setSubmitting(false);
@@ -53,7 +53,7 @@ export default function LoginPage() {
 
         <div className="space-y-1">
           <label className="text-sm text-slate-400" htmlFor="username">
-            Benutzer
+            Username
           </label>
           <input
             id="username"
@@ -68,7 +68,7 @@ export default function LoginPage() {
 
         <div className="space-y-1">
           <label className="text-sm text-slate-400" htmlFor="password">
-            Passwort
+            Password
           </label>
           <input
             id="password"

@@ -62,7 +62,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Fehler beim Speichern.");
+      setError(err instanceof ApiError ? err.message : "Failed to save.");
     },
   });
 
@@ -73,13 +73,13 @@ export default function AddInstanceDialog({ onClose }: Props) {
   };
 
   return (
-    <Dialog title="Instanz hinzufuegen" onClose={onClose} wide>
+    <Dialog title="Add instance" onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-3">
         {error && (
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name *" value={form.name} onChange={set("name")} required />
-        <Input label="Base-URL (HTTPS) *" value={form.base_url} onChange={set("base_url")} required />
+        <Input label="Base URL (HTTPS) *" value={form.base_url} onChange={set("base_url")} required />
 
         {/* Mode toggle */}
         <div className="flex gap-2">
@@ -88,14 +88,14 @@ export default function AddInstanceDialog({ onClose }: Props) {
             onClick={() => setForm((f) => ({ ...f, agent_mode: false }))}
             className={`flex-1 rounded-lg py-2 text-sm ${!form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
           >
-            Polling (API-Key)
+            Polling (API key)
           </button>
           <button
             type="button"
             onClick={() => setForm((f) => ({ ...f, agent_mode: true }))}
             className={`flex-1 rounded-lg py-2 text-sm ${form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
           >
-            Agent (kein API-Key)
+            Agent (no API key)
           </button>
         </div>
 
@@ -107,14 +107,14 @@ export default function AddInstanceDialog({ onClose }: Props) {
         )}
         {form.agent_mode && (
           <p className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">
-            Im Agent-Modus wird kein API-Key benoetigt. Nach dem Anlegen erhaeltst du einen
-            Agent-Token zum Installieren auf der Firewall.
+            In Agent mode no API key is required. After creating the instance you receive an
+            agent token to install on the firewall.
           </p>
         )}
-        <Input label="Standort" value={form.location} onChange={set("location")} />
-        <Input label="Tags (kommasepariert)" value={form.tags} onChange={set("tags")} />
+        <Input label="Location" value={form.location} onChange={set("location")} />
+        <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
         <div className="space-y-1">
-          <label className="text-xs text-slate-400">CA-Bundle (PEM)</label>
+          <label className="text-xs text-slate-400">CA bundle (PEM)</label>
           <textarea
             value={form.ca_bundle}
             onChange={set("ca_bundle")}
@@ -130,10 +130,10 @@ export default function AddInstanceDialog({ onClose }: Props) {
             onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
             className="rounded border-slate-600"
           />
-          SSL-Pruefung ueberspringen (Self-Signed Certs)
+          Skip SSL verification (self-signed certs)
         </label>
         <div className="space-y-1">
-          <label className="text-xs text-slate-400">Notizen</label>
+          <label className="text-xs text-slate-400">Notes</label>
           <textarea
             value={form.notes}
             onChange={set("notes")}
@@ -147,14 +147,14 @@ export default function AddInstanceDialog({ onClose }: Props) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             type="submit"
             disabled={mutation.isPending}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
           >
-            {mutation.isPending ? "…" : "Speichern"}
+            {mutation.isPending ? "…" : "Save"}
           </button>
         </div>
       </form>

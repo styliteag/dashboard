@@ -26,14 +26,14 @@ export default function FirewallLogSection({ instanceId }: { instanceId: number 
       {expanded && (
         <div className="mt-3 max-h-96 overflow-auto rounded-lg border border-slate-800">
           {isLoading ? (
-            <p className="p-4 text-sm text-slate-500">Lade…</p>
+            <p className="p-4 text-sm text-slate-500">Loading…</p>
           ) : !data || data.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">Keine Log-Eintraege.</p>
+            <p className="p-4 text-sm text-slate-500">No log entries.</p>
           ) : (
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-900 text-left text-slate-500">
                 <tr>
-                  <th className="px-2 py-1.5">Zeit</th>
+                  <th className="px-2 py-1.5">Time</th>
                   <th className="px-2 py-1.5">Action</th>
                   <th className="px-2 py-1.5">Interface</th>
                   <th className="px-2 py-1.5">Source</th>

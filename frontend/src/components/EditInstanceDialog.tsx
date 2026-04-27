@@ -48,7 +48,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Fehler beim Speichern.");
+      setError(err instanceof ApiError ? err.message : "Failed to save.");
     },
   });
 
@@ -59,29 +59,29 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
   };
 
   return (
-    <Dialog title={`Instanz bearbeiten: ${instance.name}`} onClose={onClose} wide>
+    <Dialog title={`Edit instance: ${instance.name}`} onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-3">
         {error && (
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name" value={form.name} onChange={set("name")} required />
-        <Input label="Base-URL" value={form.base_url} onChange={set("base_url")} required />
+        <Input label="Base URL" value={form.base_url} onChange={set("base_url")} required />
         <Input
-          label="API Key (leer = nicht aendern)"
+          label="API Key (empty = unchanged)"
           value={form.api_key}
           onChange={set("api_key")}
           type="password"
-          placeholder="unveraendert"
+          placeholder="unchanged"
         />
         <Input
-          label="API Secret (leer = nicht aendern)"
+          label="API Secret (empty = unchanged)"
           value={form.api_secret}
           onChange={set("api_secret")}
           type="password"
-          placeholder="unveraendert"
+          placeholder="unchanged"
         />
-        <Input label="Standort" value={form.location} onChange={set("location")} />
-        <Input label="Tags (kommasepariert)" value={form.tags} onChange={set("tags")} />
+        <Input label="Location" value={form.location} onChange={set("location")} />
+        <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
         <label className="flex items-center gap-2 text-sm text-slate-400">
           <input
             type="checkbox"
@@ -89,10 +89,10 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
             className="rounded border-slate-600"
           />
-          SSL-Pruefung ueberspringen (Self-Signed Certs)
+          Skip SSL verification (self-signed certs)
         </label>
         <div className="space-y-1">
-          <label className="text-xs text-slate-400">Notizen</label>
+          <label className="text-xs text-slate-400">Notes</label>
           <textarea
             value={form.notes}
             onChange={set("notes")}
@@ -106,14 +106,14 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             type="submit"
             disabled={mutation.isPending}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
           >
-            {mutation.isPending ? "…" : "Speichern"}
+            {mutation.isPending ? "…" : "Save"}
           </button>
         </div>
       </form>

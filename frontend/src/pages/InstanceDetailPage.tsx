@@ -79,7 +79,7 @@ export default function InstanceDetailPage() {
 
       {/* Status tiles */}
       {statusLoading ? (
-        <p className="mt-6 text-slate-500">Lade Status…</p>
+        <p className="mt-6 text-slate-500">Loading status…</p>
       ) : status ? (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -167,13 +167,13 @@ export default function InstanceDetailPage() {
           )}
         </>
       ) : (
-        <p className="mt-6 text-red-400">Status nicht verfuegbar.</p>
+        <p className="mt-6 text-red-400">Status not available.</p>
       )}
 
       {/* Metrics charts */}
       <section className="mt-8">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-400">Metriken</h2>
+          <h2 className="text-sm font-semibold text-slate-400">Metrics</h2>
           <div className="flex gap-1">
             {RANGES.map((r) => (
               <button
@@ -277,7 +277,7 @@ function MetricChart({
 
   const points =
     data?.points.map((p) => ({
-      ts: new Date(p.ts).toLocaleTimeString("de-DE", {
+      ts: new Date(p.ts).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       }),
@@ -289,7 +289,7 @@ function MetricChart({
       <h3 className="mb-3 text-xs text-slate-500">{label}</h3>
       {points.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-600">
-          Keine Daten fuer diesen Zeitraum.
+          No data for this range.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={180}>

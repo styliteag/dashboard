@@ -33,7 +33,7 @@ export default function IPsecSection({ instanceId }: Props) {
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -47,7 +47,7 @@ export default function IPsecSection({ instanceId }: Props) {
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -64,7 +64,7 @@ export default function IPsecSection({ instanceId }: Props) {
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -94,7 +94,7 @@ export default function IPsecSection({ instanceId }: Props) {
       {confirmRestart && (
         <div className="mt-2 rounded-lg border border-amber-800/50 bg-amber-900/20 p-3">
           <p className="text-sm text-amber-300">
-            Achtung: Alle Tunnel werden kurz unterbrochen. Tippe RESTART zur Bestaetigung:
+            Warning: all tunnels will be briefly interrupted. Type RESTART to confirm:
           </p>
           <div className="mt-2 flex gap-2">
             <input
@@ -108,13 +108,13 @@ export default function IPsecSection({ instanceId }: Props) {
               disabled={restartInput !== "RESTART" || restartMut.isPending}
               className="rounded bg-amber-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
             >
-              Bestaetigen
+              Confirm
             </button>
             <button
               onClick={() => { setConfirmRestart(false); setRestartInput(""); }}
               className="text-sm text-slate-400"
             >
-              Abbrechen
+              Cancel
             </button>
           </div>
         </div>
@@ -129,8 +129,8 @@ export default function IPsecSection({ instanceId }: Props) {
         </div>
       )}
 
-      {isLoading && <p className="mt-3 text-sm text-slate-500">Lade Tunnel…</p>}
-      {isError && <p className="mt-3 text-sm text-red-400">IPsec-Status nicht verfuegbar.</p>}
+      {isLoading && <p className="mt-3 text-sm text-slate-500">Loading tunnels…</p>}
+      {isError && <p className="mt-3 text-sm text-red-400">IPsec status not available.</p>}
 
       {data && data.tunnels.length > 0 && (
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800">
@@ -142,7 +142,7 @@ export default function IPsecSection({ instanceId }: Props) {
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">IN</th>
                 <th className="px-3 py-2 text-right">OUT</th>
-                <th className="px-3 py-2 text-right">Aktion</th>
+                <th className="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -167,7 +167,7 @@ export default function IPsecSection({ instanceId }: Props) {
                           disabled={busy}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          <Unlink className="h-3 w-3" /> Trennen
+                          <Unlink className="h-3 w-3" /> Disconnect
                         </button>
                       ) : (
                         <button
@@ -175,7 +175,7 @@ export default function IPsecSection({ instanceId }: Props) {
                           disabled={busy}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          <Link2 className="h-3 w-3" /> Verbinden
+                          <Link2 className="h-3 w-3" /> Connect
                         </button>
                       )}
                     </td>
@@ -188,7 +188,7 @@ export default function IPsecSection({ instanceId }: Props) {
       )}
 
       {data && data.tunnels.length === 0 && (
-        <p className="mt-3 text-sm text-slate-500">Keine IPsec-Tunnel konfiguriert.</p>
+        <p className="mt-3 text-sm text-slate-500">No IPsec tunnels configured.</p>
       )}
     </section>
   );

@@ -21,14 +21,14 @@ export default function DeleteInstanceDialog({ instance, onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Fehler beim Loeschen.");
+      setError(err instanceof ApiError ? err.message : "Failed to delete.");
     },
   });
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (confirmName !== instance.name) {
-      setError(`Bitte exakt "${instance.name}" eintippen.`);
+      setError(`Please type exactly "${instance.name}".`);
       return;
     }
     setError(null);
@@ -36,14 +36,14 @@ export default function DeleteInstanceDialog({ instance, onClose }: Props) {
   };
 
   return (
-    <Dialog title="Instanz loeschen" onClose={onClose}>
+    <Dialog title="Delete instance" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-slate-400">
-          Instanz <strong className="text-slate-200">{instance.name}</strong> wirklich
-          loeschen? Historische Metriken werden beibehalten.
+          Really delete instance <strong className="text-slate-200">{instance.name}</strong>?
+          Historical metrics will be retained.
         </p>
         <p className="text-sm text-slate-400">
-          Tippe den Namen zur Bestaetigung ein:
+          Type the name to confirm:
         </p>
 
         {error && (
@@ -64,14 +64,14 @@ export default function DeleteInstanceDialog({ instance, onClose }: Props) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             type="submit"
             disabled={mutation.isPending || confirmName !== instance.name}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
           >
-            {mutation.isPending ? "…" : "Endgueltig loeschen"}
+            {mutation.isPending ? "…" : "Delete permanently"}
           </button>
         </div>
       </form>

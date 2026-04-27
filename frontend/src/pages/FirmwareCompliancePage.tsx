@@ -50,15 +50,15 @@ export default function FirmwareCompliancePage() {
   return (
     <div>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
-        <Package className="h-5 w-5 text-slate-400" /> Firmware-Compliance
+        <Package className="h-5 w-5 text-slate-400" /> Firmware compliance
       </h1>
 
       {data && (
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
           <KpiTile label="Total" value={data.total} color="text-slate-100" />
-          <KpiTile label="Aktuell" value={data.up_to_date} color="text-emerald-400" />
-          <KpiTile label="Veraltet" value={data.outdated} color="text-amber-400" />
-          <KpiTile label="Unbekannt" value={data.unknown} color="text-slate-500" />
+          <KpiTile label="Up to date" value={data.up_to_date} color="text-emerald-400" />
+          <KpiTile label="Outdated" value={data.outdated} color="text-amber-400" />
+          <KpiTile label="Unknown" value={data.unknown} color="text-slate-500" />
         </div>
       )}
 
@@ -67,7 +67,7 @@ export default function FirmwareCompliancePage() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Suche…"
+            placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
@@ -81,25 +81,25 @@ export default function FirmwareCompliancePage() {
               filter === f ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
             }`}
           >
-            {{ all: "Alle", outdated: "Veraltet", current: "Aktuell", unknown: "Unbekannt" }[f]}
+            {{ all: "All", outdated: "Outdated", current: "Up to date", unknown: "Unknown" }[f]}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <p className="mt-6 text-slate-500">Lade Firmware-Status aller Instanzen…</p>
+        <p className="mt-6 text-slate-500">Loading firmware status of all instances…</p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Instanz</th>
-                <th className="px-3 py-2">Standort</th>
-                <th className="px-3 py-2">Installiert</th>
-                <th className="px-3 py-2">Neueste</th>
+                <th className="px-3 py-2">Instance</th>
+                <th className="px-3 py-2">Location</th>
+                <th className="px-3 py-2">Installed</th>
+                <th className="px-3 py-2">Latest</th>
                 <th className="px-3 py-2">Updates</th>
-                <th className="px-3 py-2">Letzter Check</th>
+                <th className="px-3 py-2">Last check</th>
               </tr>
             </thead>
             <tbody>

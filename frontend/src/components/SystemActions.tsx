@@ -21,13 +21,13 @@ export default function SystemActions({ instanceId, instanceName }: Props) {
   const rebootMut = useMutation({
     mutationFn: () => api.post<{ success: boolean; message: string }>(`/api/instances/${instanceId}/reboot`),
     onSuccess: () => {
-      setMsg({ ok: true, text: "Reboot angestossen." });
+      setMsg({ ok: true, text: "Reboot triggered." });
       setConfirmReboot(false);
       setRebootInput("");
       clearMsg();
     },
     onError: (e) => {
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -54,7 +54,7 @@ export default function SystemActions({ instanceId, instanceName }: Props) {
           onClick={handleBackup}
           className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
         >
-          <Download className="h-3.5 w-3.5" /> Config-Backup
+          <Download className="h-3.5 w-3.5" /> Config Backup
         </button>
         <button
           onClick={() => setConfirmReboot(true)}
@@ -67,7 +67,7 @@ export default function SystemActions({ instanceId, instanceName }: Props) {
       {confirmReboot && (
         <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
           <p className="text-sm text-red-300">
-            Reboot startet die Firewall neu. Tippe den Instance-Namen zur Bestaetigung:
+            Reboot will restart the firewall. Type the instance name to confirm:
           </p>
           <div className="mt-2 flex gap-2">
             <input
@@ -87,7 +87,7 @@ export default function SystemActions({ instanceId, instanceName }: Props) {
               onClick={() => { setConfirmReboot(false); setRebootInput(""); }}
               className="text-sm text-slate-400"
             >
-              Abbrechen
+              Cancel
             </button>
           </div>
         </div>

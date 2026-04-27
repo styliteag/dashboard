@@ -42,15 +42,15 @@ export default function VPNOverviewPage() {
   return (
     <div>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
-        <Shield className="h-5 w-5 text-slate-400" /> VPN-Uebersicht (alle Instanzen)
+        <Shield className="h-5 w-5 text-slate-400" /> VPN overview (all instances)
       </h1>
 
       {/* KPIs */}
       {data && (
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <KpiTile label="Tunnel gesamt" value={data.total} color="text-slate-100" />
-          <KpiTile label="Verbunden" value={data.up} color="text-emerald-400" />
-          <KpiTile label="Getrennt" value={data.down} color="text-red-400" />
+          <KpiTile label="Tunnels total" value={data.total} color="text-slate-100" />
+          <KpiTile label="Connected" value={data.up} color="text-emerald-400" />
+          <KpiTile label="Disconnected" value={data.down} color="text-red-400" />
         </div>
       )}
 
@@ -59,7 +59,7 @@ export default function VPNOverviewPage() {
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
         <input
           type="text"
-          placeholder="Suche nach Instanz, Tunnel, Remote…"
+          placeholder="Search by instance, tunnel, remote…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
@@ -67,15 +67,15 @@ export default function VPNOverviewPage() {
       </div>
 
       {isLoading ? (
-        <p className="mt-6 text-slate-500">Lade VPN-Status aller Instanzen…</p>
+        <p className="mt-6 text-slate-500">Loading VPN status of all instances…</p>
       ) : filtered.length === 0 ? (
-        <p className="mt-6 text-slate-500">Keine Tunnel gefunden.</p>
+        <p className="mt-6 text-slate-500">No tunnels found.</p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
-                <th className="px-3 py-2">Instanz</th>
+                <th className="px-3 py-2">Instance</th>
                 <th className="px-3 py-2">Tunnel</th>
                 <th className="px-3 py-2">Remote</th>
                 <th className="px-3 py-2">Status</th>

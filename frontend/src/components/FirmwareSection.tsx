@@ -28,12 +28,12 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
   const checkMut = useMutation({
     mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/check`),
     onSuccess: () => {
-      setMsg({ ok: true, text: "Update-Check angestossen. Bitte in 30s neu laden." });
+      setMsg({ ok: true, text: "Update check triggered. Please reload in 30s." });
       clearMsg();
       setTimeout(() => queryClient.invalidateQueries({ queryKey: qk }), 30_000);
     },
     onError: (e) => {
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -46,13 +46,13 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
   const updateMut = useMutation({
     mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/update`),
     onSuccess: () => {
-      setMsg({ ok: true, text: "Update gestartet. Verfolge Fortschritt…" });
+      setMsg({ ok: true, text: "Update started. Tracking progress…" });
       setConfirmUpdate(false);
       setConfirmName("");
       setUpgrading(true);
     },
     onError: (e) => {
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" });
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
       clearMsg();
     },
   });
@@ -87,18 +87,18 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
         </div>
       )}
 
-      {isLoading && <p className="mt-3 text-sm text-slate-500">Lade Firmware-Status…</p>}
-      {isError && <p className="mt-3 text-sm text-red-400">Firmware-Status nicht verfuegbar.</p>}
+      {isLoading && <p className="mt-3 text-sm text-slate-500">Loading firmware status…</p>}
+      {isError && <p className="mt-3 text-sm text-red-400">Firmware status not available.</p>}
 
       {fw && (
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <p className="text-xs text-slate-500">Installiert</p>
+              <p className="text-xs text-slate-500">Installed</p>
               <p className="font-mono text-sm">{fw.product_version || "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Neueste</p>
+              <p className="text-xs text-slate-500">Latest</p>
               <p className="font-mono text-sm">{fw.product_latest || fw.product_version || "—"}</p>
             </div>
             <div>
@@ -107,10 +107,10 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
                 {fw.upgrade_available ? (
                   <span className="flex items-center gap-1 text-amber-400">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    {fw.updates_available} verfuegbar
+                    {fw.updates_available} available
                   </span>
                 ) : (
-                  <span className="text-emerald-400">Aktuell</span>
+                  <span className="text-emerald-400">Up to date</span>
                 )}
               </p>
             </div>
@@ -120,10 +120,10 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
             <p className="mt-3 text-sm text-slate-300">{fw.status_msg}</p>
           )}
           {fw.last_check && (
-            <p className="mt-1 text-xs text-slate-500">Letzter Check: {fw.last_check}</p>
+            <p className="mt-1 text-xs text-slate-500">Last check: {fw.last_check}</p>
           )}
           {fw.needs_reboot && (
-            <p className="mt-2 text-sm text-amber-400">Reboot erforderlich.</p>
+            <p className="mt-2 text-sm text-amber-400">Reboot required.</p>
           )}
 
           {/* Package/set list */}
@@ -132,9 +132,9 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
               <table className="w-full text-xs">
                 <thead className="bg-slate-900 text-left text-slate-500">
                   <tr>
-                    <th className="px-3 py-1.5">Paket</th>
-                    <th className="px-3 py-1.5">Aktuell</th>
-                    <th className="px-3 py-1.5">Neu</th>
+                    <th className="px-3 py-1.5">Package</th>
+                    <th className="px-3 py-1.5">Current</th>
+                    <th className="px-3 py-1.5">New</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -165,7 +165,7 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
                 onClick={() => setConfirmUpdate(true)}
                 className="flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
               >
-                <Download className="h-3.5 w-3.5" /> Update starten
+                <Download className="h-3.5 w-3.5" /> Start update
               </button>
             )}
           </div>
@@ -174,8 +174,8 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
           {confirmUpdate && (
             <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
               <p className="text-sm text-red-300">
-                Firmware-Update startet den Updater und kann einen Reboot ausloesen.
-                Tippe den Instance-Namen zur Bestaetigung:
+                Firmware update starts the updater and may trigger a reboot.
+                Type the instance name to confirm:
               </p>
               {fw.packages.length > 0 && (
                 <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
@@ -198,13 +198,13 @@ export default function FirmwareSection({ instanceId, instanceName }: Props) {
                   disabled={confirmName !== instanceName || updateMut.isPending}
                   className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
                 >
-                  Update starten
+                  Start update
                 </button>
                 <button
                   onClick={() => { setConfirmUpdate(false); setConfirmName(""); }}
                   className="text-sm text-slate-400"
                 >
-                  Abbrechen
+                  Cancel
                 </button>
               </div>
             </div>

@@ -59,12 +59,12 @@ export default function AuditLogPage() {
             type="text"
             value={actionFilter}
             onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-            placeholder="z.B. auth, ipsec, firmware"
+            placeholder="e.g. auth, ipsec, firmware"
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-slate-500">Zeitraum (Stunden)</label>
+          <label className="text-xs text-slate-500">Range (hours)</label>
           <input
             type="number"
             value={hoursFilter}
@@ -77,7 +77,7 @@ export default function AuditLogPage() {
         {data && (
           <div className="flex items-end">
             <span className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-400">
-              {data.total} Eintraege
+              {data.total} entries
             </span>
           </div>
         )}
@@ -85,15 +85,15 @@ export default function AuditLogPage() {
 
       {/* Table */}
       {isLoading ? (
-        <p className="mt-6 text-slate-500">Laden…</p>
+        <p className="mt-6 text-slate-500">Loading…</p>
       ) : data && data.items.length === 0 ? (
-        <p className="mt-6 text-slate-500">Keine Eintraege.</p>
+        <p className="mt-6 text-slate-500">No entries.</p>
       ) : data ? (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
-                <th className="px-3 py-2">Zeit</th>
+                <th className="px-3 py-2">Time</th>
                 <th className="px-3 py-2">User</th>
                 <th className="px-3 py-2">Action</th>
                 <th className="px-3 py-2">Target</th>
@@ -106,7 +106,7 @@ export default function AuditLogPage() {
               {data.items.map((e) => (
                 <tr key={e.id} className="border-t border-slate-800">
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">
-                    {new Date(e.ts).toLocaleString("de-DE")}
+                    {new Date(e.ts).toLocaleString("en-US")}
                   </td>
                   <td className="px-3 py-2 text-xs">{e.username ?? "—"}</td>
                   <td className="px-3 py-2">
@@ -154,7 +154,7 @@ export default function AuditLogPage() {
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="text-sm text-slate-400">
-            Seite {page} / {totalPages}
+            Page {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}

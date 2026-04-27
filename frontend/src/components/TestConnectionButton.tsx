@@ -34,7 +34,7 @@ export default function TestConnectionButton({ instanceId }: Props) {
     idle: "Test",
     loading: "…",
     ok: result ? `OK ${result.latency_ms}ms` : "OK",
-    error: result?.error ? "Fehler" : "Fehler",
+    error: result?.error ? "Error" : "Error",
   }[state];
 
   const color = {
@@ -49,7 +49,7 @@ export default function TestConnectionButton({ instanceId }: Props) {
       onClick={handleClick}
       disabled={state === "loading"}
       className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs ${color}`}
-      title={result?.error ?? "Verbindung testen"}
+      title={result?.error ?? "Test connection"}
     >
       <Zap className="h-3 w-3" />
       {label}

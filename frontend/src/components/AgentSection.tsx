@@ -46,7 +46,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["instances"] });
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
     },
-    onError: (e) => setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Fehler" }),
+    onError: (e) => setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
   });
 
   const disableMut = useMutation({
@@ -55,7 +55,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       setToken(null);
       queryClient.invalidateQueries({ queryKey: ["instances"] });
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
-      setMsg({ ok: true, text: "Agent deaktiviert. Polling-Modus aktiv." });
+      setMsg({ ok: true, text: "Agent disabled. Polling mode active." });
     },
   });
 
@@ -76,7 +76,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
         <Radio className="h-4 w-4" /> Agent
         {agentMode && status && (
           <span className={`ml-2 text-xs ${status.agent_connected ? "text-emerald-400" : "text-red-400"}`}>
-            {status.agent_connected ? "verbunden" : "nicht verbunden"}
+            {status.agent_connected ? "connected" : "disconnected"}
           </span>
         )}
       </h2>
@@ -93,35 +93,35 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
         {!agentMode ? (
           <>
             <p className="text-sm text-slate-400">
-              Im <strong>Polling-Modus</strong> fragt das Dashboard die OPNsense-API aktiv ab.
-              Im <strong>Agent-Modus</strong> laeuft ein kleiner Agent auf der Firewall und pusht Daten —
-              kein eingehender Port noetig.
+              In <strong>Polling mode</strong> the dashboard actively queries the OPNsense API.
+              In <strong>Agent mode</strong> a small agent runs on the firewall and pushes data —
+              no inbound port required.
             </p>
             <button
               onClick={() => enableMut.mutate()}
               disabled={enableMut.isPending}
               className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              Agent-Modus aktivieren
+              Enable Agent mode
             </button>
           </>
         ) : (
           <>
             <div className="grid gap-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-500">Modus</span>
+                <span className="text-slate-500">Mode</span>
                 <span className="text-emerald-400">Agent</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Verbunden</span>
+                <span className="text-slate-500">Connected</span>
                 <span className={status?.agent_connected ? "text-emerald-400" : "text-red-400"}>
-                  {status?.agent_connected ? "Ja" : "Nein"}
+                  {status?.agent_connected ? "Yes" : "No"}
                 </span>
               </div>
               {status?.agent_last_seen && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Zuletzt gesehen</span>
-                  <span className="text-slate-300">{new Date(status.agent_last_seen).toLocaleString("de-DE")}</span>
+                  <span className="text-slate-500">Last seen</span>
+                  <span className="text-slate-300">{new Date(status.agent_last_seen).toLocaleString("en-US")}</span>
                 </div>
               )}
             </div>
@@ -129,7 +129,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
             {/* Show token after enabling */}
             {token && (
               <div className="mt-4 rounded-lg border border-emerald-800/50 bg-emerald-900/20 p-3">
-                <p className="text-xs text-emerald-300 font-semibold">Agent-Token (nur einmalig sichtbar!):</p>
+                <p className="text-xs text-emerald-300 font-semibold">Agent token (shown only once!):</p>
                 <div className="mt-1 flex items-center gap-2">
                   <code className="flex-1 break-all rounded bg-slate-800 px-2 py-1 text-xs font-mono text-slate-200">
                     {token}
@@ -139,14 +139,14 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   </button>
                 </div>
                 <div className="mt-3 text-xs text-slate-400">
-                  <p className="font-semibold">Installation auf der OPNsense:</p>
+                  <p className="font-semibold">Installation on OPNsense:</p>
                   <pre className="mt-1 rounded bg-slate-800 p-2 text-slate-300 overflow-x-auto">{
-`# 1. Agent installieren
+`# 1. Install agent
 pkg install python311
 pip install websockets
-# Agent-Script auf die Firewall kopieren
+# Copy agent script to the firewall
 
-# 2. Config anlegen
+# 2. Create config
 cat > /usr/local/etc/opnsense-dash-agent.conf << 'EOF'
 {
   "dashboard_url": "${wsProtocol}://${dashboardHost}/api/ws/agent",
@@ -155,7 +155,7 @@ cat > /usr/local/etc/opnsense-dash-agent.conf << 'EOF'
 }
 EOF
 
-# 3. Service starten
+# 3. Start service
 sysrc opnsense_dash_agent_enable=YES
 service opnsense_dash_agent start`
                   }</pre>
@@ -168,7 +168,7 @@ service opnsense_dash_agent start`
               disabled={disableMut.isPending}
               className="mt-4 rounded-lg border border-red-800/50 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20"
             >
-              Agent deaktivieren (zurueck zu Polling)
+              Disable Agent (back to Polling)
             </button>
           </>
         )}
