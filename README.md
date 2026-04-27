@@ -1,4 +1,4 @@
-# opnsense-dash
+# STYLiTE Orbit dashboard
 
 Central dashboard for managing multiple OPNsense firewalls.
 
