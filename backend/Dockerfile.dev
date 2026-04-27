@@ -25,4 +25,4 @@ COPY alembic ./alembic
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --reload --reload-dir /app/src --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "for i in $(seq 1 30); do alembic upgrade head && break; echo \"alembic attempt $i failed, retrying\"; sleep 2; done; exec uvicorn app.main:app --reload --reload-dir /app/src --host 0.0.0.0 --port 8000"]

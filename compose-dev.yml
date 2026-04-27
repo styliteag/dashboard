@@ -32,6 +32,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+    restart: unless-stopped
     environment:
       DASH_ENV: dev
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
@@ -61,6 +62,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
+    restart: unless-stopped
     environment:
       VITE_BACKEND_URL: http://backend:8000
       TZ: ${TZ:-UTC}
