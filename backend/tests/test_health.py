@@ -1,4 +1,5 @@
 """Smoke test for the health endpoint (no DB required when get_engine is patched)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,8 +14,10 @@ from app.main import create_app
 async def test_health_ok_when_db_reachable() -> None:
     app = create_app()
 
+    fake_row = MagicMock()
+    fake_row.first.return_value = ("006",)
     fake_conn = AsyncMock()
-    fake_conn.execute = AsyncMock(return_value=None)
+    fake_conn.execute = AsyncMock(return_value=fake_row)
     fake_engine = MagicMock()
     fake_engine.connect.return_value.__aenter__ = AsyncMock(return_value=fake_conn)
     fake_engine.connect.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -24,7 +27,11 @@ async def test_health_ok_when_db_reachable() -> None:
             resp = await client.get("/api/health")
 
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "db": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["db"] == "ok"
+    assert body["db_revision"] == "006"
+    assert "version" in body
 
 
 @pytest.mark.asyncio
@@ -39,4 +46,6 @@ async def test_health_degraded_when_db_fails() -> None:
             resp = await client.get("/api/health")
 
     assert resp.status_code == 503
-    assert resp.json()["db"] == "error"
+    body = resp.json()
+    assert body["db"] == "error"
+    assert "version" in body

@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { LogOut, Server, Shield, KeyRound, FileText, Package } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
+import VersionFooter from "./VersionFooter";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -12,7 +13,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-slate-800 bg-slate-950/80 px-6 py-3 backdrop-blur">
         <Link
           to="/"
@@ -49,9 +50,11 @@ export default function Layout() {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         <Outlet />
       </main>
+
+      <VersionFooter />
     </div>
   );
 }
