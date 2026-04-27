@@ -1,4 +1,5 @@
 """FastAPI application factory."""
+
 from __future__ import annotations
 
 import logging
@@ -72,12 +73,17 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Same-site Strict trips up some embedded browsers (Cursor's preview) and
+    # any setup where the SPA is reached on a different host than the cookie
+    # was set on. In prod we still get good CSRF protection because the API
+    # and the SPA are served from the same origin (nginx in the combined
+    # image) — Lax is sufficient and avoids the edge cases.
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.master_key or "dev-only-not-secret",
         session_cookie="dash_session",
         https_only=settings.env != "dev",
-        same_site="strict",
+        same_site="lax",
         max_age=12 * 60 * 60,
     )
 
