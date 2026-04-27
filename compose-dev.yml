@@ -11,19 +11,20 @@
 
 services:
   db:
-    image: timescale/timescaledb:2.17.2-pg16
+    image: mariadb:11
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dash}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
-      POSTGRES_DB: ${POSTGRES_DB:-dash}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
+      MYSQL_DATABASE: ${DB_NAME:-dash}
+      MYSQL_USER: ${DB_USER:-dash}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-devpassword}
       TZ: ${TZ:-UTC}
     ports:
-      - "${DASH_DB_PORT:-5432}:5432"
+      - "${DASH_DB_PORT:-3306}:3306"
     volumes:
-      - dev_db_data:/var/lib/postgresql/data
+      - dev_db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-dash} -d $${POSTGRES_DB:-dash}"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -36,7 +37,7 @@ services:
     environment:
       DASH_ENV: dev
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
-      DASH_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dash}:${POSTGRES_PASSWORD:-devpassword}@db:5432/${POSTGRES_DB:-dash}
+      DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD:-devpassword}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-admin}
       DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}

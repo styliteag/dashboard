@@ -1,9 +1,11 @@
 """ORM models for opnsense-dash."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     DateTime,
     ForeignKey,
@@ -13,7 +15,6 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -51,20 +52,14 @@ class Instance(Base):
     # Agent-based mode: if True, data comes via WebSocket push, not polling.
     agent_mode: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
     agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
-    agent_last_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    agent_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     # Health/poll status (updated by the poller)
-    last_success_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_error_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Soft-delete (US-2.3): keep historical metrics linked to a deleted instance.
@@ -97,7 +92,7 @@ class AuditLog(Base):
     target_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     result: Mapped[str] = mapped_column(String(16), nullable=False)  # ok|error|denied
-    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user: Mapped[User | None] = relationship(back_populates="audit_entries")

@@ -1,4 +1,5 @@
 """Application configuration loaded from environment variables."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -14,10 +15,10 @@ class Settings(BaseSettings):
     env: str = "dev"
     log_level: str = "info"
 
-    # Database (async DSN, e.g. postgresql+asyncpg://user:pass@host:5432/db)
+    # Database (async DSN, e.g. mysql+aiomysql://user:pass@host:3306/db)
     database_url: str = Field(
-        default="postgresql+asyncpg://dash:dash@db:5432/dash",
-        description="SQLAlchemy async URL for Postgres/Timescale",
+        default="mysql+aiomysql://dash:dash@db:3306/dash",
+        description="SQLAlchemy async URL for MariaDB",
     )
 
     # Master key for Fernet encryption of OPNsense API secrets at rest.

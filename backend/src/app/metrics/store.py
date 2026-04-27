@@ -1,8 +1,13 @@
-"""Write and read metric time-series from the Timescale hypertable.
+"""Write and read metric time-series from the metrics table.
 
 Metric names follow the pattern ``<category>.<name>`` — e.g. ``cpu.total``,
 ``memory.used_pct``, ``disk.root.used_pct``, ``iface.wan.bytes_rx``.
+
+Backend is MariaDB; bucketing is done client-side via UNIX_TIMESTAMP / DIV.
+A periodic APScheduler job is responsible for retention and the metrics_5m
+roll-up (replaces TimescaleDB built-ins).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -36,7 +41,14 @@ async def write_poll_metrics(
 
     for iface in status.interfaces:
         # Sanitize name: "[LAN] vmx0" -> "lan_vmx0", keep under 128 chars total
-        safe = iface.name.replace("[", "").replace("]", "").replace(" ", "_").replace("(", "").replace(")", "").lower()
+        safe = (
+            iface.name.replace("[", "")
+            .replace("]", "")
+            .replace(" ", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .lower()
+        )
         safe = safe[:40]  # cap at 40 chars to stay well within VARCHAR(128) with prefix+suffix
         add(f"iface.{safe}.bytes_rx", float(iface.bytes_received))
         add(f"iface.{safe}.bytes_tx", float(iface.bytes_transmitted))
@@ -44,9 +56,8 @@ async def write_poll_metrics(
     if rows:
         await session.execute(
             text(
-                "INSERT INTO metrics (instance_id, ts, metric, value) "
-                "VALUES (:instance_id, :ts, :metric, :value) "
-                "ON CONFLICT DO NOTHING"
+                "INSERT IGNORE INTO metrics (instance_id, ts, metric, value) "
+                "VALUES (:instance_id, :ts, :metric, :value)"
             ),
             rows,
         )
@@ -64,11 +75,12 @@ async def read_metrics(
     """Read metric time-series. If bucket_seconds > 0 use Timescale time_bucket
     for server-side downsampling; otherwise return raw rows."""
     if bucket_seconds > 0:
-        # Interval must be inlined — asyncpg cannot bind a string as INTERVAL.
-        # bucket_seconds comes from our own RANGE_BUCKETS dict, never from user input.
+        # Bucket size is inlined — must be a literal because we group by the
+        # expression. bucket_seconds comes from our own RANGE_BUCKETS dict,
+        # never from user input.
         query = text(
-            f"SELECT time_bucket(INTERVAL '{bucket_seconds} seconds', ts) AS ts, "
-            "avg(value) AS value "
+            f"SELECT FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV {bucket_seconds} "
+            f"* {bucket_seconds}) AS ts, avg(value) AS value "
             "FROM metrics "
             "WHERE instance_id = :iid AND metric = :m AND ts >= :start AND ts <= :end "
             "GROUP BY 1 ORDER BY 1"

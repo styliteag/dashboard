@@ -2,7 +2,7 @@
 #
 # Quickstart:
 #   cp .env.example .env
-#   # edit .env (set DASH_MASTER_KEY, DASH_ADMIN_PASSWORD, POSTGRES_PASSWORD)
+#   # edit .env (set DASH_MASTER_KEY, DASH_ADMIN_PASSWORD, DB_PASSWORD)
 #   docker compose up -d --build
 #
 # To pull a prebuilt image instead of building locally, comment out the
@@ -10,17 +10,18 @@
 
 services:
   db:
-    image: timescale/timescaledb:2.17.2-pg16
+    image: mariadb:11
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dash}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-dash}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set in .env}
+      MYSQL_DATABASE: ${DB_NAME:-dash}
+      MYSQL_USER: ${DB_USER:-dash}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set in .env}
       TZ: ${TZ:-UTC}
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-dash} -d $${POSTGRES_DB:-dash}"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,7 +45,7 @@ services:
     environment:
       DASH_ENV: ${DASH_ENV:-prod}
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-info}
-      DASH_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dash}
+      DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:?set in .env}
       DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}

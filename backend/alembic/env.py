@@ -1,4 +1,5 @@
 """Alembic environment — sync engine derived from the async DSN."""
+
 from __future__ import annotations
 
 from logging.config import fileConfig
@@ -17,9 +18,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Convert async DSN to sync (asyncpg -> psycopg) for Alembic.
+# Convert async DSN to sync (aiomysql -> pymysql) for Alembic.
 settings = get_settings()
-sync_url = settings.database_url.replace("+asyncpg", "")
+sync_url = settings.database_url.replace("+aiomysql", "+pymysql")
 config.set_main_option("sqlalchemy.url", sync_url)
 
 target_metadata = Base.metadata
