@@ -64,33 +64,5 @@ services:
       retries: 5
       start_period: 30s
 
-  # Nightly pg_dump backup. Dumps land in the db_backups volume; 7-day retention.
-  db-backup:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        while true; do
-          sleep 86400
-          STAMP=$$(date +%Y%m%d_%H%M%S)
-          echo "[backup] starting $$STAMP"
-          PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -h db -U $${POSTGRES_USER:-dash} $${POSTGRES_DB:-dash} \
-            | gzip > /backups/dump_$$STAMP.sql.gz
-          echo "[backup] done $$STAMP"
-          find /backups -name 'dump_*.sql.gz' -mtime +7 -delete
-        done
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dash}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-dash}
-    volumes:
-      - db_backups:/backups
-    depends_on:
-      db:
-        condition: service_healthy
-
 volumes:
   db_data:
-  db_backups:

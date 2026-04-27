@@ -40,7 +40,7 @@ swap the `build:` block under `app` for `image: ghcr.io/styliteag/dashboard:late
 
 ```
 Dockerfile              combined prod image (multi-stage: frontend + backend)
-compose.yml             production stack (db + app + db-backup)
+compose.yml             production stack (db + app)
 compose-dev.yml         dev stack (db + backend + frontend, src bind-mounted)
 docker/                 nginx.conf + start.sh used by the prod image
 backend/                FastAPI app (src/app/), tests, Dockerfile.dev
