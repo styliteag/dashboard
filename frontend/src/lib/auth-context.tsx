@@ -3,12 +3,13 @@
  * expose login/logout helpers via context.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, setAuthToken, unauthorizedEvent } from "./api";
 
 export interface User {
   id: number;
   username: string;
   is_admin: boolean;
+  session_token?: string | null;
 }
 
 interface AuthContextValue {
@@ -23,6 +24,15 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const clearUser = () => {
+      setAuthToken(null);
+      setUser(null);
+    };
+    window.addEventListener(unauthorizedEvent, clearUser);
+    return () => window.removeEventListener(unauthorizedEvent, clearUser);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const me = await api.post<User>("/api/auth/login", { username, password });
+    setAuthToken(me.session_token ?? null);
     setUser(me);
   };
 
@@ -53,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.post<void>("/api/auth/logout");
     } finally {
+      setAuthToken(null);
       setUser(null);
     }
   };

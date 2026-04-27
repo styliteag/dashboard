@@ -4,6 +4,8 @@ Closes US-1.1, US-1.2, US-1.3, US-1.4.
 """
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -11,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
 from app.auth.deps import current_user
+from app.auth.dev_token import issue_dev_token
 from app.auth.security import hash_password, limiter, verify_password
+from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import User
 
@@ -32,6 +36,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     is_admin: bool
+    session_token: str | None = None
 
 
 def _client_ip(request: Request) -> str:
@@ -45,7 +50,7 @@ def _client_ip(request: Request) -> str:
 async def login(
     payload: LoginRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserResponse:
     ip = _client_ip(request)
 
@@ -98,12 +103,17 @@ async def login(
         source_ip=ip,
     )
     await session.commit()
-    return UserResponse(id=user.id, username=user.username, is_admin=user.is_admin)
+    token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
+    return UserResponse(
+        id=user.id, username=user.username, is_admin=user.is_admin, session_token=token
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
-    request: Request, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(current_user)],
 ) -> None:
     request.session.clear()
     await write_audit(
@@ -113,7 +123,7 @@ async def logout(
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(current_user)) -> UserResponse:
+async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
     return UserResponse(id=user.id, username=user.username, is_admin=user.is_admin)
 
 
@@ -121,8 +131,8 @@ async def me(user: User = Depends(current_user)) -> UserResponse:
 async def change_password(
     payload: PasswordChangeRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(current_user)],
 ) -> UserResponse:
     if not verify_password(payload.old_password, user.password_hash):
         await write_audit(

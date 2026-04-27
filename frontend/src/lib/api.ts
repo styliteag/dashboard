@@ -16,13 +16,26 @@ export class ApiError extends Error {
   }
 }
 
+export const unauthorizedEvent = "dash:unauthorized";
+
 type Method = "GET" | "POST" | "PATCH" | "DELETE";
+
+let authToken = localStorage.getItem("dash_session_token");
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) localStorage.setItem("dash_session_token", token);
+  else localStorage.removeItem("dash_session_token");
+}
 
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const init: RequestInit = {
     method,
     credentials: "include",
-    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
   };
   if (body !== undefined) init.body = JSON.stringify(body);
 
@@ -41,6 +54,11 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      setAuthToken(null);
+      window.dispatchEvent(new Event(unauthorizedEvent));
+    }
+
     const detail =
       (parsed && typeof parsed === "object" && "detail" in parsed
         ? String((parsed as { detail: unknown }).detail)
