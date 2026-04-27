@@ -28,7 +28,7 @@ Run all three before declaring a backend task done:
 
 1. `just backend-lint` (ruff: `E,F,I,B,UP,SIM`, line-length 100, py312)
 2. `just backend-test`
-3. If any SQLAlchemy model in `backend/app/**` changed: a new Alembic revision must exist in `backend/alembic/versions/` (numbered `NNN_*.py`, sequential).
+3. If any SQLAlchemy model in `backend/src/app/**` changed: a new Alembic revision must exist in `backend/alembic/versions/` (numbered `NNN_*.py`, sequential).
 
 Migrations run automatically via `alembic upgrade head` in the container entrypoint — never call it manually inside dev workflows.
 
@@ -36,7 +36,7 @@ Migrations run automatically via `alembic upgrade head` in the container entrypo
 
 - **Database is async-only.** Use `AsyncSession` + asyncpg. Never import the sync `Session`.
 - **Settings prefix is `DASH_`** (pydantic-settings). All env vars and config keys use it; don't introduce another prefix.
-- **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/app/crypto/`. Never store, log, or return them in plaintext.
+- **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
 - **`agent/` runs on FreeBSD** (OPNsense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
 
 ## Frontend

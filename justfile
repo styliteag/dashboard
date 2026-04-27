@@ -7,19 +7,19 @@ default:
 # --- Backend ---------------------------------------------------------------
 
 backend-install:
-    cd backend && python -m venv .venv && .venv/bin/pip install -e '.[dev]'
+    cd backend && uv sync --all-extras
 
 backend-run:
-    cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 backend-test:
-    cd backend && .venv/bin/pytest -q
+    cd backend && uv run pytest -q
 
 backend-lint:
-    cd backend && .venv/bin/ruff check app tests
+    cd backend && uv run ruff check src tests
 
 backend-fmt:
-    cd backend && .venv/bin/ruff format app tests
+    cd backend && uv run ruff format src tests
 
 # --- Frontend --------------------------------------------------------------
 

@@ -13,9 +13,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
+COPY src ./src
 RUN pip install --upgrade pip && pip install .
 
-COPY app ./app
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
