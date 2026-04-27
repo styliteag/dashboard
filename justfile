@@ -32,6 +32,12 @@ frontend-dev:
 frontend-build:
     cd frontend && npm run build
 
+frontend-lint:
+    cd frontend && npm run lint
+
+frontend-fmt:
+    cd frontend && npm run fmt
+
 # --- Stack -----------------------------------------------------------------
 
 up:
