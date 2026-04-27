@@ -1,11 +1,13 @@
-# Production-leaning compose. For local dev you can also use this; the frontend
-# is built and served by nginx behind Caddy. Caddy terminates TLS (or serves
-# plain HTTP on :80 if no domain is set).
+# Production compose. Single combined image for frontend + backend.
 #
 # Quickstart:
-#   cp deploy/.env.example deploy/.env
-#   # edit deploy/.env (set DASH_MASTER_KEY, DASH_ADMIN_PASSWORD, POSTGRES_PASSWORD)
-#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#   cp .env.example .env
+#   # edit .env (set DASH_MASTER_KEY, DASH_ADMIN_PASSWORD, POSTGRES_PASSWORD)
+#   docker compose up -d --build
+#
+# To pull a prebuilt image instead of building locally, comment out the
+# `build:` block under `app` and uncomment the `image:` line.
+
 services:
   db:
     image: timescale/timescaledb:2.17.2-pg16
@@ -14,6 +16,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dash}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-dash}
+      TZ: ${TZ:-UTC}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,11 +25,22 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  app:
     build:
-      context: ../backend
+      context: .
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    # Alternatively pull a prebuilt image:
+    # image: styliteag/dashboard:latest
+    # image: ghcr.io/styliteag/dashboard:latest
     restart: unless-stopped
+    ports:
+      - "${DASH_PORT:-80}:80"
+    volumes:
+      # Bake-vs-mount: prod uses the VERSION baked into the image; this bind
+      # only matters for dev-style runs where the host VERSION drifts.
+      - ./VERSION:/app/VERSION:ro
     environment:
       DASH_ENV: ${DASH_ENV:-prod}
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-info}
@@ -35,39 +49,25 @@ services:
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:?set in .env}
       DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}
       DASH_POLL_CONCURRENCY: ${DASH_POLL_CONCURRENCY:-20}
+      DASH_NOTIFY_WEBHOOK_URL: ${DASH_NOTIFY_WEBHOOK_URL:-}
+      DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
+      DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
+      DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
+      TZ: ${TZ:-UTC}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - backend
-
-  caddy:
-    image: caddy:2.8-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DASH_DOMAIN: ${DASH_DOMAIN:-:80}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - frontend
-      - backend
-
-  # Nightly pg_dump backup (US-7.2). Dumps land in the db_backups volume.
-  # Retention: keeps last 7 days worth of dumps.
+  # Nightly pg_dump backup. Dumps land in the db_backups volume; 7-day retention.
   db-backup:
     image: postgres:16-alpine
-    restart: "no"
+    restart: unless-stopped
     entrypoint: /bin/sh
     command:
       - -c
@@ -79,7 +79,6 @@ services:
           PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -h db -U $${POSTGRES_USER:-dash} $${POSTGRES_DB:-dash} \
             | gzip > /backups/dump_$$STAMP.sql.gz
           echo "[backup] done $$STAMP"
-          # Remove dumps older than 7 days
           find /backups -name 'dump_*.sql.gz' -mtime +7 -delete
         done
     environment:
@@ -95,5 +94,3 @@ services:
 volumes:
   db_data:
   db_backups:
-  caddy_data:
-  caddy_config:
