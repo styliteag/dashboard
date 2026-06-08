@@ -51,6 +51,9 @@ logs:
 
 # --- Stack (development: backend + frontend separate, src bind-mounted) ----
 
+dev:
+    docker compose -f compose-dev.yml up --build
+
 dev-up:
     docker compose -f compose-dev.yml up -d --build
 
