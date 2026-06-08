@@ -55,6 +55,7 @@ services:
       - ./backend/alembic.ini:/app/alembic.ini:ro
       - ./backend/pyproject.toml:/app/pyproject.toml:ro
       - ./VERSION:/app/VERSION:ro
+      - ./agent:/app/agent:ro
     depends_on:
       db:
         condition: service_healthy

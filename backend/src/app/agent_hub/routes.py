@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +17,10 @@ from app.auth.deps import current_user
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import Instance, User
 from app.agent_hub.hub import hub
+
+# Agent files are baked into /app/agent/ in the production container.
+# Override via AGENT_DIR env var for local dev.
+_AGENT_DIR = Path(os.environ.get("AGENT_DIR", "/app/agent"))
 
 router = APIRouter(tags=["agent"])
 
@@ -224,3 +231,36 @@ async def list_connected_agents(
 ) -> list[dict]:
     """List all currently connected agents."""
     return hub.list_connected()
+
+
+@router.get("/instances/{instance_id}/agent/token")
+async def get_agent_token(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> dict:
+    """Return the stored agent token for an instance (agent mode must be enabled)."""
+    inst = await session.get(Instance, instance_id)
+    if inst is None or inst.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if not inst.agent_mode or inst.agent_token is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not enabled")
+    return {"agent_token": inst.agent_token}
+
+
+@router.get("/agent/script", include_in_schema=False)
+async def download_agent_script() -> FileResponse:
+    """Serve opnsense_agent.py for direct download on OPNsense (no auth required)."""
+    script = _AGENT_DIR / "opnsense_agent.py"
+    if not script.exists():
+        raise HTTPException(status_code=404, detail="agent script not available")
+    return FileResponse(str(script), media_type="text/x-python", filename="opnsense_agent.py")
+
+
+@router.get("/agent/rc", include_in_schema=False)
+async def download_agent_rc() -> FileResponse:
+    """Serve the rc.d service script for direct download on OPNsense (no auth required)."""
+    rc = _AGENT_DIR / "rc.d" / "opnsense_dash_agent"
+    if not rc.exists():
+        raise HTTPException(status_code=404, detail="rc script not available")
+    return FileResponse(str(rc), media_type="text/plain", filename="opnsense_dash_agent")

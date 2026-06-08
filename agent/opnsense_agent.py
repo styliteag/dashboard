@@ -32,6 +32,9 @@ except ImportError:
 
 __version__ = "0.1.0"
 
+# Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
+os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
+
 CONFIG_PATH = os.environ.get("AGENT_CONFIG", "/usr/local/etc/opnsense-dash-agent.conf")
 
 log = logging.getLogger("opnsense-agent")
@@ -130,47 +133,90 @@ def collect_disk() -> list[dict]:
 
 
 def collect_interfaces() -> list[dict]:
-    """Get interface stats from netstat -ibn."""
-    out = _run(["netstat", "-ibn"])
-    seen: dict[str, dict] = {}
-    for line in out.splitlines()[1:]:
+    """Get interface info: address/status from ifconfig, byte counters from netstat."""
+    # Byte counters from netstat -ibn (first row per interface = link-layer row)
+    bytes_map: dict[str, dict] = {}
+    for line in _run(["netstat", "-ibn"]).splitlines()[1:]:
         parts = line.split()
-        if len(parts) < 7:
+        if len(parts) < 8 or parts[0] == "Name":
             continue
         name = parts[0]
-        if name in seen or name == "Name":
-            continue
-        # Try to detect if it's a link-layer line (has MAC address)
-        try:
-            seen[name] = {
-                "name": name,
-                "mtu": int(parts[1]) if parts[1].isdigit() else 0,
-                "bytes_received": int(parts[-3]) if parts[-3].isdigit() else 0,
-                "bytes_transmitted": int(parts[-1]) if parts[-1].isdigit() else 0,
-            }
-        except (ValueError, IndexError):
-            pass
-    return list(seen.values())
+        if name not in bytes_map:
+            try:
+                # netstat -ibn columns (with or without Idrop):
+                # ... Ibytes Opkts Oerrs Obytes Coll
+                # [-5]  [-4]  [-3]  [-2]  [-1]
+                bytes_map[name] = {
+                    "bytes_received": int(parts[-5]),
+                    "bytes_transmitted": int(parts[-2]),
+                }
+            except (ValueError, IndexError):
+                pass
+
+    # Address and up/down status from ifconfig -a
+    result: list[dict] = []
+    current: dict | None = None
+    for line in _run(["ifconfig", "-a"]).splitlines():
+        if line and not line[0].isspace():
+            if current is not None:
+                result.append(current)
+            m = re.match(r'^(\S+?):\s+flags=\S+<([^>]*)>', line)
+            if m:
+                name = m.group(1)
+                flags = m.group(2).upper().split(",")
+                current = {
+                    "name": name,
+                    "status": "up" if ("UP" in flags and "RUNNING" in flags) else "down",
+                    "address": None,
+                    **bytes_map.get(name, {"bytes_received": 0, "bytes_transmitted": 0}),
+                }
+            else:
+                current = None
+        elif current is not None:
+            stripped = line.strip()
+            if stripped.startswith("inet ") and current["address"] is None:
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    current["address"] = parts[1]
+    if current is not None:
+        result.append(current)
+    return result
 
 
 def collect_gateways() -> list[dict]:
-    """Get gateway status from dpinger or pluginctl."""
+    """Get gateway status from pluginctl."""
     out = _run(["pluginctl", "-r", "return_gateways_status"])
     gateways = []
-    if out.strip():
-        try:
-            data = json.loads(out)
-            if isinstance(data, dict):
-                for name, info in data.items():
-                    gateways.append({
-                        "name": name,
-                        "address": info.get("address", info.get("gateway", "")),
-                        "status": info.get("status", ""),
-                        "delay": info.get("delay", ""),
-                        "loss": info.get("loss", ""),
-                    })
-        except json.JSONDecodeError:
-            pass
+    if not out.strip():
+        return gateways
+    try:
+        data = json.loads(out)
+        # Output is wrapped: {"dpinger": {"GW_NAME": {...}, ...}}
+        gw_dict = data.get("dpinger", data) if isinstance(data, dict) else {}
+        if not isinstance(gw_dict, dict):
+            return gateways
+        def _tilde(v: object) -> str:
+            """Return empty string for tilde sentinel or None, else str(v)."""
+            return "" if v in ("~", None) else str(v)
+
+        for name, info in gw_dict.items():
+            if not isinstance(info, dict):
+                continue
+            addr = _tilde(info.get("gateway", ""))
+            # Strip IPv6 scope identifier: "fe80::1%em0" → "fe80::1"
+            if "%" in addr:
+                addr = addr.split("%")[0]
+            gateways.append({
+                "name": name,
+                "address": addr,
+                "status": _tilde(info.get("status", "")),
+                "delay": _tilde(info.get("delay", "")),
+                "stddev": _tilde(info.get("stddev", "")),
+                "loss": _tilde(info.get("loss", "")),
+                "interface": _tilde(info.get("interface", info.get("friendlyiface", ""))),
+            })
+    except json.JSONDecodeError:
+        pass
     return gateways
 
 
@@ -213,17 +259,50 @@ def collect_ipsec() -> dict:
     return {"running": running, "tunnels": tunnels}
 
 
+def _read_opnsense_version() -> str:
+    """Read OPNsense version string — tries direct file read first (most reliable in daemon context)."""
+    # File read needs no subprocess and no PATH — most reliable approach
+    for vpath in [
+        "/usr/local/opnsense/version/core",
+        "/usr/local/opnsense/version/opnsense",
+    ]:
+        try:
+            v = Path(vpath).read_text().strip().splitlines()[0]
+            if v:
+                return v
+        except OSError:
+            pass
+    # Fallback to binary
+    out = _run(["/usr/local/sbin/opnsense-version"]).strip()
+    if out:
+        # "OPNsense 25.7.11_9 (amd64)" → "25.7.11_9"
+        m = re.match(r"OPNsense\s+(\S+)", out)
+        return m.group(1) if m else out
+    return _run(["pkg", "query", "%v", "opnsense"]).strip()
+
+
+# Track when we last ran a full firmware update check (network call)
+_last_fw_check_ts: float = 0.0
+
+
 def collect_firmware() -> dict:
-    """Get firmware version and update status."""
-    version = _run(["opnsense-version"]).strip()
-    # Check for updates
-    update_out = _run(["opnsense-update", "-c"], timeout=30)
-    updates_available = "can be updated" in update_out.lower() or "updates available" in update_out.lower()
-    return {
-        "product_version": version,
-        "upgrade_available": updates_available,
-        "update_check_output": update_out.strip()[:500],
-    }
+    """Firmware version on every push; update check every 10 minutes."""
+    global _last_fw_check_ts
+    version = _read_opnsense_version()
+    now = time.monotonic()
+    if now - _last_fw_check_ts >= 600:  # 0 on first call → always runs immediately
+        _last_fw_check_ts = now
+        update_out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
+        updates_available = (
+            "can be updated" in update_out.lower()
+            or "updates available" in update_out.lower()
+        )
+        return {
+            "product_version": version,
+            "upgrade_available": updates_available,
+            "update_check_output": update_out.strip()[:500],
+        }
+    return {"product_version": version}
 
 
 def collect_uptime() -> str:
@@ -272,6 +351,7 @@ def collect_all() -> dict:
         "gateways": collect_gateways(),
         "ipsec": collect_ipsec(),
         "firmware": collect_firmware(),
+        "firewall_log": collect_firewall_log(30),
     }
 
 
@@ -298,13 +378,17 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": True, "output": out.strip()[:500]}
 
     elif action == "firmware.check":
-        out = _run(["opnsense-update", "-c"], timeout=60)
-        return {"success": True, "output": out.strip()[:500]}
+        out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=60)
+        return {
+            "success": True,
+            "output": out.strip()[:500],
+            "product_version": _read_opnsense_version(),
+        }
 
     elif action == "firmware.update":
         # Non-blocking: start in background
         subprocess.Popen(
-            ["opnsense-update", "-bkp"],
+            ["/usr/local/sbin/opnsense-update", "-bkp"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
@@ -62,11 +63,21 @@ async def instance_status(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> SystemStatus:
-    """Live status from the last poll snapshot. Calls poll_status() on demand if
-    the cached client exists, to give a near-real-time view."""
+    """Current status snapshot.
+
+    - Agent mode: return the last push received from the agent (in-memory cache).
+      Falls back to an empty SystemStatus if the agent hasn't connected yet.
+    - Polling mode: call poll_status() on demand for a near-real-time view.
+    """
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    if inst.agent_mode:
+        cached = hub.get_last_status(instance_id)
+        # Return cached status; if agent hasn't connected yet, return empty status
+        return cached if cached is not None else SystemStatus()
+
     try:
         client = await registry.get(inst)
         return await client.poll_status()

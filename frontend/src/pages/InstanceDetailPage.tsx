@@ -105,12 +105,12 @@ export default function InstanceDetailPage() {
             <Tile
               icon={<Clock className="h-5 w-5 text-sky-400" />}
               label="Uptime"
-              value={status.uptime ?? "—"}
+              value={status.uptime || "—"}
             />
             <Tile
               icon={<Server className="h-5 w-5 text-slate-400" />}
               label="Version"
-              value={status.version ?? "—"}
+              value={status.version || "—"}
             />
           </div>
 
@@ -212,7 +212,7 @@ export default function InstanceDetailPage() {
       <IPsecSection instanceId={Number(id)} />
 
       {/* Firmware (US-5.1..5.3) */}
-      <FirmwareSection instanceId={Number(id)} instanceName={instance?.name ?? ""} />
+      <FirmwareSection instanceId={Number(id)} instanceName={instance?.name ?? ""} agentMode={instance?.agent_mode ?? false} />
 
       {/* Firewall Log */}
       <FirewallLogSection instanceId={Number(id)} />

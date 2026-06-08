@@ -61,6 +61,9 @@ COPY --from=backend-builder /app/src /app/src
 COPY --from=backend-builder /app/alembic.ini /app/alembic.ini
 COPY --from=backend-builder /app/alembic /app/alembic
 
+# Copy agent scripts (served at /api/agent/script and /api/agent/rc)
+COPY agent/ /app/agent/
+
 # Copy frontend build into nginx webroot
 COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 

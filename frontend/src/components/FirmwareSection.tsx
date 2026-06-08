@@ -10,16 +10,20 @@ import type { FirmwareStatus, ActionResult, FirmwareUpgradeStatus } from "../lib
 interface Props {
   instanceId: number;
   instanceName: string;
+  agentMode?: boolean;
 }
 
-export default function FirmwareSection({ instanceId, instanceName }: Props) {
+export default function FirmwareSection({ instanceId, instanceName, agentMode }: Props) {
   const queryClient = useQueryClient();
   const qk = ["firmware", instanceId];
 
   const { data: fw, isLoading, isError } = useQuery({
     queryKey: qk,
     queryFn: () => api.get<FirmwareStatus>(`/api/instances/${instanceId}/firmware`),
-    refetchInterval: 300_000, // 5min
+    // Agent mode: refetch every 60s so the first push appears quickly.
+    // Polling mode: 5min is fine since the OPNsense API is slow.
+    refetchInterval: agentMode ? 60_000 : 300_000,
+    retry: 1,
   });
 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

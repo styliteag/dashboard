@@ -4,10 +4,13 @@ Closes US-2.1, US-2.2, US-2.3, US-2.4, US-2.5.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
@@ -146,6 +149,31 @@ async def test(
     inst = await service.get_instance(session, instance_id)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    if inst.agent_mode:
+        agent = hub.get(inst.id)
+        if agent is None:
+            ok, latency_ms, error = False, None, "agent not connected"
+        else:
+            t0 = time.monotonic()
+            result = await agent.send_command("ping", timeout=10.0)
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            ok = result.get("success", False)
+            error = None if ok else result.get("output", "no response")
+        await write_audit(
+            session,
+            action="instance.test",
+            result="ok" if ok else "error",
+            user_id=user.id,
+            target_type="instance",
+            target_id=inst.id,
+            source_ip=_client_ip(request),
+            detail={"latency_ms": latency_ms, "error": error, "mode": "agent"},
+        )
+        await session.commit()
+        return TestConnectionResponse(
+            ok=ok, status_code=200 if ok else None, latency_ms=latency_ms, error=error
+        )
 
     ok, status_code, latency_ms, error = await service.test_connection(inst)
     await write_audit(

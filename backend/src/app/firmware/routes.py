@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
@@ -40,8 +41,13 @@ async def firmware_status(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> FirmwareStatus:
-    """Get firmware status and available updates (US-5.1)."""
+    """Get firmware status. Agent mode: return last push from the agent."""
     inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        cached = hub.get_last_firmware(instance_id)
+        return cached if cached is not None else FirmwareStatus()
+
     try:
         client = await registry.get(inst)
         return await client.firmware_status()
@@ -56,23 +62,43 @@ async def firmware_check(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> ActionResult:
-    """Trigger a firmware update check (US-5.2)."""
+    """Trigger a firmware update check. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        agent = hub.get(instance_id)
+        if agent is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+        result_raw = await agent.send_command("firmware.check", timeout=90)
+        output = result_raw.get("output", "")
+        upgrade_available = "can be updated" in output.lower() or "updates available" in output.lower()
+        # firmware.check now returns the version too; fall back to what we already cached
+        product_version = (
+            result_raw.get("product_version")
+            or (hub.get_last_firmware(instance_id).product_version if hub.get_last_firmware(instance_id) else "")
+        )
+        import datetime as _dt
+        hub.set_firmware(instance_id, FirmwareStatus(
+            product_version=product_version,
+            product_latest=product_version,
+            upgrade_available=upgrade_available,
+            updates_available=1 if upgrade_available else 0,
+            status_msg=output[:500],
+            last_check=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+        ))
+        await write_audit(session, action="firmware.check", result="ok", user_id=user.id,
+                          target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+        await session.commit()
+        return ActionResult(success=True, message=output[:200] or "check complete")
+
     try:
         client = await registry.get(inst)
         result = await client.firmware_check()
     except OPNsenseError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(
-        session,
-        action="firmware.check",
-        result="ok",
-        user_id=user.id,
-        target_type="instance",
-        target_id=str(instance_id),
-        source_ip=_client_ip(request),
-    )
+    await write_audit(session, action="firmware.check", result="ok", user_id=user.id,
+                      target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
     await session.commit()
     return result
 
@@ -84,36 +110,35 @@ async def firmware_update(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> ActionResult:
-    """Trigger firmware update (US-5.3). This kicks off the OPNsense updater
-    which typically reboots the firewall. Handle with care."""
+    """Trigger firmware update. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        agent = hub.get(instance_id)
+        if agent is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+        result_raw = await agent.send_command("firmware.update")
+        await write_audit(session, action="firmware.update",
+                          result="ok" if result_raw.get("success") else "error",
+                          user_id=user.id, target_type="instance", target_id=str(instance_id),
+                          source_ip=_client_ip(request))
+        await session.commit()
+        return ActionResult(success=result_raw.get("success", False),
+                            message=result_raw.get("output", "")[:200])
+
     try:
         client = await registry.get(inst)
         result = await client.firmware_update()
     except OPNsenseError as exc:
-        await write_audit(
-            session,
-            action="firmware.update",
-            result="error",
-            user_id=user.id,
-            target_type="instance",
-            target_id=str(instance_id),
-            source_ip=_client_ip(request),
-            detail={"error": str(exc)},
-        )
+        await write_audit(session, action="firmware.update", result="error", user_id=user.id,
+                          target_type="instance", target_id=str(instance_id),
+                          source_ip=_client_ip(request), detail={"error": str(exc)})
         await session.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(
-        session,
-        action="firmware.update",
-        result="ok" if result.success else "error",
-        user_id=user.id,
-        target_type="instance",
-        target_id=str(instance_id),
-        source_ip=_client_ip(request),
-        detail={"message": result.message},
-    )
+    await write_audit(session, action="firmware.update", result="ok" if result.success else "error",
+                      user_id=user.id, target_type="instance", target_id=str(instance_id),
+                      source_ip=_client_ip(request), detail={"message": result.message})
     await session.commit()
     return result
 
@@ -124,8 +149,12 @@ async def firmware_upgrade_status(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> FirmwareUpgradeStatus:
-    """Poll the running upgrade progress (US-5.4)."""
+    """Poll upgrade progress. Agent mode: not supported (returns empty)."""
     inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        return FirmwareUpgradeStatus(status="unknown", log=[])
+
     try:
         client = await registry.get(inst)
         return await client.firmware_upgrade_status()
