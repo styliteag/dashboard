@@ -210,8 +210,17 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
    - ⬜ `run-agent.sh`-Supervisor, `agent.update` über WS, Zwei-Ebenen-Rollback, Canary-Logik
      im Backend. **Hart testen.** → der *letzte manuelle Rollout*.
 2. **pfSense-Spike (§7)** — gates 3. Läuft parallel zu 0/1.
-3. **pfSense-Support:** Plattform-Detection + pfSense-Collectors (§4). Erster Beweis der
-   `device_type`-Abstraktion.
+3. **pfSense-Support:**
+   - ✅ **Plattform-Detection + Dispatch umgesetzt (2026-06-23)**: `detect_platform()` (Marker
+     aus dem Spike), Agent meldet `platform` im `hello`, `collect_firmware`/`collect_gateways`
+     dispatchen pro Plattform. pfSense-**Firmware-Version** via `/etc/version`. Geteilte
+     Collectors (cpu/mem/disk/iface/ipsec/firewall_log/config) unverändert. Tests
+     `agent/tests/test_collectors.py`. → Agent läuft jetzt auf pfSense für System-Metriken.
+   - ⬜ **Real-Box-Format nötig** (nicht raten): pfSense **Gateway-Status** (dpinger/
+     `return_gateways_status()`) und **Update-Check** (`pfSense-upgrade -c`) — Output-Format auf
+     einer Box erfassen, dann Parser finalisieren. Bis dahin: Gateways `[]`, Firmware nur Version.
+   - ⬜ Command-Side (`execute_command` firmware.check/update) pro Plattform dispatchen (Control,
+     später).
 4. **Relay (optionaler dritter Weg):** WS um `http_request`/`http_response` erweitern;
    Dashboard-Befehl `proxy.enable` (Ziel-Allowlist).
 5. **API-Geräte:** Proxmox (sauberste API) als erstes relay-only `device_type`, dann

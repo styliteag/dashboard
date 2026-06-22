@@ -81,6 +81,34 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return ""
 
 
+def detect_platform() -> str:
+    """Identify the host firewall: 'opnsense' | 'pfsense' | 'unknown'.
+
+    OPNsense ships /usr/local/opnsense/version/; pfSense marks /etc/platform
+    (confirmed on pfSense Plus 26.03). Shared FreeBSD collectors work on both;
+    only gateways + firmware diverge (see docs/agent-architecture.md §4).
+    """
+    for marker in ("/usr/local/opnsense/version/core", "/usr/local/opnsense/version/opnsense"):
+        if Path(marker).exists():
+            return "opnsense"
+    try:
+        if "pfsense" in Path("/etc/platform").read_text(errors="replace").lower():
+            return "pfsense"
+    except OSError:
+        pass
+    if Path("/usr/local/sbin/pfSense-upgrade").exists():
+        return "pfsense"
+    return "unknown"
+
+
+def _read_pfsense_version() -> str:
+    """Read the pfSense product version from /etc/version (e.g. '26.03-RELEASE')."""
+    try:
+        return Path("/etc/version").read_text(errors="replace").strip().splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+
+
 def collect_cpu() -> dict:
     """Get CPU usage from sysctl kern.cp_time."""
     out = _run(["sysctl", "-n", "kern.cp_time"])
@@ -184,8 +212,22 @@ def collect_interfaces() -> list[dict]:
     return result
 
 
+def _collect_gateways_pfsense() -> list[dict]:
+    """pfSense gateway status.
+
+    TODO(real-box): pfSense exposes gateway status via the dpinger daemon /
+    return_gateways_status() (PHP), not pluginctl. The exact shell-reachable
+    output format must be captured on a real box before parsing — until then
+    report none rather than emit guessed data.
+    """
+    return []
+
+
 def collect_gateways() -> list[dict]:
-    """Get gateway status from pluginctl."""
+    """Get gateway status (platform-specific)."""
+    if detect_platform() == "pfsense":
+        return _collect_gateways_pfsense()
+    # OPNsense: pluginctl returns gateway status as JSON
     out = _run(["pluginctl", "-r", "return_gateways_status"])
     gateways = []
     if not out.strip():
@@ -287,7 +329,11 @@ _last_fw_check_ts: float = 0.0
 
 
 def collect_firmware() -> dict:
-    """Firmware version on every push; update check every 10 minutes."""
+    """Firmware version on every push; update check every 10 minutes (OPNsense)."""
+    if detect_platform() == "pfsense":
+        # TODO(real-box): add pfSense update-availability via `pfSense-upgrade -c`
+        # once its output format is captured. For now report the version only.
+        return {"product_version": _read_pfsense_version()}
     global _last_fw_check_ts
     version = _read_opnsense_version()
     now = time.monotonic()
@@ -320,6 +366,7 @@ def collect_system_info() -> dict:
     return {
         "hostname": platform.node(),
         "os": _run(["uname", "-r"]).strip(),
+        "platform": detect_platform(),
         "agent_version": __version__,
     }
 
@@ -608,6 +655,7 @@ async def agent_loop(cfg: Config) -> None:
                 "agent_id": cfg.agent_id,
                 "agent_version": __version__,
                 "hostname": platform.node(),
+                "platform": detect_platform(),
             }))
 
             # Run push, listen and keepalive concurrently
