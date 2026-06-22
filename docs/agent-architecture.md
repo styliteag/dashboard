@@ -245,3 +245,23 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 - Enrollment-Flow konkret (One-Time-Code, Token-Vergabe, Self-Register).
 - Multi-File-Update: bleibt der Supervisor/rc.d für immer manuell, oder kann `agent.update`
   später agent.py + Wrapper + rc.d atomar mit-tauschen? (Architektur-Frage, jetzt nur benannt.)
+
+## 12. pfSense Collector-Spike (gated Phase-3-Finalisierung)
+
+Die zwei divergenten pfSense-Collectors (Gateways, Update-Check) sind aktuell Stubs, weil das
+Shell-Output-Format ohne echte Box nicht geraten werden soll. Read-only auf einer pfSense-Plus-Box
+ausführen, Output hier reinpasten → dann finalisiere ich die Parser:
+
+```sh
+ssh -p9922 root@<box> '
+echo "== gateways: pfSsh playback =="; pfSsh.php playback gatewaystatus 2>&1 | head -40
+echo "== gateways: PHP return_gateways_status =="; php -r '\''require_once("/etc/inc/gwlb.inc"); echo json_encode(return_gateways_status(true));'\'' 2>&1 | head -40
+echo "== gateways: dpinger sockets =="; ls -la /var/run/dpinger_* 2>/dev/null
+echo "== firmware: pfSense-upgrade check =="; /usr/local/sbin/pfSense-upgrade -c 2>&1 | head -40
+echo "== firmware: version file =="; cat /etc/version /etc/version.patch 2>/dev/null
+'
+```
+
+Erwartung: eine der Gateway-Methoden liefert strukturierten Status (Name/Adresse/Loss/Delay/RTT),
+`pfSense-upgrade -c` einen Text/Code, aus dem „Update verfügbar" ableitbar ist. Damit werden
+`_collect_gateways_pfsense()` und der pfSense-Zweig in `collect_firmware()` fertiggestellt.
