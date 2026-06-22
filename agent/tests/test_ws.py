@@ -5,6 +5,9 @@ Two layers:
   2. Interop integration: connect the hand-rolled client to a reference
      ``websockets`` server and exchange text / large / ping / close frames.
      The backend runs on uvicorn+websockets, so interop here ≈ interop there.
+
+Note: ``websockets`` is a *test-only* dependency (the reference server). The
+agent's *runtime* is stdlib-only — see DR-4.
 """
 
 from __future__ import annotations

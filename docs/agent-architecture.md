@@ -245,6 +245,9 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 - Enrollment-Flow konkret (One-Time-Code, Token-Vergabe, Self-Register).
 - Multi-File-Update: bleibt der Supervisor/rc.d für immer manuell, oder kann `agent.update`
   später agent.py + Wrapper + rc.d atomar mit-tauschen? (Architektur-Frage, jetzt nur benannt.)
+- **pfSense-Interpreter:** `rc.d`/`install.sh` rufen `/usr/local/bin/python3`; auf der Box ist
+  nur `python3.11` bestätigt. Ohne `python3`-Symlink startet der Agent nicht → Spike §12 prüft
+  `ls -l /usr/local/bin/python3*`; ggf. rc.d auf konkreten Pfad anpassen. Gated pfSense-Deployment.
 
 ## 12. pfSense Collector-Spike (gated Phase-3-Finalisierung)
 
@@ -254,6 +257,7 @@ ausführen, Output hier reinpasten → dann finalisiere ich die Parser:
 
 ```sh
 ssh -p9922 root@<box> '
+echo "== python interpreter (rc.d/install.sh assume /usr/local/bin/python3) =="; ls -l /usr/local/bin/python3*
 echo "== gateways: pfSsh playback =="; pfSsh.php playback gatewaystatus 2>&1 | head -40
 echo "== gateways: PHP return_gateways_status =="; php -r '\''require_once("/etc/inc/gwlb.inc"); echo json_encode(return_gateways_status(true));'\'' 2>&1 | head -40
 echo "== gateways: dpinger sockets =="; ls -la /var/run/dpinger_* 2>/dev/null
