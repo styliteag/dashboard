@@ -4,33 +4,34 @@
 Collects system metrics locally (no API needed), connects outbound via WebSocket,
 and executes commands received from the dashboard.
 
-Dependencies: Python 3.9+ (ships with OPNsense), websockets (pip install websockets)
+Dependencies: Python 3.9+ only — no pip packages (stdlib WebSocket client).
 Config: /usr/local/etc/opnsense-dash-agent.conf (JSON)
 """
 from __future__ import annotations
 
 import asyncio
+import base64
+import contextlib
+import hashlib
 import json
 import logging
 import os
 import platform
 import re
 import signal
+import ssl
+import struct
 import subprocess
-import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
-# Only external dependency
-try:
-    import websockets
-    from websockets.asyncio.client import connect as ws_connect
-except ImportError:
-    print("ERROR: 'websockets' package required. Install with: pip install websockets", file=sys.stderr)
-    sys.exit(1)
+# No external dependencies — the WebSocket client below is pure stdlib (see DR-4
+# in docs/agent-architecture.md). This keeps the agent installable on locked-down
+# boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -341,7 +342,7 @@ def collect_firewall_log(limit: int = 30) -> list[dict]:
 def collect_all() -> dict:
     """Full snapshot of this OPNsense instance."""
     return {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "system": collect_system_info(),
         "uptime": collect_uptime(),
         "cpu": collect_cpu(),
@@ -413,6 +414,169 @@ def execute_command(action: str, params: dict) -> dict:
 
 
 # =============================================================================
+# WebSocket client (stdlib RFC 6455 — no external dependency, see DR-4)
+# =============================================================================
+
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+_OP_CONT = 0x0
+_OP_TEXT = 0x1
+_OP_BINARY = 0x2
+_OP_CLOSE = 0x8
+_OP_PING = 0x9
+_OP_PONG = 0xA
+
+
+class WSError(Exception):
+    """Raised on handshake failure or when the connection is closed."""
+
+
+def _ws_accept_key(key: str) -> str:
+    """Compute the server's Sec-WebSocket-Accept for a client key (RFC 6455 §1.3)."""
+    digest = hashlib.sha1((key + _WS_GUID).encode()).digest()
+    return base64.b64encode(digest).decode()
+
+
+def _encode_frame(opcode: int, payload: bytes) -> bytes:
+    """Encode a single client frame: FIN=1, masked (clients MUST mask, §5.3)."""
+    header = bytearray([0x80 | (opcode & 0x0F)])
+    length = len(payload)
+    if length < 126:
+        header.append(0x80 | length)
+    elif length < 65536:
+        header.append(0x80 | 126)
+        header += struct.pack("!H", length)
+    else:
+        header.append(0x80 | 127)
+        header += struct.pack("!Q", length)
+    mask = os.urandom(4)
+    header += mask
+    masked = bytes(b ^ mask[i & 3] for i, b in enumerate(payload))
+    return bytes(header) + masked
+
+
+async def _read_frame(reader: asyncio.StreamReader) -> tuple[bool, int, bytes]:
+    """Read one server frame → (fin, opcode, payload). Server frames are unmasked (§5.1)."""
+    b0, b1 = await reader.readexactly(2)
+    fin = bool(b0 & 0x80)
+    opcode = b0 & 0x0F
+    masked = bool(b1 & 0x80)
+    length = b1 & 0x7F
+    if length == 126:
+        (length,) = struct.unpack("!H", await reader.readexactly(2))
+    elif length == 127:
+        (length,) = struct.unpack("!Q", await reader.readexactly(8))
+    mask = await reader.readexactly(4) if masked else b""
+    payload = await reader.readexactly(length) if length else b""
+    if masked and payload:
+        payload = bytes(b ^ mask[i & 3] for i, b in enumerate(payload))
+    return fin, opcode, payload
+
+
+class WebSocket:
+    """Minimal asyncio WebSocket client: text frames, ping/pong, close, and
+    reassembly of fragmented messages. Concurrent senders are serialized so
+    frames never interleave."""
+
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, max_size: int):
+        self._reader = reader
+        self._writer = writer
+        self._max_size = max_size
+        self._send_lock = asyncio.Lock()
+        self._closed = False
+
+    async def _send_frame(self, opcode: int, payload: bytes) -> None:
+        async with self._send_lock:
+            self._writer.write(_encode_frame(opcode, payload))
+            await self._writer.drain()
+
+    async def send(self, text: str) -> None:
+        await self._send_frame(_OP_TEXT, text.encode())
+
+    async def ping(self, payload: bytes = b"") -> None:
+        await self._send_frame(_OP_PING, payload)
+
+    async def recv(self) -> str:
+        """Return the next text message, transparently answering pings and
+        reassembling fragments. Raises WSError when the peer closes."""
+        buffer = bytearray()
+        msg_opcode: int | None = None
+        while True:
+            fin, opcode, payload = await _read_frame(self._reader)
+            if opcode == _OP_PING:
+                await self._send_frame(_OP_PONG, payload)
+                continue
+            if opcode == _OP_PONG:
+                continue
+            if opcode == _OP_CLOSE:
+                self._closed = True
+                raise WSError("connection closed by server")
+            if opcode != _OP_CONT:
+                msg_opcode = opcode
+            buffer += payload
+            if len(buffer) > self._max_size:
+                raise WSError("message exceeds max_size")
+            if fin:
+                if msg_opcode == _OP_TEXT:
+                    return bytes(buffer).decode()
+                buffer = bytearray()  # ignore binary; this agent only speaks JSON text
+                msg_opcode = None
+
+    async def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            with contextlib.suppress(OSError, WSError):
+                await self._send_frame(_OP_CLOSE, struct.pack("!H", 1000))
+        with contextlib.suppress(OSError):
+            self._writer.close()
+
+
+async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSocket:
+    """Open a WebSocket connection (ws:// or wss://) and perform the handshake."""
+    parts = urlsplit(url)
+    secure = parts.scheme == "wss"
+    host = parts.hostname or ""
+    port = parts.port or (443 if secure else 80)
+    path = parts.path or "/"
+    if parts.query:
+        path += "?" + parts.query
+
+    ssl_ctx = ssl.create_default_context() if secure else None
+    reader, writer = await asyncio.open_connection(
+        host, port, ssl=ssl_ctx, server_hostname=host if secure else None
+    )
+
+    key = base64.b64encode(os.urandom(16)).decode()
+    lines = [
+        f"GET {path} HTTP/1.1",
+        f"Host: {host}:{port}",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        f"Sec-WebSocket-Key: {key}",
+        "Sec-WebSocket-Version: 13",
+    ]
+    lines += [f"{k}: {v}" for k, v in headers.items()]
+    writer.write(("\r\n".join(lines) + "\r\n\r\n").encode())
+    await writer.drain()
+
+    status_line = await reader.readline()
+    if b" 101 " not in status_line and not status_line.startswith(b"HTTP/1.1 101"):
+        writer.close()
+        raise WSError(f"handshake failed: {status_line.decode(errors='replace').strip()}")
+    resp_headers: dict[str, str] = {}
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+        k, _, v = line.decode(errors="replace").partition(":")
+        resp_headers[k.strip().lower()] = v.strip()
+    if resp_headers.get("sec-websocket-accept", "") != _ws_accept_key(key):
+        writer.close()
+        raise WSError("handshake failed: bad Sec-WebSocket-Accept")
+    return WebSocket(reader, writer, max_size)
+
+
+# =============================================================================
 # WebSocket connection loop
 # =============================================================================
 
@@ -427,50 +591,56 @@ async def agent_loop(cfg: Config) -> None:
     reconnect_delay = 5
 
     while True:
+        ws: WebSocket | None = None
         try:
             log.info("connecting to %s", url)
-            async with ws_connect(
+            ws = await ws_connect(
                 url,
-                additional_headers={"Authorization": f"Bearer {cfg.agent_token}"},
-                ping_interval=20,
-                ping_timeout=10,
-                close_timeout=5,
+                headers={"Authorization": f"Bearer {cfg.agent_token}"},
                 max_size=10 * 1024 * 1024,  # 10MB for config backups
-            ) as ws:
-                log.info("connected to dashboard")
-                reconnect_delay = 5  # reset on successful connect
+            )
+            log.info("connected to dashboard")
+            reconnect_delay = 5  # reset on successful connect
 
-                # Send initial handshake
-                await ws.send(json.dumps({
-                    "type": "hello",
-                    "agent_id": cfg.agent_id,
-                    "agent_version": __version__,
-                    "hostname": platform.node(),
-                }))
+            # Send initial handshake
+            await ws.send(json.dumps({
+                "type": "hello",
+                "agent_id": cfg.agent_id,
+                "agent_version": __version__,
+                "hostname": platform.node(),
+            }))
 
-                # Run push and listen concurrently
-                push_task = asyncio.create_task(_push_loop(ws, cfg))
-                listen_task = asyncio.create_task(_listen_loop(ws))
+            # Run push, listen and keepalive concurrently
+            tasks = [
+                asyncio.create_task(_push_loop(ws, cfg)),
+                asyncio.create_task(_listen_loop(ws)),
+                asyncio.create_task(_keepalive_loop(ws)),
+            ]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+            for t in done:
+                if t.exception():
+                    log.warning("task ended with error: %s", t.exception())
 
-                # Wait for either to finish (usually because connection dropped)
-                done, pending = await asyncio.wait(
-                    [push_task, listen_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for t in pending:
-                    t.cancel()
-                for t in done:
-                    if t.exception():
-                        log.warning("task ended with error: %s", t.exception())
-
-        except (websockets.exceptions.ConnectionClosed, OSError, Exception) as exc:
+        except Exception as exc:  # noqa: BLE001 — any failure → reconnect with backoff
             log.warning("connection lost: %s, reconnecting in %ds", exc, reconnect_delay)
+        finally:
+            if ws is not None:
+                await ws.close()
 
         await asyncio.sleep(reconnect_delay)
         reconnect_delay = min(reconnect_delay * 2, 120)  # exponential backoff, max 2min
 
 
-async def _push_loop(ws, cfg: Config) -> None:
+async def _keepalive_loop(ws: WebSocket) -> None:
+    """Send a WebSocket ping every 20s so NAT mappings stay open."""
+    while True:
+        await asyncio.sleep(20)
+        await ws.ping()
+
+
+async def _push_loop(ws: WebSocket, cfg: Config) -> None:
     """Push metrics snapshot every N seconds."""
     while True:
         try:
@@ -483,9 +653,10 @@ async def _push_loop(ws, cfg: Config) -> None:
         await asyncio.sleep(cfg.push_interval)
 
 
-async def _listen_loop(ws) -> None:
+async def _listen_loop(ws: WebSocket) -> None:
     """Listen for commands from the dashboard."""
-    async for raw in ws:
+    while True:
+        raw = await ws.recv()
         try:
             msg = json.loads(raw)
             msg_type = msg.get("type", "")

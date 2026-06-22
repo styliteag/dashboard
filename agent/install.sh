@@ -32,12 +32,11 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-# Install websockets dependency
-echo "[1/5] Installing Python dependencies..."
-pip install --quiet websockets 2>/dev/null || python3 -m pip install --quiet websockets
+# No Python dependencies — the agent uses a stdlib-only WebSocket client (DR-4).
+echo "[1/4] Checking Python (no pip packages required)..."
 
 # Create install directory
-echo "[2/5] Installing agent to ${INSTALL_DIR}..."
+echo "[2/4] Installing agent to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 
 # Copy agent script (if running from repo checkout, use local file;
@@ -52,7 +51,7 @@ fi
 chmod 755 "${INSTALL_DIR}/opnsense_agent.py"
 
 # Copy example config if no config exists
-echo "[3/5] Setting up configuration..."
+echo "[3/4] Setting up configuration..."
 if [ ! -f "${CONFIG_FILE}" ]; then
     if [ -f "${SCRIPT_DIR}/opnsense-dash-agent.conf.example" ]; then
         cp "${SCRIPT_DIR}/opnsense-dash-agent.conf.example" "${CONFIG_FILE}"
@@ -73,7 +72,7 @@ else
 fi
 
 # Install rc.d script
-echo "[4/5] Installing service script..."
+echo "[4/4] Installing service script..."
 if [ -f "${SCRIPT_DIR}/rc.d/opnsense_dash_agent" ]; then
     cp "${SCRIPT_DIR}/rc.d/opnsense_dash_agent" "${RC_SCRIPT}"
 else
@@ -82,7 +81,7 @@ else
 fi
 chmod 755 "${RC_SCRIPT}"
 
-echo "[5/5] Done!"
+echo "Done!"
 echo ""
 echo "=== Next steps ==="
 echo "1. Edit config:    vi ${CONFIG_FILE}"

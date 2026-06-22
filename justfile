@@ -21,6 +21,11 @@ backend-lint:
 backend-fmt:
     cd backend && uv run ruff format src tests
 
+# --- Agent (runs on OPNsense/pfSense; pure stdlib, tested via the backend venv) ---
+
+agent-test:
+    cd backend && uv run pytest -o asyncio_mode=auto ../agent/tests -q
+
 # --- Frontend --------------------------------------------------------------
 
 frontend-install:
