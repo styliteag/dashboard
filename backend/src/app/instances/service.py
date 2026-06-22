@@ -1,4 +1,5 @@
 """Instance CRUD with encrypted secrets."""
+
 from __future__ import annotations
 
 import time
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crypto.secrets import encrypt
 from app.db.models import Instance
+from app.devices.types import Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.opnsense.client import OPNsenseClient, OPNsenseError
 from app.opnsense.registry import registry
@@ -16,10 +18,14 @@ from app.opnsense.registry import registry
 
 async def list_instances(session: AsyncSession) -> list[Instance]:
     rows = (
-        await session.execute(
-            select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+        (
+            await session.execute(
+                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -38,6 +44,9 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
     placeholder = encrypt("agent-mode-no-key") if not api_key else encrypt(api_key)
     placeholder_secret = encrypt("agent-mode-no-secret") if not api_secret else encrypt(api_secret)
 
+    # transport is the source of truth; fall back to the agent_mode flag when omitted.
+    transport = payload.transport or (Transport.PUSH if payload.agent_mode else Transport.DIRECT)
+
     inst = Instance(
         name=payload.name,
         base_url=str(payload.base_url),
@@ -45,7 +54,8 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
         api_secret_enc=placeholder_secret,
         ca_bundle=payload.ca_bundle,
         ssl_verify=payload.ssl_verify,
-        agent_mode=payload.agent_mode,
+        transport=transport.value,
+        device_type=payload.device_type.value,
         location=payload.location,
         notes=payload.notes,
         tags=payload.tags,

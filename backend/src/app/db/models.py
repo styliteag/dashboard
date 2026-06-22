@@ -14,10 +14,12 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.devices.types import DeviceType, Transport
 
 
 class User(Base):
@@ -49,8 +51,21 @@ class Instance(Base):
     ca_bundle: Mapped[str | None] = mapped_column(Text, nullable=True)
     # When False, skip TLS certificate verification (self-signed certs).
     ssl_verify: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
-    # Agent-based mode: if True, data comes via WebSocket push, not polling.
-    agent_mode: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    # Transport: how the dashboard reaches this device (see docs/agent-architecture.md, DR-1).
+    # direct = poll the API; push = agent pushes via the hub; relay = API through agent tunnel.
+    transport: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=Transport.DIRECT.value,
+        server_default=text("'direct'"),
+    )
+    # Device kind: opnsense | pfsense | proxmox | truenas | qnap.
+    device_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=DeviceType.OPNSENSE.value,
+        server_default=text("'opnsense'"),
+    )
     agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     agent_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -74,6 +89,11 @@ class Instance(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    @property
+    def agent_mode(self) -> bool:
+        """Back-compat: True when push-mode (data arrives via the agent hub)."""
+        return self.transport == Transport.PUSH.value
 
 
 class AuditLog(Base):

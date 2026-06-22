@@ -1,4 +1,5 @@
 """Agent WebSocket endpoint + REST routes for agent management."""
+
 from __future__ import annotations
 
 import json
@@ -6,17 +7,26 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import Instance, User
-from app.agent_hub.hub import hub
+from app.devices.types import Transport
 
 # Agent files are baked into /app/agent/ in the production container.
 # Override via AGENT_DIR env var for local dev.
@@ -26,6 +36,7 @@ router = APIRouter(tags=["agent"])
 
 
 # --- WebSocket endpoint (no session auth — uses agent_token) -----------------
+
 
 @router.websocket("/ws/agent")
 async def agent_websocket(ws: WebSocket):
@@ -48,7 +59,7 @@ async def agent_websocket(ws: WebSocket):
             await session.execute(
                 select(Instance).where(
                     Instance.agent_token == token,
-                    Instance.agent_mode.is_(True),
+                    Instance.transport == Transport.PUSH.value,
                     Instance.deleted_at.is_(None),
                 )
             )
@@ -69,11 +80,13 @@ async def agent_websocket(ws: WebSocket):
         raw = await ws.receive_text()
         hello = json.loads(raw)
         if hello.get("type") == "hello":
-            await ws.send_json({
-                "type": "welcome",
-                "instance_id": instance_id,
-                "instance_name": instance_name,
-            })
+            await ws.send_json(
+                {
+                    "type": "welcome",
+                    "instance_id": instance_id,
+                    "instance_name": instance_name,
+                }
+            )
 
         # Main message loop
         async for raw in ws.iter_text():
@@ -105,6 +118,7 @@ async def agent_websocket(ws: WebSocket):
 
 
 # --- REST: agent management --------------------------------------------------
+
 
 class AgentTokenResponse(BaseModel):
     instance_id: int
@@ -140,12 +154,16 @@ async def enable_agent(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     token = secrets.token_urlsafe(48)
-    inst.agent_mode = True
+    inst.transport = Transport.PUSH.value
     inst.agent_token = token
 
     await write_audit(
-        session, action="agent.enable", result="ok", user_id=user.id,
-        target_type="instance", target_id=str(instance_id),
+        session,
+        action="agent.enable",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
         source_ip=_client_ip(request),
     )
     await session.commit()
@@ -164,15 +182,19 @@ async def disable_agent(
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    inst.agent_mode = False
+    inst.transport = Transport.DIRECT.value
     inst.agent_token = None
 
     # Disconnect if connected
     hub.unregister(instance_id)
 
     await write_audit(
-        session, action="agent.disable", result="ok", user_id=user.id,
-        target_type="instance", target_id=str(instance_id),
+        session,
+        action="agent.disable",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
         source_ip=_client_ip(request),
     )
     await session.commit()
@@ -209,7 +231,9 @@ async def send_agent_command(
     """Send a command to a connected agent."""
     agent = hub.get(instance_id)
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
 
     action = body.get("action", "")
     params = body.get("params", {})
@@ -217,9 +241,14 @@ async def send_agent_command(
     result = await agent.send_command(action, params)
 
     await write_audit(
-        session, action=f"agent.command.{action}", result="ok" if result.get("success") else "error",
-        user_id=user.id, target_type="instance", target_id=str(instance_id),
-        source_ip=_client_ip(request), detail={"action": action, "result": result},
+        session,
+        action=f"agent.command.{action}",
+        result="ok" if result.get("success") else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+        detail={"action": action, "result": result},
     )
     await session.commit()
     return result

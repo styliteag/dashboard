@@ -3,6 +3,7 @@
 Reusing the underlying ``httpx.AsyncClient`` keeps the TCP/TLS connection pool
 warm. The registry is invalidated when an Instance row is updated or deleted.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,9 @@ from app.opnsense.client import OPNsenseClient
 
 
 class ClientRegistry:
+    # OPNsense is the only direct-API client today, so the producer stays concrete.
+    # The transport-agnostic seam lives at the poller (which only needs DeviceClient).
+    # Re-introduce a DeviceClient return type here once a 2nd direct client (Proxmox) exists.
     def __init__(self) -> None:
         self._clients: dict[int, OPNsenseClient] = {}
         self._lock = asyncio.Lock()

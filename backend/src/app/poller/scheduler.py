@@ -4,6 +4,7 @@ Every ``DASH_POLL_INTERVAL_SECONDS`` (default 30s) it fetches all active
 instances and polls them in parallel with a concurrency limit of
 ``DASH_POLL_CONCURRENCY`` (default 20).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
+from app.devices.types import Transport
 from app.metrics.store import write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.opnsense.registry import registry
@@ -94,7 +96,7 @@ async def _poll_all() -> None:
             await session.execute(
                 select(Instance.id, Instance.name).where(
                     Instance.deleted_at.is_(None),
-                    Instance.agent_mode.is_(False),  # skip agent-based instances
+                    Instance.transport == Transport.DIRECT.value,  # only poll direct-API devices
                 )
             )
         ).all()
