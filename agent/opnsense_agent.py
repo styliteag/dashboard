@@ -332,17 +332,31 @@ def collect_ipsec() -> dict:
 
 def _read_opnsense_version() -> str:
     """Read OPNsense version string — tries direct file read first (most reliable in daemon context)."""
-    # File read needs no subprocess and no PATH — most reliable approach
+    # File read needs no subprocess and no PATH — most reliable approach.
+    # Current OPNsense stores these as JSON objects ({"product_version": "25.7.11_9", ...});
+    # older builds stored a bare version string. Handle both, else we'd surface "{".
     for vpath in [
         "/usr/local/opnsense/version/core",
         "/usr/local/opnsense/version/opnsense",
     ]:
         try:
-            v = Path(vpath).read_text().strip().splitlines()[0]
+            raw = Path(vpath).read_text().strip()
+        except OSError:
+            continue
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            v = str(data.get("product_version", "")).strip()
             if v:
                 return v
-        except OSError:
-            pass
+            continue
+        v = raw.splitlines()[0].strip()
+        if v:
+            return v
     # Fallback to binary
     out = _run(["/usr/local/sbin/opnsense-version"]).strip()
     if out:

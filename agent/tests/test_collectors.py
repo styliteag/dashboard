@@ -55,6 +55,37 @@ def test_read_pfsense_version(fake_fs: dict) -> None:
     assert agent._read_pfsense_version() == "26.03-RELEASE"
 
 
+# Real /usr/local/opnsense/version/core format: a pretty-printed JSON object.
+# Taking line 0 yields "{" — the bug this guards against.
+_OPN_CORE_JSON = (
+    "{\n"
+    '    "product_abi": "25.7",\n'
+    '    "product_arch": "amd64",\n'
+    '    "product_id": "opnsense",\n'
+    '    "product_name": "OPNsense",\n'
+    '    "product_version": "25.7.11_9"\n'
+    "}\n"
+)
+
+
+def test_read_opnsense_version_parses_json(fake_fs: dict) -> None:
+    fake_fs["/usr/local/opnsense/version/core"] = _OPN_CORE_JSON
+    assert agent._read_opnsense_version() == "25.7.11_9"
+
+
+def test_read_opnsense_version_legacy_plaintext(fake_fs: dict) -> None:
+    # Older builds stored a bare version string — still supported.
+    fake_fs["/usr/local/opnsense/version/core"] = "25.7.11_9\n"
+    assert agent._read_opnsense_version() == "25.7.11_9"
+
+
+def test_read_opnsense_version_falls_through_empty_product_version(fake_fs: dict) -> None:
+    # core has empty product_version → fall through to opnsense file.
+    fake_fs["/usr/local/opnsense/version/core"] = '{"product_version": ""}'
+    fake_fs["/usr/local/opnsense/version/opnsense"] = '{"product_version": "25.7.11_9"}'
+    assert agent._read_opnsense_version() == "25.7.11_9"
+
+
 def test_collect_firmware_pfsense_reads_version(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
