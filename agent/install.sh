@@ -58,6 +58,15 @@ else
 fi
 chmod 755 "${INSTALL_DIR}/opnsense_agent.py"
 
+# Copy the supervisor (provides respawn + self-update rollback)
+if [ -f "${SCRIPT_DIR}/run-agent.sh" ]; then
+    cp "${SCRIPT_DIR}/run-agent.sh" "${INSTALL_DIR}/run-agent.sh"
+    chmod 755 "${INSTALL_DIR}/run-agent.sh"
+else
+    echo "ERROR: run-agent.sh not found in ${SCRIPT_DIR}"
+    exit 1
+fi
+
 # Copy example config if no config exists
 echo "[3/4] Setting up configuration..."
 if [ ! -f "${CONFIG_FILE}" ]; then

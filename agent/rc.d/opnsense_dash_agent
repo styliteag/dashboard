@@ -33,8 +33,10 @@ if [ -z "${opnsense_dash_agent_python}" ]; then
     done
 fi
 
+# Run the supervisor (run-agent.sh), not python directly: it provides the
+# respawn loop + self-update rollback (DR-5). The interpreter is passed as $1.
 command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} ${opnsense_dash_agent_python} /usr/local/opnsense-dash-agent/opnsense_agent.py"
+command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} /bin/sh /usr/local/opnsense-dash-agent/run-agent.sh ${opnsense_dash_agent_python}"
 
 start_precmd="${name}_prestart"
 

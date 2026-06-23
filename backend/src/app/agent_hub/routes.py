@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -33,6 +36,16 @@ from app.devices.types import Transport
 _AGENT_DIR = Path(os.environ.get("AGENT_DIR", "/app/agent"))
 
 router = APIRouter(tags=["agent"])
+
+
+def _served_agent_version() -> str | None:
+    """Parse __version__ from the agent script shipped in this container."""
+    try:
+        text = (_AGENT_DIR / "opnsense_agent.py").read_text()
+    except OSError:
+        return None
+    m = re.search(r"""^__version__\s*=\s*["']([^"']+)["']""", text, re.MULTILINE)
+    return m.group(1) if m else None
 
 
 # --- WebSocket endpoint (no session auth — uses agent_token) -----------------
@@ -80,6 +93,8 @@ async def agent_websocket(ws: WebSocket):
         raw = await ws.receive_text()
         hello = json.loads(raw)
         if hello.get("type") == "hello":
+            agent.agent_version = hello.get("agent_version", "")
+            agent.platform = hello.get("platform", "")
             await ws.send_json(
                 {
                     "type": "welcome",
@@ -132,6 +147,9 @@ class AgentStatusResponse(BaseModel):
     agent_mode: bool
     agent_connected: bool
     agent_last_seen: str | None
+    agent_version: str | None = None  # reported by the connected agent
+    served_version: str | None = None  # version shipped in this container
+    update_available: bool = False
 
 
 def _client_ip(request: Request) -> str:
@@ -211,12 +229,20 @@ async def agent_status(
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
+    connected = hub.get(instance_id)
+    agent_version = connected.agent_version if connected else None
+    served = _served_agent_version()
+    update_available = bool(agent_version and served and agent_version != served)
+
     return AgentStatusResponse(
         instance_id=instance_id,
         instance_name=inst.name,
         agent_mode=inst.agent_mode,
         agent_connected=hub.is_connected(instance_id),
         agent_last_seen=inst.agent_last_seen.isoformat() if inst.agent_last_seen else None,
+        agent_version=agent_version,
+        served_version=served,
+        update_available=update_available,
     )
 
 
@@ -252,6 +278,57 @@ async def send_agent_command(
     )
     await session.commit()
     return result
+
+
+@router.post("/instances/{instance_id}/agent/update")
+async def update_agent(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Push the container's agent code to one connected agent (self-update).
+
+    Per-instance by design: this is the canary mechanism (DR-6). Update one
+    instance, confirm it reconnects healthy at the new version, then the next.
+    """
+    inst = await session.get(Instance, instance_id)
+    if inst is None or inst.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+
+    try:
+        code = (_AGENT_DIR / "opnsense_agent.py").read_bytes()
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="agent script not available"
+        ) from None
+
+    version = _served_agent_version() or "unknown"
+    sha256 = hashlib.sha256(code).hexdigest()
+    result = await agent.send_command(
+        "agent.update",
+        {"version": version, "sha256": sha256, "code": base64.b64encode(code).decode()},
+        timeout=30,
+    )
+
+    await write_audit(
+        session,
+        action="agent.update",
+        result="ok" if result.get("success") else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+        detail={"version": version, "result": result},
+    )
+    await session.commit()
+    return {"sent": True, "version": version, "result": result}
 
 
 @router.get("/agents/connected")
@@ -293,3 +370,12 @@ async def download_agent_rc() -> FileResponse:
     if not rc.exists():
         raise HTTPException(status_code=404, detail="rc script not available")
     return FileResponse(str(rc), media_type="text/plain", filename="opnsense_dash_agent")
+
+
+@router.get("/agent/run", include_in_schema=False)
+async def download_agent_supervisor() -> FileResponse:
+    """Serve run-agent.sh (the supervisor) for direct download (no auth required)."""
+    sup = _AGENT_DIR / "run-agent.sh"
+    if not sup.exists():
+        raise HTTPException(status_code=404, detail="supervisor script not available")
+    return FileResponse(str(sup), media_type="text/plain", filename="run-agent.sh")

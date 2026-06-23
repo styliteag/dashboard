@@ -201,14 +201,28 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
    `agent_mode` bleibt in der API (Frontend-kompatibel). Tests: `tests/test_devices.py`.
    Migration appliziert automatisch beim nächsten dev/prod-Container-Start (nicht manuell).
    Kein Verhaltenswechsel.
-1. **Agent v0.2 (OPNsense, verifiziert gut):**
+1. **Agent v0.3 (OPNsense, verifiziert gut):**
    - ✅ **stdlib-WS (DR-4) umgesetzt (2026-06-23)**: `websockets`-Pip-Dep entfernt, RFC-6455-
      Client in `opnsense_agent.py` (Handshake, Client-Masking, Fragment-Reassembly, Ping/Pong,
      Close, NAT-Keepalive). Tests `agent/tests/test_ws.py` — Framing-Unit + **Interop gegen
-     `websockets`-Referenzserver** (`just agent-test`). Agent jetzt dependency-frei, `__version__`
-     0.2.0. **Offen: Integrationstest gegen das echte Backend-`/ws/agent` vor Produktiv-Rollout.**
-   - ⬜ `run-agent.sh`-Supervisor, `agent.update` über WS, Zwei-Ebenen-Rollback, Canary-Logik
-     im Backend. **Hart testen.** → der *letzte manuelle Rollout*.
+     `websockets`-Referenzserver** (`just agent-test`). Agent dependency-frei.
+   - ✅ **Selbstupdate umgesetzt (2026-06-23, `__version__` 0.3.0)**:
+     - Supervisor `agent/run-agent.sh` (DR-5): Respawn-Loop + Rollback; rc.d ruft ihn statt
+       Python direkt (Interpreter als `$1`), SIGTERM wird an den Child weitergereicht.
+     - `agent.update` über den authentifizierten WS: sha256 + `compile()`-Verify → atomic swap
+       (tmp im Zielverzeichnis) → Probation-Marker → Exit 42 → Supervisor respawnt neuen Code.
+     - **Zwei-Ebenen-Rollback**: Agent-Probation (kein gesunder `welcome` in 60s → `.bak`
+       zurück, Exit) + Supervisor (schneller Crash mit Marker → `.bak` zurück vor Respawn).
+       Exit-Code 42 trennt gewollten Update-Restart von Crash.
+     - Backend: `POST /instances/{id}/agent/update` (per-Instance = Canary, DR-6), sendet den
+       Container-Agent (`__version__` als Soll-Version); `/agent/status` zeigt
+       gemeldete vs. gelieferte Version + `update_available`; `agent_version`/`platform` aus
+       hello gespeichert. `/agent/run` serviert den Supervisor.
+     - Tests: `agent/tests/test_selfupdate.py` (verify/apply/rollback/probation),
+       `tests/test_agent_update.py` (Versions-Parser).
+   - ⛔ **Vor Produktiv-Rollout**: Restart + Supervisor-Rollback **live auf echter Box** testen
+     (deterministische Primitive sind unit-getestet; der Prozess-Restart/Crash-Pfad nicht).
+     Signatur (Offline-Key) bleibt für später (§6) — v1 = sha256 + TLS + Canary + Audit.
 2. **pfSense-Spike (§7)** — gates 3. Läuft parallel zu 0/1.
 3. **pfSense-Support:**
    - ✅ **Plattform-Detection + Dispatch umgesetzt (2026-06-23)**: `detect_platform()` (Marker

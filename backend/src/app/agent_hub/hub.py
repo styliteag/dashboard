@@ -125,6 +125,9 @@ class ConnectedAgent:
         self.instance_id = instance_id
         self.instance_name = instance_name
         self.connected_at = datetime.now(timezone.utc)
+        # Reported in the agent's hello frame.
+        self.agent_version: str = ""
+        self.platform: str = ""
         self._pending_commands: dict[str, asyncio.Future] = {}
 
     async def send_command(
@@ -180,6 +183,8 @@ class AgentHub:
                 "instance_id": a.instance_id,
                 "instance_name": a.instance_name,
                 "connected_at": a.connected_at.isoformat(),
+                "agent_version": a.agent_version,
+                "platform": a.platform,
             }
             for a in self._agents.values()
         ]

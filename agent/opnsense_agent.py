@@ -31,7 +31,7 @@ from urllib.parse import urlsplit
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -669,6 +669,137 @@ async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSoc
 
 
 # =============================================================================
+# Self-update (Phase 1) — see docs/agent-architecture.md §5.
+#
+# The dashboard pushes new agent code over the authenticated WebSocket. We verify
+# it (sha256 + syntax), back up the current file, atomically swap it in, set a
+# probation marker, and exit 42 to ask the supervisor (run-agent.sh) to respawn
+# into the new code. Two rollback layers protect against a bad update:
+#   - probation watchdog (this process): no healthy reconnect within
+#     _PROBATION_SECS → restore the backup and exit;
+#   - supervisor (run-agent.sh): a fast crash with the marker present → restore
+#     the backup before respawning.
+# =============================================================================
+
+_UPDATE_RESTART_CODE = 42
+_PROBATION_SECS = 60
+# Set once the dashboard accepts us (welcome received). Created inside the running
+# loop in _main_async() so it never binds to the wrong event loop.
+_healthy: asyncio.Event | None = None
+
+
+def _self_path() -> str:
+    return os.environ.get("AGENT_SELF_PATH") or os.path.abspath(__file__)
+
+
+def _marker_path() -> str:
+    return _self_path() + ".updating"
+
+
+def _backup_path() -> str:
+    return _self_path() + ".bak"
+
+
+def _verify_update_code(code: bytes, expected_sha256: str) -> bool:
+    """Integrity (sha256) + syntax (compile) check before any swap.
+
+    Note: compile() only catches syntax errors, not runtime failures — the real
+    health gate is the probation reconnect below.
+    """
+    if hashlib.sha256(code).hexdigest() != (expected_sha256 or "").lower():
+        return False
+    try:
+        compile(code, "<agent-update>", "exec")
+    except (SyntaxError, ValueError):
+        return False
+    return True
+
+
+def _apply_update(code: bytes, version: str) -> None:
+    """Back up the running agent, atomically swap in new code, set the marker.
+
+    The temp file is written in the target directory so os.replace stays atomic
+    (same filesystem). Errors propagate so a half-write never goes live.
+    """
+    target = _self_path()
+    tmp = target + ".new"
+    with open(tmp, "wb") as f:
+        f.write(code)
+        f.flush()
+        os.fsync(f.fileno())
+    with contextlib.suppress(OSError):
+        os.replace(target, _backup_path())
+    os.replace(tmp, target)
+    Path(_marker_path()).write_text(version)
+
+
+def _rollback() -> bool:
+    """Restore the backup over the agent file and clear the marker."""
+    bak = _backup_path()
+    if not os.path.exists(bak):
+        return False
+    try:
+        os.replace(bak, _self_path())
+    except OSError:
+        return False
+    with contextlib.suppress(OSError):
+        os.remove(_marker_path())
+    return True
+
+
+def _clear_probation() -> None:
+    """Probation passed: drop the marker and the backup."""
+    with contextlib.suppress(OSError):
+        os.remove(_marker_path())
+    with contextlib.suppress(OSError):
+        os.remove(_backup_path())
+
+
+async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> None:
+    """Verify + stage a pushed update, ack, then exit for the supervisor to respawn."""
+    version = params.get("version", "")
+    try:
+        code = base64.b64decode(params.get("code", ""), validate=True)
+    except (ValueError, TypeError):
+        await _send_update_result(ws, request_id, False, "invalid base64 code")
+        return
+    if not _verify_update_code(code, params.get("sha256", "")):
+        await _send_update_result(ws, request_id, False, "verification failed (sha256/syntax)")
+        return
+    try:
+        await asyncio.get_event_loop().run_in_executor(None, _apply_update, code, version)
+    except OSError as exc:
+        await _send_update_result(ws, request_id, False, f"apply failed: {exc}")
+        return
+    await _send_update_result(ws, request_id, True, f"update staged to {version}, restarting")
+    log.info("self-update: staged %s, exiting for supervisor respawn", version)
+    await ws.close()
+    os._exit(_UPDATE_RESTART_CODE)
+
+
+async def _send_update_result(ws: WebSocket, request_id: str, success: bool, output: str) -> None:
+    await ws.send(json.dumps({
+        "type": "command_result",
+        "request_id": request_id,
+        "action": "agent.update",
+        "result": {"success": success, "output": output},
+    }))
+
+
+async def _probation_watchdog(healthy: asyncio.Event) -> None:
+    """If we just self-updated, demand a healthy reconnect or roll back."""
+    try:
+        await asyncio.wait_for(healthy.wait(), _PROBATION_SECS)
+    except asyncio.TimeoutError:
+        log.error(
+            "self-update: probation FAILED (no healthy connect in %ds), rolling back",
+            _PROBATION_SECS,
+        )
+        _rollback()
+        os._exit(1)
+
+
+# =============================================================================
 # WebSocket connection loop
 # =============================================================================
 
@@ -754,10 +885,23 @@ async def _listen_loop(ws: WebSocket) -> None:
             msg = json.loads(raw)
             msg_type = msg.get("type", "")
 
-            if msg_type == "command":
+            if msg_type == "welcome":
+                # Dashboard accepted us. If we just self-updated, probation passes.
+                if os.path.exists(_marker_path()):
+                    _clear_probation()
+                    log.info("self-update: probation passed (healthy connect)")
+                if _healthy is not None:
+                    _healthy.set()
+
+            elif msg_type == "command":
                 action = msg.get("action", "")
                 params = msg.get("params", {})
                 request_id = msg.get("request_id", "")
+
+                if action == "agent.update":
+                    # Stages new code, acks, then exits — does not return here.
+                    await _handle_self_update(ws, request_id, params)
+                    continue
 
                 # Execute in thread pool to not block the event loop
                 result = await asyncio.get_event_loop().run_in_executor(
@@ -787,6 +931,17 @@ async def _listen_loop(ws: WebSocket) -> None:
 # Entrypoint
 # =============================================================================
 
+async def _main_async(cfg: Config) -> None:
+    """Run the connection loop, plus a probation watchdog if we just self-updated."""
+    global _healthy
+    _healthy = asyncio.Event()
+    tasks = [asyncio.create_task(agent_loop(cfg))]
+    if os.path.exists(_marker_path()):
+        log.info("self-update: on probation — must connect healthy within %ds", _PROBATION_SECS)
+        tasks.append(asyncio.create_task(_probation_watchdog(_healthy)))
+    await asyncio.gather(*tasks)
+
+
 def main() -> None:
     cfg = Config()
     logging.basicConfig(
@@ -811,7 +966,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, shutdown_handler)
 
     try:
-        loop.run_until_complete(agent_loop(cfg))
+        loop.run_until_complete(_main_async(cfg))
     except asyncio.CancelledError:
         pass
     finally:
