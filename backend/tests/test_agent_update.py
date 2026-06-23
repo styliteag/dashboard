@@ -24,3 +24,23 @@ def test_served_agent_version_single_quotes(tmp_path, monkeypatch: pytest.Monkey
 def test_served_agent_version_missing_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
     assert routes._served_agent_version() is None
+
+
+def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import base64
+    import hashlib
+
+    src = tmp_path / "opnsense_agent.py"
+    src.write_text('__version__ = "1.2.3"\nx = 1\n')
+    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
+
+    params = routes._agent_update_params()
+    assert params is not None
+    assert params["version"] == "1.2.3"
+    assert params["sha256"] == hashlib.sha256(src.read_bytes()).hexdigest()
+    assert base64.b64decode(params["code"]) == src.read_bytes()
+
+
+def test_agent_update_params_missing_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
+    assert routes._agent_update_params() is None

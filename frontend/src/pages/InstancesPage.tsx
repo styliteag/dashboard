@@ -1,20 +1,52 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity, Download } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity, Download, ArrowUpCircle } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Instance, Overview } from "../lib/types";
+
+interface ConnectedAgent {
+  instance_id: number;
+  instance_name: string;
+  agent_version: string;
+  served_version: string | null;
+  update_available: boolean;
+  platform: string;
+}
 import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
 import TestConnectionButton from "../components/TestConnectionButton";
 
 export default function InstancesPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Instance | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+
+  // Connected agents → drives the "update available" banner + Update all.
+  const { data: agents = [] } = useQuery({
+    queryKey: ["agents-connected"],
+    queryFn: () => api.get<ConnectedAgent[]>("/api/agents/connected"),
+    refetchInterval: 15_000,
+  });
+  const outdated = agents.filter((a) => a.update_available);
+  const servedVersion = outdated[0]?.served_version ?? null;
+
+  const updateAllMut = useMutation({
+    mutationFn: () =>
+      api.post<{ served_version: string; updated: { instance_id: number }[] }>(
+        "/api/agents/update-all",
+      ),
+    onSuccess: (data) => {
+      setUpdateMsg(`Updating ${data.updated.length} agent(s) to ${data.served_version}…`);
+      setTimeout(() => setUpdateMsg(null), 6000);
+      queryClient.invalidateQueries({ queryKey: ["agents-connected"] });
+    },
+  });
 
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["instances"],
@@ -88,6 +120,29 @@ export default function InstancesPage() {
           <KpiTile label="Online" value={overview.online} color="text-emerald-400" />
           <KpiTile label="Degraded" value={overview.degraded} color="text-amber-400" />
           <KpiTile label="Offline" value={overview.offline} color="text-red-400" />
+        </div>
+      )}
+
+      {/* Agent update banner */}
+      {outdated.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-800/50 bg-amber-900/20 px-4 py-2.5">
+          <ArrowUpCircle className="h-4 w-4 text-amber-400" />
+          <span className="text-sm text-amber-300">
+            {outdated.length} agent{outdated.length > 1 ? "s" : ""} can be updated
+            {servedVersion ? ` → ${servedVersion}` : ""}
+          </span>
+          <button
+            onClick={() => updateAllMut.mutate()}
+            disabled={updateAllMut.isPending}
+            className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+          >
+            {updateAllMut.isPending ? "Updating…" : "Update all agents"}
+          </button>
+        </div>
+      )}
+      {updateMsg && (
+        <div className="mt-2 rounded-lg bg-amber-900/40 px-3 py-2 text-sm text-amber-300">
+          {updateMsg}
         </div>
       )}
 

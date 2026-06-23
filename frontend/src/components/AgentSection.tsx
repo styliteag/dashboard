@@ -14,6 +14,15 @@ interface AgentStatus {
   agent_mode: boolean;
   agent_connected: boolean;
   agent_last_seen: string | null;
+  agent_version: string | null;
+  served_version: string | null;
+  update_available: boolean;
+}
+
+interface AgentUpdateResponse {
+  sent: boolean;
+  version: string;
+  result: { success: boolean; output: string };
 }
 
 interface AgentTokenResponse {
@@ -152,6 +161,22 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
     },
   });
 
+  const updateMut = useMutation({
+    mutationFn: () =>
+      api.post<AgentUpdateResponse>(`/api/instances/${instanceId}/agent/update`),
+    onSuccess: (data) => {
+      setMsg({
+        ok: data.result.success,
+        text: data.result.success
+          ? `Updating to ${data.version}: ${data.result.output}`
+          : `Update failed: ${data.result.output}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
+    },
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Update failed" }),
+  });
+
   // Pre-filled config (token + dashboard URL baked in)
   const cfg = {
     dashboard_url: `${wsProto}://${host}/api/ws/agent`,
@@ -279,14 +304,40 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                     </span>
                   </div>
                 )}
+                {status?.agent_version && (
+                  <div className="flex items-center gap-3">
+                    <span className="w-20 text-slate-500">Version</span>
+                    <span className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span className="font-mono">{status.agent_version}</span>
+                      {status.update_available && status.served_version && (
+                        <span className="rounded bg-amber-900/40 px-1.5 py-0.5 text-amber-300">
+                          update available → {status.served_version}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => disableMut.mutate()}
-                disabled={disableMut.isPending}
-                className="shrink-0 rounded-lg border border-red-800/50 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
-              >
-                Disable Agent
-              </button>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                {connected && status?.update_available && (
+                  <button
+                    onClick={() => updateMut.mutate()}
+                    disabled={updateMut.isPending}
+                    className="rounded-lg border border-amber-700/50 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-900/20 disabled:opacity-50"
+                  >
+                    {updateMut.isPending
+                      ? "Updating…"
+                      : `Update agent → ${status.served_version}`}
+                  </button>
+                )}
+                <button
+                  onClick={() => disableMut.mutate()}
+                  disabled={disableMut.isPending}
+                  className="rounded-lg border border-red-800/50 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+                >
+                  Disable Agent
+                </button>
+              </div>
             </div>
 
             {/* Guide toggle */}

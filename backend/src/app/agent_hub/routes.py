@@ -48,6 +48,19 @@ def _served_agent_version() -> str | None:
     return m.group(1) if m else None
 
 
+def _agent_update_params() -> dict | None:
+    """Build the agent.update command params (version, sha256, base64 code), or None."""
+    try:
+        code = (_AGENT_DIR / "opnsense_agent.py").read_bytes()
+    except OSError:
+        return None
+    return {
+        "version": _served_agent_version() or "unknown",
+        "sha256": hashlib.sha256(code).hexdigest(),
+        "code": base64.b64encode(code).decode(),
+    }
+
+
 # --- WebSocket endpoint (no session auth — uses agent_token) -----------------
 
 
@@ -302,20 +315,13 @@ async def update_agent(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
         )
 
-    try:
-        code = (_AGENT_DIR / "opnsense_agent.py").read_bytes()
-    except OSError:
+    params = _agent_update_params()
+    if params is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="agent script not available"
-        ) from None
+        )
 
-    version = _served_agent_version() or "unknown"
-    sha256 = hashlib.sha256(code).hexdigest()
-    result = await agent.send_command(
-        "agent.update",
-        {"version": version, "sha256": sha256, "code": base64.b64encode(code).decode()},
-        timeout=30,
-    )
+    result = await agent.send_command("agent.update", params, timeout=30)
 
     await write_audit(
         session,
@@ -325,18 +331,72 @@ async def update_agent(
         target_type="instance",
         target_id=str(instance_id),
         source_ip=_client_ip(request),
-        detail={"version": version, "result": result},
+        detail={"version": params["version"], "result": result},
     )
     await session.commit()
-    return {"sent": True, "version": version, "result": result}
+    return {"sent": True, "version": params["version"], "result": result}
 
 
 @router.get("/agents/connected")
 async def list_connected_agents(
     _user: User = Depends(current_user),
 ) -> list[dict]:
-    """List all currently connected agents."""
-    return hub.list_connected()
+    """List all currently connected agents, annotated with update availability."""
+    served = _served_agent_version()
+    return [
+        {
+            **a,
+            "served_version": served,
+            "update_available": bool(
+                a["agent_version"] and served and a["agent_version"] != served
+            ),
+        }
+        for a in hub.list_connected()
+    ]
+
+
+@router.post("/agents/update-all")
+async def update_all_agents(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Push the container's agent code to every connected agent that is out of date.
+
+    Up-to-date agents are skipped so they are not needlessly restarted.
+    """
+    params = _agent_update_params()
+    if params is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="agent script not available"
+        )
+    served = params["version"]
+
+    targets = [a for a in hub.list_connected() if a["agent_version"] != served]
+    results = []
+    for a in targets:
+        agent = hub.get(a["instance_id"])
+        if agent is None:
+            continue
+        result = await agent.send_command("agent.update", params, timeout=30)
+        results.append(
+            {
+                "instance_id": a["instance_id"],
+                "instance_name": a["instance_name"],
+                "result": result,
+            }
+        )
+
+    await write_audit(
+        session,
+        action="agent.update_all",
+        result="ok",
+        user_id=user.id,
+        source_ip=_client_ip(request),
+        detail={"served_version": served, "count": len(results)},
+    )
+    await session.commit()
+    return {"served_version": served, "updated": results}
 
 
 @router.get("/instances/{instance_id}/agent/token")
