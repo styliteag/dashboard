@@ -4,6 +4,7 @@ These shapes are pinned to what we have observed; if you change OPNsense
 versions and a field disappears, expect a Pydantic validation error rather
 than silent data loss. We use ``extra="allow"`` so unknown keys don't blow up.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
@@ -69,6 +70,9 @@ class SystemStatus(BaseModel):
     name: str | None = None
     version: str | None = None
     uptime: str | None = None
+    # Set by push agents that self-identify ('opnsense'|'pfsense'); None on the
+    # direct-poll path. Lets the dashboard show the real platform per instance.
+    platform: str | None = None
     cpu: CpuUsage = CpuUsage()
     memory: MemoryUsage = MemoryUsage()
     disks: list[DiskUsage] = []
@@ -76,6 +80,7 @@ class SystemStatus(BaseModel):
 
 
 # --- IPsec ------------------------------------------------------------------
+
 
 class IPsecTunnel(BaseModel):
     """One IPsec tunnel (Phase 1 + Phase 2 combined)."""
@@ -100,11 +105,13 @@ class IPsecServiceStatus(BaseModel):
 
 class ActionResult(BaseModel):
     """Generic result for start/stop/update actions."""
+
     success: bool
     message: str = ""
 
 
 # --- Firmware ----------------------------------------------------------------
+
 
 class FirmwareStatus(BaseModel):
     """Firmware/update status."""
@@ -133,6 +140,7 @@ class FirmwareUpgradeStatus(BaseModel):
 
 
 # --- Gateway ----------------------------------------------------------------
+
 
 class GatewayStatus(BaseModel):
     """One WAN gateway."""

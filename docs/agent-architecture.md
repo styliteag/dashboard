@@ -216,6 +216,9 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
      dispatchen pro Plattform. pfSense-**Firmware-Version** via `/etc/version`. Geteilte
      Collectors (cpu/mem/disk/iface/ipsec/firewall_log/config) unverändert. Tests
      `agent/tests/test_collectors.py`. → Agent läuft jetzt auf pfSense für System-Metriken.
+     Backend-seitig: `hub`-Konverter (`status/gateways/ipsec/firmware_from_agent`) extrahiert +
+     kontraktgetestet (`tests/test_agent_hub.py`); gemeldetes `platform` fließt in
+     `SystemStatus.platform`.
    - ✅ **Gateways + Update-Check finalisiert (2026-06-23, echte Samples)**: pfSense-Gateways via
      `php -r 'return_gateways_status(true)'` (sauberes JSON → `_collect_gateways_pfsense()`);
      Update-Check via `pfSense-upgrade -c` (Negativ-Fall „up to date" bestätigt; Positiv-Wording

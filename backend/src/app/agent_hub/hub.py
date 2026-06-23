@@ -3,16 +3,15 @@
 Tracks connected agents, routes incoming metrics to the DB, and dispatches
 commands from the dashboard to the correct agent.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from datetime import datetime, timezone
 
 import structlog
 from fastapi import WebSocket
-from sqlalchemy import select
 
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
@@ -32,6 +31,94 @@ from app.opnsense.schemas import (
 log = structlog.get_logger("app.agent_hub")
 
 
+# --- Agent → domain conversion (pure; testable without a DB) ------------------
+# These map the agent's push payload (see agent/opnsense_agent.py collect_all)
+# onto our domain schemas. Keep them in sync with the agent's output shape.
+
+
+def status_from_agent(data: dict) -> SystemStatus:
+    cpu_data = data.get("cpu", {})
+    mem_data = data.get("memory", {})
+    system = data.get("system", {})
+    return SystemStatus(
+        name=system.get("hostname"),
+        version=data.get("firmware", {}).get("product_version"),
+        uptime=data.get("uptime"),
+        platform=system.get("platform"),
+        cpu=CpuUsage(total=cpu_data.get("total_pct", 0)),
+        memory=MemoryUsage(
+            used_pct=mem_data.get("used_pct", 0),
+            total_mb=mem_data.get("total_mb", 0),
+            used_mb=mem_data.get("used_mb", 0),
+        ),
+        disks=[
+            DiskUsage(
+                device=d.get("device", ""),
+                mountpoint=d.get("mountpoint", ""),
+                used_pct=d.get("used_pct", 0),
+            )
+            for d in data.get("disks", [])
+        ],
+        interfaces=[
+            InterfaceStats(
+                name=i.get("name", ""),
+                status=i.get("status", "up"),
+                address=i.get("address"),
+                bytes_received=i.get("bytes_received", 0),
+                bytes_transmitted=i.get("bytes_transmitted", 0),
+            )
+            for i in data.get("interfaces", [])
+        ],
+    )
+
+
+def gateways_from_agent(data: dict) -> list[GatewayStatus]:
+    return [
+        GatewayStatus(
+            name=g.get("name", ""),
+            address=g.get("address", ""),
+            status=g.get("status", ""),
+            delay=g.get("delay", ""),
+            stddev=g.get("stddev", ""),
+            loss=g.get("loss", ""),
+            interface=g.get("interface", ""),
+        )
+        for g in data.get("gateways", [])
+    ]
+
+
+def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
+    ipsec_data = data.get("ipsec", {})
+    return IPsecServiceStatus(
+        running=ipsec_data.get("running", False),
+        tunnels=[
+            IPsecTunnel(
+                id=t.get("id", ""),
+                description=t.get("description", ""),
+                remote=t.get("remote", ""),
+                local=t.get("local", ""),
+                phase1_status=t.get("status", "unknown"),
+                bytes_in=int(t.get("bytes_in", 0)),
+                bytes_out=int(t.get("bytes_out", 0)),
+            )
+            for t in ipsec_data.get("tunnels", [])
+        ],
+    )
+
+
+def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
+    fw_data = data.get("firmware", {})
+    upgrade_available = bool(fw_data.get("upgrade_available", False))
+    return FirmwareStatus(
+        product_version=fw_data.get("product_version", ""),
+        product_latest=fw_data.get("product_version", ""),  # agent doesn't know latest
+        upgrade_available=upgrade_available,
+        updates_available=1 if upgrade_available else 0,
+        status_msg=fw_data.get("update_check_output", ""),
+        last_check=last_check,
+    )
+
+
 class ConnectedAgent:
     def __init__(self, ws: WebSocket, instance_id: int, instance_name: str):
         self.ws = ws
@@ -40,18 +127,22 @@ class ConnectedAgent:
         self.connected_at = datetime.now(timezone.utc)
         self._pending_commands: dict[str, asyncio.Future] = {}
 
-    async def send_command(self, action: str, params: dict | None = None, timeout: float = 30) -> dict:
+    async def send_command(
+        self, action: str, params: dict | None = None, timeout: float = 30
+    ) -> dict:
         """Send a command and wait for the result."""
         request_id = uuid.uuid4().hex
         future: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending_commands[request_id] = future
 
-        await self.ws.send_json({
-            "type": "command",
-            "request_id": request_id,
-            "action": action,
-            "params": params or {},
-        })
+        await self.ws.send_json(
+            {
+                "type": "command",
+                "request_id": request_id,
+                "action": action,
+                "params": params or {},
+            }
+        )
 
         try:
             return await asyncio.wait_for(future, timeout=timeout)
@@ -135,80 +226,18 @@ class AgentHub:
         sessionmaker = get_sessionmaker()
         ts = datetime.now(timezone.utc)
 
-        # Convert agent data format to our SystemStatus
-        cpu_data = data.get("cpu", {})
-        mem_data = data.get("memory", {})
-        disk_data = data.get("disks", [])
-        iface_data = data.get("interfaces", [])
-
-        status = SystemStatus(
-            name=data.get("system", {}).get("hostname"),
-            version=data.get("firmware", {}).get("product_version"),
-            uptime=data.get("uptime"),
-            cpu=CpuUsage(total=cpu_data.get("total_pct", 0)),
-            memory=MemoryUsage(
-                used_pct=mem_data.get("used_pct", 0),
-                total_mb=mem_data.get("total_mb", 0),
-                used_mb=mem_data.get("used_mb", 0),
-            ),
-            disks=[
-                DiskUsage(
-                    device=d.get("device", ""),
-                    mountpoint=d.get("mountpoint", ""),
-                    used_pct=d.get("used_pct", 0),
-                )
-                for d in disk_data
-            ],
-            interfaces=[
-                InterfaceStats(
-                    name=i.get("name", ""),
-                    status=i.get("status", "up"),
-                    address=i.get("address"),
-                    bytes_received=i.get("bytes_received", 0),
-                    bytes_transmitted=i.get("bytes_transmitted", 0),
-                )
-                for i in iface_data
-            ],
-        )
-
+        status = status_from_agent(data)
         self._last_status[instance_id] = status
 
         # Cache gateways — only update when the agent actually sent entries;
-        # an empty list most likely means pluginctl failed, not that all gateways
-        # were removed. This prevents wiping the cache on a failed collection.
-        gw_data = data.get("gateways", [])
-        if gw_data:
-            self._last_gateways[instance_id] = [
-                GatewayStatus(
-                    name=g.get("name", ""),
-                    address=g.get("address", ""),
-                    status=g.get("status", ""),
-                    delay=g.get("delay", ""),
-                    stddev=g.get("stddev", ""),
-                    loss=g.get("loss", ""),
-                    interface=g.get("interface", ""),
-                )
-                for g in gw_data
-            ]
+        # an empty list most likely means the collector failed, not that all
+        # gateways were removed. This prevents wiping the cache on a failure.
+        if data.get("gateways"):
+            self._last_gateways[instance_id] = gateways_from_agent(data)
 
-        # Cache IPsec
-        ipsec_data = data.get("ipsec", {})
-        if ipsec_data:
-            self._last_ipsec[instance_id] = IPsecServiceStatus(
-                running=ipsec_data.get("running", False),
-                tunnels=[
-                    IPsecTunnel(
-                        id=t.get("id", ""),
-                        description=t.get("description", ""),
-                        remote=t.get("remote", ""),
-                        local=t.get("local", ""),
-                        phase1_status=t.get("status", "unknown"),
-                        bytes_in=int(t.get("bytes_in", 0)),
-                        bytes_out=int(t.get("bytes_out", 0)),
-                    )
-                    for t in ipsec_data.get("tunnels", [])
-                ],
-            )
+        # Cache IPsec — same guard: only when the agent sent an ipsec section.
+        if data.get("ipsec"):
+            self._last_ipsec[instance_id] = ipsec_from_agent(data)
 
         # Cache firewall log
         fw_log = data.get("firewall_log")
@@ -216,17 +245,8 @@ class AgentHub:
             self._last_firewall_log[instance_id] = fw_log
 
         # Cache firmware data from agent push
-        fw_data = data.get("firmware", {})
-        if fw_data:
-            upgrade_available = bool(fw_data.get("upgrade_available", False))
-            self._last_firmware[instance_id] = FirmwareStatus(
-                product_version=fw_data.get("product_version", ""),
-                product_latest=fw_data.get("product_version", ""),  # agent doesn't know latest
-                upgrade_available=upgrade_available,
-                updates_available=1 if upgrade_available else 0,
-                status_msg=fw_data.get("update_check_output", ""),
-                last_check=ts.isoformat(),
-            )
+        if data.get("firmware"):
+            self._last_firmware[instance_id] = firmware_from_agent(data, ts.isoformat())
 
         async with sessionmaker() as session:
             inst = await session.get(Instance, instance_id)
