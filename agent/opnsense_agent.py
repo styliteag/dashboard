@@ -212,15 +212,43 @@ def collect_interfaces() -> list[dict]:
     return result
 
 
-def _collect_gateways_pfsense() -> list[dict]:
-    """pfSense gateway status.
+_PFSENSE_GW_PHP = (
+    'require_once("/etc/inc/gwlb.inc"); '
+    "echo json_encode(return_gateways_status(true));"
+)
 
-    TODO(real-box): pfSense exposes gateway status via the dpinger daemon /
-    return_gateways_status() (PHP), not pluginctl. The exact shell-reachable
-    output format must be captured on a real box before parsing — until then
-    report none rather than emit guessed data.
+
+def _collect_gateways_pfsense() -> list[dict]:
+    """pfSense gateway status via return_gateways_status() — returns clean JSON.
+
+    Sample: {"WAN":{"monitorip":"1.2.3.4","srcip":"5.6.7.8","name":"WAN",
+             "delay":"0ms","stddev":"0ms","loss":"100%","status":"down",
+             "substatus":"highloss"}}  (stddev/delay/loss may be empty strings).
     """
-    return []
+    out = _run(["php", "-r", _PFSENSE_GW_PHP], timeout=10)
+    start = out.find("{")
+    if start < 0:
+        return []
+    try:
+        data = json.loads(out[start:])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    gateways = []
+    for key, info in data.items():
+        if not isinstance(info, dict):
+            continue
+        gateways.append({
+            "name": info.get("name", key),
+            "address": info.get("monitorip", ""),  # the monitored gateway IP
+            "status": info.get("status", ""),
+            "delay": info.get("delay", ""),
+            "stddev": info.get("stddev", ""),
+            "loss": info.get("loss", ""),
+            "interface": info.get("interface", ""),
+        })
+    return gateways
 
 
 def collect_gateways() -> list[dict]:
@@ -328,28 +356,45 @@ def _read_opnsense_version() -> str:
 _last_fw_check_ts: float = 0.0
 
 
+def _pfsense_update_available(out: str) -> bool:
+    """Decide update availability from `pfSense-upgrade -c` output.
+
+    Confirmed negative on pfSense Plus 26.03: "Your system is up to date".
+    The positive wording is inferred and should be re-confirmed against a box
+    with a pending update; when unsure we do NOT raise a false alarm.
+    """
+    low = out.lower()
+    if "up to date" in low:
+        return False
+    return any(
+        s in low for s in ("will be upgraded", "new version", "version available", "upgrading")
+    )
+
+
 def collect_firmware() -> dict:
-    """Firmware version on every push; update check every 10 minutes (OPNsense)."""
-    if detect_platform() == "pfsense":
-        # TODO(real-box): add pfSense update-availability via `pfSense-upgrade -c`
-        # once its output format is captured. For now report the version only.
-        return {"product_version": _read_pfsense_version()}
+    """Firmware version on every push; update check every 10 minutes (per platform)."""
     global _last_fw_check_ts
-    version = _read_opnsense_version()
+    pfsense = detect_platform() == "pfsense"
+    version = _read_pfsense_version() if pfsense else _read_opnsense_version()
+
     now = time.monotonic()
-    if now - _last_fw_check_ts >= 600:  # 0 on first call → always runs immediately
-        _last_fw_check_ts = now
-        update_out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
-        updates_available = (
-            "can be updated" in update_out.lower()
-            or "updates available" in update_out.lower()
-        )
-        return {
-            "product_version": version,
-            "upgrade_available": updates_available,
-            "update_check_output": update_out.strip()[:500],
-        }
-    return {"product_version": version}
+    if now - _last_fw_check_ts < 600:  # 0 on first call → always runs immediately
+        return {"product_version": version}
+    _last_fw_check_ts = now
+
+    if pfsense:
+        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+        upgrade_available = _pfsense_update_available(out)
+    else:
+        out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
+        low = out.lower()
+        upgrade_available = "can be updated" in low or "updates available" in low
+
+    return {
+        "product_version": version,
+        "upgrade_available": upgrade_available,
+        "update_check_output": out.strip()[:500],
+    }
 
 
 def collect_uptime() -> str:

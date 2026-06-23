@@ -216,11 +216,15 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
      dispatchen pro Plattform. pfSense-**Firmware-Version** via `/etc/version`. Geteilte
      Collectors (cpu/mem/disk/iface/ipsec/firewall_log/config) unverändert. Tests
      `agent/tests/test_collectors.py`. → Agent läuft jetzt auf pfSense für System-Metriken.
-   - ⬜ **Real-Box-Format nötig** (nicht raten): pfSense **Gateway-Status** (dpinger/
-     `return_gateways_status()`) und **Update-Check** (`pfSense-upgrade -c`) — Output-Format auf
-     einer Box erfassen, dann Parser finalisieren. Bis dahin: Gateways `[]`, Firmware nur Version.
-   - ⬜ Command-Side (`execute_command` firmware.check/update) pro Plattform dispatchen (Control,
-     später).
+   - ✅ **Gateways + Update-Check finalisiert (2026-06-23, echte Samples)**: pfSense-Gateways via
+     `php -r 'return_gateways_status(true)'` (sauberes JSON → `_collect_gateways_pfsense()`);
+     Update-Check via `pfSense-upgrade -c` (Negativ-Fall „up to date" bestätigt; Positiv-Wording
+     inferiert, gegen Box mit pending Update nochmal verifizieren). Tests mit Real-Sample.
+   - ✅ **Interpreter-Fix (2026-06-23)**: auf der Box gibt es **kein `/usr/local/bin/python3`**,
+     nur `python3.11`. `rc.d` + `install.sh` lösen den Interpreter jetzt robust auf
+     (`python3` → `python3.11` → …). Ohne das wäre der Agent auf pfSense nicht gestartet.
+   - ⬜ Command-Side (`execute_command` firmware.check/update + reboot) pro Plattform dispatchen
+     (Control-Plane, später). Aktuell OPNsense-spezifisch.
 4. **Relay (optionaler dritter Weg):** WS um `http_request`/`http_response` erweitern;
    Dashboard-Befehl `proxy.enable` (Ziel-Allowlist).
 5. **API-Geräte:** Proxmox (sauberste API) als erstes relay-only `device_type`, dann
@@ -249,11 +253,15 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
   nur `python3.11` bestätigt. Ohne `python3`-Symlink startet der Agent nicht → Spike §12 prüft
   `ls -l /usr/local/bin/python3*`; ggf. rc.d auf konkreten Pfad anpassen. Gated pfSense-Deployment.
 
-## 12. pfSense Collector-Spike (gated Phase-3-Finalisierung)
+## 12. pfSense Collector-Spike — ✅ erledigt (2026-06-23)
 
-Die zwei divergenten pfSense-Collectors (Gateways, Update-Check) sind aktuell Stubs, weil das
-Shell-Output-Format ohne echte Box nicht geraten werden soll. Read-only auf einer pfSense-Plus-Box
-ausführen, Output hier reinpasten → dann finalisiere ich die Parser:
+Auf `cvo-gigu` (pfSense Plus 26.03) ausgeführt; Ergebnisse eingearbeitet (Phase 3 §9):
+- **python**: nur `python3.11`, kein `python3`-Symlink → rc.d/install.sh-Interpreter-Fix.
+- **Gateways**: `php -r 'return_gateways_status(true)'` liefert sauberes JSON → Parser fertig.
+- **Update-Check**: `pfSense-upgrade -c` → „Your system is up to date" (Negativ bestätigt).
+- **Version**: `/etc/version` = `26.03-RELEASE`.
+
+Der Spike-Befehl bleibt als Referenz (read-only, auf einer pfSense-Box ausführbar):
 
 ```sh
 ssh -p9922 root@<box> '

@@ -19,8 +19,22 @@ desc="OPNsense Dashboard Agent"
 : ${opnsense_dash_agent_logfile:="/var/log/${name}.log"}
 
 pidfile="${opnsense_dash_agent_pidfile}"
+
+# Resolve a Python interpreter. OPNsense ships /usr/local/bin/python3, but pfSense
+# may install only a versioned binary (e.g. python3.11) with no python3 symlink.
+: ${opnsense_dash_agent_python:=""}
+if [ -z "${opnsense_dash_agent_python}" ]; then
+    for _py in /usr/local/bin/python3 /usr/local/bin/python3.11 \
+               /usr/local/bin/python3.10 /usr/local/bin/python3.9; do
+        if [ -x "${_py}" ]; then
+            opnsense_dash_agent_python="${_py}"
+            break
+        fi
+    done
+fi
+
 command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} /usr/local/bin/python3 /usr/local/opnsense-dash-agent/opnsense_agent.py"
+command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} ${opnsense_dash_agent_python} /usr/local/opnsense-dash-agent/opnsense_agent.py"
 
 start_precmd="${name}_prestart"
 

@@ -26,11 +26,19 @@ if [ "$(uname)" != "FreeBSD" ]; then
     exit 1
 fi
 
-# Check Python
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "ERROR: python3 not found. Install it with: pkg install python311"
+# Check Python — pfSense may ship only a versioned binary (python3.11), no python3.
+PYTHON=""
+for _py in python3 python3.11 python3.10 python3.9; do
+    if command -v "${_py}" >/dev/null 2>&1; then
+        PYTHON="$(command -v "${_py}")"
+        break
+    fi
+done
+if [ -z "${PYTHON}" ]; then
+    echo "ERROR: no python3 interpreter found. Install it with: pkg install python311"
     exit 1
 fi
+echo "  Using interpreter: ${PYTHON}"
 
 # No Python dependencies — the agent uses a stdlib-only WebSocket client (DR-4).
 echo "[1/4] Checking Python (no pip packages required)..."

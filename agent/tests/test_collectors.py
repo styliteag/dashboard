@@ -55,18 +55,49 @@ def test_read_pfsense_version(fake_fs: dict) -> None:
     assert agent._read_pfsense_version() == "26.03-RELEASE"
 
 
-def test_collect_firmware_pfsense_reports_version(
+def test_collect_firmware_pfsense_reads_version(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    # Pretend a check ran recently so the version-only path is taken (no subprocess).
+    monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic())
     fake_fs["/etc/version"] = "26.03-RELEASE\n"
     assert agent.collect_firmware() == {"product_version": "26.03-RELEASE"}
 
 
-def test_collect_gateways_pfsense_is_empty_until_verified(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_pfsense_update_detection() -> None:
+    # Confirmed negative sample from pfSense Plus 26.03.
+    assert agent._pfsense_update_available("Messages:\nYour system is up to date") is False
+    assert agent._pfsense_update_available("The following packages will be upgraded") is True
+    assert agent._pfsense_update_available("") is False  # unknown/error → no false alarm
+
+
+# Real return_gateways_status() sample captured on pfSense Plus 26.03.
+_PF_GW_JSON = (
+    '{"PPPOE_WAN":{"monitorip":"62.156.244.38","srcip":"87.191.183.135","name":"PPPOE_WAN",'
+    '"delay":"0ms","stddev":"0ms","loss":"100%","status":"down","substatus":"highloss"},'
+    '"IPSec_GW":{"monitorip":"10.10.80.254","srcip":"10.10.80.254","name":"IPSec_GW",'
+    '"delay":"","loss":"","status":"online","substatus":"none","monitor_disable":true}}'
+)
+
+
+def test_collect_gateways_pfsense_parses_php_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _PF_GW_JSON)
+    gws = agent.collect_gateways()
+    assert {g["name"] for g in gws} == {"PPPOE_WAN", "IPSec_GW"}
+    pppoe = next(g for g in gws if g["name"] == "PPPOE_WAN")
+    assert pppoe["address"] == "62.156.244.38"
+    assert pppoe["status"] == "down"
+    assert pppoe["loss"] == "100%"
+    ipsec = next(g for g in gws if g["name"] == "IPSec_GW")
+    assert ipsec["status"] == "online"
+    assert ipsec["stddev"] == ""  # missing key → empty string, no KeyError
+
+
+def test_collect_gateways_pfsense_handles_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "PHP Warning: something\n")
     assert agent.collect_gateways() == []
 
 
