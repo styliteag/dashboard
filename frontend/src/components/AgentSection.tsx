@@ -165,11 +165,14 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   );
 
   const steps = {
-    prereq: `pkg install -y python311\npip install websockets`,
+    prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
     download: [
       `mkdir -p /usr/local/opnsense-dash-agent`,
       `fetch -o /usr/local/opnsense-dash-agent/opnsense_agent.py \\`,
       `  ${proto}//${host}/api/agent/script`,
+      `fetch -o /usr/local/opnsense-dash-agent/run-agent.sh \\`,
+      `  ${proto}//${host}/api/agent/run`,
+      `chmod 755 /usr/local/opnsense-dash-agent/run-agent.sh`,
       `fetch -o /usr/local/etc/rc.d/opnsense_dash_agent \\`,
       `  ${proto}//${host}/api/agent/rc`,
       `chmod 755 /usr/local/etc/rc.d/opnsense_dash_agent`,
@@ -359,11 +362,10 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 </Step>
 
                 {/* ③ Dependencies */}
-                <Step number={3} title="Install Python dependencies">
+                <Step number={3} title="Check Python">
                   <p className="text-xs text-slate-500">
-                    Python 3 ships with OPNsense. Only the{" "}
-                    <code className="text-slate-300">websockets</code> package
-                    needs to be added.
+                    Python 3 ships with OPNsense/pfSense. The agent is
+                    stdlib-only — no pip packages required.
                   </p>
                   <CodeBlock code={steps.prereq} />
                 </Step>
@@ -371,8 +373,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ④ Download */}
                 <Step number={4} title="Download agent files from this dashboard">
                   <p className="text-xs text-slate-500">
-                    Fetch the agent script and the rc.d service file directly
-                    from this dashboard — no GitHub access required.
+                    Fetch the agent, the supervisor, and the rc.d service file
+                    directly from this dashboard — no GitHub access required.
                   </p>
                   <CodeBlock code={steps.download} />
                 </Step>

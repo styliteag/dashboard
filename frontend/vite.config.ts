@@ -12,6 +12,7 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://backend:8000",
         changeOrigin: true,
+        ws: true, // proxy the agent WebSocket (/api/ws/agent) too, not just HTTP
       },
     },
   },
