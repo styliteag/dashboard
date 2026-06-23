@@ -152,17 +152,13 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
     },
   });
 
-  // Pre-filled config JSON (token + dashboard URL baked in)
-  const configJson = JSON.stringify(
-    {
-      dashboard_url: `${wsProto}://${host}/api/ws/agent`,
-      agent_token: token ?? "PASTE_TOKEN_HERE",
-      push_interval: 30,
-      log_level: "INFO",
-    },
-    null,
-    2,
-  );
+  // Pre-filled config (token + dashboard URL baked in)
+  const cfg = {
+    dashboard_url: `${wsProto}://${host}/api/ws/agent`,
+    agent_token: token ?? "PASTE_TOKEN_HERE",
+    push_interval: 30,
+    log_level: "INFO",
+  };
 
   const steps = {
     prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
@@ -177,7 +173,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       `  ${proto}//${host}/api/agent/rc`,
       `chmod 755 /usr/local/etc/rc.d/opnsense_dash_agent`,
     ].join("\n"),
-    config: `cat > /usr/local/etc/opnsense-dash-agent.conf << 'EOF'\n${configJson}\nEOF`,
+    // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are flaky.
+    config: `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/opnsense-dash-agent.conf`,
     start: `sysrc opnsense_dash_agent_enable=YES\nservice opnsense_dash_agent start`,
     logs: `tail -f /var/log/opnsense_dash_agent.log`,
   };
