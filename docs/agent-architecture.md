@@ -248,6 +248,8 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
    TrueNAS, QNAP — reiner Backend-Code.
 6. **Steuerungs-Hardening (wenn Control wächst):** Token-Rotation/-Expiry, Update-Signatur
    (Offline-Key), scoped Commands, `config.xml`-Schutz, Enrollment-Automatik.
+7. **Checkmk/OMD-Integration (§13):** State-Layer (green/red) + `/checks`-Export-Endpoint →
+   Checkmk special-agent Plugin (Piggyback pro Firewall) → mehr Collector-Checks.
 
 ## 10. Decision Record (Kurzfassung)
 
@@ -269,6 +271,8 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 - **pfSense-Interpreter:** `rc.d`/`install.sh` rufen `/usr/local/bin/python3`; auf der Box ist
   nur `python3.11` bestätigt. Ohne `python3`-Symlink startet der Agent nicht → Spike §12 prüft
   `ls -l /usr/local/bin/python3*`; ggf. rc.d auf konkreten Pfad anpassen. Gated pfSense-Deployment.
+- **Checkmk-Export (§13):** Service-Key-Schema + Schwellen-Defaults + Perfdata-Namen festlegen,
+  bevor das Plugin gebaut wird (stabile Kontrakt-Fläche — Checkmk-Discovery hängt an Service-Keys).
 
 ## 12. pfSense Collector-Spike — ✅ erledigt (2026-06-23)
 
@@ -294,3 +298,37 @@ echo "== firmware: version file =="; cat /etc/version /etc/version.patch 2>/dev/
 Erwartung: eine der Gateway-Methoden liefert strukturierten Status (Name/Adresse/Loss/Delay/RTT),
 `pfSense-upgrade -c` einen Text/Code, aus dem „Update verfügbar" ableitbar ist. Damit werden
 `_collect_gateways_pfsense()` und der pfSense-Zweig in `collect_firmware()` fertiggestellt.
+
+## 13. Checkmk/OMD-Integration + Zustandsbewertung (geplant, nicht jetzt bauen)
+
+**Ziel** (User, 2026-06-24): Das Dashboard wird in ein bestehendes **check_mk/OMD**-Setup
+eingebunden. Checkmk fragt uns über ein **Plugin (special agent)** ab und bekommt pro Firewall
+Services mit Zustand **OK/WARN/CRIT** (Memory, Interfaces, VPN/IPsec up/down, Gateways, Firmware,
+…) inkl. **Perfdata** für Graphen. Dazu: green/red-Entscheidungen auf Fehler/Schwellen.
+
+**Architektur — forward-compatible, nichts davon blockiert heute:**
+- **Neutrale Export-API statt Checkmk-Format im Core**: `GET /api/instances/{id}/checks`
+  (+ `/api/export/checkmk` über alle) liefert pro Instanz eine Liste Services:
+  `{key, state (0|1|2|3), summary, metrics[{name,value,warn,crit,unit}]}`. Stabiles, versioniertes
+  JSON. Checkmk-Spezifika bleiben draußen.
+- **Checkmk special agent (Plugin) auf der Checkmk-Seite**: dünnes Python-Script, ruft unsere API,
+  emittiert Checkmk-Agent-Output (Sections + **Piggyback** `<<<<hostname>>>>` pro Firewall → jede
+  Firewall wird ein Checkmk-Host mit Services). Liegt im Repo unter z.B. `checkmk/`.
+- **State-Evaluation-Layer im Backend (neu)**: rohe Metriken → green/red, *eine* Stelle, genutzt
+  von Dashboard-UI **und** Export (keine doppelte Logik). Schwellen z.B.: Gateway loss=100% → CRIT,
+  mem>90% → WARN, IPsec-Tunnel down → CRIT, Interface down → CRIT/WARN je Rolle, Firmware-Update
+  verfügbar → WARN. Schwellen konfigurierbar (global + pro Instanz).
+- **Perfdata**: vorhandene Metriken (cpu%, mem%, iface bytes/rates, gw delay/loss/stddev) mappen
+  direkt auf Checkmk-Perfdata.
+
+**Was heute schon passt (Antwort auf „können wir später exportieren?" → ja):** Agent + Hub liefern
+die nötigen Rohdaten (mem/iface/ipsec/gw/firmware); `_last_status`-Cache + Time-Series sind die
+Quelle. Kein Umbau nötig — alles additiv: State-Layer + Export-Endpoint + Plugin. Wir werfen keine
+Daten weg, die der Export bräuchte.
+
+**Mehr Checks (Agent erweitern):** Service-/Daemon-Status, CARP/HA-Status, Zertifikats-Ablauf,
+DHCP-Leases, Sensoren/Temperatur, Paket-Health. Collector bleibt erweiterbar (Plattform-Dispatch
+wie §4).
+
+**Phase (nach Self-Update/Relay):** (1) State-Layer + `/checks`-Endpoint — treibt auch reicheres
+Dashboard-Grün/Rot; (2) Checkmk special agent Plugin + Doku; (3) weitere Collector-Checks.
