@@ -680,3 +680,13 @@ Agent-Status ausgeblendet, `/gui/open` → 404). Dev: an (compose-dev, Caddy/Por
 Gate, `insecureSkipVerify`), `DASH_GUI_BASE_TEMPLATE=https://gui-{id}.<domain>`. `authcheck` ist
 Host-aware (Instanz aus `?instance` ODER `X-Forwarded-Host` gui-<id>). README-Sektion „Firewall GUI
 proxy". Tests: Host-aware authcheck, gui_open-disabled→404. Backend 97.
+
+**Prod-Topologie (2026-06-25, Userwunsch):** externer Traefik terminiert TLS + routet
+`Host(*.${ORBIT_GUI_DOMAIN})` zu Orbits **eigenem `gui-proxy`-Caddy** (HTTP, `compose.yml`
+`--profile gui`). Der Caddy host-matcht `gui-<id>`, gatet (`forward_auth` → `authcheck`,
+Host-aware via `X-Forwarded-Host`) und proxyt zum Forwarder `app:14400+id` — Traefik braucht
+**keine Per-Instanz-Config**. Map deterministisch (Port=14400+id) via Snippet+`import` pro Host,
+generiert: `scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod` (default 25; Caddy
+verbietet Placeholder im TLS-Upstream → `import`-Args = literale Ports). Live in dev gegen die
+prod-Config (Host-Header) verifiziert: kein-Cookie→401, Handoff→302, authed(gui-3)→200,
+Cross-Tenant(gui-7)→401. `docker/traefik-gui.example.yml` = externer-Traefik-Route-Beispiel.

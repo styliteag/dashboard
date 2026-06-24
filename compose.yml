@@ -54,16 +54,13 @@ services:
       DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
       DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
       DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
-      # Firewall GUI proxy (OPTIONAL — off by default). Needs a reverse proxy
-      # (e.g. Traefik) giving each firewall a wildcard subdomain origin. See the
-      # README "Firewall GUI proxy" section + docker/traefik-gui.example.yml.
+      # Firewall GUI proxy (OPTIONAL — off by default). Needs the `gui-proxy`
+      # service below + an external reverse proxy (e.g. Traefik) routing the
+      # wildcard. See README "Firewall GUI proxy".
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-false}
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       TZ: ${TZ:-UTC}
-    # When DASH_GUI_PROXY_ENABLED=true, put `app` on the Traefik network and add
-    # the labels/dynamic config from docker/traefik-gui.example.yml so Traefik can
-    # route gui-<id>.<domain> → the per-instance forwarder (app:14400+id).
     depends_on:
       db:
         condition: service_healthy
@@ -73,6 +70,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # Firewall GUI proxy (OPTIONAL). Your EXTERNAL Traefik terminates TLS and routes
+  # Host(*.${ORBIT_GUI_DOMAIN}) to THIS Caddy (over HTTP); it host-matches gui-<id>,
+  # gates on the orbit_gui cookie (forward_auth), and proxies to that firewall's
+  # forwarder (app:14400+id). Opt-in: `docker compose --profile gui up -d`.
+  # The Caddyfile maps gui-1..gui-25 by default; for more firewalls regenerate it:
+  #   python scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod
+  # Wire your Traefik to reach it (shared network + a router *.<domain> → gui-proxy:80);
+  # see docker/traefik-gui.example.yml.
+  gui-proxy:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: [gui]
+    environment:
+      ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:?set this to your gui wildcard base, e.g. gui.example.com}
+      ORBIT_GUI_APP: app:80
+      ORBIT_GUI_FWD_HOST: app
+    volumes:
+      - ./docker/Caddyfile.gui-prod:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - app
 
 volumes:
   db_data:

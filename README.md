@@ -111,13 +111,17 @@ and the button is hidden — no wildcard/DNS needed.
 - **Dev** (ports, no wildcard): `just dev` runs Caddy ([`docker/Caddyfile.dev`](docker/Caddyfile.dev))
   mapping `https://localhost:900<id>` → instance `<id>`'s forwarder. Already enabled
   in `compose-dev.yml`. Accept Caddy's internal-CA cert once.
-- **Prod, behind Traefik** (wildcard subdomain): put the `app` container on Traefik's
-  network, get a wildcard cert for `*.gui.example.com` (DNS-01), and add the routers/
-  service/middleware from [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)
-  — one router per firewall → `app:14400+id`, the shared `forwardAuth` gate, and
-  `insecureSkipVerify` (the upstream is the firewall's self-signed TLS through the
-  tunnel). Set `DASH_GUI_BASE_TEMPLATE` to your domain. For many firewalls, generate
-  that file (or use Traefik's HTTP provider) instead of editing by hand.
+- **Prod, behind Traefik** (wildcard subdomain): Orbit ships its own `gui-proxy`
+  Caddy (in `compose.yml`, `--profile gui`). Your **external Traefik** terminates TLS
+  for `*.gui.example.com` (DNS-01 wildcard cert) and forwards the wildcard to that
+  Caddy over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
+  Caddy host-matches `gui-<id>`, runs the `forwardAuth` gate, and proxies to that
+  firewall's forwarder (`app:14400+id`), so Traefik needs **no per-instance config**.
+  Set `ORBIT_GUI_DOMAIN=gui.example.com`, `DASH_GUI_PROXY_ENABLED=true`,
+  `DASH_GUI_BASE_TEMPLATE=https://gui-{id}.gui.example.com`, attach `gui-proxy` to
+  Traefik's network, then `docker compose --profile gui up -d`. The bundled Caddyfile
+  covers `gui-1..gui-25`; for more, regenerate it:
+  `python scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod`.
 
 > Security: each origin fronts a firewall **admin** GUI — the `forwardAuth` gate is
 > what keeps it closed. Don't remove it, and keep the forwarder ports off the public

@@ -1,74 +1,32 @@
-# Traefik dynamic config for the OPTIONAL firewall GUI proxy (§18). Mount this as a
-# Traefik file-provider config. It fronts the dashboard's per-instance GUI
-# forwarders with a wildcard-subdomain origin + the auth gate.
+# Example config for your EXTERNAL Traefik to expose the optional firewall GUI
+# proxy. Traefik does only two things here: terminate TLS for the wildcard and
+# forward everything to Orbit's `gui-proxy` Caddy (over HTTP). Caddy does the
+# per-firewall host-matching, the auth gate, and the tunnel proxying — so Traefik
+# needs NO per-instance config. See README "Firewall GUI proxy" and §18.
 #
-# Prereqs:
-#   - DASH_GUI_PROXY_ENABLED=true and DASH_GUI_BASE_TEMPLATE=https://gui-{id}.example.com
-#   - `app` (the combined dashboard container) is on Traefik's network.
-#   - A wildcard cert for *.gui.example.com (DNS-01 cert resolver).
-#
-# How it maps: the dashboard runs a raw-TCP forwarder per opened instance on
-# app:14400+id (HTTPS to the firewall, self-signed). For each firewall you expose,
-# add a router + service below (id 3 + 4 shown). The auth middleware + transport are
-# shared. For many/dynamic firewalls, generate this file (or use Traefik's HTTP
-# provider pointed at a dashboard endpoint) instead of editing by hand.
+# Prereqs: Orbit's `gui-proxy` service reachable on Traefik's network (e.g. attach
+# it to the Traefik network), a wildcard cert for *.gui.example.com (DNS-01), and
+# the dashboard set with DASH_GUI_PROXY_ENABLED=true and
+# DASH_GUI_BASE_TEMPLATE=https://gui-{id}.gui.example.com.
 
 http:
-  middlewares:
-    # Gate every GUI request on the orbit_gui cookie. The dashboard derives the
-    # instance from X-Forwarded-Host (gui-<id>), so ONE middleware serves all.
-    gui-auth:
-      forwardAuth:
-        address: "http://app:80/api/gui/authcheck"
-
   routers:
-    # --- instance 3 -----------------------------------------------------------
-    # Token handoff + authcheck go to the app (backend), NOT the forwarder.
-    gui-3-orbit:
-      rule: "Host(`gui-3.example.com`) && PathPrefix(`/__orbit`)"
-      priority: 100
-      service: app-web
+    orbit-gui:
+      rule: "HostRegexp(`^gui-[0-9]+\\.gui\\.example\\.com$`)"
+      service: orbit-gui
       tls:
-        certResolver: letsencrypt
-    # Everything else: gate on the cookie, then proxy to instance 3's forwarder.
-    gui-3:
-      rule: "Host(`gui-3.example.com`)"
-      service: gui-3-fwd
-      middlewares: [gui-auth]
-      tls:
-        certResolver: letsencrypt
-
-    # --- instance 4 -----------------------------------------------------------
-    gui-4-orbit:
-      rule: "Host(`gui-4.example.com`) && PathPrefix(`/__orbit`)"
-      priority: 100
-      service: app-web
-      tls:
-        certResolver: letsencrypt
-    gui-4:
-      rule: "Host(`gui-4.example.com`)"
-      service: gui-4-fwd
-      middlewares: [gui-auth]
-      tls:
-        certResolver: letsencrypt
+        certResolver: letsencrypt        # DNS-01 wildcard for *.gui.example.com
+        domains:
+          - main: "gui.example.com"
+            sans: ["*.gui.example.com"]
 
   services:
-    app-web:
+    orbit-gui:
       loadBalancer:
+        # Orbit's gui-proxy Caddy (HTTP). Traefik must be able to resolve it —
+        # attach gui-proxy to Traefik's docker network, or use its IP:80.
         servers:
-          - url: "http://app:80"
-    gui-3-fwd:
-      loadBalancer:
-        serversTransport: gui-insecure
-        servers:
-          - url: "https://app:14403" # 14400 + instance id
-    gui-4-fwd:
-      loadBalancer:
-        serversTransport: gui-insecure
-        servers:
-          - url: "https://app:14404"
-
-  serversTransports:
-    # The forwarder speaks the firewall's own (self-signed) TLS through the tunnel.
-    gui-insecure:
-      insecureSkipVerify: true
+          - url: "http://gui-proxy:80"
+        # Pass the original Host through so Caddy can match gui-<id> (Traefik also
+        # sets X-Forwarded-Host, which the auth check reads).
+        passHostHeader: true
