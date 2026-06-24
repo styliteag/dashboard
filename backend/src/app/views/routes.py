@@ -1,4 +1,5 @@
 """Cross-instance aggregate views: global VPN overview, firmware compliance."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
@@ -18,6 +20,7 @@ router = APIRouter(tags=["views"])
 
 
 # --- Global VPN Overview ---------------------------------------------------
+
 
 class GlobalTunnel(BaseModel):
     instance_id: int
@@ -45,10 +48,10 @@ async def global_vpn_overview(
 ) -> GlobalVPNResponse:
     """Fetch IPsec tunnels from ALL active instances in parallel."""
     instances = (
-        await session.execute(
-            select(Instance).where(Instance.deleted_at.is_(None))
-        )
-    ).scalars().all()
+        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
+        .scalars()
+        .all()
+    )
 
     async def fetch_tunnels(inst: Instance) -> list[GlobalTunnel]:
         try:
@@ -74,7 +77,8 @@ async def global_vpn_overview(
     results = await asyncio.gather(*(fetch_tunnels(i) for i in instances))
     all_tunnels = [t for group in results for t in group]
     up = sum(
-        1 for t in all_tunnels
+        1
+        for t in all_tunnels
         if "established" in t.phase1_status.lower() or "connected" in t.phase1_status.lower()
     )
     return GlobalVPNResponse(
@@ -83,6 +87,7 @@ async def global_vpn_overview(
 
 
 # --- Firmware Compliance ---------------------------------------------------
+
 
 class FirmwareEntry(BaseModel):
     instance_id: int
@@ -112,15 +117,23 @@ async def firmware_compliance(
 ) -> FirmwareComplianceResponse:
     """Fetch firmware status from ALL active instances in parallel."""
     instances = (
-        await session.execute(
-            select(Instance).where(Instance.deleted_at.is_(None))
-        )
-    ).scalars().all()
+        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
+        .scalars()
+        .all()
+    )
 
     async def fetch_fw(inst: Instance) -> FirmwareEntry | None:
         try:
-            client = await registry.get(inst)
-            fw = await client.firmware_status()
+            # Agent-mode instances have no direct OPNsense client; their firmware
+            # status lives in the agent hub cache (last push). Mirror the
+            # per-instance endpoint (firmware/routes.py) which branches the same way.
+            if inst.agent_mode:
+                fw = hub.get_last_firmware(inst.id)
+            else:
+                client = await registry.get(inst)
+                fw = await client.firmware_status()
+            if fw is None or not fw.product_version:
+                raise ValueError("no firmware data")
             return FirmwareEntry(
                 instance_id=inst.id,
                 instance_name=inst.name,
@@ -154,6 +167,9 @@ async def firmware_compliance(
     up_to_date = len(entries) - outdated - unknown
 
     return FirmwareComplianceResponse(
-        instances=entries, total=len(entries),
-        up_to_date=up_to_date, outdated=outdated, unknown=unknown,
+        instances=entries,
+        total=len(entries),
+        up_to_date=up_to_date,
+        outdated=outdated,
+        unknown=unknown,
     )
