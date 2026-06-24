@@ -18,7 +18,7 @@ import pytest
 
 def _cfg(**over: object) -> agent.Config:
     cfg = agent.Config(path="/nonexistent-relay-test")
-    cfg.opnsense_api_url = "https://127.0.0.1:4444"
+    cfg.local_api_url = "https://127.0.0.1:4444"
     cfg.relay_provision = False  # tests opt in explicitly
     for k, v in over.items():
         setattr(cfg, k, v)
@@ -50,7 +50,7 @@ def test_missing_credentials_reported(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_credential_precedence_config_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "_load_cached_credentials", lambda: ("CACHED", "X"))
-    cfg = _cfg(opnsense_api_key="CFGKEY", opnsense_api_secret="CFGSEC")
+    cfg = _cfg(local_api_key="CFGKEY", local_api_secret="CFGSEC")
     assert agent._ensure_api_credentials(cfg) == ("CFGKEY", "CFGSEC")
 
 
@@ -195,10 +195,46 @@ def test_provision_bad_output_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 def test_execute_command_dispatches_relay(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(agent, "_CONFIG", _cfg(opnsense_api_key="K", opnsense_api_secret="S"))
+    monkeypatch.setattr(agent, "_CONFIG", _cfg(local_api_key="K", local_api_secret="S"))
     monkeypatch.setattr(
         agent, "_http_request", lambda *a, **k: (200, [("X", "Y")], b"hi")
     )
     result = agent.execute_command("http.relay", {"method": "GET", "path": "api/x"})
     assert result["status"] == 200
     assert base64.b64decode(result["body"]) == b"hi"
+
+
+def test_config_reads_legacy_opnsense_api_keys(tmp_path):
+    """Back-compat: a pre-rename config with opnsense_api_* still populates local_api_*."""
+    cfgfile = tmp_path / "legacy.conf"
+    cfgfile.write_text(
+        json.dumps(
+            {
+                "opnsense_api_url": "https://10.0.0.1:4444",
+                "opnsense_api_key": "OLDKEY",
+                "opnsense_api_secret": "OLDSEC",
+            }
+        )
+    )
+    cfg = agent.Config(path=str(cfgfile))
+    assert cfg.local_api_url == "https://10.0.0.1:4444"
+    assert cfg.local_api_key == "OLDKEY"
+    assert cfg.local_api_secret == "OLDSEC"
+
+
+def test_config_prefers_new_local_api_keys(tmp_path):
+    """New local_api_* names win over the legacy opnsense_api_* fallback."""
+    cfgfile = tmp_path / "both.conf"
+    cfgfile.write_text(
+        json.dumps(
+            {
+                "local_api_url": "https://new:4444",
+                "opnsense_api_url": "https://old:4444",
+                "local_api_key": "NEW",
+                "opnsense_api_key": "OLD",
+            }
+        )
+    )
+    cfg = agent.Config(path=str(cfgfile))
+    assert cfg.local_api_url == "https://new:4444"
+    assert cfg.local_api_key == "NEW"

@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -73,9 +73,9 @@ class Config:
         # Local API relay (see §15): where the box's own REST API listens, plus
         # optional admin-pasted credentials. Empty creds → the agent provisions
         # its own key on OPNsense (when relay_provision is on).
-        self.opnsense_api_url: str = "https://127.0.0.1:4444"
-        self.opnsense_api_key: str = ""
-        self.opnsense_api_secret: str = ""
+        self.local_api_url: str = "https://127.0.0.1:4444"
+        self.local_api_key: str = ""
+        self.local_api_secret: str = ""
         self.relay_provision: bool = True
         self.load()
 
@@ -90,9 +90,13 @@ class Config:
         self.agent_id = data.get("agent_id", self.agent_id)
         self.push_interval = int(data.get("push_interval", self.push_interval))
         self.log_level = data.get("log_level", self.log_level)
-        self.opnsense_api_url = data.get("opnsense_api_url", self.opnsense_api_url)
-        self.opnsense_api_key = data.get("opnsense_api_key", self.opnsense_api_key)
-        self.opnsense_api_secret = data.get("opnsense_api_secret", self.opnsense_api_secret)
+        # Relay creds were renamed opnsense_api_* -> local_api_*; read the old
+        # key names as a fallback so pre-rename config files keep working.
+        self.local_api_url = data.get("local_api_url", data.get("opnsense_api_url", self.local_api_url))
+        self.local_api_key = data.get("local_api_key", data.get("opnsense_api_key", self.local_api_key))
+        self.local_api_secret = data.get(
+            "local_api_secret", data.get("opnsense_api_secret", self.local_api_secret)
+        )
         self.relay_provision = bool(data.get("relay_provision", self.relay_provision))
 
 
@@ -807,8 +811,8 @@ def _ensure_api_credentials(cfg: Config) -> tuple[str, str] | None:
     Precedence: admin-pasted config creds > cached provisioned pair > fresh
     auto-provision (OPNsense, when relay_provision is on). None → relay can't auth.
     """
-    if cfg.opnsense_api_key and cfg.opnsense_api_secret:
-        return cfg.opnsense_api_key, cfg.opnsense_api_secret
+    if cfg.local_api_key and cfg.local_api_secret:
+        return cfg.local_api_key, cfg.local_api_secret
     cached = _load_cached_credentials()
     if cached:
         return cached
@@ -854,7 +858,7 @@ def _relay_http(params: dict, cfg: Config | None) -> dict:
 
     method = str(params.get("method", "GET")).upper()
     path = str(params.get("path", "")).lstrip("/")
-    url = f"{cfg.opnsense_api_url.rstrip('/')}/{path}"
+    url = f"{cfg.local_api_url.rstrip('/')}/{path}"
     try:
         body = base64.b64decode(params.get("body") or "", validate=True)
     except (ValueError, TypeError):
