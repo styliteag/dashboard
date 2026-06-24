@@ -103,6 +103,9 @@ export interface IPsecTunnel {
   remote: string;
   local: string;
   phase1_status: string;
+  phase2_up: number; // installed child (phase-2) SAs
+  phase2_total: number; // configured child (phase-2) SAs
+  seconds_established: number; // phase-1 uptime in seconds
   bytes_in: number;
   bytes_out: number;
   unique_id: string; // active IKE_SA id — used to Disconnect (terminate); empty when down

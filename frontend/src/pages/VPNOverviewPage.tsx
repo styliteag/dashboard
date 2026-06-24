@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Shield, Link2, Unlink, RotateCw, Search } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import type { TunnelActionResponse } from "../lib/types";
+import type { IPsecServiceStatus, TunnelActionResponse } from "../lib/types";
 
 interface GlobalTunnel {
   instance_id: number;
@@ -55,6 +55,38 @@ export default function VPNOverviewPage() {
     setTimeout(() => setActionMsg(null), 5000);
   };
 
+  // Targeted refresh: after an action, refetch only the acted instance's IPsec
+  // and patch its rows into the overview cache — avoids a full cross-instance
+  // fan-out on every click. Falls back to a normal refetch on error.
+  const patchInstance = async (instanceId: number) => {
+    try {
+      const fresh = await api.get<IPsecServiceStatus>(`/api/instances/${instanceId}/ipsec`);
+      const byId = new Map(fresh.tunnels.map((ft) => [ft.id, ft]));
+      queryClient.setQueryData<GlobalVPNResponse>(["vpn-overview"], (old) => {
+        if (!old) return old;
+        const tunnels = old.tunnels.map((t) => {
+          if (t.instance_id !== instanceId) return t;
+          const ft = byId.get(t.tunnel_id);
+          if (!ft) return t;
+          return {
+            ...t,
+            phase1_status: ft.phase1_status,
+            unique_id: ft.unique_id,
+            phase2_up: ft.phase2_up,
+            phase2_total: ft.phase2_total,
+            seconds_established: ft.seconds_established,
+            bytes_in: ft.bytes_in,
+            bytes_out: ft.bytes_out,
+          };
+        });
+        const up = tunnels.filter((t) => isUp(t.phase1_status)).length;
+        return { ...old, tunnels, total: tunnels.length, up, down: tunnels.length - up };
+      });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
+    }
+  };
+
   const { data, isLoading } = useQuery({
     queryKey: ["vpn-overview"],
     queryFn: () => api.get<GlobalVPNResponse>("/api/vpn/overview"),
@@ -68,9 +100,9 @@ export default function VPNOverviewPage() {
       ),
     onMutate: (t) => setBusy(rowKey(t), true),
     onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
-    onSuccess: (r) => {
+    onSuccess: (r, t) => {
       flash({ ok: r.success, text: r.success ? "Disconnected" : r.message });
-      queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
+      patchInstance(t.instance_id);
     },
     onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
   });
@@ -90,9 +122,9 @@ export default function VPNOverviewPage() {
     },
     onMutate: (t) => setBusy(rowKey(t), true),
     onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
-    onSuccess: (r) => {
+    onSuccess: (r, t) => {
       flash({ ok: r.success, text: r.success ? "Reconnected" : r.message });
-      queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
+      patchInstance(t.instance_id);
     },
     onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
   });

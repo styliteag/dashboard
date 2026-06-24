@@ -18,6 +18,11 @@ from app.xsense.registry import registry
 
 router = APIRouter(tags=["views"])
 
+# Hard per-instance ceiling for the cross-instance fan-outs below: one slow or
+# half-reachable direct-mode box must not stall the whole aggregate. Agent-mode
+# instances read from the in-memory hub and never hit this.
+_FETCH_TIMEOUT = 8.0
+
 
 # --- Global VPN Overview ---------------------------------------------------
 
@@ -66,7 +71,7 @@ async def global_vpn_overview(
                 status = hub.get_last_ipsec(inst.id)
             else:
                 client = await registry.get(inst)
-                status = await client.ipsec_status()
+                status = await asyncio.wait_for(client.ipsec_status(), _FETCH_TIMEOUT)
             if status is None:
                 return []
             return [
@@ -147,7 +152,7 @@ async def firmware_compliance(
                 fw = hub.get_last_firmware(inst.id)
             else:
                 client = await registry.get(inst)
-                fw = await client.firmware_status()
+                fw = await asyncio.wait_for(client.firmware_status(), _FETCH_TIMEOUT)
             if fw is None or not fw.product_version:
                 raise ValueError("no firmware data")
             return FirmwareEntry(
