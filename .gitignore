@@ -229,3 +229,4 @@ backend/.env
 
 # Agent self-update signature — produced at release time, not committed
 agent/opnsense_agent.py.sig
+*local.md

@@ -59,3 +59,6 @@ The existing `src/` was never run through Prettier — first `just frontend-fmt`
 ## CI
 
 `.github/workflows/release.yml` triggers on `*.*.*` tags (created by `./release.sh` / `just release`). Builds multi-arch (`linux/amd64,linux/arm64`) and publishes to `docker.io/styliteag/dashboard` and `ghcr.io/styliteag/dashboard`. No CI runs on push to `main` — local `just backend-test` + `just frontend-build` are the gates.
+
+
+@CLAUDE.local.md
