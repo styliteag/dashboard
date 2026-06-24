@@ -1,8 +1,10 @@
-# Dev GUI proxy: terminate TLS with Caddy's internal CA and reverse-proxy a
-# per-instance PORT to that firewall's in-container tunnel forwarder. The upstream
-# (backend:14444) speaks the firewall's own HTTPS through the agent tunnel, so we
-# skip cert verification there. In prod this becomes a wildcard subdomain vhost
-# (gui-<id>.example.com) instead of a port — same reverse_proxy block.
+# Dev GUI proxy with auth gate (§18). Per-instance PORT origin; Caddy terminates
+# TLS (internal CA) and reverse-proxies to that firewall's in-container tunnel
+# forwarder. Prod swaps the port vhost for a wildcard subdomain — same blocks.
+#
+# Auth: /__orbit/auth exchanges a dashboard-minted handoff token for an
+# origin-scoped orbit_gui cookie; forward_auth then gates every other request on
+# that cookie (zero-I/O HMAC check, bound to THIS instance). No cookie -> 401.
 {
 	auto_https disable_redirects
 }
@@ -10,9 +12,23 @@
 # instance 3 (.199 OPNsense) -> https://localhost:9003
 localhost:9003 {
 	tls internal
-	reverse_proxy https://backend:14444 {
-		transport http {
-			tls_insecure_skip_verify
+
+	# Token handoff → orbit_gui cookie (routes to the backend, NOT the firewall).
+	@orbit path /__orbit/*
+	handle @orbit {
+		rewrite * /api/gui/handoff?{query}
+		reverse_proxy backend:8000
+	}
+
+	# Everything else: gate on the orbit_gui cookie, then proxy to the firewall.
+	handle {
+		forward_auth backend:8000 {
+			uri /api/gui/authcheck?instance=3
+		}
+		reverse_proxy https://backend:14444 {
+			transport http {
+				tls_insecure_skip_verify
+			}
 		}
 	}
 }

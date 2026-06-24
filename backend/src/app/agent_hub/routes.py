@@ -24,11 +24,12 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.gui_auth import COOKIE_NAME, sign_gui_token, verify_gui_token
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
@@ -625,6 +626,83 @@ async def relay_to_agent(
         if k.lower() not in _RELAY_DROP_RESPONSE
     }
     return Response(content=content, status_code=int(result["status"]), headers=headers)
+
+
+# --- GUI proxy auth gate (token handoff + forward_auth, see §18) -------------
+
+
+def _gui_base_url(instance_id: int) -> str:
+    """The per-instance GUI origin: a prod subdomain template, else the dev port."""
+    template = os.environ.get("DASH_GUI_BASE_TEMPLATE", "")
+    if template:
+        return template.format(id=instance_id)
+    return f"https://localhost:{9000 + instance_id}"  # dev convention (Caddy vhost)
+
+
+class GuiOpenResponse(BaseModel):
+    url: str
+
+
+@router.post("/instances/{instance_id}/gui/open", response_model=GuiOpenResponse)
+async def gui_open(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> GuiOpenResponse:
+    """Mint a short-lived handoff URL that logs the browser into the GUI proxy origin."""
+    inst = await session.get(Instance, instance_id)
+    if inst is None or inst.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if hub.get(instance_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+    token = sign_gui_token(instance_id, ttl_seconds=60)  # short-lived handoff
+    await write_audit(
+        session,
+        action="agent.gui_open",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+    )
+    await session.commit()
+    return GuiOpenResponse(url=f"{_gui_base_url(instance_id)}/__orbit/auth?t={token}")
+
+
+@router.get("/gui/handoff")
+async def gui_handoff(t: str) -> RedirectResponse:
+    """Exchange a valid handoff token for an origin-scoped orbit_gui cookie (via Caddy)."""
+    instance_id = verify_gui_token(t)
+    if instance_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid handoff token")
+    resp = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    resp.set_cookie(
+        COOKIE_NAME,
+        sign_gui_token(instance_id, ttl_seconds=8 * 3600),  # browsing session
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return resp
+
+
+@router.get("/gui/authcheck")
+async def gui_authcheck(request: Request, instance: int) -> dict:
+    """forward_auth target: 200 only if the orbit_gui cookie is valid for THIS instance.
+
+    Zero-I/O (HMAC verify only) — runs on every asset. The instance binding (cookie's
+    instance must equal the origin's instance) stops a cookie minted for one firewall
+    from satisfying another's gate.
+    """
+    token = request.cookies.get(COOKIE_NAME, "")
+    cookie_instance = verify_gui_token(token) if token else None
+    if cookie_instance is None or cookie_instance != instance:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="gui auth required")
+    return {"ok": True}
 
 
 # --- Lifecycle: uninstall + enrollment (§16 chunk C) -------------------------
