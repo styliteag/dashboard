@@ -453,3 +453,71 @@ First-Call-Provisioning-Latenz schlug nicht durch. Damit ist die zuvor nur-gemoc
 **Offen:** pfSense-Relay (anderes API-Modell, kein `apikeys->add()`) · Least-Privilege-Scoping +
 Path-Whitelist · Cache-Verlust mintet einen weiteren Key (Orphan-Keys; später aufräumen) ·
 Provisioning bei Agent-Start statt First-Call (falls die Latenz auf langsamen Boxen doch stört).
+
+## 16. Plan-Update / Entscheidungen (2026-06-24, nach Relay-§15)
+
+Userentscheid zu den §15-Offenen + Backlog. Recon bestätigt: keine Status-Snapshot-Tabelle,
+kein Enrollment, kein Uninstall vorhanden; Agent-Actions = ipsec/firmware/config/reboot/
+http.relay/ping/agent.update; pfSense .200 hat **keine** REST-API, aber `php`+`pfSsh.php`.
+
+**Bewusst NICHT (bleibt so):**
+- **Path-Whitelist** — verworfen, Relay bleibt voll-transparent (dev).
+- **Least-Privilege / `page-all`** — bleibt admin-äquivalent.
+- **RBAC/Multi-Tenancy** — nicht gebraucht.
+
+**Entscheidung, aber jetzt nur dokumentiert (nicht bauen):**
+- **#3 pfSense-Relay → Option α:** kein HTTP-Relay auf pfSense. Spezialaufgaben (#6: ipsec/
+  user anlegen) laufen als **strukturierte Agent-Command-Actions**, lokal via `php`/`pfSsh.php`
+  (keyless, kein Zusatzpaket). Option β (Community-`pfSense-pkg-API` installieren) verworfen als
+  zu invasiv auf Kundenboxen. OPNsense-Spezialaufgaben gehen **heute schon** durch den Voll-API-
+  Relay (POST) — kein Extra-Framework nötig. Bauen erst wenn #6 konkret wird.
+
+**Zu bauen — als unabhängig auslieferbare Chunks:**
+
+- **Chunk A — Relay-Härtung (OPNsense, klein, auf .199 testbar):**
+  - **Port-Discovery** (`TODO.md`): Agent liest `<webgui><port>` aus `/conf/config.xml` statt
+    hartkodiertem 4444; Fallback `<protocol>`→443. Ersetzt das fixe `local_api_url`-Default.
+  - **#4+#5 als EIN idempotentes `ensure_credentials` beim Agent-Start** (nicht zwei Patches):
+    gültiger Cache → reuse (kein Config-Write); fehlt/ungültig → provisionieren **und dabei alte
+    `orbit`-Keys vor dem Add löschen** (verhindert Orphan-Keys bei Cache-Verlust + nimmt die
+    First-Call-Latenz raus). Versionsbump.
+
+- **Chunk B — Backend-Restart-Persistenz (DB, nicht File):** keine Snapshot-Tabelle existiert →
+  pro Instance ein JSON-Snapshot (Spalte auf `instances` oder 1:1-Tabelle) der Hub-Caches
+  (status/gateways/ipsec/firmware/firewall_log), Upsert in `handle_metrics`, Cold-Load in den Hub
+  beim Start. Alembic-Migration nötig. Begründung File→DB: async SQLAlchemy + MariaDB-JSON da
+  (`tags`), Push schreibt eh Metriken; numerische Metrik-Tabellen halten diese Strukturen nicht.
+
+- **Chunk C — Lifecycle:** C1 **Agent-Uninstall** (Action `agent.uninstall` + Backend-Route, ggf.
+  über `bulk/action`); C2 **Enrollment-Automatik** (One-Time-Code → Agent-Token, statt Token
+  manuell pasten). Version-Pinning/Downgrade + Hub-Observability als kleinere Folgeschritte.
+
+**Reihenfolge:** A → B → C (A zuerst: klein, OPNsense-only, sofort auf .199 verifizierbar).
+**Erledigt:** Lint 142→0 (`9a4c018`, vom User). · Relay §15 e2e live.
+
+### §16 Status — A/B/C erledigt + live verifiziert (2026-06-24)
+
+- **✅ Chunk A (Relay-Härtung, Agent v0.6.0):** Port-Discovery (`<system><webgui><port>`,
+  Fallback protocol→443/80; pinned `local_api_url` schlägt Discovery aus) + idempotentes
+  Startup-Provisioning. Live auf .199: Orphan-Keys 2→1 (clear-before-add), Key beim Start
+  gemintet (kein First-Call-Timeout), Cache mode 600, Relay 200.
+- **✅ Chunk B (Restart-Persistenz):** `instances.status_snapshot` (JSON, Migration 004); Hub
+  serialisiert Caches pro Push, `hydrate_from_db()` im Lifespan. Live: Backend-Restart →
+  `hub.hydrated instances=3`, `GET /instances/3/status` sofort 200 mit Daten.
+- **✅ Chunk C (Lifecycle, Agent v0.7.3):**
+  - **Uninstall:** Backend `POST /instances/{id}/agent/uninstall` → Agent ackt, detached Script
+    killt Baum (daemon→supervisor→agent) + entfernt rc.d/files/config/cache + `orbit`-User;
+    Backend revoked Token + transport=direct. **Wichtiger Live-Fund (via `sh -x` auf .199):** ein
+    *laufender Descendant* kann seine Ancestors auf FreeBSD nicht zuverlässig SIGKILLen (Kill
+    no-opt still) — derselbe Loop aus einer ssh-Shell (außerhalb des Baums) killt sofort. Fix:
+    Agent `os._exit(0)` direkt nach dem Ack → Script reparentet zu init → killt von außen
+    (Supervisor respawnt 1×, Retry-Loop reapt). Verifiziert: procs 0, daemon 0, alles entfernt.
+  - **Enrollment:** `enrollment_codes` (Migration 005, SHA-256, single-use, 1h, IP-rate-limited).
+    Admin `POST /instances/{id}/agent/enroll-code`; öffentlich `POST /agent/enroll`. Agent tauscht
+    `enroll_code`→Token beim Start und **persistiert ihn in die Config** (Code verworfen) — der
+    Single-Use-Code darf einen Restart nicht erneut ausgeben. Live: .199 nur mit Code gebootet →
+    enrollt → Token persistiert → orbit re-provisioniert → connected.
+  - **Bewusst zurückgestellt:** Version-Pinning/Downgrade, Hub-Observability.
+
+**Nicht gebaut (Entscheid):** Path-Whitelist, Least-Privilege (`page-all` bleibt), RBAC,
+pfSense-Relay (→ später als lokale Command-Actions, §16 #3). Tests gesamt: Agent 101, Backend 78.
