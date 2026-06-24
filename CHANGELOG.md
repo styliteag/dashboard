@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **pfSense support** alongside OPNsense — a platform-dispatch layer in the agent (shared collectors for CPU/mem/disk/interfaces/IPsec; per-platform gateways + firmware).
+- **Push agent** (`agent/orbit_agent.py`, stdlib-only) for firewalls behind NAT: outbound `wss://…/api/ws/agent`, periodic metric pushes, FreeBSD `rc.d` service + supervisor.
+- **Agent lifecycle** — one-time enrollment (trade a code for a token), dashboard-triggered self-update (Ed25519 signing tooling via `just sign-agent`; verification off by default), and uninstall.
+- **Relay** — the dashboard tunnels HTTP to a box's own REST API over the agent WebSocket, so it stays keyless; local API port auto-discovered from `config.xml`.
+- **Checkmk/OMD export** — `/api/export/checkmk` + a special-agent plugin (`checkmk/`): one piggyback host per firewall with OK/WARN/CRIT service checks.
+- **Service checks** — per-service OK/WARN/CRIT evaluation and a `/api/checks` endpoint.
+- **Read-only API keys** for service accounts (hashed at rest, non-GET rejected) — used by the Checkmk integration.
+- **Bulk actions + CSV export** across multiple instances (`firmware_check`, `ipsec_restart`).
+- **Metrics retention + 5-minute rollup** scheduler jobs (replacing TimescaleDB) and derived interface throughput rates.
+- **Notifications** via webhook, Telegram, and ntfy.
+- Last-known status persistence so a backend restart re-hydrates the dashboard before the next push.
+
+### Changed
+
+- **Rebranded** to STYLiTE Orbit (agent → `orbit`, backend package `app.opnsense` → `app.xsense`).
+- **Database switched from PostgreSQL/TimescaleDB to MariaDB 11** (`mysql+aiomysql`).
+
 ## [0.10.0] - 2026-04-27
 
 ## [0.9.0] - 2026-04-27

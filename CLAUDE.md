@@ -6,17 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 STYLiTE Orbit — multi-firewall dashboard (OPNsense + pfSense). Three deployable apps in one repo:
 
-- `backend/` — FastAPI + async SQLAlchemy (Python 3.12)
+- `backend/` — FastAPI + async SQLAlchemy on **MariaDB** (Python 3.12)
 - `frontend/` — React 18 + Vite + TypeScript (npm)
-- `agent/` — WebSocket push-mode agent that runs **on OPNsense/pfSense (FreeBSD)**
+- `agent/` — stdlib-only WebSocket push agent that runs **on OPNsense/pfSense (FreeBSD)**; also does relay tunneling, dashboard-triggered self-update, enrollment, and uninstall
 
-Not a monorepo — three independent apps orchestrated by `compose.yml` (production, single combined image) or `compose-dev.yml` (development, backend + frontend split with src bind mounts).
+Not a monorepo — three independent apps orchestrated by `compose.yml` (production, single combined image) or `compose-dev.yml` (development, backend + frontend split with src bind mounts). Two more stdlib-only sidecars live alongside: `checkmk/` (special-agent plugin pulling `/api/export/checkmk`) and `scripts/sign_agent.py` (Ed25519 signing for agent self-update).
 
 ## Commands (use `just`)
 
 All workflows go through the `justfile`. Don't invent ad-hoc invocations — read `justfile` first if a recipe seems missing.
 
 - Backend: `just backend-install` · `just backend-run` · `just backend-test` · `just backend-lint` · `just backend-fmt`
+- Agent / sidecars: `just agent-test` · `just checkmk-test` · `just sign-agent` (needs the offline Ed25519 key)
 - Frontend: `just frontend-install` · `just frontend-dev` · `just frontend-build` · `just frontend-lint` · `just frontend-fmt`
 - Prod stack: `just up` · `just down` · `just logs`
 - Dev stack: `just dev-up` · `just dev-down` · `just dev-logs`
@@ -35,9 +36,13 @@ Run all three before declaring a backend task done:
 
 Migrations run automatically via `alembic upgrade head` in `docker/start.sh` (combined prod container) and in the dev backend's `Dockerfile.dev` CMD — never call it manually inside dev workflows.
 
+## Done-criteria for agent changes
+
+When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates on a version diff — an unchanged version means the fix never deploys to a box) and run `just agent-test`. Likewise run `just checkmk-test` after any `checkmk/` change.
+
 ## Hard rules
 
-- **Database is async-only.** Use `AsyncSession` + asyncpg. Never import the sync `Session`.
+- **Database is MariaDB, async-only.** Use `AsyncSession` + `aiomysql` (`mysql+aiomysql://`). Never import the sync `Session`, and don't reach for Postgres/TimescaleDB-isms — metrics retention + the 5-min rollup are plain scheduler jobs (`backend/src/app/maintenance/`), use MariaDB equivalents.
 - **Settings prefix is `DASH_`** (pydantic-settings). All env vars and config keys use it; don't introduce another prefix.
 - **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
 - **`agent/` runs on FreeBSD** (OPNsense/pfSense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
@@ -54,7 +59,7 @@ The existing `src/` was never run through Prettier — first `just frontend-fmt`
 
 ## Required env (`.env` at repo root)
 
-`DASH_MASTER_KEY` (generate with `just gen-key`), `DASH_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `DASH_ENV`. See `.env.example` for the full list. Both `compose.yml` and `compose-dev.yml` read this file via Docker Compose's default `.env` loader.
+`DASH_MASTER_KEY` (generate with `just gen-key`), `DASH_ADMIN_PASSWORD`, the MariaDB vars `DB_PASSWORD` / `DB_ROOT_PASSWORD` (and optionally `DB_USER` / `DB_NAME`), and `DASH_ENV`. Note the DB vars are **un-prefixed** — they're consumed by the MariaDB container and composed into `DASH_DATABASE_URL` in compose; only the app's own settings use the `DASH_` prefix. See `.env.example` for the full list. Both `compose.yml` and `compose-dev.yml` read this file via Docker Compose's default `.env` loader.
 
 ## CI
 
