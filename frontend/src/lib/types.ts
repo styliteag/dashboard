@@ -27,6 +27,15 @@ export interface Overview {
   offline: number;
 }
 
+export interface ConnectedAgent {
+  instance_id: number;
+  instance_name: string;
+  agent_version: string;
+  served_version: string | null;
+  update_available: boolean;
+  platform: string;
+}
+
 export interface TestConnectionResult {
   ok: boolean;
   status_code: number | null;

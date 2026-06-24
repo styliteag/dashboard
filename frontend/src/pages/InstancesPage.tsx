@@ -1,23 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { Plus, Search, Wifi, WifiOff, AlertTriangle, Activity, Download, ArrowUpCircle } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Search, Download, ArrowUpCircle, List, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
-import type { Instance, Overview } from "../lib/types";
-
-interface ConnectedAgent {
-  instance_id: number;
-  instance_name: string;
-  agent_version: string;
-  served_version: string | null;
-  update_available: boolean;
-  platform: string;
-}
+import type { ConnectedAgent, Instance, Overview } from "../lib/types";
 import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
-import TestConnectionButton from "../components/TestConnectionButton";
+import { InstanceCard, InstanceRow } from "../components/InstanceViews";
 
 export default function InstancesPage() {
   const queryClient = useQueryClient();
@@ -26,6 +15,13 @@ export default function InstancesPage() {
   const [editTarget, setEditTarget] = useState<Instance | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "grid">(
+    () => (localStorage.getItem("instances.view") as "list" | "grid") || "list",
+  );
+  const setViewPersisted = (v: "list" | "grid") => {
+    localStorage.setItem("instances.view", v);
+    setView(v);
+  };
 
   // Connected agents → drives the "update available" banner + Update all.
   const { data: agents = [] } = useQuery({
@@ -35,6 +31,7 @@ export default function InstancesPage() {
   });
   const outdated = agents.filter((a) => a.update_available);
   const servedVersion = outdated[0]?.served_version ?? null;
+  const agentByInstance = new Map(agents.map((a) => [a.instance_id, a]));
 
   const updateAllMut = useMutation({
     mutationFn: () =>
@@ -214,8 +211,22 @@ export default function InstancesPage() {
         <div className="mt-2 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">{bulkMsg}</div>
       )}
 
-      {/* Export */}
-      <div className="mt-4 flex justify-end">
+      {/* View toggle + Export */}
+      <div className="mt-4 flex items-center justify-between">
+        <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800/50 p-0.5 text-xs">
+          {(["list", "grid"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setViewPersisted(v)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 capitalize ${
+                view === v ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {v === "list" ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+              {v}
+            </button>
+          ))}
+        </div>
         <a
           href="/api/export/instances.csv"
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -224,27 +235,64 @@ export default function InstancesPage() {
         </a>
       </div>
 
-      {/* Grid */}
+      {/* Instances: list (default) or grid */}
       {isLoading ? (
         <p className="mt-8 text-slate-500">Loading…</p>
       ) : filtered.length === 0 ? (
         <p className="mt-8 text-slate-500">
-          {instances.length === 0
-            ? 'No instances yet. Click "Add".'
-            : "No matches."}
+          {instances.length === 0 ? 'No instances yet. Click "Add".' : "No matches."}
         </p>
-      ) : (
+      ) : view === "grid" ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((inst) => (
             <InstanceCard
               key={inst.id}
               instance={inst}
+              agent={agentByInstance.get(inst.id)}
               selected={selected.has(inst.id)}
               onToggleSelect={() => toggleSelect(inst.id)}
               onEdit={() => setEditTarget(inst)}
               onDelete={() => setDeleteTarget(inst)}
             />
           ))}
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-lg border border-slate-800">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-900 text-left text-xs text-slate-500">
+              <tr>
+                <th className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === filtered.length}
+                    onChange={() => (selected.size === filtered.length ? selectNone() : selectAll())}
+                    className="rounded border-slate-600"
+                    aria-label="Select all"
+                  />
+                </th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Location</th>
+                <th className="px-3 py-2">Agent / Mode</th>
+                <th className="px-3 py-2">Tags</th>
+                <th className="px-3 py-2">Last poll</th>
+                <th className="px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((inst) => (
+                <InstanceRow
+                  key={inst.id}
+                  instance={inst}
+                  agent={agentByInstance.get(inst.id)}
+                  selected={selected.has(inst.id)}
+                  onToggleSelect={() => toggleSelect(inst.id)}
+                  onEdit={() => setEditTarget(inst)}
+                  onDelete={() => setDeleteTarget(inst)}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -262,107 +310,6 @@ export default function InstancesPage() {
           onClose={() => setDeleteTarget(null)}
         />
       )}
-    </div>
-  );
-}
-
-function InstanceCard({
-  instance: inst,
-  selected,
-  onToggleSelect,
-  onEdit,
-  onDelete,
-}: {
-  instance: Instance;
-  selected: boolean;
-  onToggleSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const statusIcon = (() => {
-    if (inst.last_error_at && !inst.last_success_at) {
-      return <WifiOff className="h-4 w-4 text-red-400" />;
-    }
-    if (
-      inst.last_error_at &&
-      inst.last_success_at &&
-      inst.last_error_at > inst.last_success_at
-    ) {
-      return <AlertTriangle className="h-4 w-4 text-amber-400" />;
-    }
-    if (inst.last_success_at) {
-      return <Wifi className="h-4 w-4 text-emerald-400" />;
-    }
-    return <WifiOff className="h-4 w-4 text-slate-500" />;
-  })();
-
-  return (
-    <div className={`rounded-xl border p-4 shadow ${selected ? "border-emerald-600 bg-emerald-900/10" : "border-slate-800 bg-slate-900/60"}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            className="rounded border-slate-600"
-          />
-          {statusIcon}
-          <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">{inst.name}</Link>
-        </div>
-        {inst.tags && inst.tags.length > 0 && (
-          <div className="flex gap-1">
-            {inst.tags.map((t) => (
-              <span
-                key={t}
-                className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <p className="mt-1 truncate text-xs text-slate-500">{inst.base_url}</p>
-      {inst.location && (
-        <p className="text-xs text-slate-500">{inst.location}</p>
-      )}
-
-      {inst.last_error_message && (
-        <p className="mt-2 truncate text-xs text-red-400">
-          {inst.last_error_message}
-        </p>
-      )}
-
-      {inst.last_success_at && (
-        <p className="mt-1 text-xs text-slate-600">
-          Last poll:{" "}
-          {new Date(inst.last_success_at).toLocaleString("en-US")}
-        </p>
-      )}
-
-      {/* Actions */}
-      <div className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3">
-        <TestConnectionButton instanceId={inst.id} />
-        <Link
-          to={`/instances/${inst.id}`}
-          className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200 flex items-center gap-1"
-        >
-          <Activity className="h-3 w-3" /> Details
-        </Link>
-        <button
-          onClick={onEdit}
-          className="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-        >
-          Edit
-        </button>
-        <button
-          onClick={onDelete}
-          className="rounded-md px-2 py-1 text-xs text-red-400 hover:bg-slate-800 hover:text-red-300"
-        >
-          Delete
-        </button>
-      </div>
     </div>
   );
 }
