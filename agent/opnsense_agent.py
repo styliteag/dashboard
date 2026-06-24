@@ -32,7 +32,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -708,10 +708,11 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": True, "output": out.strip()[:500], "product_version": version}
 
     elif action == "firmware.update":
-        # Non-blocking: start in background. NOTE: pfSense-upgrade reboots by
-        # default; opnsense-update -bkp does not.
+        # Non-blocking: start in background. -R keeps pfSense-upgrade from
+        # rebooting automatically (admin reboots manually), matching the
+        # stage-without-reboot behaviour of opnsense-update -bkp.
         if detect_platform() == "pfsense":
-            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
+            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y", "-R"]
         else:
             cmd = ["/usr/local/sbin/opnsense-update", "-bkp"]
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
