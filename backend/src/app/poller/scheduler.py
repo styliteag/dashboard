@@ -21,7 +21,7 @@ from app.devices.types import Transport
 from app.maintenance.jobs import prune_metrics, rollup_5m
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
-from app.opnsense.registry import registry
+from app.xsense.registry import registry
 
 log = structlog.get_logger("app.poller")
 

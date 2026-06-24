@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.checks.models import CheckState, PerfMetric, ServiceCheck
-from app.opnsense.schemas import (
+from app.xsense.schemas import (
     CpuUsage,
     DiskUsage,
     FirmwareStatus,

@@ -11,7 +11,7 @@ from app.checks.evaluate import (
     ipsec_checks,
     memory_check,
 )
-from app.opnsense.schemas import (
+from app.xsense.schemas import (
     CpuUsage,
     DiskUsage,
     FirmwareStatus,

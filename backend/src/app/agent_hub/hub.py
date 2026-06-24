@@ -18,7 +18,7 @@ from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
-from app.opnsense.schemas import (
+from app.xsense.schemas import (
     CpuUsage,
     DiskUsage,
     FirmwareStatus,

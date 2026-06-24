@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
-from app.opnsense.client import OPNsenseError
-from app.opnsense.registry import registry
+from app.xsense.client import OPNsenseError
+from app.xsense.registry import registry
 
 router = APIRouter(tags=["views"])
 

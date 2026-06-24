@@ -11,7 +11,7 @@ import pytest
 from app.db.models import Instance
 from app.devices.protocol import DeviceClient
 from app.devices.types import DeviceType, Transport
-from app.opnsense.client import OPNsenseClient
+from app.xsense.client import OPNsenseClient
 
 
 def test_transport_enum_values() -> None:

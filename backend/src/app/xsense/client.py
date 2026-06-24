@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from app.opnsense.schemas import (
+from app.xsense.schemas import (
     ActionResult,
     CpuUsage,
     DiskUsage,

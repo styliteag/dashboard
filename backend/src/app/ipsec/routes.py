@@ -15,9 +15,9 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
-from app.opnsense.client import OPNsenseError
-from app.opnsense.registry import registry
-from app.opnsense.schemas import ActionResult, IPsecServiceStatus
+from app.xsense.client import OPNsenseError
+from app.xsense.registry import registry
+from app.xsense.schemas import ActionResult, IPsecServiceStatus
 
 router = APIRouter(prefix="/instances/{instance_id}/ipsec", tags=["ipsec"])
 

@@ -11,8 +11,8 @@ from app.auth.deps import read_principal
 from app.checks import ServiceCheck, evaluate_checks
 from app.db.base import get_session
 from app.db.models import Instance
-from app.opnsense.registry import registry
-from app.opnsense.schemas import (
+from app.xsense.registry import registry
+from app.xsense.schemas import (
     FirmwareStatus,
     GatewayStatus,
     IPsecServiceStatus,

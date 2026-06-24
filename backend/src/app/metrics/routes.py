@@ -19,8 +19,8 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.metrics.store import read_metrics, to_rate
-from app.opnsense.registry import registry
-from app.opnsense.schemas import SystemStatus
+from app.xsense.registry import registry
+from app.xsense.schemas import SystemStatus
 
 router = APIRouter(tags=["status"])
 

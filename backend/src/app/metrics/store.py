@@ -15,7 +15,7 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.opnsense.schemas import SystemStatus
+from app.xsense.schemas import SystemStatus
 
 
 def to_rate(points: list[dict]) -> list[dict]:

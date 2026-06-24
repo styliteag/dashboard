@@ -10,7 +10,7 @@ import asyncio
 
 from app.crypto.secrets import decrypt
 from app.db.models import Instance
-from app.opnsense.client import OPNsenseClient
+from app.xsense.client import OPNsenseClient
 
 
 class ClientRegistry:

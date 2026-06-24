@@ -22,11 +22,11 @@ from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
 from app.metrics.routes import router as metrics_router
-from app.opnsense.registry import registry
 from app.poller.scheduler import start_scheduler, stop_scheduler
 from app.routes import health
 from app.system.routes import router as system_router
 from app.views.routes import router as views_router
+from app.xsense.registry import registry
 
 
 def _configure_logging(level: str) -> None:

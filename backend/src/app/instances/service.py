@@ -12,8 +12,8 @@ from app.crypto.secrets import encrypt
 from app.db.models import Instance
 from app.devices.types import Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
-from app.opnsense.client import OPNsenseClient, OPNsenseError
-from app.opnsense.registry import registry
+from app.xsense.client import OPNsenseClient, OPNsenseError
+from app.xsense.registry import registry
 
 
 async def list_instances(session: AsyncSession) -> list[Instance]:

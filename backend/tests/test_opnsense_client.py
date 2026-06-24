@@ -5,7 +5,7 @@ import pytest
 import respx
 from httpx import Response
 
-from app.opnsense.client import OPNsenseClient, OPNsenseError
+from app.xsense.client import OPNsenseClient, OPNsenseError
 
 
 @pytest.mark.asyncio

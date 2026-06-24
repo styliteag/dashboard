@@ -6,7 +6,7 @@ Concrete clients implement it (today ``OPNsenseClient``; later ``PfSenseClient``
 stay on the concrete classes for now and may graduate to optional sub-protocols
 later.
 
-Note: ``SystemStatus`` currently lives under ``app.opnsense.schemas`` for historical
+Note: ``SystemStatus`` currently lives under ``app.xsense.schemas`` for historical
 reasons but is a shared, device-agnostic shape. Moving it to a neutral location is
 out of scope for Phase 0.
 """
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from app.opnsense.schemas import SystemStatus
+from app.xsense.schemas import SystemStatus
 
 
 @runtime_checkable
