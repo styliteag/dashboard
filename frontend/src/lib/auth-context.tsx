@@ -2,24 +2,9 @@
  * Session-cookie auth: hydrate user from /api/auth/me on mount,
  * expose login/logout helpers via context.
  */
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setAuthToken, unauthorizedEvent } from "./api";
-
-export interface User {
-  id: number;
-  username: string;
-  is_admin: boolean;
-  session_token?: string | null;
-}
-
-interface AuthContextValue {
-  user: User | null;
-  loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+import { AuthContext, type User } from "./use-auth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -74,10 +59,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
 }
