@@ -332,3 +332,33 @@ wie §4).
 
 **Phase (nach Self-Update/Relay):** (1) State-Layer + `/checks`-Endpoint — treibt auch reicheres
 Dashboard-Grün/Rot; (2) Checkmk special agent Plugin + Doku; (3) weitere Collector-Checks.
+
+## 14. Bekannte Lücken / Backlog (ehrliche Selbstkritik, 2026-06-24)
+
+**Tier 1 — Korrektheits-Löcher (Kernzweck):**
+- ✅ **Toter Agent zeigte „online"** — behoben (Staleness-Watchdog: `agent_last_seen` älter als
+  `DASH_AGENT_STALE_SECONDS`/120s → offline + Notify; Recovery beim nächsten Push;
+  `is_online()`-Helper). Test live: Box-Agent stoppen → Karte rot in ~120s.
+- ⬜ **Rollback ungetestet im Feld** — Self-Update-Sicherheit hängt am Rollback, der nie gefeuert
+  hat (nur Happy-Path). Bewusster Bad-Update-Test nötig (kaputten Agent pushen → Supervisor
+  stellt `.bak` zurück).
+- ⬜ **Backend-Restart = blind + Reconnect-Storm** — in-memory Hub; `_last_status` weg, Live-Status
+  leer bis nächster Push. Status-Persistenz oder schnelles Re-Push erwägen.
+- ⬜ **`/ws/agent` ohne Integrationstest** — Auth/hello/metrics→DB/Command-Dispatch nur indirekt
+  getestet. Echten Endpoint end-to-end testen (uvicorn + Token + DB).
+
+**Tier 2 — geflaggt, unterbewertet:**
+- ⬜ **Update-Signatur (Offline-Key)** — v1 nur sha256+TLS; Dashboard-Compromise = RCE auf alle
+  Firewalls. Größte Security-Schuld (§6).
+- ⬜ **Metric-Retention/Rollup nicht gebaut** (Tabelle wächst unbegrenzt; APScheduler-Job-TODO).
+- ⬜ **Multi-Tenancy/RBAC fehlt** — ein Admin-User; MSP-Scale braucht Orgs/Rollen/Scoping.
+- ⬜ **Interface-Durchsatz-Raten** — Poll difft zwei Polls; Push schickt nur rohe Counter →
+  Raten fehlen agentseitig (Metrik-Parität).
+
+**Tier 3 — Lifecycle/Betrieb:**
+- ⬜ Agent-Uninstall · Versions-Pinning/Downgrade · Supervisor/rc.d nicht self-updatebar (Multi-File)
+  · Enrollment-Automatik (One-Time-Code) · pfSense CE unbestätigt · Hub-Observability (Agent-Count,
+  Push-Rate, Fehler).
+
+**Prozess:** Backend-Lint-Baseline rot (~127 B008 etc.) — Gate ist keins (siehe Phase 0 §9, B008-
+Config-Fix steht aus). Commits nur lokal, nie gepusht.
