@@ -553,3 +553,11 @@ bcrypt direkt via `password_hash($pw, PASSWORD_BCRYPT)` setzen.
 **Live auf .200 (pfSense CE 2.8.1):** Clean-Slate → `relay.enable` durchs Dashboard installierte
 pfRest + provisionierte orbit (page-all, Cache mode 600) → `GET /instances/4/relay/api/v2/system/version`
 → **HTTP 200**, ~0,1s. Teardown-Befehle (User+Paket) separat bestätigt. Tests: Agent 109, Backend 80.
+
+**Integrierter Uninstall live bestätigt (.200):** Uninstall durchs Dashboard → procs 0, pfRest-CLI
+weg, orbit-User weg; danach Enrollment + `relay.enable` → wiederhergestellt, Relay 200.
+
+**Caveats (offen):** (1) Relay-**Write-Pfad (POST)** ist auf beiden Plattformen ungetestet — bisher
+nur GET (konsistent mit OPNsense; #6 zurückgestellt). (2) `relay.enable` hat 200s Timeout; ein
+langsamer GitHub-Install/Schema-Gen kann den `send_command`-Timeout reißen und „failed" melden,
+obwohl der Install fertig läuft — idempotenter Retry rettet es, aber „looks-failed-but-worked"-Wart.
