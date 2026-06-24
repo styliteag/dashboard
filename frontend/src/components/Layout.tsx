@@ -20,7 +20,7 @@ export default function Layout() {
           className="flex items-center gap-2 text-lg font-semibold tracking-tight hover:text-slate-300"
         >
           <Shield className="h-5 w-5 text-emerald-500" />
-          opnsense-dash
+          Orbit Dashboard
         </Link>
 
         <nav className="flex items-center gap-4 text-sm">

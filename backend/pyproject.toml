@@ -1,7 +1,7 @@
 [project]
-name = "opnsense-dash-backend"
+name = "orbit-backend"
 version = "0.0.1"
-description = "Backend for the OPNsense central dashboard"
+description = "Backend for the Orbit multi-firewall dashboard"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

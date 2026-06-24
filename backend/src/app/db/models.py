@@ -1,4 +1,4 @@
-"""ORM models for opnsense-dash."""
+"""ORM models for Orbit Dashboard."""
 
 from __future__ import annotations
 

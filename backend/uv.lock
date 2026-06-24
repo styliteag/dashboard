@@ -603,7 +603,7 @@ wheels = [
 ]
 
 [[package]]
-name = "opnsense-dash-backend"
+name = "orbit-backend"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [

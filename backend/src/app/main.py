@@ -70,7 +70,7 @@ def create_app() -> FastAPI:
     _configure_logging(settings.log_level)
 
     app = FastAPI(
-        title="opnsense-dash",
+        title="Orbit Dashboard",
         version="0.0.1",
         lifespan=lifespan,
     )

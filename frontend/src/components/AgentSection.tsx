@@ -208,20 +208,20 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   const steps = {
     prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
     download: [
-      `mkdir -p /usr/local/opnsense-dash-agent`,
-      `fetch -o /usr/local/opnsense-dash-agent/opnsense_agent.py \\`,
+      `mkdir -p /usr/local/orbit-agent`,
+      `fetch -o /usr/local/orbit-agent/orbit_agent.py \\`,
       `  ${proto}//${host}/api/agent/script`,
-      `fetch -o /usr/local/opnsense-dash-agent/run-agent.sh \\`,
+      `fetch -o /usr/local/orbit-agent/run-agent.sh \\`,
       `  ${proto}//${host}/api/agent/run`,
-      `chmod 755 /usr/local/opnsense-dash-agent/run-agent.sh`,
-      `fetch -o /usr/local/etc/rc.d/opnsense_dash_agent \\`,
+      `chmod 755 /usr/local/orbit-agent/run-agent.sh`,
+      `fetch -o /usr/local/etc/rc.d/orbit_agent \\`,
       `  ${proto}//${host}/api/agent/rc`,
-      `chmod 755 /usr/local/etc/rc.d/opnsense_dash_agent`,
+      `chmod 755 /usr/local/etc/rc.d/orbit_agent`,
     ].join("\n"),
     // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are flaky.
-    config: `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/opnsense-dash-agent.conf`,
-    start: `sysrc opnsense_dash_agent_enable=YES\nservice opnsense_dash_agent start`,
-    logs: `tail -f /var/log/opnsense_dash_agent.log`,
+    config: `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/orbit-agent.conf`,
+    start: `sysrc orbit_agent_enable=YES\nservice orbit_agent start`,
+    logs: `tail -f /var/log/orbit_agent.log`,
   };
 
   return (
