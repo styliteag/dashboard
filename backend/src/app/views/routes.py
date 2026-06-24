@@ -55,8 +55,16 @@ async def global_vpn_overview(
 
     async def fetch_tunnels(inst: Instance) -> list[GlobalTunnel]:
         try:
-            client = await registry.get(inst)
-            status = await client.ipsec_status()
+            # Agent-mode instances have no direct OPNsense client; their IPsec
+            # status lives in the agent hub cache (last push). Same branch as
+            # the firmware compliance / per-instance endpoints.
+            if inst.agent_mode:
+                status = hub.get_last_ipsec(inst.id)
+            else:
+                client = await registry.get(inst)
+                status = await client.ipsec_status()
+            if status is None:
+                return []
             return [
                 GlobalTunnel(
                     instance_id=inst.id,

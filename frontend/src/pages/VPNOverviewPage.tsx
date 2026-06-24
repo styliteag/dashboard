@@ -23,8 +23,14 @@ interface GlobalVPNResponse {
   down: number;
 }
 
+function isUp(phase1_status: string): boolean {
+  const s = phase1_status.toLowerCase();
+  return s.includes("established") || s.includes("connected");
+}
+
 export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "up" | "down">("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["vpn-overview"],
@@ -32,12 +38,15 @@ export default function VPNOverviewPage() {
     refetchInterval: 30_000,
   });
 
-  const filtered = (data?.tunnels ?? []).filter(
-    (t) =>
+  const filtered = (data?.tunnels ?? []).filter((t) => {
+    const matchSearch =
       t.instance_name.toLowerCase().includes(search.toLowerCase()) ||
       t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.remote.toLowerCase().includes(search.toLowerCase()),
-  );
+      t.remote.toLowerCase().includes(search.toLowerCase());
+    const matchFilter =
+      filter === "all" || (filter === "up" && isUp(t.phase1_status)) || (filter === "down" && !isUp(t.phase1_status));
+    return matchSearch && matchFilter;
+  });
 
   return (
     <div>
@@ -54,16 +63,29 @@ export default function VPNOverviewPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative mt-4 max-w-md">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-        <input
-          type="text"
-          placeholder="Search by instance, tunnel, remote…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-        />
+      {/* Search + status filter */}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search by instance, tunnel, remote…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+          />
+        </div>
+        {(["all", "up", "down"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`rounded-md px-3 py-1.5 text-xs ${
+              filter === f ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
+            }`}
+          >
+            {{ all: "All", up: "Connected", down: "Disconnected" }[f]}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
@@ -85,9 +107,7 @@ export default function VPNOverviewPage() {
             </thead>
             <tbody>
               {filtered.map((t, i) => {
-                const up =
-                  t.phase1_status.toLowerCase().includes("established") ||
-                  t.phase1_status.toLowerCase().includes("connected");
+                const up = isUp(t.phase1_status);
                 return (
                   <tr key={`${t.instance_id}-${t.tunnel_id}-${i}`} className="border-t border-slate-800">
                     <td className="px-3 py-2">
