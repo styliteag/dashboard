@@ -436,6 +436,13 @@ grenze ist das Dashboard (Relay-Route braucht Admin-Session). **Prod-Hebel:** Pa
 Relay + `orbit`-Privilegien auf das real Genutzte scopen. Tests: `agent/tests/test_relay.py`
 (15) + `backend/tests/test_relay.py` (7).
 
-**Offen:** end-to-end durchs laufende Dashboard (braucht Agent-0.4.0-Deploy auf .199) ·
-pfSense-Relay (anderes API-Modell, kein `apikeys->add()`) · Least-Privilege-Scoping +
-Path-Whitelist · Cache-Verlust mintet einen weiteren Key (Orphan-Keys; später aufräumen).
+**✅ End-to-end live verifiziert (2026-06-24):** Agent-0.4.0 via Self-Update auf .199 deployt,
+dann `GET /api/instances/3/relay/api/core/firmware/status` durchs **laufende Dashboard** (Admin-
+Session) → **HTTP 200** + Firmware-JSON, ~0,1 s warm. Der Agent provisionierte den Key beim
+ersten (kalten) Call **selbst** (Cache-Datei mode 600 angelegt) — kein Timeout, die vermutete
+First-Call-Provisioning-Latenz schlug nicht durch. Damit ist die zuvor nur-gemockte WS-Wire-Naht
+(Route→`send_command`→Frame→Dispatch→`command_result`→`resolve_command`→Response) real durchlaufen.
+
+**Offen:** pfSense-Relay (anderes API-Modell, kein `apikeys->add()`) · Least-Privilege-Scoping +
+Path-Whitelist · Cache-Verlust mintet einen weiteren Key (Orphan-Keys; später aufräumen) ·
+Provisioning bei Agent-Start statt First-Call (falls die Latenz auf langsamen Boxen doch stört).
