@@ -32,7 +32,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.6"
+__version__ = "0.3.8"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -695,8 +695,17 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
 
     elif action == "ipsec.restart":
-        out = _run(["service", "strongswan", "restart"], timeout=30)
-        return {"success": True, "output": out.strip()[:500]}
+        # `onerestart`, not `restart`: pfSense doesn't set strongswan_enable in
+        # rc.conf, so plain `restart` is refused ("use onerestart instead").
+        # Fire-and-forget: on pfSense the restart regenerates swanctl config and
+        # can take 10-30s — blocking would race the command timeout. The dashboard
+        # sees the tunnels come back via its IPsec status polling.
+        subprocess.Popen(
+            ["service", "strongswan", "onerestart"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return {"success": True, "output": "ipsec restart started in background"}
 
     elif action == "firmware.check":
         if detect_platform() == "pfsense":

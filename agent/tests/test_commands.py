@@ -66,6 +66,21 @@ def test_firmware_check_opnsense_uses_opnsense_update(monkeypatch: pytest.Monkey
     assert result["product_version"] == "25.7.11_9"
 
 
+def test_ipsec_restart_fire_and_forget_onerestart(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> object:
+        captured["cmd"] = cmd
+        return object()
+
+    monkeypatch.setattr(agent.subprocess, "Popen", fake_popen)
+    result = agent.execute_command("ipsec.restart", {})
+    # `onerestart` (not `restart`) — pfSense doesn't set strongswan_enable in rc.conf.
+    # Fire-and-forget so the slow pfSense config regen can't race the command timeout.
+    assert captured["cmd"] == ["service", "strongswan", "onerestart"]
+    assert result["success"] is True
+
+
 def test_config_backup_missing_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent.os.path, "exists", lambda p: False)
     result = agent.execute_command("config.backup", {})
