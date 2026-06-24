@@ -31,6 +31,17 @@ interface AgentTokenResponse {
   agent_mode: boolean;
 }
 
+interface AgentActionResponse {
+  sent: boolean;
+  result: { success: boolean; output: string };
+}
+
+interface EnrollCodeResponse {
+  code: string;
+  instance_id: number;
+  expires_at: string;
+}
+
 interface Props {
   instanceId: number;
   agentMode: boolean;
@@ -131,6 +142,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   const [localToken, setLocalToken] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [enrollCode, setEnrollCode] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const proto = window.location.protocol;
@@ -197,13 +210,62 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Update failed" }),
   });
 
-  // Pre-filled config (token + dashboard URL baked in)
-  const cfg = {
-    dashboard_url: `${wsProto}://${host}/api/ws/agent`,
-    agent_token: token ?? "PASTE_TOKEN_HERE",
-    push_interval: 30,
-    log_level: "INFO",
-  };
+  const relayMut = useMutation({
+    mutationFn: () =>
+      api.post<AgentActionResponse>(`/api/instances/${instanceId}/relay/enable`),
+    onSuccess: (data) =>
+      setMsg({
+        ok: data.result.success,
+        text: data.result.success
+          ? `Relay enabled: ${data.result.output}`
+          : `Relay enable failed: ${data.result.output}`,
+      }),
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Relay enable failed" }),
+  });
+
+  const uninstallMut = useMutation({
+    mutationFn: () =>
+      api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/uninstall`),
+    onSuccess: (data) => {
+      setConfirmUninstall(false);
+      setLocalToken(null);
+      setMsg({
+        ok: data.result.success,
+        text: data.result.success
+          ? "Agent is removing itself; instance switched back to polling mode."
+          : `Uninstall failed: ${data.result.output}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
+    },
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Uninstall failed" }),
+  });
+
+  const enrollMut = useMutation({
+    mutationFn: () =>
+      api.post<EnrollCodeResponse>(`/api/instances/${instanceId}/agent/enroll-code`),
+    onSuccess: (data) => setEnrollCode(data.code),
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not generate code" }),
+  });
+
+  // Pre-filled config (dashboard URL baked in). With a one-time code the agent
+  // trades it for the token on first start; otherwise the token is embedded.
+  const cfg = enrollCode
+    ? {
+        dashboard_url: `${wsProto}://${host}/api/ws/agent`,
+        enroll_code: enrollCode,
+        push_interval: 30,
+        log_level: "INFO",
+      }
+    : {
+        dashboard_url: `${wsProto}://${host}/api/ws/agent`,
+        agent_token: token ?? "PASTE_TOKEN_HERE",
+        push_interval: 30,
+        log_level: "INFO",
+      };
 
   const steps = {
     prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
@@ -360,6 +422,60 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 >
                   Disable Agent
                 </button>
+                {!confirmUninstall ? (
+                  <button
+                    onClick={() => setConfirmUninstall(true)}
+                    className="text-xs text-slate-500 hover:text-red-400"
+                  >
+                    Uninstall agent…
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-end gap-1 rounded-lg border border-red-800/50 bg-red-900/10 p-2 text-xs text-red-300">
+                    <span>Remove the agent from the firewall?</span>
+                    <span className="text-[11px] text-slate-400">
+                      Stops + deletes the agent, its config, and the provisioned
+                      relay credentials (and the REST API package on pfSense).
+                    </span>
+                    <div className="mt-1 flex items-center gap-2">
+                      <button
+                        onClick={() => uninstallMut.mutate()}
+                        disabled={uninstallMut.isPending || !connected}
+                        className="rounded bg-red-700/50 px-2 py-0.5 hover:bg-red-700/70 disabled:opacity-50"
+                      >
+                        {uninstallMut.isPending ? "Removing…" : "Yes, uninstall"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmUninstall(false)}
+                        className="text-slate-400 hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Local API relay */}
+            <div className="mt-5 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-300">Local API Relay</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Reach this firewall&apos;s REST API through the agent tunnel — the
+                    dashboard stores no firewall credentials; the agent provisions
+                    and injects them locally. On pfSense this installs the REST API
+                    package (the firewall needs outbound internet).
+                  </p>
+                </div>
+                <button
+                  onClick={() => relayMut.mutate()}
+                  disabled={!connected || relayMut.isPending}
+                  className="shrink-0 rounded-lg border border-sky-700/50 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-900/20 disabled:opacity-50"
+                  title={connected ? undefined : "Agent must be connected"}
+                >
+                  {relayMut.isPending ? "Enabling…" : "Enable relay"}
+                </button>
               </div>
             </div>
 
@@ -419,6 +535,29 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                           Cancel
                         </button>
                       </span>
+                    )}
+                  </div>
+                  <div className="mt-3 border-t border-slate-800 pt-3">
+                    <p className="text-xs text-slate-500">
+                      Or skip pasting the token: generate a one-time enrollment
+                      code. The agent trades it for the token on first start (the
+                      config below switches to <code>enroll_code</code>).
+                    </p>
+                    {enrollCode ? (
+                      <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
+                        <code className="min-w-0 flex-1 break-all font-mono text-xs text-emerald-300">
+                          {enrollCode}
+                        </code>
+                        <CopyButton text={enrollCode} />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => enrollMut.mutate()}
+                        disabled={enrollMut.isPending}
+                        className="mt-2 rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {enrollMut.isPending ? "Generating…" : "Generate one-time code"}
+                      </button>
                     )}
                   </div>
                 </Step>
