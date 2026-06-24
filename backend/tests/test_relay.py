@@ -78,6 +78,19 @@ def test_request_body_is_forwarded_base64(monkeypatch) -> None:
     assert params["method"] == "POST"
 
 
+def test_write_verbs_pass_through(monkeypatch) -> None:
+    # The relay must forward write methods verbatim — verified live: OPNsense alias
+    # create/delete via POST, pfSense pfRest create via POST + remove via DELETE.
+    for method in ("PUT", "DELETE", "PATCH"):
+        agent = _FakeAgent({"status": 200, "headers": {}, "body": ""})
+        with _client(monkeypatch, agent) as client:
+            client.request(method, "/api/instances/7/relay/api/v2/firewall/alias?id=0")
+        action, params = agent.calls[0]
+        assert action == "http.relay"
+        assert params["method"] == method
+        assert params["path"] == "api/v2/firewall/alias?id=0"
+
+
 def test_dashboard_credentials_not_forwarded(monkeypatch) -> None:
     agent = _FakeAgent({"status": 200, "headers": {}, "body": ""})
     with _client(monkeypatch, agent) as client:

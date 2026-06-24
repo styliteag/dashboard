@@ -557,7 +557,14 @@ pfRest + provisionierte orbit (page-all, Cache mode 600) → `GET /instances/4/r
 **Integrierter Uninstall live bestätigt (.200):** Uninstall durchs Dashboard → procs 0, pfRest-CLI
 weg, orbit-User weg; danach Enrollment + `relay.enable` → wiederhergestellt, Relay 200.
 
-**Caveats (offen):** (1) Relay-**Write-Pfad (POST)** ist auf beiden Plattformen ungetestet — bisher
-nur GET (konsistent mit OPNsense; #6 zurückgestellt). (2) `relay.enable` hat 200s Timeout; ein
-langsamer GitHub-Install/Schema-Gen kann den `send_command`-Timeout reißen und „failed" melden,
-obwohl der Install fertig läuft — idempotenter Retry rettet es, aber „looks-failed-but-worked"-Wart.
+**✅ Relay-Write-Pfad live verifiziert (2026-06-24, beide Plattformen, reversibel):**
+- OPNsense .199: `POST …/relay/api/firewall/alias/addItem` → `saved`+uuid, `delItem/{uuid}` →
+  `deleted`, `reconfigure` → ok, `searchItem` → 0 rows (sauber).
+- pfSense .200: `POST …/relay/api/v2/firewall/alias` → 200 (id=0), **`DELETE …?id=0`** → 200
+  (testet den DELETE-Verb), Liste danach ohne den Test-Alias.
+- Beide Verben + JSON-Body + Response forwarden korrekt; kein Code-Fix nötig. Regression:
+  `test_write_verbs_pass_through` (PUT/DELETE/PATCH-Passthrough).
+
+**Caveat (offen):** `relay.enable` hat 200s Timeout; ein langsamer GitHub-Install/Schema-Gen kann den
+`send_command`-Timeout reißen und „failed" melden, obwohl der Install fertig läuft — idempotenter
+Retry rettet es, aber „looks-failed-but-worked"-Wart.
