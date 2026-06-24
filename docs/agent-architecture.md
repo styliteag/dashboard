@@ -330,8 +330,13 @@ Daten weg, die der Export bräuchte.
 DHCP-Leases, Sensoren/Temperatur, Paket-Health. Collector bleibt erweiterbar (Plattform-Dispatch
 wie §4).
 
-**Phase (nach Self-Update/Relay):** (1) State-Layer + `/checks`-Endpoint — treibt auch reicheres
-Dashboard-Grün/Rot; (2) Checkmk special agent Plugin + Doku; (3) weitere Collector-Checks.
+**Phase (nach Self-Update/Relay):**
+- ✅ **(1) State-Layer + `/checks`-Endpoint umgesetzt (2026-06-24)** — `app/checks/` (pure
+  OK/WARN/CRIT-Logik + Perfdata: memory/disk/cpu/gateways/ipsec/firmware), `GET
+  /api/instances/{id}/checks` (Hub-Cache für push, live für direct), `tests/test_checks.py`.
+  Live gegen .199 verifiziert. Schwellen sind Konstanten — per-Instance-Config offen.
+- ⬜ (2) Checkmk special-agent Plugin (Piggyback pro Firewall) + Doku.
+- ⬜ (3) weitere Collector-Checks · Frontend zeigt die Checks (Grün/Rot je Service).
 
 ## 14. Bekannte Lücken / Backlog (ehrliche Selbstkritik, 2026-06-24)
 
