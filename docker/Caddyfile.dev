@@ -1,34 +1,64 @@
-# Dev GUI proxy with auth gate (§18). Per-instance PORT origin; Caddy terminates
-# TLS (internal CA) and reverse-proxies to that firewall's in-container tunnel
-# forwarder. Prod swaps the port vhost for a wildcard subdomain — same blocks.
+# Dev GUI proxy with auth gate (§18). One vhost per instance: port 9000+id is a
+# distinct browser origin (so the firewall GUI's absolute URLs resolve), Caddy
+# terminates TLS (internal CA) and reverse-proxies to that instance's on-demand
+# in-container forwarder (backend:14400+id, started by POST /gui/open). Prod swaps
+# these per-port vhosts for one wildcard-subdomain vhost — same snippet body.
 #
 # Auth: /__orbit/auth exchanges a dashboard-minted handoff token for an
-# origin-scoped orbit_gui cookie; forward_auth then gates every other request on
-# that cookie (zero-I/O HMAC check, bound to THIS instance). No cookie -> 401.
+# origin-scoped orbit_gui cookie; forward_auth then gates every request on that
+# cookie (zero-I/O HMAC, bound to {args[0]} = this instance). No cookie -> 401.
 {
 	auto_https disable_redirects
 }
 
-# instance 3 (.199 OPNsense) -> https://localhost:9003
-localhost:9003 {
+(gui_vhost) {
 	tls internal
 
-	# Token handoff → orbit_gui cookie (routes to the backend, NOT the firewall).
 	@orbit path /__orbit/*
 	handle @orbit {
 		rewrite * /api/gui/handoff?{query}
 		reverse_proxy backend:8000
 	}
 
-	# Everything else: gate on the orbit_gui cookie, then proxy to the firewall.
 	handle {
 		forward_auth backend:8000 {
-			uri /api/gui/authcheck?instance=3
+			uri /api/gui/authcheck?instance={args[0]}
 		}
-		reverse_proxy https://backend:14444 {
+		reverse_proxy https://backend:{args[1]} {
 			transport http {
 				tls_insecure_skip_verify
 			}
 		}
 	}
+}
+
+localhost:9001 {
+	import gui_vhost 1 14401
+}
+localhost:9002 {
+	import gui_vhost 2 14402
+}
+localhost:9003 {
+	import gui_vhost 3 14403
+}
+localhost:9004 {
+	import gui_vhost 4 14404
+}
+localhost:9005 {
+	import gui_vhost 5 14405
+}
+localhost:9006 {
+	import gui_vhost 6 14406
+}
+localhost:9007 {
+	import gui_vhost 7 14407
+}
+localhost:9008 {
+	import gui_vhost 8 14408
+}
+localhost:9009 {
+	import gui_vhost 9 14409
+}
+localhost:9010 {
+	import gui_vhost 10 14410
 }

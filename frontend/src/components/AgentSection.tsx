@@ -224,6 +224,16 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Relay enable failed" }),
   });
 
+  const guiMut = useMutation({
+    mutationFn: () => api.post<{ url: string }>(`/api/instances/${instanceId}/gui/open`),
+    onSuccess: (data) => {
+      // The URL is a one-time auth handoff; open it in a new tab (dev cert may warn).
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    },
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
+  });
+
   const uninstallMut = useMutation({
     mutationFn: () =>
       api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/uninstall`),
@@ -475,6 +485,29 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   title={connected ? undefined : "Agent must be connected"}
                 >
                   {relayMut.isPending ? "Enabling…" : "Enable relay"}
+                </button>
+              </div>
+            </div>
+
+            {/* Firewall GUI proxy */}
+            <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-300">Firewall GUI</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Open this firewall&apos;s web interface through the agent tunnel —
+                    no inbound access or VPN needed. Opens in a new tab on a
+                    per-firewall origin; log in with the firewall&apos;s own
+                    credentials.
+                  </p>
+                </div>
+                <button
+                  onClick={() => guiMut.mutate()}
+                  disabled={!connected || guiMut.isPending}
+                  className="shrink-0 rounded-lg border border-emerald-700/50 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-900/20 disabled:opacity-50"
+                  title={connected ? undefined : "Agent must be connected"}
+                >
+                  {guiMut.isPending ? "Opening…" : "Open GUI"}
                 </button>
               </div>
             </div>

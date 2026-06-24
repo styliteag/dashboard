@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.gui_auth import COOKIE_NAME, sign_gui_token, verify_gui_token
+from app.agent_hub.gui_tunnel import gui_tunnels
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
@@ -658,6 +659,7 @@ async def gui_open(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
         )
+    await gui_tunnels.ensure(instance_id)  # start this instance's forwarder on demand
     token = sign_gui_token(instance_id, ttl_seconds=60)  # short-lived handoff
     await write_audit(
         session,

@@ -46,12 +46,9 @@ services:
       DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
       DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
       DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
-      # GUI-proxy tunnels: "instance:port" list, each forwards to that firewall's GUI.
-      DASH_GUI_TUNNELS: ${DASH_GUI_TUNNELS:-}
       TZ: ${TZ:-UTC}
     ports:
       - "${DASH_BACKEND_PORT:-8000}:8000"
-      - "14444:14444"
     volumes:
       - ./backend/src:/app/src
       - ./backend/alembic:/app/alembic
@@ -89,7 +86,7 @@ services:
     image: caddy:2
     restart: unless-stopped
     ports:
-      - "9003:9003"
+      - "9001-9010:9001-9010"
     volumes:
       - ./docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro
     depends_on:

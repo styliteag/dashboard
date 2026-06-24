@@ -1,22 +1,40 @@
 # Production GUI proxy: wildcard subdomain per instance instead of a dev port.
 # Caddy gets a real wildcard TLS cert (DNS-01) for *.gui.example.com, so the
-# browser sees a valid cert and a clean per-instance origin. Each subdomain
-# reverse-proxies to that instance's in-container tunnel forwarder (backend:PORT,
-# set via DASH_GUI_TUNNELS). Map gui-<id> -> the matching port.
+# browser sees a valid cert + a clean per-instance origin. Same auth gate as dev
+# (handoff -> orbit_gui cookie -> forward_auth). The per-instance forwarder port is
+# 14400+id (backend GuiTunnelManager); map the subdomain label to it.
 #
-# SECURITY: this exposes a firewall admin GUI per origin. Gate it — e.g. Caddy
-# forward_auth to the dashboard's session before proxying — do NOT ship it open.
+# SECURITY: each origin fronts a firewall admin GUI — the forward_auth gate is what
+# keeps it closed. Do NOT remove it.
 
 *.gui.example.com {
 	tls {
-		dns cloudflare {env.CF_API_TOKEN}   # or your DNS provider
+		dns cloudflare {env.CF_API_TOKEN}   # your DNS provider, for the wildcard cert
 	}
 
-	@inst3 host gui-3.gui.example.com
-	reverse_proxy @inst3 https://backend:14444 {
-		transport http {
-			tls_insecure_skip_verify
+	# Map the gui-<id> label to that instance's id + forwarder port. Extend per
+	# instance, or drive Caddy's admin API from the backend for true on-demand.
+	map {labels.3} {orbit.id} {orbit.port} {
+		gui-3 3 14403
+		gui-4 4 14404
+	}
+
+	@orbit path /__orbit/*
+	handle @orbit {
+		rewrite * /api/gui/handoff?{query}
+		reverse_proxy backend:8000
+	}
+	handle {
+		forward_auth backend:8000 {
+			uri /api/gui/authcheck?instance={orbit.id}
+		}
+		reverse_proxy https://backend:{orbit.port} {
+			transport http {
+				tls_insecure_skip_verify
+			}
 		}
 	}
-	# ... one block per instance, or template via a map ...
 }
+
+# The dashboard itself sets DASH_GUI_BASE_TEMPLATE="https://gui-{id}.gui.example.com"
+# so POST /gui/open returns the right per-instance origin.

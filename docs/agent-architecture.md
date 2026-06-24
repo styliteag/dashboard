@@ -630,3 +630,38 @@ sonst hängt die Firewall-Admin-GUI offen; aktuell nur durch den Firewall-eigene
 · dynamische Per-Instanz-Port/Subdomain-Allokation (statt statischem `DASH_GUI_TUNNELS`) ·
 Frontend-„Open GUI"-Button · prod-Caddyfile produktiv machen (DNS-01-Wildcard). Der lokale
 `scripts/orbit-gui-tunnel.py` bleibt als Alternative ohne Port-Exposure.
+
+### §18 GUI-Proxy — Auth-Gate + dynamische Allokation + Frontend (✅ 2026-06-24)
+
+Phase 2 (Userwunsch 1+2+3), Advisor-Sequenz befolgt (Gate zuerst, dann dynamisch, dann Button).
+
+**1. Auth-Gate (Token-Handoff + Caddy `forward_auth`):** der GUI-Origin ist cross-origin zum
+Dashboard, also gatet ihn nicht die Dashboard-Session. `POST /instances/{id}/gui/open` (Admin)
+mintet einen kurzlebigen HMAC-Handoff-Token; der Browser ruft `/__orbit/auth`, Caddy routet das
+ans Backend (`/api/gui/handoff`), das gegen einen **origin-scoped `orbit_gui`-Cookie** tauscht
+(302); `forward_auth` prüft den Cookie bei jedem Request (`/api/gui/authcheck`, **zero-I/O HMAC**,
+an *diese* Instanz gebunden). `gui_auth.py`: sign/verify, exp + instance im Token.
+
+**2. Dynamische, stabile Allokation:** `GuiTunnelManager` startet pro Instanz on-demand einen
+Forwarder auf **stabilem** Port `14400+id` (nie für eine andere Instanz wiederverwendet — der
+Cross-Tenant-Footgun an der Wurzel vermieden, statt Recycling-Pool). `/gui/open` ruft `ensure()`.
+Caddy dev: Vhosts 9001–9010 (Snippet `gui_vhost {args}` → `forward_auth instance=id` +
+`reverse_proxy backend:1440id`). Prod: ein Wildcard-Vhost (`Caddyfile.prod.example`),
+`DASH_GUI_BASE_TEMPLATE=https://gui-{id}.…`.
+
+**3. Frontend:** „Open GUI"-Karte in `AgentSection` → `POST /gui/open` → öffnet die Handoff-URL im
+neuen Tab.
+
+**✅ Live (`just dev`, beide Plattformen):**
+- **Negativtest** (Advisor-Beweis): `https://localhost:9003/` ohne Cookie → **401** (Seite + Asset);
+  `dash_session`-Bleed maskiert nichts (curl ohne Cookies → 401).
+- **Positiv:** Handoff → `orbit_gui`-Cookie → 200.
+- **Cross-Tenant:** Cookie-für-Instanz-3 gegen `authcheck?instance=7` → **401**; manipuliert → 401.
+- **Dynamisch + pfSense:** `/gui/open` instance 4 → Forwarder 14404 on-demand → `:9004` → pfSense-GUI
+  200 (CsrfMagic), vorher nirgends vorkonfiguriert.
+- User bestätigte: Login in die OPNsense-GUI über `:9003` im echten Browser.
+
+**Offen:** Forward-Auth in Prod scharfschalten (das Gate ist da, aber Prod-Caddyfile + DNS-01-Wildcard
+müssen ausgerollt werden) · Single-Use-Handoff-Token (aktuell 60s-TTL) · Forwarder-Teardown bei Idle ·
+echte On-Demand-Caddy-Routen statt Vhost-Range/map (Caddy-Admin-API). Tests: gui_auth (8), port_for,
+Hub-Registry; Backend 94, Frontend grün.

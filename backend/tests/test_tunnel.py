@@ -7,7 +7,7 @@ routing contract.
 
 from __future__ import annotations
 
-from app.agent_hub.gui_tunnel import parse_tunnel_spec
+from app.agent_hub.gui_tunnel import GuiTunnelManager, parse_tunnel_spec
 from app.agent_hub.hub import AgentHub
 
 
@@ -15,6 +15,13 @@ def test_parse_tunnel_spec() -> None:
     assert parse_tunnel_spec("3:14444,4:14445") == [(3, 14444), (4, 14445)]
     assert parse_tunnel_spec("") == []
     assert parse_tunnel_spec(" 3:14444 , bad , 5:9 ") == [(3, 14444), (5, 9)]
+
+
+def test_gui_forwarder_port_is_stable_per_instance() -> None:
+    # Stable convention port — never reused across instances (cross-tenant defense).
+    assert GuiTunnelManager.port_for(3) == 14403
+    assert GuiTunnelManager.port_for(4) == 14404
+    assert GuiTunnelManager.port_for(3) != GuiTunnelManager.port_for(4)
 
 
 def test_tunnel_registry_delivers_to_stream_queue() -> None:

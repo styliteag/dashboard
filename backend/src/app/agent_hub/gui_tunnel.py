@@ -90,3 +90,35 @@ def parse_tunnel_spec(spec: str) -> list[tuple[int, int]]:
         with contextlib.suppress(ValueError):
             out.append((int(inst), int(port)))
     return out
+
+
+# Each instance gets a STABLE forwarder port (never reused for another instance),
+# so a per-origin cookie can never leak across firewalls (see §18 + the auth gate).
+_FORWARDER_BASE_PORT = 14400
+
+
+class GuiTunnelManager:
+    """Starts one forwarder per instance on demand, on a stable convention port."""
+
+    def __init__(self) -> None:
+        self._servers: dict[int, asyncio.AbstractServer] = {}
+
+    @staticmethod
+    def port_for(instance_id: int) -> int:
+        return _FORWARDER_BASE_PORT + instance_id
+
+    async def ensure(self, instance_id: int) -> int:
+        """Ensure a forwarder is running for this instance; return its port."""
+        if instance_id not in self._servers:
+            self._servers[instance_id] = await start_gui_tunnel(
+                instance_id, "0.0.0.0", self.port_for(instance_id)
+            )
+        return self.port_for(instance_id)
+
+    def close_all(self) -> None:
+        for server in self._servers.values():
+            server.close()
+        self._servers.clear()
+
+
+gui_tunnels = GuiTunnelManager()
