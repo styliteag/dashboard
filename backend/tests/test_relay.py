@@ -19,8 +19,9 @@ from app.auth.deps import current_user
 class _FakeAgent:
     """Captures send_command calls and returns a canned relay result."""
 
-    def __init__(self, result: dict | None) -> None:
+    def __init__(self, result: dict | None, platform: str = "") -> None:
         self.result = result
+        self.platform = platform
         self.calls: list[tuple[str, dict]] = []
 
     async def send_command(self, action: str, params: dict | None = None, timeout: float = 30):
@@ -130,3 +131,69 @@ def test_upstream_error_status_passed_through(monkeypatch) -> None:
         r = client.get("/api/instances/7/relay/api/x")
     assert r.status_code == 403
     assert r.content == b"no"
+
+
+# --- /relay/test: real authenticated API call via the relay ----------------
+
+
+def test_relay_test_opnsense_probes_core_api(monkeypatch) -> None:
+    agent = _FakeAgent(
+        {"success": True, "status": 200, "headers": {}, "body": ""}, platform="opnsense"
+    )
+    with _client(monkeypatch, agent) as client:
+        r = client.post("/api/instances/7/relay/test")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["status_code"] == 200
+    assert body["latency_ms"] is not None
+    action, params = agent.calls[0]
+    assert action == "http.relay"
+    assert params["method"] == "GET"
+    assert params["path"] == "api/core/system/status"  # OPNsense authenticated endpoint
+
+
+def test_relay_test_pfsense_probes_v2_api(monkeypatch) -> None:
+    agent = _FakeAgent(
+        {"success": True, "status": 200, "headers": {}, "body": ""}, platform="pfsense"
+    )
+    with _client(monkeypatch, agent) as client:
+        r = client.post("/api/instances/7/relay/test")
+    assert r.json()["ok"] is True
+    assert agent.calls[0][1]["path"] == "api/v2/system/version"  # pfSense REST v2 endpoint
+
+
+def test_relay_test_auth_failure_is_not_ok(monkeypatch) -> None:
+    # A firewall 401 means the relay reached the API but credentials failed — not ok.
+    # It stays server-side; a relayed 401 to the browser would trip the auto-logout.
+    agent = _FakeAgent(
+        {"success": False, "status": 401, "headers": {}, "body": ""}, platform="opnsense"
+    )
+    with _client(monkeypatch, agent) as client:
+        r = client.post("/api/instances/7/relay/test")
+    assert r.status_code == 200  # our endpoint succeeds; the API status is in the body
+    body = r.json()
+    assert body["ok"] is False
+    assert body["status_code"] == 401
+    assert "401" in body["error"]
+
+
+def test_relay_test_transport_failure_reports_not_ok(monkeypatch) -> None:
+    agent = _FakeAgent(
+        {"success": False, "status": 0, "output": "connection refused"}, platform="opnsense"
+    )
+    with _client(monkeypatch, agent) as client:
+        r = client.post("/api/instances/7/relay/test")
+    assert r.status_code == 200  # the endpoint itself succeeds; the probe result is in the body
+    body = r.json()
+    assert body["ok"] is False
+    assert "connection refused" in (body["error"] or "")
+
+
+def test_relay_test_agent_not_connected(monkeypatch) -> None:
+    with _client(monkeypatch, None) as client:
+        r = client.post("/api/instances/7/relay/test")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "not connected" in body["error"]

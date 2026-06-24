@@ -211,18 +211,20 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Update failed" }),
   });
 
-  const relayMut = useMutation({
+  const testApiMut = useMutation({
     mutationFn: () =>
-      api.post<AgentActionResponse>(`/api/instances/${instanceId}/relay/enable`),
-    onSuccess: (data) =>
+      api.post<{ ok: boolean; status_code: number | null; latency_ms: number | null; error: string | null }>(
+        `/api/instances/${instanceId}/relay/test`,
+      ),
+    onSuccess: (r) =>
       setMsg({
-        ok: data.result.success,
-        text: data.result.success
-          ? `Relay enabled: ${data.result.output}`
-          : `Relay enable failed: ${data.result.output}`,
+        ok: r.ok,
+        text: r.ok
+          ? `Local API OK — HTTP ${r.status_code} in ${r.latency_ms} ms`
+          : `Local API call failed: ${r.error ?? "no response"}`,
       }),
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Relay enable failed" }),
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Test failed" }),
   });
 
   const guiMut = useMutation({
@@ -467,53 +469,45 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
               </div>
             </div>
 
-            {/* Local API relay */}
+            {/* Firewall GUI + local API (relay is provisioned internally now) */}
             <div className="mt-5 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-300">Local API Relay</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Reach this firewall&apos;s REST API through the agent tunnel — the
-                    dashboard stores no firewall credentials; the agent provisions
-                    and injects them locally. On pfSense this installs the REST API
-                    package (the firewall needs outbound internet).
-                  </p>
-                </div>
-                <button
-                  onClick={() => relayMut.mutate()}
-                  disabled={!connected || relayMut.isPending}
-                  className="shrink-0 rounded-lg border border-sky-700/50 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-900/20 disabled:opacity-50"
-                  title={connected ? undefined : "Agent must be connected"}
-                >
-                  {relayMut.isPending ? "Enabling…" : "Enable relay"}
-                </button>
-              </div>
-            </div>
-
-            {/* Firewall GUI proxy — only when the proxy is configured (DASH_GUI_PROXY_ENABLED) */}
-            {status?.gui_proxy_enabled && (
-            <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-300">Firewall GUI</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Open this firewall&apos;s web interface through the agent tunnel —
-                    no inbound access or VPN needed. Opens in a new tab on a
-                    per-firewall origin; log in with the firewall&apos;s own
-                    credentials.
+                    Reach this firewall through the agent tunnel — no inbound access or
+                    VPN needed. <span className="text-slate-400">Open GUI</span> logs into
+                    the web interface on a per-firewall origin;{" "}
+                    <span className="text-slate-400">Test Local API</span> probes the
+                    firewall&apos;s REST API through the relay.
                   </p>
                 </div>
-                <button
-                  onClick={() => guiMut.mutate()}
-                  disabled={!connected || guiMut.isPending}
-                  className="shrink-0 rounded-lg border border-emerald-700/50 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-900/20 disabled:opacity-50"
-                  title={connected ? undefined : "Agent must be connected"}
-                >
-                  {guiMut.isPending ? "Opening…" : "Open GUI"}
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => testApiMut.mutate()}
+                    disabled={!connected || testApiMut.isPending}
+                    className="rounded-lg border border-sky-700/50 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-900/20 disabled:opacity-50"
+                    title={
+                      connected
+                        ? "Probe the firewall's local API via the agent relay"
+                        : "Agent must be connected"
+                    }
+                  >
+                    {testApiMut.isPending ? "Testing…" : "Test Local API"}
+                  </button>
+                  {status?.gui_proxy_enabled && (
+                    <button
+                      onClick={() => guiMut.mutate()}
+                      disabled={!connected || guiMut.isPending}
+                      className="rounded-lg border border-emerald-700/50 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-900/20 disabled:opacity-50"
+                      title={connected ? undefined : "Agent must be connected"}
+                    >
+                      {guiMut.isPending ? "Opening…" : "Open GUI"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-            )}
 
             {/* Guide toggle */}
             <button

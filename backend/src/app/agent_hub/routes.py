@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -586,6 +587,61 @@ async def enable_relay(
     )
     await session.commit()
     return {"sent": True, "result": result}
+
+
+class RelayTestResponse(BaseModel):
+    ok: bool
+    status_code: int | None = None
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+# Declared BEFORE the catch-all relay proxy below so "relay/test" routes here
+# and is not swallowed by the {path:path} matcher.
+# Platform-specific, authenticated, lightweight GET endpoints — so the probe
+# actually exercises the relay credentials (not just web-server reachability).
+_RELAY_PROBE_PATHS = {
+    "opnsense": "api/core/system/status",
+    "pfsense": "api/v2/system/version",
+}
+
+
+@router.post("/instances/{instance_id}/relay/test", response_model=RelayTestResponse)
+async def test_relay(instance_id: int, _user: User = Depends(current_user)) -> RelayTestResponse:
+    """Make a real authenticated API call to the firewall through the agent relay.
+
+    Picks a platform-appropriate API endpoint and reports whether it answered 2xx
+    (relay + credentials work), plus round-trip latency. Runs server-side so a
+    relayed 401/403 never reaches the browser — that would otherwise trip the
+    auto-logout in the API wrapper.
+    """
+    agent = hub.get(instance_id)
+    if agent is None:
+        return RelayTestResponse(ok=False, error="agent not connected")
+
+    platform = (getattr(agent, "platform", "") or "").lower()
+    probe_path = _RELAY_PROBE_PATHS.get(platform, "")  # unknown → API-root reachability
+    params = {
+        "method": "GET",
+        "path": probe_path,
+        "headers": {},
+        "body": base64.b64encode(b"").decode(),
+    }
+    t0 = time.monotonic()
+    result = await agent.send_command("http.relay", params, timeout=15)
+    latency_ms = int((time.monotonic() - t0) * 1000)
+
+    # status 0 / no result = the request never reached the firewall (transport fail).
+    status_code = int(result.get("status", 0)) if result else 0
+    if status_code == 0:
+        return RelayTestResponse(
+            ok=False,
+            latency_ms=latency_ms,
+            error=(result.get("output", "relay failed") if result else "relay failed"),
+        )
+    ok = 200 <= status_code < 300
+    error = None if ok else f"API returned HTTP {status_code}"
+    return RelayTestResponse(ok=ok, status_code=status_code, latency_ms=latency_ms, error=error)
 
 
 @router.api_route(
