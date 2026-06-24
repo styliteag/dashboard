@@ -174,6 +174,25 @@ class AgentHub:
         self._last_gateways: dict[int, list[GatewayStatus]] = {}
         self._last_ipsec: dict[int, IPsecServiceStatus] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
+        # GUI-proxy tunnels: stream_id -> queue of frames coming back from the agent.
+        self._tunnels: dict[str, asyncio.Queue] = {}
+
+    # --- GUI-proxy tunnel registry (see §18) ---------------------------------
+
+    def open_tunnel(self, stream_id: str) -> asyncio.Queue:
+        """Register a tunnel stream; returns the queue agent frames are delivered to."""
+        queue: asyncio.Queue = asyncio.Queue()
+        self._tunnels[stream_id] = queue
+        return queue
+
+    def close_tunnel(self, stream_id: str) -> None:
+        self._tunnels.pop(stream_id, None)
+
+    def deliver_tunnel(self, stream_id: str, frame: dict) -> None:
+        """Route a `tunnel` frame from the agent to its client handler's queue."""
+        queue = self._tunnels.get(stream_id)
+        if queue is not None:
+            queue.put_nowait(frame)
 
     def get(self, instance_id: int) -> ConnectedAgent | None:
         return self._agents.get(instance_id)

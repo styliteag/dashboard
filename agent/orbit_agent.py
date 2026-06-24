@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1744,13 +1744,119 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
         await asyncio.sleep(cfg.push_interval)
 
 
+# =============================================================================
+# GUI proxy — raw TCP tunnel over the agent WS (see docs/agent-architecture.md §18)
+#
+# The dashboard can't path-proxy the firewall's web GUI (absolute URLs escape any
+# path prefix). Instead the dashboard exposes a local endpoint that tunnels raw TCP
+# to the box's GUI port through this agent: the browser speaks TLS end-to-end with
+# the firewall (self-signed cert), so AJAX/forms/live views just work — no HTML
+# rewriting. Streams are multiplexed by id over the one agent WS; bytes are base64
+# in JSON `tunnel` frames (the stdlib WS client is text-only).
+# =============================================================================
+
+class _TunnelManager:
+    """Per-connection multiplexed TCP tunnels to the local GUI port."""
+
+    def __init__(self, ws: WebSocket, host: str, port: int):
+        self._ws = ws
+        self._host = host
+        self._port = port
+        self._writers: dict[str, asyncio.StreamWriter] = {}
+        self._tasks: dict[str, asyncio.Task] = {}
+
+    async def handle(self, msg: dict) -> None:
+        op = msg.get("op")
+        stream = str(msg.get("stream", ""))
+        if not stream:
+            return
+        if op == "open":
+            await self._open(stream, msg.get("host") or self._host, int(msg.get("port") or self._port))
+        elif op == "data":
+            await self._data(stream, msg.get("data", ""))
+        elif op == "close":
+            self._close(stream)
+
+    async def _open(self, stream: str, host: str, port: int) -> None:
+        try:
+            reader, writer = await asyncio.open_connection(host, port)
+        except OSError as exc:
+            log.warning("tunnel %s: connect %s:%s failed: %s", stream, host, port, exc)
+            await self._send(stream, "close")
+            return
+        self._writers[stream] = writer
+        self._tasks[stream] = asyncio.create_task(self._pump(stream, reader))
+
+    async def _pump(self, stream: str, reader: asyncio.StreamReader) -> None:
+        """Forward bytes from the local socket back to the dashboard until EOF."""
+        try:
+            while True:
+                chunk = await reader.read(65536)
+                if not chunk:
+                    break
+                await self._send(stream, "data", base64.b64encode(chunk).decode())
+        except (OSError, WSError):
+            pass
+        finally:
+            await self._send(stream, "close")
+            self._close(stream, cancel_task=False)
+
+    async def _data(self, stream: str, data_b64: str) -> None:
+        writer = self._writers.get(stream)
+        if writer is None:
+            return
+        try:
+            writer.write(base64.b64decode(data_b64))
+            await writer.drain()
+        except (OSError, ValueError):
+            self._close(stream)
+
+    def _close(self, stream: str, cancel_task: bool = True) -> None:
+        writer = self._writers.pop(stream, None)
+        if writer is not None:
+            with contextlib.suppress(OSError):
+                writer.close()
+        task = self._tasks.pop(stream, None)
+        if cancel_task and task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _send(self, stream: str, op: str, data: str | None = None) -> None:
+        frame: dict = {"type": "tunnel", "op": op, "stream": stream}
+        if data is not None:
+            frame["data"] = data
+        with contextlib.suppress(WSError, OSError):
+            await self._ws.send(json.dumps(frame))
+
+    def shutdown(self) -> None:
+        for task in list(self._tasks.values()):
+            task.cancel()
+        for writer in list(self._writers.values()):
+            with contextlib.suppress(OSError):
+                writer.close()
+        self._tasks.clear()
+        self._writers.clear()
+
+
 async def _listen_loop(ws: WebSocket) -> None:
     """Listen for commands from the dashboard."""
+    gui = urlsplit(_CONFIG.local_api_url if _CONFIG else "https://127.0.0.1:4444")
+    tunnels = _TunnelManager(ws, gui.hostname or "127.0.0.1", gui.port or 443)
+    try:
+        await _listen_loop_inner(ws, tunnels)
+    finally:
+        tunnels.shutdown()
+
+
+async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
     while True:
         raw = await ws.recv()
         try:
             msg = json.loads(raw)
             msg_type = msg.get("type", "")
+
+            if msg_type == "tunnel":
+                await tunnels.handle(msg)
+                continue
 
             if msg_type == "welcome":
                 # Dashboard accepted us. If we just self-updated, probation passes.

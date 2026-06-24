@@ -568,3 +568,34 @@ weg, orbit-User weg; danach Enrollment + `relay.enable` → wiederhergestellt, R
 **Caveat (offen):** `relay.enable` hat 200s Timeout; ein langsamer GitHub-Install/Schema-Gen kann den
 `send_command`-Timeout reißen und „failed" melden, obwohl der Install fertig läuft — idempotenter
 Retry rettet es, aber „looks-failed-but-worked"-Wart.
+
+## 18. GUI-Proxy — roher TCP-Tunnel über die Agent-WS (✅ Feasibility 2026-06-24)
+
+Die Firewall-Web-GUI lässt sich **nicht** per Pfad-Präfix proxen: Browser lösen `/css/…`,
+`/firewall_rules.php` und jeden XHR gegen den **Origin-Root** auf → unter `/instances/3/gui/`
+landen die beim Dashboard, nicht beim Proxy. Transparentes GUI-Proxying braucht einen eigenen
+Origin pro Firewall. Userentscheid: **TCP-Tunnel via Agent** (statt Wildcard-Subdomain oder
+brüchigem HTML-Rewriting) — nah an `TODO.md` „agent-proxy".
+
+**Mechanik:** ein lokaler Forwarder (`scripts/orbit-gui-tunnel.py`) lauscht auf `localhost:8443`;
+pro Browser-Verbindung öffnet er eine WS zum Dashboard (`/api/ws/tunnel/{id}`, Admin-Session) und
+pipet rohe TCP-Bytes. Das Dashboard bridged auf die **Agent-WS**; der Agent öffnet TCP zu seiner
+GUI (`127.0.0.1:4444`) und pipet zurück. **Der Browser spricht TLS end-to-end mit der Firewall**
+(Self-Signed-Cert) — kein HTML-Rewriting, AJAX/Forms/Live/HTTP-2 funktionieren transparent.
+Streams sind per `stream`-id über die eine Agent-WS gemultiplext (Bytes als base64 in JSON
+`tunnel`-Frames, da der stdlib-WS-Client text-only ist).
+
+- Agent: `_TunnelManager` (open→`asyncio.open_connection`, pump TCP→WS, data WS→TCP, close);
+  Dispatch in `_listen_loop`, Cleanup bei Disconnect. v0.9.0.
+- Backend: `hub.open/deliver/close_tunnel` (stream→Queue); `tunnel`-Dispatch im `agent_websocket`;
+  WS-Endpoint `/ws/tunnel/{id}` (Admin-Session-Auth) bridged Client↔Agent.
+
+**✅ Live verifiziert (.199, OPNsense):** `curl -k https://localhost:8443/` → GUI-HTML durch den
+Tunnel; **3 parallele Streams** je 200 (~0,067s, Multiplexing); Firewall sprach **HTTP/2 via ALPN**
+end-to-end (Tunnel voll transparent). Tests: Agent `_TunnelManager` (5), Backend Registry (3).
+
+**Offen (Phase 2):** Frontend-„Open GUI"-Button (zeigt/startet den Tunnel-Befehl) · der Forwarder
+braucht aktuell `pip install websockets` (oder ein stdlib-WS-Client wie im Agent) · Prod: WS-Auth
+über Session hinaus (kurzlebiges Tunnel-Token), Tunnel-Audit, Egress-/Port-Policy · Backpressure
+bei großen Downloads · pfSense identisch (Agent öffnet seinen GUI-Port — nicht separat getestet,
+gleicher Pfad).

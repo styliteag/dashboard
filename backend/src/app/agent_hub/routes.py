@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 import hashlib
 import json
 import os
 import re
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -145,6 +148,10 @@ async def agent_websocket(ws: WebSocket):
                         msg.get("result", {}),
                     )
 
+                elif msg_type == "tunnel":
+                    # GUI-proxy bytes from the firewall → route to the client handler.
+                    hub.deliver_tunnel(msg.get("stream", ""), msg)
+
                 elif msg_type == "pong":
                     pass
 
@@ -161,6 +168,72 @@ async def agent_websocket(ws: WebSocket):
         log.exception("agent.ws_error", instance_id=instance_id)
     finally:
         hub.unregister(instance_id)
+
+
+# --- GUI proxy: raw TCP tunnel over the agent WS (see §18) -------------------
+
+
+async def _tunnel_client_to_agent(client_ws: WebSocket, agent, stream: str) -> None:
+    """Forward raw bytes from the local client to the firewall via the agent."""
+    async for data in client_ws.iter_bytes():
+        await agent.ws.send_json(
+            {
+                "type": "tunnel",
+                "op": "data",
+                "stream": stream,
+                "data": base64.b64encode(data).decode(),
+            }
+        )
+
+
+async def _tunnel_agent_to_client(client_ws: WebSocket, queue: asyncio.Queue) -> None:
+    """Forward firewall bytes (delivered onto the queue) back to the local client."""
+    while True:
+        frame = await queue.get()
+        if frame.get("op") == "close":
+            return
+        if frame.get("op") == "data":
+            await client_ws.send_bytes(base64.b64decode(frame.get("data", "")))
+
+
+@router.websocket("/ws/tunnel/{instance_id}")
+async def tunnel_websocket(ws: WebSocket, instance_id: int):
+    """Bridge a local client socket to the firewall's GUI port through the agent.
+
+    The client (a local port-forwarder) sends/receives raw TCP bytes as binary WS
+    frames; we multiplex them as `tunnel` frames over the agent's WS. The browser
+    speaks TLS end-to-end with the firewall, so no HTML rewriting is needed.
+    """
+    await ws.accept()
+    if not ws.session.get("user_id"):  # admin session required
+        await ws.close(code=4401)
+        return
+    agent = hub.get(instance_id)
+    if agent is None:
+        await ws.close(code=4404)
+        return
+
+    stream = uuid.uuid4().hex
+    queue = hub.open_tunnel(stream)
+    try:
+        await agent.ws.send_json({"type": "tunnel", "op": "open", "stream": stream})
+        pumps = [
+            asyncio.create_task(_tunnel_client_to_agent(ws, agent, stream)),
+            asyncio.create_task(_tunnel_agent_to_client(ws, queue)),
+        ]
+        _, pending = await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.exception("tunnel.error", instance_id=instance_id, stream=stream)
+    finally:
+        hub.close_tunnel(stream)
+        with contextlib.suppress(Exception):
+            await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
+        with contextlib.suppress(Exception):
+            await ws.close()
 
 
 # --- REST: agent management --------------------------------------------------
