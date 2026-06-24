@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
@@ -63,3 +64,39 @@ async def instance_checks(
 
     sys_status, gateways, ipsec, firmware = await _gather(inst, instance_id)
     return evaluate_checks(sys_status, gateways, ipsec, firmware)
+
+
+@router.get("/export/checkmk")
+async def export_checkmk(
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> dict:
+    """All instances' checks in one call — consumed by the Checkmk special agent.
+
+    Push instances use the hub cache (cheap); direct instances are polled live,
+    which can be slow with many of them (caching direct status is a follow-up).
+    """
+    rows = (
+        (
+            await session.execute(
+                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    instances = []
+    for inst in rows:
+        sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
+        checks = evaluate_checks(sys_status, gateways, ipsec, firmware)
+        instances.append(
+            {
+                "instance_id": inst.id,
+                "name": inst.name,
+                "host": inst.name,  # piggyback host name
+                "device_type": inst.device_type,
+                "checks": [c.model_dump() for c in checks],
+            }
+        )
+    return {"version": 1, "instances": instances}

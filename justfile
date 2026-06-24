@@ -26,6 +26,10 @@ backend-fmt:
 agent-test:
     cd backend && uv run pytest -o asyncio_mode=auto ../agent/tests -q
 
+# Checkmk special agent (stdlib; runs on the Checkmk server)
+checkmk-test:
+    cd backend && uv run pytest ../checkmk/tests -q
+
 # --- Frontend --------------------------------------------------------------
 
 frontend-install:
