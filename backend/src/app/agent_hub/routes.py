@@ -472,6 +472,44 @@ _RELAY_DROP_RESPONSE = frozenset(
 )
 
 
+@router.post("/instances/{instance_id}/relay/enable")
+async def enable_relay(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Enable the local API relay on a connected agent (idempotent).
+
+    On pfSense this installs the community REST API package (needs internet egress
+    on the firewall) and provisions the relay user; on OPNsense it just provisions.
+    Explicit by design — never an automatic side-effect of first relay use.
+    """
+    inst = await session.get(Instance, instance_id)
+    if inst is None or inst.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+
+    result = await agent.send_command("relay.enable", {}, timeout=200)
+
+    await write_audit(
+        session,
+        action="agent.relay_enable",
+        result="ok" if result.get("success") else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+        detail={"result": result},
+    )
+    await session.commit()
+    return {"sent": True, "result": result}
+
+
 @router.api_route(
     "/instances/{instance_id}/relay/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],

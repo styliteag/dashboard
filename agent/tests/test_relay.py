@@ -284,3 +284,73 @@ def test_apply_discovery_respects_explicit_config(monkeypatch, tmp_path):
     cfg.local_api_url_explicit = True  # admin pinned it → discovery must not override
     agent._apply_port_discovery(cfg)
     assert cfg.local_api_url == "https://127.0.0.1:9999"
+
+
+# --- pfSense relay (package install + user provisioning) ---------------------
+
+
+def test_provision_pfsense_needs_package(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_APIKEY_CACHE", str(tmp_path / "a.apikey"))
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: False)
+    # No package → must NOT provision (and must not install here).
+    assert agent._provision_api_credentials() is None
+
+
+def test_provision_pfsense_creates_orbit_user(monkeypatch, tmp_path):
+    cache = tmp_path / "a.apikey"
+    monkeypatch.setattr(agent, "_APIKEY_CACHE", str(cache))
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: True)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: json.dumps({"key": "orbit", "secret": "PW"}))
+    # pfSense returns (username, password) — same shape, so the relay Basic-injects it.
+    assert agent._provision_api_credentials() == ("orbit", "PW")
+    assert json.loads(cache.read_text())["secret"] == "PW"
+
+
+def test_install_pfrest_skips_when_present(monkeypatch):
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: True)
+    called = {"n": 0}
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: called.__setitem__("n", 1))
+    assert agent._install_pfrest() is True
+    assert called["n"] == 0  # already installed → no download
+
+
+def test_install_pfrest_derives_versioned_url(monkeypatch):
+    captured = {}
+    states = iter([False, True])  # not installed before, installed after
+
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: next(states))
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+    monkeypatch.setattr(agent, "_run", lambda cmd, **k: captured.update(cmd=cmd))
+    assert agent._install_pfrest() is True
+    assert captured["cmd"][0:2] == ["pkg-static", "add"]
+    assert captured["cmd"][2].endswith("/pfSense-2.8.1-pkg-RESTAPI.pkg")
+
+
+def test_relay_enable_pfsense_installs_then_provisions(monkeypatch):
+    order = []
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_install_pfrest", lambda: order.append("install") or True)
+    monkeypatch.setattr(
+        agent, "_provision_api_credentials", lambda: order.append("provision") or ("orbit", "PW")
+    )
+    result = agent.execute_command("relay.enable", {})
+    assert result["success"] is True
+    assert order == ["install", "provision"]  # package before credentials
+
+
+def test_relay_enable_fails_if_install_fails(monkeypatch):
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_install_pfrest", lambda: False)
+    result = agent.execute_command("relay.enable", {})
+    assert result["success"] is False
+    assert "install failed" in result["output"]
+
+
+def test_relay_enable_opnsense_skips_install(monkeypatch):
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    monkeypatch.setattr(agent, "_provision_api_credentials", lambda: ("K", "S"))
+    # _install_pfrest must never run on OPNsense — make it explode if called.
+    monkeypatch.setattr(agent, "_install_pfrest", lambda: (_ for _ in ()).throw(AssertionError()))
+    assert agent.execute_command("relay.enable", {})["success"] is True

@@ -44,6 +44,21 @@ def test_uninstall_skips_deprovision_when_disabled() -> None:
     assert "rm -rf /usr/local/orbit-agent" in script  # still tears the agent down
 
 
+def test_uninstall_pfsense_removes_restapi_package() -> None:
+    # On pfSense the teardown must also remove the pfRest package the relay installed.
+    script = agent._build_uninstall_script(
+        "/usr/local/orbit-agent",
+        "/usr/local/etc/rc.d/orbit_agent",
+        "/tmp/d.php",
+        True,
+        extra_cleanup="pkg-static delete -y pfSense-pkg-RESTAPI >/dev/null 2>&1\n",
+    )
+    assert "pkg-static delete -y pfSense-pkg-RESTAPI" in script
+    # Package removal comes after the orbit user deprovision, before removing files.
+    assert script.index("/tmp/d.php") < script.index("pkg-static delete")
+    assert script.index("pkg-static delete") < script.index("rm -rf /usr/local/orbit-agent")
+
+
 # --- enrollment URL derivation ----------------------------------------------
 
 

@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.7.3"
+__version__ = "0.8.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -823,18 +823,74 @@ def _cache_credentials(key: str, secret: str) -> None:
         os.chmod(path, 0o600)
 
 
-def _provision_api_credentials() -> tuple[str, str] | None:
-    """OPNsense only: mint an API key via OPNsense's own model, cache it, return it.
+# pfSense has no native REST API — the dashboard-triggered relay.enable installs the
+# community pfRest package (pfrest/pfSense-pkg-RESTAPI), whose default auth is
+# BasicAuth against the pfSense local user DB. So here we just create a dedicated
+# `orbit` pfSense user with page-all and a known bcrypt password, and return it as
+# the (key, secret) = (username, password) pair — the relay injects the SAME HTTP
+# Basic auth as for OPNsense, only the credential differs. Idempotent: resets the
+# password if the user already exists. (local_user_set_password expects an
+# ['item'=>…] wrapper and silently no-ops otherwise, so we set bcrypt-hash directly.)
+_PROVISION_PF_PHP = r"""<?php
+require_once("config.inc");
+require_once("auth.inc");
+$pw = base64_encode(random_bytes(24));
+$hash = password_hash($pw, PASSWORD_BCRYPT);
+$users = config_get_path("system/user", []);
+$found = false;
+foreach ($users as $i => $u) {
+    if (($u['name'] ?? '') === 'orbit') {
+        $users[$i]['bcrypt-hash'] = $hash;
+        $users[$i]['priv'] = ['page-all'];
+        local_user_set($users[$i]);
+        $found = true;
+        break;
+    }
+}
+if (!$found) {
+    $uid = (int) config_get_path("system/nextuid");
+    $user = ['name'=>'orbit','descr'=>'STYLiTE Orbit relay (auto-provisioned)',
+             'scope'=>'user','uid'=>(string)$uid,'priv'=>['page-all'],
+             'expires'=>'','ipsecpsk'=>'','bcrypt-hash'=>$hash];
+    $users[] = $user;
+    config_set_path("system/nextuid", (string)($uid + 1));
+    local_user_set($user);
+}
+config_set_path("system/user", $users);
+write_config("orbit relay user");
+echo json_encode(["key"=>"orbit","secret"=>$pw]);
+"""
 
-    Runs a short PHP that creates the dedicated `orbit` user (if missing), grants
-    page-all, and adds an API key; OPNsense computes the bcrypt secret and hands
-    back the plaintext pair once. Returns None on non-OPNsense or any failure.
-    """
-    if detect_platform() != "opnsense":
-        return None
+# pfRest release assets are per-pfSense-version (pfSense-<ver>-pkg-RESTAPI.pkg). We
+# track `latest` — the project ships an asset per supported version; pin instead if
+# reproducibility matters (it then needs bumping per pfSense release).
+_PFREST_RELEASE_BASE = "https://github.com/pfrest/pfSense-pkg-RESTAPI/releases/latest/download"
+_PFREST_CLI = "/usr/local/bin/pfsense-restapi"
+
+
+def _pfrest_installed() -> bool:
+    """True when the pfRest REST API package is installed (its CLI is present)."""
+    return Path(_PFREST_CLI).exists()
+
+
+def _install_pfrest() -> bool:
+    """Install the pfRest package from its GitHub release (pfSense only, needs egress)."""
+    if _pfrest_installed():
+        return True
+    version = _read_pfsense_version().split("-")[0]  # "2.8.1-RELEASE" -> "2.8.1"
+    if not version:
+        return False
+    url = f"{_PFREST_RELEASE_BASE}/pfSense-{version}-pkg-RESTAPI.pkg"
+    log.warning("relay: installing pfRest package from %s", url)
+    _run(["pkg-static", "add", url], timeout=180)
+    return _pfrest_installed()
+
+
+def _run_provision_php(php: str) -> tuple[str, str] | None:
+    """Run a provisioning PHP that prints {"key","secret"}, cache + return the pair."""
     tmp = f"{_APIKEY_CACHE}.provision.php"
     try:
-        Path(tmp).write_text(_PROVISION_PHP)
+        Path(tmp).write_text(php)
         out = _run(["/usr/local/bin/php", tmp], timeout=30)
     finally:
         with contextlib.suppress(OSError):
@@ -848,8 +904,46 @@ def _provision_api_credentials() -> tuple[str, str] | None:
     if not key or not secret:
         return None
     _cache_credentials(key, secret)
-    log.warning("relay: provisioned OPNsense API key for user 'orbit' (page-all)")
     return key, secret
+
+
+def _provision_api_credentials() -> tuple[str, str] | None:
+    """Mint relay credentials for the local platform, cache them, return the pair.
+
+    OPNsense: an API key via its own User model (key+secret). pfSense: a dedicated
+    `orbit` local user for the pfRest package's BasicAuth (username+password) — but
+    ONLY if pfRest is already installed (the install is an explicit relay.enable
+    step, never an automatic side-effect). Returns None on unknown platform/failure.
+    """
+    platform_name = detect_platform()
+    if platform_name == "opnsense":
+        pair = _run_provision_php(_PROVISION_PHP)
+        if pair:
+            log.warning("relay: provisioned OPNsense API key for user 'orbit' (page-all)")
+        return pair
+    if platform_name == "pfsense":
+        if not _pfrest_installed():
+            return None  # relay not enabled yet — don't install here
+        pair = _run_provision_php(_PROVISION_PF_PHP)
+        if pair:
+            log.warning("relay: provisioned pfSense relay user 'orbit' (page-all)")
+        return pair
+    return None
+
+
+def _relay_enable() -> dict:
+    """Dashboard-triggered: make the relay usable on this box, return a result dict.
+
+    pfSense: install the pfRest package (egress) THEN provision. OPNsense: just
+    provision (no package, no egress). Idempotent.
+    """
+    platform_name = detect_platform()
+    if platform_name == "pfsense" and not _install_pfrest():
+        return {"success": False, "output": "pfRest package install failed"}
+    creds = _provision_api_credentials()
+    if creds is None:
+        return {"success": False, "output": "relay credential provisioning failed"}
+    return {"success": True, "output": f"relay enabled ({platform_name})"}
 
 
 def _ensure_api_credentials(cfg: Config) -> tuple[str, str] | None:
@@ -1010,6 +1104,12 @@ def execute_command(action: str, params: dict) -> dict:
     elif action == "reboot":
         subprocess.Popen(["shutdown", "-r", "+1"], stdout=subprocess.DEVNULL)
         return {"success": True, "output": "reboot scheduled in 1 minute"}
+
+    elif action == "relay.enable":
+        # Explicit, idempotent: install the local REST API (pfSense) + provision the
+        # relay credential. Kept off the startup path on purpose (§16 #3) — on
+        # pfSense it pulls a package from the internet.
+        return _relay_enable()
 
     elif action == "http.relay":
         # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
@@ -1429,11 +1529,34 @@ if ($removed > 0) { $mdl->serializeToConfig(false, true); Config::getInstance()-
 echo "removed=$removed";
 """
 
+# Remove the auto-provisioned `orbit` pfSense user (reverse of the pfSense provision).
+_DEPROVISION_PF_PHP = r"""<?php
+require_once("config.inc");
+require_once("auth.inc");
+$users = config_get_path("system/user", []);
+$kept = [];
+foreach ($users as $u) {
+    if (($u['name'] ?? '') === 'orbit') { local_user_del($u); }
+    else { $kept[] = $u; }
+}
+config_set_path("system/user", $kept);
+write_config("remove orbit relay user");
+echo "removed";
+"""
+
 
 def _build_uninstall_script(
-    install_dir: str, rc_script: str, php_path: str, deprovision: bool
+    install_dir: str,
+    rc_script: str,
+    php_path: str,
+    deprovision: bool,
+    extra_cleanup: str = "",
 ) -> str:
-    """Build the detached teardown script. Order matters: supervisor dies first."""
+    """Build the detached teardown script. Order matters: supervisor dies first.
+
+    extra_cleanup is a platform-specific shell line (e.g. removing the pfRest package
+    on pfSense) run after the orbit user is deprovisioned.
+    """
     deprovision_line = (
         f"[ -x /usr/local/bin/php ] && /usr/local/bin/php {php_path} >/dev/null 2>&1\n"
         if deprovision and php_path
@@ -1459,6 +1582,7 @@ def _build_uninstall_script(
         "sysrc -x orbit_agent_enable >/dev/null 2>&1\n"  # don't revive on reboot
         f"rm -f {rc_script}\n"
         + deprovision_line
+        + extra_cleanup
         + f"rm -rf {install_dir}\n"
         f"rm -f {CONFIG_PATH} /usr/local/etc/opnsense-dash-agent.conf\n"
         f"rm -f {_APIKEY_CACHE} /usr/local/etc/opnsense-dash-agent.apikey\n"
@@ -1472,16 +1596,26 @@ async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> Non
     rc_script = "/usr/local/etc/rc.d/orbit_agent"
     deprovision = bool(params.get("deprovision", True))
 
+    # Platform-specific teardown: remove the right `orbit` user, and on pfSense also
+    # remove the pfRest package the relay installed (else uninstall leaves a dangling,
+    # internet-reachable REST API behind).
+    if detect_platform() == "pfsense":
+        deprovision_php, extra_cleanup = _DEPROVISION_PF_PHP, (
+            f"[ -x {_PFREST_CLI} ] && pkg-static delete -y pfSense-pkg-RESTAPI >/dev/null 2>&1\n"
+        )
+    else:
+        deprovision_php, extra_cleanup = _DEPROVISION_PHP, ""
+
     php_path = "/tmp/orbit-deprovision.php"
     try:
-        Path(php_path).write_text(_DEPROVISION_PHP)
+        Path(php_path).write_text(deprovision_php)
     except OSError:
         php_path = ""
 
     sh_path = "/tmp/orbit-uninstall.sh"
     try:
         Path(sh_path).write_text(
-            _build_uninstall_script(install_dir, rc_script, php_path, deprovision)
+            _build_uninstall_script(install_dir, rc_script, php_path, deprovision, extra_cleanup)
         )
         subprocess.Popen(
             ["/bin/sh", sh_path],
