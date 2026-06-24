@@ -62,6 +62,59 @@ def test_encode_frame_uses_extended_lengths() -> None:
     assert agent._encode_frame(agent._OP_TEXT, b"x" * 70000)[1] & 0x7F == 127
 
 
+# --- unit: dead-peer detection ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stale_seconds_starts_near_zero() -> None:
+    ws = agent.WebSocket(asyncio.StreamReader(), object(), 1 << 20)
+    assert ws.stale_seconds() < 1.0
+
+
+@pytest.mark.asyncio
+async def test_keepalive_raises_on_silent_peer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No data for > _RECV_TIMEOUT → keepalive raises (so the agent reconnects)."""
+
+    async def _instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(agent.asyncio, "sleep", _instant)
+
+    class DeadWS:
+        def stale_seconds(self) -> float:
+            return agent._RECV_TIMEOUT + 1
+
+        async def ping(self) -> None:
+            raise AssertionError("must not ping a peer already judged dead")
+
+    with pytest.raises(agent.WSError):
+        await agent._keepalive_loop(DeadWS())
+
+
+@pytest.mark.asyncio
+async def test_keepalive_pings_a_live_peer(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(agent.asyncio, "sleep", _instant)
+    pinged: list[int] = []
+
+    class _Stop(Exception):
+        pass
+
+    class LiveWS:
+        def stale_seconds(self) -> float:
+            return 0.0
+
+        async def ping(self) -> None:
+            pinged.append(1)
+            raise _Stop  # break the otherwise-infinite loop
+
+    with pytest.raises(_Stop):
+        await agent._keepalive_loop(LiveWS())
+    assert pinged == [1]
+
+
 # --- integration: interop with a reference websockets server ------------------
 
 

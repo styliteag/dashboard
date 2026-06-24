@@ -32,7 +32,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -736,6 +736,13 @@ _OP_CLOSE = 0x8
 _OP_PING = 0x9
 _OP_PONG = 0xA
 
+# Dead-peer detection: send a ping every _PING_INTERVAL; if nothing at all has
+# arrived (not even a pong) for _RECV_TIMEOUT, the peer is gone (e.g. backend
+# restart / half-open TCP) — treat the connection as dead and reconnect. Without
+# this the agent can hang forever on a silently-dead socket.
+_PING_INTERVAL = 20
+_RECV_TIMEOUT = 60
+
 
 class WSError(Exception):
     """Raised on handshake failure or when the connection is closed."""
@@ -794,6 +801,11 @@ class WebSocket:
         self._max_size = max_size
         self._send_lock = asyncio.Lock()
         self._closed = False
+        self._last_recv = time.monotonic()  # for dead-peer detection
+
+    def stale_seconds(self) -> float:
+        """Seconds since the last frame of any kind arrived from the peer."""
+        return time.monotonic() - self._last_recv
 
     async def _send_frame(self, opcode: int, payload: bytes) -> None:
         async with self._send_lock:
@@ -813,6 +825,7 @@ class WebSocket:
         msg_opcode: int | None = None
         while True:
             fin, opcode, payload = await _read_frame(self._reader)
+            self._last_recv = time.monotonic()
             if opcode == _OP_PING:
                 await self._send_frame(_OP_PONG, payload)
                 continue
@@ -1076,9 +1089,16 @@ async def agent_loop(cfg: Config) -> None:
 
 
 async def _keepalive_loop(ws: WebSocket) -> None:
-    """Send a WebSocket ping every 20s so NAT mappings stay open."""
+    """Ping periodically (NAT keepalive) and detect a dead peer.
+
+    If nothing has arrived from the server for _RECV_TIMEOUT (no pong, no data),
+    the connection is dead (backend restart / half-open TCP) — raise so the main
+    loop tears down and reconnects instead of hanging on a silent socket.
+    """
     while True:
-        await asyncio.sleep(20)
+        await asyncio.sleep(_PING_INTERVAL)
+        if ws.stale_seconds() > _RECV_TIMEOUT:
+            raise WSError(f"no data from server in {_RECV_TIMEOUT}s — dead connection")
         await ws.ping()
 
 
