@@ -21,7 +21,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -430,6 +430,84 @@ async def update_all_agents(
     )
     await session.commit()
     return {"served_version": served, "updated": results}
+
+
+# --- Local API relay ---------------------------------------------------------
+# Tunnel an HTTP request to a NAT'd firewall's own REST API over the agent's
+# WebSocket (see docs/agent-architecture.md §15). The dashboard holds NO firewall
+# credentials — the agent injects them locally. Requires an admin session: the
+# relay grants full API access, so the dashboard is the trust boundary.
+
+# Request headers that are dashboard-local or hop-by-hop — never forward them
+# (cookie/authorization are the *dashboard's* creds, not the firewall's).
+_RELAY_DROP_REQUEST = frozenset(
+    {
+        "host",
+        "content-length",
+        "connection",
+        "keep-alive",
+        "transfer-encoding",
+        "upgrade",
+        "cookie",
+        "authorization",
+        "accept-encoding",
+    }
+)
+# Response headers the agent already stripped; drop again so Starlette frames
+# the body itself (length/encoding) rather than echoing the upstream values.
+_RELAY_DROP_RESPONSE = frozenset(
+    {
+        "content-length",
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "content-encoding",
+    }
+)
+
+
+@router.api_route(
+    "/instances/{instance_id}/relay/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+)
+async def relay_to_agent(
+    instance_id: int,
+    path: str,
+    request: Request,
+    _user: User = Depends(current_user),
+) -> Response:
+    """Proxy ``{method} /relay/<path>`` to the firewall's local API via its agent."""
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+
+    body = await request.body()
+    rel_path = path + (f"?{request.url.query}" if request.url.query else "")
+    params = {
+        "method": request.method,
+        "path": rel_path,
+        "headers": {
+            k: v for k, v in request.headers.items() if k.lower() not in _RELAY_DROP_REQUEST
+        },
+        "body": base64.b64encode(body).decode(),
+    }
+
+    result = await agent.send_command("http.relay", params, timeout=30)
+    # status 0 (or a timed-out send_command with no status) = the request never
+    # reached the firewall API → 502, distinct from a real upstream HTTP status.
+    if not result or result.get("status", 0) == 0:
+        detail = result.get("output", "relay failed") if result else "relay failed"
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+
+    content = base64.b64decode(result.get("body") or "")
+    headers = {
+        k: v
+        for k, v in (result.get("headers") or {}).items()
+        if k.lower() not in _RELAY_DROP_RESPONSE
+    }
+    return Response(content=content, status_code=int(result["status"]), headers=headers)
 
 
 @router.get("/instances/{instance_id}/agent/token")

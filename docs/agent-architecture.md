@@ -259,6 +259,7 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 - **DR-4** Agent = pure-stdlib Python, keine `websockets`-Dependency.
 - **DR-5** Supervisor-Wrapper `run-agent.sh` + Zwei-Ebenen-Rollback.
 - **DR-6** Canary-Rollout vor Flotte; Update über authentifizierten WS, nicht `/agent/script`.
+- **DR-7** Relay = transparenter HTTP-Tunnel; Agent injiziert lokal-provisionierte Creds, Dashboard bleibt keyless (§15).
 
 ## 11. Offene Punkte
 
@@ -389,3 +390,52 @@ wie §4).
 
 **Prozess:** Backend-Lint-Baseline rot (~127 B008 etc.) — Gate ist keins (siehe Phase 0 §9, B008-
 Config-Fix steht aus). Commits nur lokal, nie gepusht.
+
+## 15. Relay — lokaler API-Tunnel (✅ Phase 1, 2026-06-24)
+
+**Ziel (Userwunsch):** „die API der OPNsense direkt erreichen … evtl. sogar ohne extra Key,
+weil die Request von localhost kommt." Das Dashboard sitzt auf öffentlicher IP, die Firewall
+oft hinter NAT — ihre REST-API ist von außen nicht erreichbar. Der Relay tunnelt eine HTTP-
+Request über die **bestehende Agent-WebSocket** an die *eigene* API der Box.
+
+**Live-Befunde (.199, OPNsense 26.1.10):**
+- GUI/API lauscht auf **Port 4444** (custom, nicht 443) — `<webgui><port>4444</port>`; auf
+  `127.0.0.1` erreichbar (lighttpd `*:4444`). Mein 443-Test war deshalb „Connection refused".
+- **Kein localhost-Auth-Bypass:** die API verlangt auch von localhost Basic-Auth (key:secret).
+  Die localhost-Intuition stimmt trotzdem — realisiert über den *Agenten auf localhost*, nicht
+  über einen API-Bypass.
+- OPNsense speichert das API-**Secret als bcrypt** (`password_verify`), und bringt mit
+  `API.php::createKey()` → `$user->apikeys->add()` **seinen eigenen Key-Generator** mit. Wir
+  hashen nie selbst — OPNsense erzeugt key+secret und gibt das Klartext-Paar einmalig zurück.
+
+**Mechanik (kein neuer Korrelations-Mechanismus nötig):** wiederverwendet die vorhandene
+`send_command`/`resolve_command`-Future-Korrelation (request_id + Timeout).
+- Backend: `@router.api_route("/instances/{id}/relay/{path:path}")` (GET/POST/PUT/DELETE/PATCH),
+  **`current_user`-Pflicht** (Admin-Session). Base64-tunnelt method/path/headers/body → Agent →
+  Response. Dashboard-eigene Header (cookie/authorization/host) werden **nicht** weitergereicht.
+  `status 0` vom Agenten = Transport-/Credential-Fehler → **502**, echte API-Status (403/200…)
+  werden 1:1 durchgereicht.
+- Agent: `http.relay`-Action → `_relay_http()` injiziert `Authorization: Basic` lokal, forwardet
+  an `opnsense_api_url` (default `https://127.0.0.1:4444`, self-signed → unverified ctx).
+
+**Keyless aus Admin-Sicht (Auto-Provisioning):** fehlen Credentials, mintet der Agent (läuft als
+root) per OPNsense-eigenem PHP (`legacy_bindings.inc`) einen dedizierten User **`orbit`**
+(scope `automation`, `page-all`) + API-Key, cached das Paar (`…agent.apikey`, mode 600) und
+injiziert es. **Das Dashboard hält null Firewall-Credentials.** Credential-Präzedenz:
+config-pasted (`opnsense_api_key/secret`) > Cache > Auto-Provision (`relay_provision`, nur OPNsense).
+Live bewiesen: provisionierter Key → `GET /api/core/firmware/status` → **HTTP 200** + JSON.
+
+→ **DR-7: Relay = transparenter HTTP-Tunnel; der Agent injiziert lokal-provisionierte Creds;
+das Dashboard bleibt keyless.** Variante „inject the Bearer" (A), nicht „Key ans Dashboard
+geben" (B) — letzteres legte Firewall-Admin-Creds ins Dashboard.
+
+**Sicherheits-Tradeoff (geflaggt, bewusst):** ein Voll-API-Tunnel heißt: ein kompromittiertes
+**Dashboard** bekommt Voll-Admin-API auf *jeder* NAT'd Firewall. `page-all` ist für dev gewählt.
+Der Agent läuft eh als root → der Key ist *keine* Eskalation der Agent-Macht; die Vertrauens-
+grenze ist das Dashboard (Relay-Route braucht Admin-Session). **Prod-Hebel:** Path-Whitelist im
+Relay + `orbit`-Privilegien auf das real Genutzte scopen. Tests: `agent/tests/test_relay.py`
+(15) + `backend/tests/test_relay.py` (7).
+
+**Offen:** end-to-end durchs laufende Dashboard (braucht Agent-0.4.0-Deploy auf .199) ·
+pfSense-Relay (anderes API-Modell, kein `apikeys->add()`) · Least-Privilege-Scoping +
+Path-Whitelist · Cache-Verlust mintet einen weiteren Key (Orphan-Keys; später aufräumen).

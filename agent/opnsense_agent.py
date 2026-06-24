@@ -42,6 +42,10 @@ CONFIG_PATH = os.environ.get("AGENT_CONFIG", "/usr/local/etc/opnsense-dash-agent
 
 log = logging.getLogger("opnsense-agent")
 
+# Active config — set in main(). The HTTP relay (execute_command runs without a
+# cfg arg) reads the local OPNsense API settings from here.
+_CONFIG: Config | None = None
+
 
 # =============================================================================
 # Configuration
@@ -55,6 +59,13 @@ class Config:
         self.agent_id: str = platform.node()
         self.push_interval: int = 30
         self.log_level: str = "INFO"
+        # Local API relay (see §15): where the box's own REST API listens, plus
+        # optional admin-pasted credentials. Empty creds → the agent provisions
+        # its own key on OPNsense (when relay_provision is on).
+        self.opnsense_api_url: str = "https://127.0.0.1:4444"
+        self.opnsense_api_key: str = ""
+        self.opnsense_api_secret: str = ""
+        self.relay_provision: bool = True
         self.load()
 
     def load(self) -> None:
@@ -68,6 +79,10 @@ class Config:
         self.agent_id = data.get("agent_id", self.agent_id)
         self.push_interval = int(data.get("push_interval", self.push_interval))
         self.log_level = data.get("log_level", self.log_level)
+        self.opnsense_api_url = data.get("opnsense_api_url", self.opnsense_api_url)
+        self.opnsense_api_key = data.get("opnsense_api_key", self.opnsense_api_key)
+        self.opnsense_api_secret = data.get("opnsense_api_secret", self.opnsense_api_secret)
+        self.relay_provision = bool(data.get("relay_provision", self.relay_provision))
 
 
 # =============================================================================
@@ -676,6 +691,191 @@ def collect_all() -> dict:
 
 
 # =============================================================================
+# Local API relay (see docs/agent-architecture.md §15)
+#
+# The dashboard reaches a NAT'd firewall's REST API by tunneling HTTP over the
+# existing agent WebSocket: it sends an `http.relay` command, the agent forwards
+# the request to the box's own API (https://127.0.0.1:4444 by default) and returns
+# the response. The dashboard holds NO firewall credentials — the agent, already
+# root on the box, injects HTTP Basic auth locally. On OPNsense it self-provisions
+# that key (OPNsense's own User model mints it, computing the bcrypt secret), so
+# the admin pastes nothing. The relay user gets page-all; the trust boundary is
+# the dashboard (the relay route requires an admin session).
+# =============================================================================
+
+_APIKEY_CACHE = os.environ.get(
+    "AGENT_APIKEY_CACHE", "/usr/local/etc/opnsense-dash-agent.apikey"
+)
+
+# Hop-by-hop headers (RFC 7230 §6.1) plus auth/host/cookie — never forwarded.
+_RELAY_DROP_HEADERS = frozenset({
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
+    "authorization", "cookie",
+})
+
+# OPNsense's own User model mints the key (and the bcrypt secret) — we never hash
+# anything ourselves. Idempotent on the user; appends one key per run (the agent
+# caches the pair, so this runs once).
+_PROVISION_PHP = r"""<?php
+require_once('legacy_bindings.inc');
+use OPNsense\Core\Config;
+use OPNsense\Auth\User;
+$username = 'orbit';
+Config::getInstance()->lock();
+$mdl = new User();
+$user = $mdl->getUserByName($username);
+if (!$user) {
+    $user = $mdl->user->Add();
+    $user->name = $username;
+    $user->scope = 'automation';
+    $user->descr = 'STYLiTE Orbit relay (auto-provisioned)';
+    $pw = random_bytes(50);
+    while (($i = strpos($pw, "\0")) !== false) { $pw[$i] = random_bytes(1); }
+    $hash = $mdl->generatePasswordHash($pw);
+    if ($hash !== false && strpos($hash, '$') === 0) { $user->password = $hash; }
+}
+$user->priv = 'page-all';
+$pair = $user->apikeys->add();
+$mdl->serializeToConfig(false, true);
+Config::getInstance()->save();
+echo json_encode($pair);
+"""
+
+
+def _load_cached_credentials() -> tuple[str, str] | None:
+    """Return the (key, secret) the agent provisioned earlier, or None."""
+    try:
+        data = json.loads(Path(_APIKEY_CACHE).read_text())
+    except (OSError, ValueError):
+        return None
+    key, secret = data.get("key"), data.get("secret")
+    return (key, secret) if key and secret else None
+
+
+def _cache_credentials(key: str, secret: str) -> None:
+    """Persist the provisioned key:secret (mode 600 — it is an admin credential)."""
+    path = Path(_APIKEY_CACHE)
+    path.write_text(json.dumps({"user": "orbit", "key": key, "secret": secret}))
+    with contextlib.suppress(OSError):
+        os.chmod(path, 0o600)
+
+
+def _provision_api_credentials() -> tuple[str, str] | None:
+    """OPNsense only: mint an API key via OPNsense's own model, cache it, return it.
+
+    Runs a short PHP that creates the dedicated `orbit` user (if missing), grants
+    page-all, and adds an API key; OPNsense computes the bcrypt secret and hands
+    back the plaintext pair once. Returns None on non-OPNsense or any failure.
+    """
+    if detect_platform() != "opnsense":
+        return None
+    tmp = f"{_APIKEY_CACHE}.provision.php"
+    try:
+        Path(tmp).write_text(_PROVISION_PHP)
+        out = _run(["/usr/local/bin/php", tmp], timeout=30)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+    try:
+        pair = json.loads(out.strip())
+    except ValueError:
+        log.error("relay: provisioning produced no valid key pair")
+        return None
+    key, secret = pair.get("key"), pair.get("secret")
+    if not key or not secret:
+        return None
+    _cache_credentials(key, secret)
+    log.warning("relay: provisioned OPNsense API key for user 'orbit' (page-all)")
+    return key, secret
+
+
+def _ensure_api_credentials(cfg: Config) -> tuple[str, str] | None:
+    """Resolve relay credentials.
+
+    Precedence: admin-pasted config creds > cached provisioned pair > fresh
+    auto-provision (OPNsense, when relay_provision is on). None → relay can't auth.
+    """
+    if cfg.opnsense_api_key and cfg.opnsense_api_secret:
+        return cfg.opnsense_api_key, cfg.opnsense_api_secret
+    cached = _load_cached_credentials()
+    if cached:
+        return cached
+    if cfg.relay_provision:
+        return _provision_api_credentials()
+    return None
+
+
+def _http_request(
+    url: str, method: str, headers: dict, body: bytes | None, timeout: int
+) -> tuple[int, list[tuple[str, str]], bytes]:
+    """One HTTPS request to the local API (self-signed cert → unverified context)."""
+    parts = urlsplit(url)
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    conn = http.client.HTTPSConnection(
+        parts.hostname or "127.0.0.1", parts.port or 443, timeout=timeout, context=ctx
+    )
+    try:
+        path = parts.path + (f"?{parts.query}" if parts.query else "")
+        conn.request(method, path or "/", body=body, headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        return resp.status, resp.getheaders(), data
+    finally:
+        conn.close()
+
+
+def _relay_http(params: dict, cfg: Config | None) -> dict:
+    """Forward a dashboard HTTP request to the local OPNsense API with injected auth.
+
+    params: {method, path, headers, body(base64)} → {success, status, headers,
+    body(base64)}. status 0 marks a transport/credential failure (the request
+    never reached the API), distinct from an API HTTP error status.
+    """
+    if cfg is None:
+        return {"success": False, "status": 0, "output": "agent config unavailable"}
+    creds = _ensure_api_credentials(cfg)
+    if creds is None:
+        return {"success": False, "status": 0, "output": "no OPNsense API credentials"}
+    key, secret = creds
+
+    method = str(params.get("method", "GET")).upper()
+    path = str(params.get("path", "")).lstrip("/")
+    url = f"{cfg.opnsense_api_url.rstrip('/')}/{path}"
+    try:
+        body = base64.b64decode(params.get("body") or "", validate=True)
+    except (ValueError, TypeError):
+        body = b""
+
+    headers = {
+        k: v
+        for k, v in (params.get("headers") or {}).items()
+        if k.lower() not in _RELAY_DROP_HEADERS
+    }
+    cred = base64.b64encode(f"{key}:{secret}".encode()).decode()
+    headers["Authorization"] = f"Basic {cred}"
+    if body:
+        headers["Content-Length"] = str(len(body))
+
+    try:
+        status, resp_headers, data = _http_request(
+            url, method, headers, body or None, timeout=25
+        )
+    except (OSError, http.client.HTTPException) as exc:
+        return {"success": False, "status": 0, "output": f"relay request failed: {exc}"}
+
+    out_headers = {k: v for k, v in resp_headers if k.lower() not in _RELAY_DROP_HEADERS}
+    return {
+        "success": 200 <= status < 400,
+        "status": status,
+        "headers": out_headers,
+        "body": base64.b64encode(data).decode(),
+    }
+
+
+# =============================================================================
 # Command executor
 # =============================================================================
 
@@ -744,6 +944,10 @@ def execute_command(action: str, params: dict) -> dict:
     elif action == "reboot":
         subprocess.Popen(["shutdown", "-r", "+1"], stdout=subprocess.DEVNULL)
         return {"success": True, "output": "reboot scheduled in 1 minute"}
+
+    elif action == "http.relay":
+        # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
+        return _relay_http(params, _CONFIG)
 
     elif action == "ping":
         return {"success": True, "output": "pong", "agent_version": __version__}
@@ -1298,7 +1502,9 @@ async def _main_async(cfg: Config) -> None:
 
 
 def main() -> None:
+    global _CONFIG
     cfg = Config()
+    _CONFIG = cfg  # the HTTP relay reads local API settings from here
     logging.basicConfig(
         level=getattr(logging, cfg.log_level.upper(), logging.INFO),
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
