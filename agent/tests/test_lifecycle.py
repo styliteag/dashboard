@@ -20,10 +20,10 @@ def test_uninstall_kills_supervisor_before_agent() -> None:
     script = agent._build_uninstall_script(
         "/usr/local/orbit-agent", "/usr/local/etc/rc.d/orbit_agent", "/tmp/d.php", True
     )
-    sup = script.index("pkill -f run-agent.sh")
-    ag = script.index("pkill -f orbit_agent.py")
-    # The supervisor MUST die first, else it respawns the agent we just killed.
-    assert sup < ag
+    # The supervisor MUST be killed first, else it respawns the agent. SIGKILL —
+    # the processes don't reliably die on SIGTERM.
+    assert "kill -9" in script
+    assert script.index("run-agent.sh") < script.index("orbit_agent.py")
 
 
 def test_uninstall_removes_footprint() -> None:

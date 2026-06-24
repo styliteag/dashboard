@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1442,8 +1442,11 @@ def _build_uninstall_script(
     return (
         "#!/bin/sh\n"
         "sleep 3\n"  # let the ack flush over the WS before we kill the agent
-        "pkill -f run-agent.sh 2>/dev/null\n"  # supervisor FIRST — else it respawns us
-        "pkill -f orbit_agent.py 2>/dev/null\n"  # then the agent itself
+        # SIGKILL, not SIGTERM: the agent/supervisor don't reliably die on TERM
+        # (asyncio handler + executor threads can linger). Supervisor FIRST so it
+        # can't respawn the agent, then the agent. -9 = immediate, no trap/respawn.
+        "for p in $(pgrep -f run-agent.sh 2>/dev/null); do kill -9 \"$p\" 2>/dev/null; done\n"
+        "for p in $(pgrep -f orbit_agent.py 2>/dev/null); do kill -9 \"$p\" 2>/dev/null; done\n"
         "sysrc -x orbit_agent_enable >/dev/null 2>&1\n"  # don't revive on reboot
         f"rm -f {rc_script}\n"
         + deprovision_line
