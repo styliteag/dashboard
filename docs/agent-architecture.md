@@ -368,9 +368,16 @@ wie §4).
 - Dev-Churn-Quelle: Vite-`5173`-Proxy droppt langlebige WS bei HMR → Agents auf `8000` direkt.
 
 **Tier 2 — geflaggt, unterbewertet:**
-- ⬜ **Update-Signatur (Offline-Key)** — v1 nur sha256+TLS; Dashboard-Compromise = RCE auf alle
-  Firewalls. Größte Security-Schuld (§6).
-- ⬜ **Metric-Retention/Rollup nicht gebaut** (Tabelle wächst unbegrenzt; APScheduler-Job-TODO).
+- ✅ **Update-Signatur (Offline-Key) (2026-06-24)** — Ed25519, offline signiert, Dashboard
+  relayt nur Code+Signatur (hat den Private Key nie → kann nichts fälschen). Agent verifiziert
+  mit eingebackenem `_UPDATE_PUBKEY` per **pure-stdlib-Ed25519** (DR-4 bleibt). Default leer →
+  Enforcement aus (dev); Prod-Release backt Pubkey + signiert (`scripts/sign_agent.py`,
+  `just sign-agent`). Pure-Verify gegen `cryptography` kreuzvalidiert, Roundtrip live geprüft.
+  Offen: Key-Rotation-Flow (Henne-Ei über die Flotte) + Bootstrap-Doku.
+- ✅ **Metric-Retention/Rollup (2026-06-24)** — `app/maintenance/jobs.py`: 5-Min-Rollup +
+  Retention (30d raw / 365d 5m), im Scheduler. Rollup-SQL live gegen MariaDB validiert.
+- ✅ **Interface-Durchsatz-Raten (2026-06-24)** — `to_rate()` (Counter→bytes/s) + `?rate=true`;
+  Frontend `InterfacesSection` mit live RX/TX. Push/Poll-Parität.
 - ⬜ **Multi-Tenancy/RBAC fehlt** — ein Admin-User; MSP-Scale braucht Orgs/Rollen/Scoping.
 - ⬜ **Interface-Durchsatz-Raten** — Poll difft zwei Polls; Push schickt nur rohe Counter →
   Raten fehlen agentseitig (Metrik-Parität).
