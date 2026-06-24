@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.agent_hub.hub import hub
 from app.agent_hub.routes import router as agent_router
 from app.apikeys.routes import router as apikeys_router
 from app.audit.routes import router as audit_router
@@ -52,6 +53,14 @@ async def lifespan(app: FastAPI):
         await ensure_admin()
     except Exception as exc:  # noqa: BLE001
         log.error("admin_bootstrap.failed", error=str(exc))
+
+    # Re-hydrate the agent hub's live-status caches from the last persisted
+    # snapshots so a backend restart doesn't blank the dashboard until the next push.
+    try:
+        restored = await hub.hydrate_from_db()
+        log.info("hub.hydrated", instances=restored)
+    except Exception as exc:  # noqa: BLE001 — never block startup on hydration
+        log.error("hub.hydrate_failed", error=str(exc))
 
     # Start the background poller
     start_scheduler()

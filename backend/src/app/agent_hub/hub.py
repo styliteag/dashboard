@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 import structlog
 from fastapi import WebSocket
+from sqlalchemy import select
 
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
@@ -227,6 +228,75 @@ class AgentHub:
     def get_last_firewall_log(self, instance_id: int) -> list[dict] | None:
         return self._last_firewall_log.get(instance_id)
 
+    # --- restart persistence (DB snapshot) -----------------------------------
+
+    def _snapshot_for(self, instance_id: int) -> dict | None:
+        """Serialize this instance's in-memory caches to a JSON-safe dict, or None."""
+        status = self._last_status.get(instance_id)
+        if status is None:
+            return None
+        snap: dict = {"status": status.model_dump(mode="json")}
+        fw = self._last_firmware.get(instance_id)
+        if fw is not None:
+            snap["firmware"] = fw.model_dump(mode="json")
+        gws = self._last_gateways.get(instance_id)
+        if gws is not None:
+            snap["gateways"] = [g.model_dump(mode="json") for g in gws]
+        ipsec = self._last_ipsec.get(instance_id)
+        if ipsec is not None:
+            snap["ipsec"] = ipsec.model_dump(mode="json")
+        fwl = self._last_firewall_log.get(instance_id)
+        if fwl is not None:
+            snap["firewall_log"] = fwl
+        return snap
+
+    def hydrate_instance(self, instance_id: int, snapshot: dict | None) -> None:
+        """Restore one instance's caches from a persisted snapshot (startup only).
+
+        Best-effort: skips when there is no snapshot or a live push already
+        populated the cache since restart; tolerates schema drift by logging and
+        moving on rather than failing startup.
+        """
+        if not snapshot or instance_id in self._last_status:
+            return
+        try:
+            if snapshot.get("status"):
+                self._last_status[instance_id] = SystemStatus.model_validate(snapshot["status"])
+            if snapshot.get("firmware"):
+                self._last_firmware[instance_id] = FirmwareStatus.model_validate(
+                    snapshot["firmware"]
+                )
+            if snapshot.get("gateways"):
+                self._last_gateways[instance_id] = [
+                    GatewayStatus.model_validate(g) for g in snapshot["gateways"]
+                ]
+            if snapshot.get("ipsec"):
+                self._last_ipsec[instance_id] = IPsecServiceStatus.model_validate(snapshot["ipsec"])
+            if snapshot.get("firewall_log"):
+                self._last_firewall_log[instance_id] = snapshot["firewall_log"]
+        except Exception as exc:  # noqa: BLE001 — a bad snapshot must not block startup
+            log.warning("hub.hydrate_skip", instance_id=instance_id, error=str(exc))
+
+    async def hydrate_from_db(self) -> int:
+        """Load persisted status snapshots into the caches at startup. Returns count."""
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(Instance).where(
+                            Instance.deleted_at.is_(None),
+                            Instance.status_snapshot.is_not(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        for inst in rows:
+            self.hydrate_instance(inst.id, inst.status_snapshot)
+        return len(rows)
+
     async def handle_metrics(self, instance_id: int, data: dict) -> None:
         """Process a metrics push from an agent."""
         sessionmaker = get_sessionmaker()
@@ -268,6 +338,8 @@ class AgentHub:
             inst.last_error_at = None
             inst.last_error_message = None
             inst.agent_last_seen = ts
+            # Persist the just-updated caches so a backend restart can re-hydrate.
+            inst.status_snapshot = self._snapshot_for(instance_id)
             await session.commit()
 
         if recovered_name:

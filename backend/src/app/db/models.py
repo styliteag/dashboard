@@ -77,6 +77,11 @@ class Instance(Base):
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Last-known live status snapshot (push mode): the hub's in-memory caches
+    # serialized to JSON on every metrics push, so a backend restart doesn't blank
+    # the dashboard until the next push (the hub re-hydrates from this at startup).
+    status_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Soft-delete (US-2.3): keep historical metrics linked to a deleted instance.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
