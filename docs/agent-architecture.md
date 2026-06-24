@@ -521,3 +521,35 @@ http.relay/ping/agent.update; pfSense .200 hat **keine** REST-API, aber `php`+`p
 
 **Nicht gebaut (Entscheid):** Path-Whitelist, Least-Privilege (`page-all` bleibt), RBAC,
 pfSense-Relay (→ später als lokale Command-Actions, §16 #3). Tests gesamt: Agent 101, Backend 78.
+
+## 17. pfSense-Relay — via Community-REST-API-Paket (✅ 2026-06-24, Option β)
+
+pfSense CE hat **keine native REST-API** (anders als OPNsense, kein `apikeys->add()`).
+Userentscheid: das Community-Paket **pfRest** installieren statt lokaler Command-Actions.
+
+**Make-or-Break (zuerst geprüft, Advisor):** Kann root *ohne* Admin-Passwort provisionieren?
+**Ja** — pfRest-Default-Auth ist `BasicAuth` (gegen die pfSense-Local-User-DB, `RESTAPISettings.inc:182`),
+also legt der Agent (root) einen eigenen pfSense-User `orbit` (page-all, selbstgesetztes bcrypt-
+Passwort) an und nutzt Basic-Auth `orbit:pw`. Das `(key, secret)`-Paar = `(username, password)` —
+**dieselbe Basic-Injektion wie OPNsense**, nur das Credential unterscheidet sich.
+
+**Bewusst anders als OPNsense (Advisor):** der Paket-Install ist **explizit dashboard-getriggert**
+(`relay.enable`), **nicht** auf dem Startup-Pfad — ein Boot-Zeit-Download aus dem Internet ist das
+falsche Default (Egress + Angriffsfläche). OPNsense-Startup-Provisioning bleibt (nativ, kein Egress).
+
+**Mechanik:**
+- Agent-Action `relay.enable` (Backend `POST /instances/{id}/relay/enable`, Admin): pfSense →
+  pfRest installieren (`pkg-static add` vom version-abgeleiteten Asset `pfrest/pfSense-pkg-RESTAPI`,
+  `latest`) DANN provisionieren; OPNsense → nur provisionieren. Idempotent.
+- `_provision_api_credentials` ist platform-aware; pfSense provisioniert nur wenn pfRest schon
+  installiert ist (sonst None — Install gehört zu relay.enable, nie als Seiteneffekt).
+- Relay-Pfade: OPNsense `/api/core/...`, pfSense `/api/v2/...` (transparent durchgereicht).
+- **Uninstall** entfernt auf pfSense zusätzlich orbit-User (`local_user_del`) + pfRest-Paket
+  (`pkg-static delete`), sonst bliebe eine erreichbare REST-API zurück.
+
+**Gotcha:** `local_user_set_password(&$cfg, $pw)` erwartet `['item'=>$user]` und no-opt sonst still →
+bcrypt direkt via `password_hash($pw, PASSWORD_BCRYPT)` setzen.
+
+**Live auf .200 (pfSense CE 2.8.1):** Clean-Slate → `relay.enable` durchs Dashboard installierte
+pfRest + provisionierte orbit (page-all, Cache mode 600) → `GET /instances/4/relay/api/v2/system/version`
+→ **HTTP 200**, ~0,1s. Teardown-Befehle (User+Paket) separat bestätigt. Tests: Agent 109, Backend 80.
