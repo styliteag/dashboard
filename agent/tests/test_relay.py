@@ -238,3 +238,49 @@ def test_config_prefers_new_local_api_keys(tmp_path):
     cfg = agent.Config(path=str(cfgfile))
     assert cfg.local_api_url == "https://new:4444"
     assert cfg.local_api_key == "NEW"
+
+
+# --- port discovery ----------------------------------------------------------
+
+
+def _set_config_xml(monkeypatch, tmp_path, body: str) -> None:
+    p = tmp_path / "config.xml"
+    p.write_text(f"<opnsense><system><webgui>{body}</webgui></system></opnsense>")
+    monkeypatch.setattr(agent, "_CONFIG_XML", str(p))
+
+
+def test_discover_reads_webgui_port(monkeypatch, tmp_path):
+    _set_config_xml(monkeypatch, tmp_path, "<protocol>https</protocol><port>4444</port>")
+    assert agent._discover_local_api_url() == "https://127.0.0.1:4444"
+
+
+def test_discover_defaults_https_443_when_port_absent(monkeypatch, tmp_path):
+    _set_config_xml(monkeypatch, tmp_path, "<protocol>https</protocol>")
+    assert agent._discover_local_api_url() == "https://127.0.0.1:443"
+
+
+def test_discover_defaults_http_80(monkeypatch, tmp_path):
+    _set_config_xml(monkeypatch, tmp_path, "<protocol>http</protocol>")
+    assert agent._discover_local_api_url() == "http://127.0.0.1:80"
+
+
+def test_discover_missing_file_returns_none(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_CONFIG_XML", str(tmp_path / "nope.xml"))
+    assert agent._discover_local_api_url() is None
+
+
+def test_apply_discovery_overrides_default(monkeypatch, tmp_path):
+    _set_config_xml(monkeypatch, tmp_path, "<protocol>https</protocol><port>8443</port>")
+    cfg = _cfg()  # not explicit
+    cfg.local_api_url_explicit = False
+    agent._apply_port_discovery(cfg)
+    assert cfg.local_api_url == "https://127.0.0.1:8443"
+
+
+def test_apply_discovery_respects_explicit_config(monkeypatch, tmp_path):
+    _set_config_xml(monkeypatch, tmp_path, "<protocol>https</protocol><port>8443</port>")
+    cfg = _cfg()
+    cfg.local_api_url = "https://127.0.0.1:9999"
+    cfg.local_api_url_explicit = True  # admin pinned it → discovery must not override
+    agent._apply_port_discovery(cfg)
+    assert cfg.local_api_url == "https://127.0.0.1:9999"

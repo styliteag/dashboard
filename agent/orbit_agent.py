@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -77,6 +77,9 @@ class Config:
         self.local_api_key: str = ""
         self.local_api_secret: str = ""
         self.relay_provision: bool = True
+        # True once the config file pins local_api_url — then port-discovery
+        # (the box's GUI port is admin-configurable) must not override it.
+        self.local_api_url_explicit: bool = False
         self.load()
 
     def load(self) -> None:
@@ -98,6 +101,7 @@ class Config:
             "local_api_secret", data.get("opnsense_api_secret", self.local_api_secret)
         )
         self.relay_provision = bool(data.get("relay_provision", self.relay_provision))
+        self.local_api_url_explicit = "local_api_url" in data or "opnsense_api_url" in data
 
 
 # =============================================================================
@@ -729,9 +733,10 @@ _RELAY_DROP_HEADERS = frozenset({
     "authorization", "cookie",
 })
 
-# OPNsense's own User model mints the key (and the bcrypt secret) — we never hash
-# anything ourselves. Idempotent on the user; appends one key per run (the agent
-# caches the pair, so this runs once).
+# OPNsense's own User model mints the key (and the crypt-SHA512 secret) — we never
+# hash anything ourselves. Idempotent: reuses the `orbit` user, and DROPS every
+# existing key before adding exactly one, so a lost agent cache (which re-triggers
+# provisioning) can't leave orphaned keys piling up on the user.
 _PROVISION_PHP = r"""<?php
 require_once('legacy_bindings.inc');
 use OPNsense\Core\Config;
@@ -751,11 +756,46 @@ if (!$user) {
     if ($hash !== false && strpos($hash, '$') === 0) { $user->password = $hash; }
 }
 $user->priv = 'page-all';
+foreach ($user->apikeys->all() as $row) { $user->apikeys->del($row['key']); }
 $pair = $user->apikeys->add();
 $mdl->serializeToConfig(false, true);
 Config::getInstance()->save();
 echo json_encode($pair);
 """
+
+
+_CONFIG_XML = "/conf/config.xml"
+
+
+def _discover_local_api_url() -> str | None:
+    """Derive the box's own GUI/API URL from config.xml `<system><webgui>`.
+
+    The GUI port is admin-configurable (commonly moved off 443 — e.g. 4444 on the
+    test boxes), so the relay must not hardcode it (see TODO.md). Returns None when
+    the file/section is unreadable, so the caller keeps its configured default.
+    """
+    try:
+        root = ElementTree.parse(_CONFIG_XML).getroot()
+    except (OSError, ElementTree.ParseError):
+        return None
+    webgui = root.find("./system/webgui")
+    if webgui is None:
+        return None
+    protocol = (webgui.findtext("protocol") or "https").strip().lower() or "https"
+    port = (webgui.findtext("port") or "").strip()
+    if not port:
+        port = "443" if protocol == "https" else "80"
+    return f"{protocol}://127.0.0.1:{port}"
+
+
+def _apply_port_discovery(cfg: Config) -> None:
+    """Point cfg.local_api_url at the box's real GUI port, unless config pins it."""
+    if cfg.local_api_url_explicit:
+        return
+    discovered = _discover_local_api_url()
+    if discovered and discovered != cfg.local_api_url:
+        log.info("relay: discovered local API at %s", discovered)
+        cfg.local_api_url = discovered
 
 
 def _load_cached_credentials() -> tuple[str, str] | None:
@@ -1529,6 +1569,18 @@ def main() -> None:
     log.info("orbit agent v%s starting (id=%s)", __version__, cfg.agent_id)
     log.info("dashboard: %s", cfg.dashboard_url)
     log.info("push interval: %ds", cfg.push_interval)
+
+    # Relay startup: discover the box's real GUI/API port, then (on OPNsense) make
+    # sure a key already exists — so the first relay request isn't a cold provision
+    # racing the command timeout (§15 #5). Idempotent: a valid cache is reused, no
+    # config write. Never fatal — the agent must start even if this fails.
+    _apply_port_discovery(cfg)
+    if cfg.relay_provision:
+        try:
+            if _ensure_api_credentials(cfg):
+                log.info("relay: local API credentials ready (%s)", cfg.local_api_url)
+        except Exception as exc:  # noqa: BLE001 — provisioning must never block startup
+            log.warning("relay: credential provisioning at startup failed: %s", exc)
 
     # Graceful shutdown
     loop = asyncio.new_event_loop()
