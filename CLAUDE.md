@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-STYLiTE Orbit — multi-OPNsense firewall dashboard. Three deployable apps in one repo:
+STYLiTE Orbit — multi-firewall dashboard (OPNsense + pfSense). Three deployable apps in one repo:
 
 - `backend/` — FastAPI + async SQLAlchemy (Python 3.12)
 - `frontend/` — React 18 + Vite + TypeScript (npm)
-- `agent/` — WebSocket push-mode agent that runs **on OPNsense (FreeBSD)**
+- `agent/` — WebSocket push-mode agent that runs **on OPNsense/pfSense (FreeBSD)**
 
 Not a monorepo — three independent apps orchestrated by `compose.yml` (production, single combined image) or `compose-dev.yml` (development, backend + frontend split with src bind mounts).
 
@@ -40,7 +40,7 @@ Migrations run automatically via `alembic upgrade head` in `docker/start.sh` (co
 - **Database is async-only.** Use `AsyncSession` + asyncpg. Never import the sync `Session`.
 - **Settings prefix is `DASH_`** (pydantic-settings). All env vars and config keys use it; don't introduce another prefix.
 - **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
-- **`agent/` runs on FreeBSD** (OPNsense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
+- **`agent/` runs on FreeBSD** (OPNsense/pfSense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
 
 ## Frontend
 

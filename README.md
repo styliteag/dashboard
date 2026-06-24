@@ -1,6 +1,6 @@
-# STYLiTE Orbit dashboard
+# STYLiTE Orbit Dashboard
 
-Central dashboard for managing multiple OPNsense firewalls.
+Central dashboard for managing multiple OPNsense and pfSense firewalls.
 
 ## Status
 

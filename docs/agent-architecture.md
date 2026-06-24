@@ -1,6 +1,6 @@
 # Agent- & Connectivity-Architektur (Design-Doc)
 
-Status: **Entwurf zur Review** · Stand: 2026-06-23 · Betrifft: `agent/`, `backend/src/app/agent_hub/`, `backend/src/app/opnsense/`
+Status: **Entwurf zur Review** · Stand: 2026-06-23 · Betrifft: `agent/`, `backend/src/app/agent_hub/`, `backend/src/app/xsense/`
 
 Dieses Dokument hält die Architektur-Entscheidungen für die Anbindung von Kundensystemen
 (OPNsense, pfSense, später Proxmox/TrueNAS/QNAP) fest und beschreibt das geplante
@@ -94,19 +94,19 @@ Gleichzeitig **RCE-by-Design** über alle Kunden-Firewalls → höchste Sorgfalt
 ### 5.1 Protokoll
 
 1. Agent meldet `agent_version` im `hello` (tut er schon).
-2. Soll-Version = `__version__` der **vom Container ausgelieferten** `agent/opnsense_agent.py`
+2. Soll-Version = `__version__` der **vom Container ausgelieferten** `agent/orbit_agent.py`
    — **kein separater Blob-Store**. Dashboard vergleicht gemeldet vs. ausgeliefert.
 3. Update wird **durch den authentifizierten WS** gepusht:
    `{"type":"agent.update","version":…,"sha256":…,"code":<b64>}` (10 MB `max_size` reicht).
    **Nicht** über das offene `/agent/script` (das bleibt nur für Bootstrap-Install — anderer
    Trust-Kontext, kurz erwähnt in §6).
-4. Agent: `opnsense_agent.py.new` **im Zielverzeichnis** schreiben (nicht `/tmp`; `os.rename`
+4. Agent: `orbit_agent.py.new` **im Zielverzeichnis** schreiben (nicht `/tmp`; `os.rename`
    ist nur dateisystem-intern atomar) → sha256 verifizieren → `.bak` anlegen → atomic swap →
    Update-Marker setzen → Restart.
 
 ### 5.2 Restart & Rollback (zwei Ebenen)
 
-Befund aus `agent/rc.d/opnsense_dash_agent`: `daemon(8)` läuft **ohne `-r`** → kein Respawn,
+Befund aus `agent/rc.d/orbit_agent`: `daemon(8)` läuft **ohne `-r`** → kein Respawn,
 **heute kein Watchdog**. Ein toter Agent kann sich nicht selbst zurückrollen.
 
 → **DR-5: Ein Supervisor-Wrapper `run-agent.sh` wird eingeführt** (rc.d ruft ihn statt direkt
@@ -122,7 +122,7 @@ Zwei Ebenen, weil jede fängt, was die andere nicht kann. **`py_compile` ist Sch
 (nur Syntax) — der einzige echte Gesundheitstest ist „gesund reconnected mit neuer Version".
 
 **Wichtig: Der Supervisor liegt außerhalb des Selbstupdate-Pfads.** `agent.update` (§5.1)
-tauscht nur `opnsense_agent.py` — der Wrapper + rc.d, also genau die Komponente, die Updates
+tauscht nur `orbit_agent.py` — der Wrapper + rc.d, also genau die Komponente, die Updates
 sicher macht, wird *nicht* mit-aktualisiert. Daraus folgt eine Design-Vorgabe: **der Supervisor
 muss bewusst minimal & stabil sein**, weil er sich nicht selbst updaten kann; ein Bug darin =
 manueller Fix auf allen Boxen. Ob das Update-Protokoll später Multi-File kann (agent.py +
@@ -203,7 +203,7 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
    Kein Verhaltenswechsel.
 1. **Agent v0.3 (OPNsense, verifiziert gut):**
    - ✅ **stdlib-WS (DR-4) umgesetzt (2026-06-23)**: `websockets`-Pip-Dep entfernt, RFC-6455-
-     Client in `opnsense_agent.py` (Handshake, Client-Masking, Fragment-Reassembly, Ping/Pong,
+     Client in `orbit_agent.py` (Handshake, Client-Masking, Fragment-Reassembly, Ping/Pong,
      Close, NAT-Keepalive). Tests `agent/tests/test_ws.py` — Framing-Unit + **Interop gegen
      `websockets`-Referenzserver** (`just agent-test`). Agent dependency-frei.
    - ✅ **Selbstupdate umgesetzt (2026-06-23, `__version__` 0.3.0)**:
