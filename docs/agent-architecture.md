@@ -339,7 +339,10 @@ wie §4).
   (alle Instanzen) + `checkmk/agent_styliteorbit.py` (stdlib, Piggyback pro Firewall →
   `<<<local>>>` mit State+Perfdata). `render_checkmk` pure + getestet (`just checkmk-test`),
   `checkmk/README.md`. **Live end-to-end gerendert** (beide Boxen, fand echtes CRIT: down-Tunnel).
-  Auth: Dev-Bearer-Token; read-only API-Key für Service-Accounts offen (RBAC).
+- ✅ **Read-only API-Key (2026-06-24)** — `ApiKey`-Model + Migration `003`, `POST/GET/DELETE
+  /api/apikeys`, `read_principal`-Dep (User ODER `orbit_`-Key; Keys read-only → 403 auf non-GET),
+  auf `/checks` + `/export/checkmk`. Plugin nutzt `ORBIT_API_KEY` → **prod-tauglich, kein
+  Admin-Passwort**. Live verifiziert. Voll-RBAC (Rollen/Multi-Tenant) bleibt Folgeschritt (§14).
 - ⬜ (3) weitere Collector-Checks · Frontend zeigt die Checks (Grün/Rot je Service).
 
 ## 14. Bekannte Lücken / Backlog (ehrliche Selbstkritik, 2026-06-24)
