@@ -39,6 +39,11 @@ command="/usr/sbin/daemon"
 command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} /bin/sh /usr/local/opnsense-dash-agent/run-agent.sh ${opnsense_dash_agent_python}"
 
 start_precmd="${name}_prestart"
+# The pidfile holds run-agent.sh's pid, not /usr/sbin/daemon's, so rc.subr's
+# default (procname-matching) stop/status can't find it. Drive them off the
+# pidfile directly instead.
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
 
 opnsense_dash_agent_prestart() {
     if [ ! -f "${opnsense_dash_agent_config}" ]; then
@@ -48,6 +53,27 @@ opnsense_dash_agent_prestart() {
     fi
     # Ensure log file exists
     touch "${opnsense_dash_agent_logfile}"
+}
+
+opnsense_dash_agent_stop() {
+    if [ -f "${pidfile}" ]; then
+        _pid=$(cat "${pidfile}")
+        echo "Stopping ${name} (pid ${_pid})."
+        # run-agent.sh traps TERM → kills its python child → exits → daemon(8) exits.
+        kill -TERM "${_pid}" 2>/dev/null
+        wait_for_pids "${_pid}"
+    else
+        echo "${name} not running? (no pidfile)"
+    fi
+    rm -f "${pidfile}"
+}
+
+opnsense_dash_agent_status() {
+    if [ -f "${pidfile}" ] && kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
+        echo "${name} is running as pid $(cat "${pidfile}")."
+    else
+        echo "${name} is not running."
+    fi
 }
 
 load_rc_config $name
