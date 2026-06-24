@@ -163,7 +163,7 @@ export default function IPsecSection({ instanceId }: Props) {
                     <td className="px-3 py-2 text-right">
                       {up ? (
                         <button
-                          onClick={() => disconnectMut.mutate(t.id)}
+                          onClick={() => disconnectMut.mutate(t.unique_id || t.id)}
                           disabled={busy}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
                         >

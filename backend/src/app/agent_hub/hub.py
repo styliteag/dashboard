@@ -100,6 +100,7 @@ def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
                 phase1_status=t.get("status", "unknown"),
                 bytes_in=int(t.get("bytes_in", 0)),
                 bytes_out=int(t.get("bytes_out", 0)),
+                unique_id=t.get("unique_id", ""),
             )
             for t in ipsec_data.get("tunnels", [])
         ],

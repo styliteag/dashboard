@@ -89,13 +89,14 @@ export interface MetricResponse {
 // ----- IPsec ---------------------------------------------------------------
 
 export interface IPsecTunnel {
-  id: string;
+  id: string; // connection name — used to Connect (initiate)
   description: string;
   remote: string;
   local: string;
   phase1_status: string;
   bytes_in: number;
   bytes_out: number;
+  unique_id: string; // active IKE_SA id — used to Disconnect (terminate); empty when down
 }
 
 export interface IPsecServiceStatus {

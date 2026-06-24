@@ -31,7 +31,7 @@ from urllib.parse import urlsplit
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -291,39 +291,215 @@ def collect_gateways() -> list[dict]:
     return gateways
 
 
-def collect_ipsec() -> dict:
-    """Get IPsec tunnel status from swanctl."""
-    out = _run(["swanctl", "--list-sas", "--raw"], timeout=10)
-    tunnels = []
-    # Parse swanctl raw output — simplified
-    if out.strip():
-        for line in out.strip().split("\n"):
-            # Each line is a SA; parse key fields
-            parts = dict(re.findall(r'(\w[\w-]*)=([^,}\]]+)', line))
-            if parts:
-                tunnels.append({
-                    "id": parts.get("uniqueid", parts.get("name", "")),
-                    "description": parts.get("name", ""),
-                    "remote": parts.get("remote-host", ""),
-                    "local": parts.get("local-host", ""),
-                    "status": parts.get("state", "unknown"),
-                    "bytes_in": int(parts.get("bytes-in", 0) or 0),
-                    "bytes_out": int(parts.get("bytes-out", 0) or 0),
-                })
+def _to_int(v: object) -> int:
+    """Best-effort int conversion — swanctl counters are strings, may be missing."""
+    try:
+        return int(str(v))
+    except (TypeError, ValueError):
+        return 0
 
-    # Fallback: use ipsec statusall
+
+def _vici_parse(tokens: list[str]) -> dict:
+    """Build a nested dict from a tokenized vici `--raw` stream.
+
+    Grammar: `name {` opens a section, `name [` a list, `}`/`]` close, `key=value`
+    assigns a scalar, `key=` directly before a bracket names that section/list
+    (e.g. `local_addrs=[…]`), and a bare token is a section/list name or a list
+    item. Tolerant of malformed input — never raises, just stops at end of tokens.
+    """
+    root: dict = {}
+    stack: list[tuple[str, object]] = [("section", root)]
+    pending: str | None = None
+    for tok in tokens:
+        kind, cont = stack[-1]
+        if tok == "{" or tok == "[":
+            child: object = {} if tok == "{" else []
+            key = pending if pending is not None else str(len(cont))  # type: ignore[arg-type]
+            if isinstance(cont, dict):
+                cont[key] = child
+            else:
+                cont.append(child)  # type: ignore[union-attr]
+            stack.append(("section" if tok == "{" else "list", child))
+            pending = None
+        elif tok == "}" or tok == "]":
+            if len(stack) > 1:
+                stack.pop()
+            pending = None
+        elif "=" in tok:
+            k, _, val = tok.partition("=")
+            if val == "":
+                pending = k  # `key=` glued to a following `[`/`{` → it names that block
+            elif isinstance(cont, dict):
+                cont[k] = val
+                pending = None
+            else:
+                pending = None
+        elif kind == "list":
+            cont.append(tok)  # type: ignore[union-attr]
+        else:
+            pending = tok
+    return root
+
+
+def _tokenize_vici(out: str) -> dict:
+    """Pad glued delimiters and parse a `swanctl … --raw` stream into a tree."""
+    padded = out
+    for delim in "{}[]":
+        padded = padded.replace(delim, f" {delim} ")
+    return _vici_parse(padded.split())
+
+
+def _iter_sections(node: object, markers: frozenset[str]):
+    """Yield (name, section) for every dict carrying any of `markers`.
+
+    `--raw` wraps payloads in a `… event { <name> { … } }` envelope (plus a
+    sibling `… reply {}`), so the records of interest are not at the root.
+    Descend until a section carries a marker key, then surface it keyed by its
+    name without recursing into it — so nested sub-sections that happen to reuse
+    a marker key are not mistaken for top-level records.
+    """
+    if not isinstance(node, dict):
+        return
+    for name, val in node.items():
+        if not isinstance(val, dict):
+            continue
+        if markers.intersection(val):
+            yield name, val
+        else:
+            yield from _iter_sections(val, markers)
+
+
+def _first(v: object) -> str:
+    """First element of a vici list (addresses come back as lists), else the value."""
+    if isinstance(v, list):
+        return str(v[0]) if v else ""
+    if isinstance(v, str):
+        return v
+    return ""
+
+
+# Marker keys unique to each record type — never present on the raw envelope.
+_IKE_SA_MARKERS = frozenset({"uniqueid", "state", "local-host", "remote-host", "child-sas"})
+_CONN_MARKERS = frozenset({"local_addrs", "remote_addrs", "children"})
+
+
+def _parse_swanctl_sas(out: str) -> list[dict]:
+    """Parse `swanctl --list-sas --raw` into one record per active IKE_SA.
+
+    Phase-1 state lives at the IKE level; traffic counters and the phase-2 state
+    live in the nested `child-sas` sections (summed here).
+    """
+    if not out.strip():
+        return []
+    sas = []
+    for name, ike in _iter_sections(_tokenize_vici(out), _IKE_SA_MARKERS):
+        children = ike.get("child-sas")
+        bytes_in = bytes_out = 0
+        if isinstance(children, dict):
+            for child in children.values():
+                if isinstance(child, dict):
+                    bytes_in += _to_int(child.get("bytes-in"))
+                    bytes_out += _to_int(child.get("bytes-out"))
+        sas.append({
+            "name": name,  # the SA's connection name — may be stale after a config reload
+            "remote": ike.get("remote-host", ""),
+            "local": ike.get("local-host", ""),
+            "status": ike.get("state", "unknown"),  # IKE-level, not the child's INSTALLED
+            "bytes_in": bytes_in,
+            "bytes_out": bytes_out,
+            "unique_id": str(ike.get("uniqueid", "")),  # stable handle for --terminate --ike-id
+        })
+    return sas
+
+
+def _parse_swanctl_conns(out: str) -> list[dict]:
+    """Parse `swanctl --list-conns --raw` into one record per configured tunnel.
+
+    These are the *configured* connections (up or down); the connection name is
+    what `swanctl --initiate --ike <name>` expects.
+    """
+    if not out.strip():
+        return []
+    conns = []
+    for name, conn in _iter_sections(_tokenize_vici(out), _CONN_MARKERS):
+        conns.append({
+            "name": name,
+            "local": _first(conn.get("local_addrs")),
+            "remote": _first(conn.get("remote_addrs")),
+        })
+    return conns
+
+
+def _tunnel(name: str, conn: dict | None, sa: dict | None) -> dict:
+    """Build one dashboard tunnel row, preferring live SA data when present."""
+    conn = conn or {}
+    if sa is not None:
+        return {
+            "id": name,  # connection name → `swanctl --initiate --ike <id>`
+            "description": name,
+            "remote": sa["remote"] or conn.get("remote", ""),
+            "local": sa["local"] or conn.get("local", ""),
+            "status": sa["status"],
+            "bytes_in": sa["bytes_in"],
+            "bytes_out": sa["bytes_out"],
+            "unique_id": sa["unique_id"],  # → `swanctl --terminate --ike-id <unique_id>`
+        }
+    return {
+        "id": name,
+        "description": name,
+        "remote": conn.get("remote", ""),
+        "local": conn.get("local", ""),
+        "status": "down",
+        "bytes_in": 0,
+        "bytes_out": 0,
+        "unique_id": "",
+    }
+
+
+def _merge_ipsec(conns: list[dict], sas: list[dict]) -> list[dict]:
+    """Overlay live SA status onto the configured connections.
+
+    Match a configured conn to an active SA by name first, then by endpoint pair
+    (the SA name can drift from the conn name after an OPNsense config reload).
+    Active SAs with no matching conn are still surfaced so nothing disappears.
+    """
+    sa_by_name = {s["name"]: s for s in sas}
+    sa_by_ep: dict[tuple[str, str], dict] = {}
+    for s in sas:
+        sa_by_ep.setdefault((s["local"], s["remote"]), s)
+
+    tunnels = []
+    matched: set[str] = set()
+    for c in conns:
+        sa = sa_by_name.get(c["name"]) or sa_by_ep.get((c["local"], c["remote"]))
+        if sa is not None:
+            matched.add(sa["name"])
+        tunnels.append(_tunnel(c["name"], c, sa))
+    for s in sas:
+        if s["name"] not in matched:
+            tunnels.append(_tunnel(s["name"], None, s))
+    return tunnels
+
+
+def collect_ipsec() -> dict:
+    """Get IPsec tunnels: configured connections merged with live SA status."""
+    conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
+    sas = _parse_swanctl_sas(_run(["swanctl", "--list-sas", "--raw"], timeout=10))
+    tunnels = _merge_ipsec(conns, sas)
+
+    # Fallback: ipsec statusall (older / non-swanctl setups produce nothing above)
     if not tunnels:
         out2 = _run(["ipsec", "statusall"], timeout=10)
-        # Minimal parse — just detect tunnel names and status
         for match in re.finditer(r'(\S+)\{(\d+)\}:\s+(INSTALLED|ESTABLISHED)', out2):
             tunnels.append({
-                "id": match.group(2),
+                "id": match.group(1),
                 "description": match.group(1),
                 "remote": "",
                 "local": "",
                 "status": match.group(3).lower(),
                 "bytes_in": 0,
                 "bytes_out": 0,
+                "unique_id": match.group(2),
             })
 
     running = bool(_run(["pgrep", "-x", "charon"]).strip())
@@ -476,9 +652,11 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
 
     elif action == "ipsec.disconnect":
+        # tunnel_id is the active IKE_SA's unique id — stable even if the SA's
+        # connection name drifted from the configured name after a reload.
         tunnel_id = params.get("tunnel_id", "")
-        out = _run(["swanctl", "--terminate", "--ike", tunnel_id], timeout=15)
-        return {"success": True, "output": out.strip()[:500]}
+        out = _run(["swanctl", "--terminate", "--ike-id", tunnel_id], timeout=15)
+        return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
 
     elif action == "ipsec.restart":
         out = _run(["service", "strongswan", "restart"], timeout=30)

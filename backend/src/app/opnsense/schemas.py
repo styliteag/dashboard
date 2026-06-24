@@ -87,7 +87,7 @@ class IPsecTunnel(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    id: str = ""
+    id: str = ""  # connection name — `swanctl --initiate --ike <id>` (Connect)
     description: str = ""
     phase1_status: str = ""  # "established" / "connecting" / "down" / ...
     phase2_status: str = ""
@@ -95,6 +95,9 @@ class IPsecTunnel(BaseModel):
     local: str = ""
     bytes_in: int = 0
     bytes_out: int = 0
+    unique_id: str = (
+        ""  # active IKE_SA id — `swanctl --terminate --ike-id <unique_id>` (Disconnect)
+    )
     established: str | None = None  # timestamp or duration string
 
 

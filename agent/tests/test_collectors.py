@@ -132,6 +132,206 @@ def test_collect_gateways_pfsense_handles_garbage(monkeypatch: pytest.MonkeyPatc
     assert agent.collect_gateways() == []
 
 
+# Verbatim `swanctl --list-sas --raw` captured on a production OPNsense box
+# (2026-06-24, box 10.21.7.100). Note the `list-sa event { … }` envelope +
+# `list-sas reply {}` trailer + the leading config warning — the parser must see
+# through all of it. The active SA is keyed by a connection UUID (5fe62ba0…) and
+# phase-1 state is ESTABLISHED while the child-sas is INSTALLED.
+_SWANCTL_SAS = (
+    "no files found matching '/usr/local/etc/strongswan.opnsense.d/*.conf'\n"
+    "list-sa event {5fe62ba0-5099-4510-91c7-b2d4e868b39b {uniqueid=1 version=2 "
+    "state=ESTABLISHED local-host=10.21.7.100 local-port=4500 local-id=10.21.7.100 "
+    "remote-host=10.21.7.101 remote-port=4500 remote-id=10.21.7.101 initiator=yes "
+    "initiator-spi=f5b966b91adb2c0b responder-spi=1b43a005a4e044e0 encr-alg=AES_CBC "
+    "encr-keysize=128 integ-alg=HMAC_SHA2_256_128 prf-alg=PRF_HMAC_SHA2_256 "
+    "dh-group=ECP_256 established=1235 rekey-time=12815 "
+    "child-sas {4778be38-7a28-4e84-9e4e-59f988737044-1 "
+    "{name=4778be38-7a28-4e84-9e4e-59f988737044 uniqueid=1 reqid=1 state=INSTALLED "
+    "mode=TUNNEL protocol=ESP spi-in=caf6619d spi-out=cc660f24 encr-alg=AES_GCM_16 "
+    "encr-keysize=128 bytes-in=0 packets-in=0 bytes-out=0 packets-out=0 "
+    "rekey-time=2013 life-time=2725 install-time=1235 "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}}\n"
+    "list-sas reply {}"
+)
+
+# Verbatim `swanctl --list-conns --raw` (same family of boxes). The configured
+# connection is keyed by its UUID (34595782…) which differs from the active SA's
+# name above — OPNsense regenerates connection UUIDs on every config apply. Heavily
+# nested (proposals/esp_proposals/children) to exercise the brace tokenizer.
+_SWANCTL_CONNS = (
+    "no files found matching '/usr/local/etc/strongswan.opnsense.d/*.conf'\n"
+    "list-conn event {34595782-ae4a-41b8-8722-2d52eb487475 "
+    "{local_addrs=[10.21.7.100] remote_addrs=[10.21.7.101] local_port=500 remote_port=500 "
+    "version=IKEv2 reauth_time=0 rekey_time=14400 unique=UNIQUE_NO "
+    "proposals {0 {encr=[AES_CBC_128 AES_CBC_192] integ=[HMAC_SHA2_256_128] "
+    "prf=[PRF_HMAC_SHA2_256] ke=[ECP_256 CURVE_25519]}} dpd_delay=10 "
+    "local-1 {id=10.21.7.100 class=pre-shared key groups=[] certs=[] cacerts=[]} "
+    "remote-1 {id=10.21.7.101 class=pre-shared key groups=[] certs=[] cacerts=[]} "
+    "children {0d68b529-eeca-4db4-9e17-5d6a008f9164 "
+    "{mode=TUNNEL rekey_time=3600 dpd_action=none close_action=none "
+    "esp_proposals {0 {encr=[AES_GCM_16_128] ke=[ECP_256]}} ah_proposals {} "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}}\n"
+    "list-conns reply {}"
+)
+
+
+def test_parse_swanctl_sas_single_record() -> None:
+    # The `list-sa event` envelope + `list-sas reply` trailer must NOT become rows.
+    sas = agent._parse_swanctl_sas(_SWANCTL_SAS)
+    assert len(sas) == 1
+    s = sas[0]
+    assert s["name"] == "5fe62ba0-5099-4510-91c7-b2d4e868b39b"
+    assert s["remote"] == "10.21.7.101"
+    assert s["local"] == "10.21.7.100"
+    assert s["unique_id"] == "1"  # stable handle for --terminate --ike-id
+
+
+def test_parse_swanctl_sas_status_is_ike_level() -> None:
+    # Regression: the child SA is INSTALLED, but the status must be the IKE-level
+    # ESTABLISHED so the frontend paints it up / offers Disconnect.
+    assert agent._parse_swanctl_sas(_SWANCTL_SAS)[0]["status"] == "ESTABLISHED"
+
+
+def test_parse_swanctl_sas_no_raw_blob_in_name() -> None:
+    # The original bug: a greedy regex put the whole raw dump into the id field.
+    s = agent._parse_swanctl_sas(_SWANCTL_SAS)[0]
+    assert "version=" not in s["name"]
+    assert "state=" not in s["name"]
+    assert len(s["name"]) < 60
+
+
+def test_parse_swanctl_sas_sums_child_bytes() -> None:
+    raw = (
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "child-sas {a-1 {state=INSTALLED bytes-in=10 bytes-out=20} "
+        "a-2 {state=INSTALLED bytes-in=5 bytes-out=7}}}"
+    )
+    s = agent._parse_swanctl_sas(raw)[0]
+    assert s["bytes_in"] == 15
+    assert s["bytes_out"] == 27
+
+
+def test_parse_swanctl_sas_ike_without_child() -> None:
+    # Connecting tunnel with no child-sas yet: status from IKE, zero bytes.
+    s = agent._parse_swanctl_sas("conn-x {uniqueid=3 state=CONNECTING remote-host=3.3.3.3}")[0]
+    assert s["status"] == "CONNECTING"
+    assert s["bytes_in"] == 0
+
+
+def test_parse_swanctl_sas_empty() -> None:
+    assert agent._parse_swanctl_sas("") == []
+    assert agent._parse_swanctl_sas("   \n  ") == []
+
+
+def test_parse_swanctl_conns_single_record() -> None:
+    # Envelope + deep nesting (proposals/children) must not spawn extra records,
+    # and addr lists must parse despite the glued `local_addrs=[…]`.
+    conns = agent._parse_swanctl_conns(_SWANCTL_CONNS)
+    assert len(conns) == 1
+    c = conns[0]
+    assert c["name"] == "34595782-ae4a-41b8-8722-2d52eb487475"
+    assert c["local"] == "10.21.7.100"
+    assert c["remote"] == "10.21.7.101"
+
+
+def test_parse_swanctl_conns_empty() -> None:
+    assert agent._parse_swanctl_conns("") == []
+
+
+def test_merge_ipsec_matches_by_name() -> None:
+    conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
+    sas = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1",
+            "status": "ESTABLISHED", "bytes_in": 4, "bytes_out": 8, "unique_id": "7"}]
+    tunnels = agent._merge_ipsec(conns, sas)
+    assert len(tunnels) == 1
+    t = tunnels[0]
+    assert t["id"] == "c1"
+    assert t["status"] == "ESTABLISHED"
+    assert t["unique_id"] == "7"
+    assert t["bytes_in"] == 4
+
+
+def test_merge_ipsec_matches_by_endpoint_when_names_differ() -> None:
+    # The SA name drifted from the configured name; endpoints still match.
+    conns = [{"name": "cfg-uuid", "local": "10.21.7.100", "remote": "10.21.7.101"}]
+    sas = [{"name": "sa-uuid", "local": "10.21.7.100", "remote": "10.21.7.101",
+            "status": "ESTABLISHED", "bytes_in": 0, "bytes_out": 0, "unique_id": "1"}]
+    tunnels = agent._merge_ipsec(conns, sas)
+    assert len(tunnels) == 1  # not two — the orphan SA was matched by endpoint
+    assert tunnels[0]["id"] == "cfg-uuid"  # connect uses the configured name
+    assert tunnels[0]["unique_id"] == "1"
+    assert tunnels[0]["status"] == "ESTABLISHED"
+
+
+def test_merge_ipsec_unmatched_conn_is_down() -> None:
+    conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
+    t = agent._merge_ipsec(conns, [])[0]
+    assert t["status"] == "down"
+    assert t["unique_id"] == ""
+    assert t["remote"] == "1.1.1.1"
+
+
+def test_merge_ipsec_surfaces_orphan_sa() -> None:
+    sas = [{"name": "orphan", "local": "9.9.9.9", "remote": "1.1.1.1",
+            "status": "ESTABLISHED", "bytes_in": 0, "bytes_out": 0, "unique_id": "2"}]
+    t = agent._merge_ipsec([], sas)[0]
+    assert t["id"] == "orphan"
+    assert t["status"] == "ESTABLISHED"
+
+
+def test_collect_ipsec_merges_conns_and_sas(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if "--list-conns" in cmd:
+            return _SWANCTL_CONNS
+        if "--list-sas" in cmd:
+            return _SWANCTL_SAS
+        if cmd[0] == "pgrep":
+            return "1234\n"
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.collect_ipsec()
+    assert result["running"] is True
+    assert len(result["tunnels"]) == 1  # conn + SA matched by endpoint, not duplicated
+    t = result["tunnels"][0]
+    assert t["id"] == "34595782-ae4a-41b8-8722-2d52eb487475"  # configured name → connect
+    assert t["status"] == "ESTABLISHED"  # live status overlaid
+    assert t["unique_id"] == "1"  # → disconnect
+    assert "version=" not in t["id"]  # blob regression guard
+
+
+def test_collect_ipsec_falls_back_to_statusall(monkeypatch: pytest.MonkeyPatch) -> None:
+    statusall = "myconn{1}:  INSTALLED, TUNNEL, reqid 1"
+
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[0] == "swanctl":
+            return ""  # neither conns nor sas → fallback path
+        if cmd[0] == "ipsec":
+            return statusall
+        if cmd[0] == "pgrep":
+            return "1234\n"
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    tunnels = agent.collect_ipsec()["tunnels"]
+    assert len(tunnels) == 1
+    assert tunnels[0]["id"] == "myconn"  # connection name, not the {N} uniqueid
+    assert tunnels[0]["status"] == "installed"
+
+
+def test_ipsec_disconnect_uses_ike_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        captured["cmd"] = cmd
+        return "terminate completed successfully"
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.execute_command("ipsec.disconnect", {"tunnel_id": "1"})
+    assert result["success"] is True
+    assert captured["cmd"] == ["swanctl", "--terminate", "--ike-id", "1"]
+
+
 def test_system_info_includes_platform(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "test")

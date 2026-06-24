@@ -58,6 +58,7 @@ AGENT_PUSH = {
                 "status": "established",
                 "bytes_in": 500,
                 "bytes_out": 600,
+                "unique_id": "9",
             }
         ],
     },
@@ -114,6 +115,7 @@ def test_ipsec_from_agent_maps_status_to_phase1() -> None:
     assert t.phase1_status == "established"  # agent 'status' → phase1_status
     assert t.remote == "1.2.3.4"
     assert t.bytes_in == 500
+    assert t.unique_id == "9"  # carried through for `--terminate --ike-id` (Disconnect)
     assert ipsec_from_agent({}).running is False
 
 
