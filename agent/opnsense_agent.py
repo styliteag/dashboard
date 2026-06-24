@@ -13,6 +13,7 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import http.client
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.8"
+__version__ = "0.4.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -695,17 +696,23 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
 
     elif action == "ipsec.restart":
-        # `onerestart`, not `restart`: pfSense doesn't set strongswan_enable in
-        # rc.conf, so plain `restart` is refused ("use onerestart instead").
-        # Fire-and-forget: on pfSense the restart regenerates swanctl config and
-        # can take 10-30s — blocking would race the command timeout. The dashboard
-        # sees the tunnels come back via its IPsec status polling.
-        subprocess.Popen(
-            ["service", "strongswan", "onerestart"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return {"success": True, "output": "ipsec restart started in background"}
+        # Reload IPsec — platform-specific because the config lives in different
+        # places. pfSense loads swanctl config through its own PHP layer, NOT
+        # /usr/local/etc/swanctl/conf.d; `service strongswan (one)restart` there
+        # restarts charon with ZERO connections — it drops every tunnel. Use
+        # ipsec_configure() to regenerate + reload instead. OPNsense does populate
+        # conf.d, so a daemon restart reloads correctly. Fire-and-forget: the
+        # dashboard sees tunnels return via its IPsec status polling.
+        if detect_platform() == "pfsense":
+            cmd = [
+                "php", "-r",
+                'require_once("/etc/inc/config.inc"); '
+                'require_once("/etc/inc/ipsec.inc"); ipsec_configure();',
+            ]
+        else:
+            cmd = ["service", "strongswan", "restart"]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"success": True, "output": "ipsec reload started in background"}
 
     elif action == "firmware.check":
         if detect_platform() == "pfsense":

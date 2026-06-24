@@ -66,7 +66,7 @@ def test_firmware_check_opnsense_uses_opnsense_update(monkeypatch: pytest.Monkey
     assert result["product_version"] == "25.7.11_9"
 
 
-def test_ipsec_restart_fire_and_forget_onerestart(monkeypatch: pytest.MonkeyPatch) -> None:
+def _capture_popen(monkeypatch: pytest.MonkeyPatch) -> dict:
     captured: dict = {}
 
     def fake_popen(cmd: list[str], **kwargs: object) -> object:
@@ -74,10 +74,25 @@ def test_ipsec_restart_fire_and_forget_onerestart(monkeypatch: pytest.MonkeyPatc
         return object()
 
     monkeypatch.setattr(agent.subprocess, "Popen", fake_popen)
+    return captured
+
+
+def test_ipsec_restart_pfsense_uses_ipsec_configure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `service strongswan restart` on pfSense restarts charon with an EMPTY
+    # conf.d → drops every tunnel. Must regenerate+reload via ipsec_configure().
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    captured = _capture_popen(monkeypatch)
     result = agent.execute_command("ipsec.restart", {})
-    # `onerestart` (not `restart`) — pfSense doesn't set strongswan_enable in rc.conf.
-    # Fire-and-forget so the slow pfSense config regen can't race the command timeout.
-    assert captured["cmd"] == ["service", "strongswan", "onerestart"]
+    assert captured["cmd"][0] == "php"
+    assert "ipsec_configure();" in captured["cmd"][2]
+    assert result["success"] is True
+
+
+def test_ipsec_restart_opnsense_uses_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("ipsec.restart", {})
+    assert captured["cmd"] == ["service", "strongswan", "restart"]
     assert result["success"] is True
 
 
