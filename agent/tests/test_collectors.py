@@ -242,7 +242,7 @@ def test_merge_ipsec_matches_by_name() -> None:
     conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
     sas = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1",
             "status": "ESTABLISHED", "bytes_in": 4, "bytes_out": 8, "unique_id": "7"}]
-    tunnels = agent._merge_ipsec(conns, sas)
+    tunnels = agent._merge_ipsec(conns, sas, {})
     assert len(tunnels) == 1
     t = tunnels[0]
     assert t["id"] == "c1"
@@ -256,7 +256,7 @@ def test_merge_ipsec_matches_by_endpoint_when_names_differ() -> None:
     conns = [{"name": "cfg-uuid", "local": "10.21.7.100", "remote": "10.21.7.101"}]
     sas = [{"name": "sa-uuid", "local": "10.21.7.100", "remote": "10.21.7.101",
             "status": "ESTABLISHED", "bytes_in": 0, "bytes_out": 0, "unique_id": "1"}]
-    tunnels = agent._merge_ipsec(conns, sas)
+    tunnels = agent._merge_ipsec(conns, sas, {})
     assert len(tunnels) == 1  # not two — the orphan SA was matched by endpoint
     assert tunnels[0]["id"] == "cfg-uuid"  # connect uses the configured name
     assert tunnels[0]["unique_id"] == "1"
@@ -265,7 +265,7 @@ def test_merge_ipsec_matches_by_endpoint_when_names_differ() -> None:
 
 def test_merge_ipsec_unmatched_conn_is_down() -> None:
     conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
-    t = agent._merge_ipsec(conns, [])[0]
+    t = agent._merge_ipsec(conns, [], {})[0]
     assert t["status"] == "down"
     assert t["unique_id"] == ""
     assert t["remote"] == "1.1.1.1"
@@ -274,9 +274,46 @@ def test_merge_ipsec_unmatched_conn_is_down() -> None:
 def test_merge_ipsec_surfaces_orphan_sa() -> None:
     sas = [{"name": "orphan", "local": "9.9.9.9", "remote": "1.1.1.1",
             "status": "ESTABLISHED", "bytes_in": 0, "bytes_out": 0, "unique_id": "2"}]
-    t = agent._merge_ipsec([], sas)[0]
+    t = agent._merge_ipsec([], sas, {})[0]
     assert t["id"] == "orphan"
     assert t["status"] == "ESTABLISHED"
+
+
+def test_merge_ipsec_uses_description_falls_back_to_uuid() -> None:
+    conns = [
+        {"name": "uuid-named", "local": "9.9.9.9", "remote": "1.1.1.1"},
+        {"name": "uuid-bare", "local": "9.9.9.9", "remote": "2.2.2.2"},
+    ]
+    tunnels = agent._merge_ipsec(conns, [], {"uuid-named": "Office VPN"})
+    by_id = {t["id"]: t for t in tunnels}
+    assert by_id["uuid-named"]["description"] == "Office VPN"  # human name shown
+    assert by_id["uuid-bare"]["description"] == "uuid-bare"  # no desc → UUID
+
+
+# config.xml shape confirmed on the box: <Connection uuid="…"><description>…
+_CONFIG_XML = (
+    "<opnsense><OPNsense><Swanctl><Connections>"
+    '<Connection uuid="5fe62ba0-5099-4510-91c7-b2d4e868b39b">'
+    "<description>test1</description></Connection>"
+    '<Connection uuid="5a9952eb-9ffe-425f-b438-149c2971e5f1">'
+    "<description>broken</description></Connection>"
+    '<Connection uuid="no-desc-uuid"><description></description></Connection>'
+    "</Connections></Swanctl></OPNsense></opnsense>"
+)
+
+
+def test_ipsec_descriptions_parses_config(tmp_path) -> None:
+    p = tmp_path / "config.xml"
+    p.write_text(_CONFIG_XML)
+    descriptions = agent._ipsec_descriptions(str(p))
+    assert descriptions == {
+        "5fe62ba0-5099-4510-91c7-b2d4e868b39b": "test1",
+        "5a9952eb-9ffe-425f-b438-149c2971e5f1": "broken",
+    }  # the empty description is omitted → caller falls back to the UUID
+
+
+def test_ipsec_descriptions_missing_file_returns_empty() -> None:
+    assert agent._ipsec_descriptions("/nonexistent/config.xml") == {}
 
 
 def test_collect_ipsec_merges_conns_and_sas(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -290,11 +327,16 @@ def test_collect_ipsec_merges_conns_and_sas(monkeypatch: pytest.MonkeyPatch) -> 
         return ""
 
     monkeypatch.setattr(agent, "_run", fake_run)
+    monkeypatch.setattr(
+        agent, "_ipsec_descriptions",
+        lambda *a, **k: {"34595782-ae4a-41b8-8722-2d52eb487475": "Site A"},
+    )
     result = agent.collect_ipsec()
     assert result["running"] is True
     assert len(result["tunnels"]) == 1  # conn + SA matched by endpoint, not duplicated
     t = result["tunnels"][0]
     assert t["id"] == "34595782-ae4a-41b8-8722-2d52eb487475"  # configured name → connect
+    assert t["description"] == "Site A"  # human name from config.xml
     assert t["status"] == "ESTABLISHED"  # live status overlaid
     assert t["unique_id"] == "1"  # → disconnect
     assert "version=" not in t["id"]  # blob regression guard

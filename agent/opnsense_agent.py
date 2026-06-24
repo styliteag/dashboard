@@ -26,12 +26,13 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
+from xml.etree import ElementTree
 
 # No external dependencies — the WebSocket client below is pure stdlib (see DR-4
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -430,13 +431,37 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
     return conns
 
 
-def _tunnel(name: str, conn: dict | None, sa: dict | None) -> dict:
+def _ipsec_descriptions(config_path: str = "/conf/config.xml") -> dict[str, str]:
+    """Map swanctl Connection UUID -> human description from OPNsense config.xml.
+
+    swanctl only knows UUIDs; the user-facing name lives in config.xml under
+    <OPNsense><Swanctl><Connections><Connection uuid="…"><description>. Returns
+    {} when the file is absent or unparseable (caller then falls back to the UUID).
+    """
+    try:
+        root = ElementTree.parse(config_path).getroot()
+    except (OSError, ElementTree.ParseError):
+        return {}
+    descriptions: dict[str, str] = {}
+    for connections in root.iter("Connections"):
+        for conn in connections.findall("Connection"):
+            uuid = conn.get("uuid")
+            desc = (conn.findtext("description") or "").strip()
+            if uuid and desc:
+                descriptions[uuid] = desc
+    return descriptions
+
+
+def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[str, str]) -> dict:
     """Build one dashboard tunnel row, preferring live SA data when present."""
     conn = conn or {}
+    base = {
+        "id": name,  # connection name → `swanctl --initiate --ike <id>`
+        "description": descriptions.get(name) or name,  # human name, else the UUID
+    }
     if sa is not None:
         return {
-            "id": name,  # connection name → `swanctl --initiate --ike <id>`
-            "description": name,
+            **base,
             "remote": sa["remote"] or conn.get("remote", ""),
             "local": sa["local"] or conn.get("local", ""),
             "status": sa["status"],
@@ -445,8 +470,7 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None) -> dict:
             "unique_id": sa["unique_id"],  # → `swanctl --terminate --ike-id <unique_id>`
         }
     return {
-        "id": name,
-        "description": name,
+        **base,
         "remote": conn.get("remote", ""),
         "local": conn.get("local", ""),
         "status": "down",
@@ -456,7 +480,7 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None) -> dict:
     }
 
 
-def _merge_ipsec(conns: list[dict], sas: list[dict]) -> list[dict]:
+def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str]) -> list[dict]:
     """Overlay live SA status onto the configured connections.
 
     Match a configured conn to an active SA by name first, then by endpoint pair
@@ -474,26 +498,28 @@ def _merge_ipsec(conns: list[dict], sas: list[dict]) -> list[dict]:
         sa = sa_by_name.get(c["name"]) or sa_by_ep.get((c["local"], c["remote"]))
         if sa is not None:
             matched.add(sa["name"])
-        tunnels.append(_tunnel(c["name"], c, sa))
+        tunnels.append(_tunnel(c["name"], c, sa, descriptions))
     for s in sas:
         if s["name"] not in matched:
-            tunnels.append(_tunnel(s["name"], None, s))
+            tunnels.append(_tunnel(s["name"], None, s, descriptions))
     return tunnels
 
 
 def collect_ipsec() -> dict:
     """Get IPsec tunnels: configured connections merged with live SA status."""
+    descriptions = _ipsec_descriptions()
     conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
     sas = _parse_swanctl_sas(_run(["swanctl", "--list-sas", "--raw"], timeout=10))
-    tunnels = _merge_ipsec(conns, sas)
+    tunnels = _merge_ipsec(conns, sas, descriptions)
 
     # Fallback: ipsec statusall (older / non-swanctl setups produce nothing above)
     if not tunnels:
         out2 = _run(["ipsec", "statusall"], timeout=10)
         for match in re.finditer(r'(\S+)\{(\d+)\}:\s+(INSTALLED|ESTABLISHED)', out2):
+            name = match.group(1)
             tunnels.append({
-                "id": match.group(1),
-                "description": match.group(1),
+                "id": name,
+                "description": descriptions.get(name) or name,
                 "remote": "",
                 "local": "",
                 "status": match.group(3).lower(),
