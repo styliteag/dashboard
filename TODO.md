@@ -1,6 +1,8 @@
 # TODO
 
-Active backlog lives in `docs/agent-architecture.md` (§11 Offene Punkte, §14 Bekannte Lücken).
+- Make the webgui of pfsense accessible over our agent-proxy
+- Active backlog lives in `docs/agent-architecture.md` (§11 Offene Punkte, §14 Bekannte Lücken).
+
 
 ## Done
 
