@@ -32,7 +32,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -432,23 +432,33 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
 
 
 def _ipsec_descriptions(config_path: str = "/conf/config.xml") -> dict[str, str]:
-    """Map swanctl Connection UUID -> human description from OPNsense config.xml.
+    """Map swanctl connection name -> human description from config.xml.
 
-    swanctl only knows UUIDs; the user-facing name lives in config.xml under
-    <OPNsense><Swanctl><Connections><Connection uuid="…"><description>. Returns
-    {} when the file is absent or unparseable (caller then falls back to the UUID).
+    swanctl only knows opaque connection names; the user-facing name lives in
+    config.xml. Returns {} when the file is absent or unparseable (caller then
+    falls back to the connection name).
     """
     try:
         root = ElementTree.parse(config_path).getroot()
     except (OSError, ElementTree.ParseError):
         return {}
     descriptions: dict[str, str] = {}
+    # OPNsense: <Swanctl><Connections><Connection uuid="…"><description>; the
+    # swanctl connection name is the UUID.
     for connections in root.iter("Connections"):
         for conn in connections.findall("Connection"):
             uuid = conn.get("uuid")
             desc = (conn.findtext("description") or "").strip()
             if uuid and desc:
                 descriptions[uuid] = desc
+    # pfSense: <ipsec><phase1><ikeid>N</ikeid><descr>name</descr>; the swanctl
+    # connection is named "conN". iter("phase1") only — phase2 entries also carry
+    # an <ikeid> + <descr> ("name-p2") and would otherwise clobber the tunnel name.
+    for phase1 in root.iter("phase1"):
+        ikeid = (phase1.findtext("ikeid") or "").strip()
+        desc = (phase1.findtext("descr") or "").strip()
+        if ikeid and desc:
+            descriptions[f"con{ikeid}"] = desc
     return descriptions
 
 
@@ -689,20 +699,22 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": True, "output": out.strip()[:500]}
 
     elif action == "firmware.check":
-        out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=60)
-        return {
-            "success": True,
-            "output": out.strip()[:500],
-            "product_version": _read_opnsense_version(),
-        }
+        if detect_platform() == "pfsense":
+            out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            version = _read_pfsense_version()
+        else:
+            out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=60)
+            version = _read_opnsense_version()
+        return {"success": True, "output": out.strip()[:500], "product_version": version}
 
     elif action == "firmware.update":
-        # Non-blocking: start in background
-        subprocess.Popen(
-            ["/usr/local/sbin/opnsense-update", "-bkp"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # Non-blocking: start in background. NOTE: pfSense-upgrade reboots by
+        # default; opnsense-update -bkp does not.
+        if detect_platform() == "pfsense":
+            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
+        else:
+            cmd = ["/usr/local/sbin/opnsense-update", "-bkp"]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {"success": True, "output": "update started in background"}
 
     elif action == "config.backup":
@@ -931,6 +943,91 @@ def _backup_path() -> str:
     return _self_path() + ".bak"
 
 
+# --- Update signing (Ed25519, pure stdlib verify) ----------------------------
+# Empty by default → signature NOT enforced (dev). A production release bakes the
+# prod public key (hex) here and signs the agent (scripts/sign_agent.py); then
+# every update must carry a valid signature, so a compromised dashboard cannot
+# push forged code (the private key is offline, never on the dashboard).
+_UPDATE_PUBKEY = ""
+
+_ED_P = 2**255 - 19
+_ED_D = (-121665 * pow(121666, _ED_P - 2, _ED_P)) % _ED_P
+_ED_I = pow(2, (_ED_P - 1) // 4, _ED_P)
+
+
+def _ed_recover_x(y: int) -> int:
+    xx = (y * y - 1) * pow(_ED_D * y * y + 1, _ED_P - 2, _ED_P)
+    x = pow(xx, (_ED_P + 3) // 8, _ED_P)
+    if (x * x - xx) % _ED_P != 0:
+        x = (x * _ED_I) % _ED_P
+    if x % 2 != 0:
+        x = _ED_P - x
+    return x
+
+
+_ED_BY = (4 * pow(5, _ED_P - 2, _ED_P)) % _ED_P
+_ED_B = (_ed_recover_x(_ED_BY) % _ED_P, _ED_BY % _ED_P)
+
+
+def _ed_add(pt1: tuple[int, int], pt2: tuple[int, int]) -> tuple[int, int]:
+    x1, y1 = pt1
+    x2, y2 = pt2
+    x3 = (x1 * y2 + x2 * y1) * pow(1 + _ED_D * x1 * x2 * y1 * y2, _ED_P - 2, _ED_P)
+    y3 = (y1 * y2 + x1 * x2) * pow(1 - _ED_D * x1 * x2 * y1 * y2, _ED_P - 2, _ED_P)
+    return (x3 % _ED_P, y3 % _ED_P)
+
+
+def _ed_mul(pt: tuple[int, int], e: int) -> tuple[int, int]:
+    if e == 0:
+        return (0, 1)
+    q = _ed_mul(pt, e // 2)
+    q = _ed_add(q, q)
+    if e & 1:
+        q = _ed_add(q, pt)
+    return q
+
+
+def _ed_bit(h: bytes, i: int) -> int:
+    return (h[i // 8] >> (i % 8)) & 1
+
+
+def _ed_decodepoint(s: bytes) -> tuple[int, int]:
+    y = sum(2**i * _ed_bit(s, i) for i in range(255))
+    x = _ed_recover_x(y)
+    if x & 1 != _ed_bit(s, 255):
+        x = _ED_P - x
+    if (-x * x + y * y - 1 - _ED_D * x * x * y * y) % _ED_P != 0:
+        raise ValueError("point not on curve")
+    return (x, y)
+
+
+def _ed25519_verify(signature: bytes, message: bytes, public_key: bytes) -> bool:
+    """RFC 8032 Ed25519 verify — pure Python (slow ref; run once per update)."""
+    if len(signature) != 64 or len(public_key) != 32:
+        return False
+    try:
+        r = _ed_decodepoint(signature[:32])
+        a = _ed_decodepoint(public_key)
+    except (ValueError, IndexError):
+        return False
+    s = sum(2**i * _ed_bit(signature[32:], i) for i in range(256))
+    h = hashlib.sha512(signature[:32] + public_key + message).digest()
+    hh = sum(2**i * _ed_bit(h, i) for i in range(512))
+    return _ed_mul(_ED_B, s) == _ed_add(r, _ed_mul(a, hh))
+
+
+def _signature_ok(code: bytes, signature_b64: str) -> bool:
+    """True if signing is disabled, or the Ed25519 signature over ``code`` is valid."""
+    if not _UPDATE_PUBKEY:
+        return True  # signing not enforced (dev / no baked key)
+    try:
+        sig = base64.b64decode(signature_b64, validate=True)
+        pub = bytes.fromhex(_UPDATE_PUBKEY)
+    except (ValueError, TypeError):
+        return False
+    return _ed25519_verify(sig, code, pub)
+
+
 def _verify_update_code(code: bytes, expected_sha256: str) -> bool:
     """Integrity (sha256) + syntax (compile) check before any swap.
 
@@ -996,6 +1093,9 @@ async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> N
         return
     if not _verify_update_code(code, params.get("sha256", "")):
         await _send_update_result(ws, request_id, False, "verification failed (sha256/syntax)")
+        return
+    if not _signature_ok(code, params.get("signature", "")):
+        await _send_update_result(ws, request_id, False, "signature verification failed")
         return
     try:
         await asyncio.get_event_loop().run_in_executor(None, _apply_update, code, version)

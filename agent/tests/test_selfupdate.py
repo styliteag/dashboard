@@ -7,10 +7,52 @@ on a real box with the operator present.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 
 import opnsense_agent as agent
 import pytest
+from cryptography.hazmat.primitives import serialization as _ser
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+
+def _keypair() -> tuple[Ed25519PrivateKey, bytes]:
+    priv = Ed25519PrivateKey.generate()
+    pub = priv.public_key().public_bytes(_ser.Encoding.Raw, _ser.PublicFormat.Raw)
+    return priv, pub
+
+
+def test_ed25519_verify_interop_with_cryptography() -> None:
+    # The pure-stdlib verify must agree with a real Ed25519 signer (RFC 8032).
+    priv, pub = _keypair()
+    for msg in (b"", b"agent code", b"\x00\xff" * 100):
+        assert agent._ed25519_verify(priv.sign(msg), msg, pub) is True
+
+
+def test_ed25519_verify_rejects_tampering() -> None:
+    priv, pub = _keypair()
+    sig = priv.sign(b"original")
+    assert agent._ed25519_verify(sig, b"tampered", pub) is False  # wrong message
+    bad = bytearray(sig)
+    bad[0] ^= 1
+    assert agent._ed25519_verify(bytes(bad), b"original", pub) is False  # mangled sig
+    _, other = _keypair()
+    assert agent._ed25519_verify(sig, b"original", other) is False  # wrong key
+
+
+def test_signature_disabled_without_pubkey() -> None:
+    # default _UPDATE_PUBKEY == "" → signing not enforced (dev)
+    assert agent._signature_ok(b"anything", "") is True
+
+
+def test_signature_enforced_with_pubkey(monkeypatch: pytest.MonkeyPatch) -> None:
+    priv, pub = _keypair()
+    monkeypatch.setattr(agent, "_UPDATE_PUBKEY", pub.hex())
+    code = b"new agent code"
+    sig_b64 = base64.b64encode(priv.sign(code)).decode()
+    assert agent._signature_ok(code, sig_b64) is True
+    assert agent._signature_ok(b"forged code", sig_b64) is False  # signature/code mismatch
+    assert agent._signature_ok(code, "!!notbase64") is False
 
 
 def test_verify_accepts_matching_sha_and_valid_syntax() -> None:

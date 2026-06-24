@@ -53,15 +53,24 @@ def _served_agent_version() -> str | None:
 
 
 def _agent_update_params() -> dict | None:
-    """Build the agent.update command params (version, sha256, base64 code), or None."""
+    """Build the agent.update command params, or None.
+
+    Includes the offline-produced Ed25519 signature (opnsense_agent.py.sig) when
+    present — the dashboard only relays it, it never holds the signing key.
+    """
     try:
         code = (_AGENT_DIR / "opnsense_agent.py").read_bytes()
     except OSError:
         return None
+    try:
+        signature = (_AGENT_DIR / "opnsense_agent.py.sig").read_text().strip()
+    except OSError:
+        signature = ""
     return {
         "version": _served_agent_version() or "unknown",
         "sha256": hashlib.sha256(code).hexdigest(),
         "code": base64.b64encode(code).decode(),
+        "signature": signature,
     }
 
 

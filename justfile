@@ -30,6 +30,11 @@ agent-test:
 checkmk-test:
     cd backend && uv run pytest ../checkmk/tests -q
 
+# Sign the agent for self-update (needs the OFFLINE Ed25519 private key).
+# Set DASH_AGENT_SIGNING_KEY (base64) or pass --key-file. `--gen` mints a keypair.
+sign-agent *ARGS:
+    uv --project backend run python scripts/sign_agent.py {{ARGS}}
+
 # --- Frontend --------------------------------------------------------------
 
 frontend-install:
