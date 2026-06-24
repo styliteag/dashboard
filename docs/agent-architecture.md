@@ -104,6 +104,13 @@ Gleichzeitig **RCE-by-Design** über alle Kunden-Firewalls → höchste Sorgfalt
    ist nur dateisystem-intern atomar) → sha256 verifizieren → `.bak` anlegen → atomic swap →
    Update-Marker setzen → Restart.
 
+> **Implementierungsstand Signatur (Stand 2026-06-24):** Der Push trägt zusätzlich eine
+> Ed25519-Signatur (`orbit_agent.py.sig`, offline erzeugt). Sie ist aktuell **nicht
+> erzwungen** — `_UPDATE_PUBKEY` im Agent ist leer, daher gibt `_signature_ok()` `True`
+> zurück (Dev-Modus); fehlt die `.sig`, schickt das Backend eine leere Signatur. Self-Update
+> läuft also **unsigniert**. Scharfschalten: `scripts/sign_agent.py --gen` → `PUB_HEX` in
+> `_UPDATE_PUBKEY` einbacken, `PRIV_B64` offline halten, dann `just sign-agent`.
+
 ### 5.2 Restart & Rollback (zwei Ebenen)
 
 Befund aus `agent/rc.d/orbit_agent`: `daemon(8)` läuft **ohne `-r`** → kein Respawn,
