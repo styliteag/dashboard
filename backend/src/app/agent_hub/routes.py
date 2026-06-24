@@ -11,6 +11,7 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
+import structlog
 from fastapi import (
     APIRouter,
     Depends,
@@ -35,6 +36,8 @@ from app.devices.types import Transport
 # Agent files are baked into /app/agent/ in the production container.
 # Override via AGENT_DIR env var for local dev.
 _AGENT_DIR = Path(os.environ.get("AGENT_DIR", "/app/agent"))
+
+log = structlog.get_logger("app.agent_hub.routes")
 
 router = APIRouter(tags=["agent"])
 
@@ -137,11 +140,15 @@ async def agent_websocket(ws: WebSocket):
 
             except json.JSONDecodeError:
                 pass
+            except Exception:
+                # A single bad message (e.g. a converter/DB error on one push)
+                # must NOT disconnect the agent — log it and keep the connection.
+                log.exception("agent.message_error", instance_id=instance_id, msg_type=msg_type)
 
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        log.exception("agent.ws_error", instance_id=instance_id)
     finally:
         hub.unregister(instance_id)
 
