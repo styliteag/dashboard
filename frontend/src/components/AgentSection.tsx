@@ -36,6 +36,26 @@ interface Props {
   agentMode: boolean;
 }
 
+/** Human "2 minutes ago" using the browser locale; falls back to the raw string. */
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const sec = Math.round((then - Date.now()) / 1000); // negative = past
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+    ["second", 1],
+  ];
+  for (const [unit, secs] of units) {
+    if (Math.abs(sec) >= secs || unit === "second") {
+      return rtf.format(Math.round(sec / secs), unit);
+    }
+  }
+  return rtf.format(sec, "second");
+}
+
 // ----- Shared primitives ----------------------------------------------------
 
 function CopyButton({ text }: { text: string }) {
@@ -299,8 +319,11 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {status?.agent_last_seen && (
                   <div className="flex items-center gap-3">
                     <span className="w-20 text-slate-500">Last seen</span>
-                    <span className="text-xs text-slate-400">
-                      {new Date(status.agent_last_seen).toLocaleString()}
+                    <span
+                      className="text-xs text-slate-400"
+                      title={new Date(status.agent_last_seen).toLocaleString()}
+                    >
+                      {timeAgo(status.agent_last_seen)}
                     </span>
                   </div>
                 )}
