@@ -75,7 +75,7 @@ if [ ! -f "${CONFIG_FILE}" ]; then
     else
         cat > "${CONFIG_FILE}" << 'CONF'
 {
-    "dashboard_url": "wss://dashboard.example.com/ws/agent",
+    "dashboard_url": "wss://dashboard.example.com/api/ws/agent",
     "agent_token": "PASTE_TOKEN_FROM_DASHBOARD_HERE",
     "agent_id": "",
     "push_interval": 30,
