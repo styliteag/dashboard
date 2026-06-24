@@ -339,13 +339,21 @@ Dashboard-Grün/Rot; (2) Checkmk special agent Plugin + Doku; (3) weitere Collec
 - ✅ **Toter Agent zeigte „online"** — behoben (Staleness-Watchdog: `agent_last_seen` älter als
   `DASH_AGENT_STALE_SECONDS`/120s → offline + Notify; Recovery beim nächsten Push;
   `is_online()`-Helper). Test live: Box-Agent stoppen → Karte rot in ~120s.
-- ⬜ **Rollback ungetestet im Feld** — Self-Update-Sicherheit hängt am Rollback, der nie gefeuert
-  hat (nur Happy-Path). Bewusster Bad-Update-Test nötig (kaputten Agent pushen → Supervisor
-  stellt `.bak` zurück).
+- ✅ **Rollback im Feld bewiesen (2026-06-24)** — kaputter Agent live auf .199 gepusht →
+  Supervisor stellte `.bak` zurück → guter Agent reconnectet. Zwei-Ebenen-Rollback funktioniert.
 - ⬜ **Backend-Restart = blind + Reconnect-Storm** — in-memory Hub; `_last_status` weg, Live-Status
-  leer bis nächster Push. Status-Persistenz oder schnelles Re-Push erwägen.
-- ⬜ **`/ws/agent` ohne Integrationstest** — Auth/hello/metrics→DB/Command-Dispatch nur indirekt
-  getestet. Echten Endpoint end-to-end testen (uvicorn + Token + DB).
+  leer bis nächster Push. Status-Persistenz oder schnelles Re-Push erwägen. (Teil-entschärft:
+  Dead-Peer-Fix sorgt dafür, dass Agents nach Backend-Restart binnen 60s reconnecten.)
+- ✅ **`/ws/agent`-Integrationstest (2026-06-24)** — `tests/test_agent_ws.py` (in-process
+  TestClient, DB/Scheduler gestubt): Token-Auth (valid/missing/invalid), hello/welcome +
+  Hub-register/unregister, und Regression „failing push disconnectet nicht".
+
+**Live-Test (2026-06-24) deckte 3 Bugs auf, die in Unit-Tests unsichtbar waren — alle gefixt:**
+- `service stop/restart` kaputt mit Supervisor (rc.subr-Mismatch) → `stop_cmd`/`status_cmd`
+  (`3e309c8`).
+- stdlib-WS-Client merkte toten Peer nicht (kein Pong-Timeout) → Recv-Timeout, v0.3.4 (`0eaf906`).
+- WS-Endpoint schluckte Exceptions still → Disconnect-Loop → loggen + Verbindung halten (`1b5a359`).
+- Dev-Churn-Quelle: Vite-`5173`-Proxy droppt langlebige WS bei HMR → Agents auf `8000` direkt.
 
 **Tier 2 — geflaggt, unterbewertet:**
 - ⬜ **Update-Signatur (Offline-Key)** — v1 nur sha256+TLS; Dashboard-Compromise = RCE auf alle
