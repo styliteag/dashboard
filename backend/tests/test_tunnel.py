@@ -7,7 +7,14 @@ routing contract.
 
 from __future__ import annotations
 
+from app.agent_hub.gui_tunnel import parse_tunnel_spec
 from app.agent_hub.hub import AgentHub
+
+
+def test_parse_tunnel_spec() -> None:
+    assert parse_tunnel_spec("3:14444,4:14445") == [(3, 14444), (4, 14445)]
+    assert parse_tunnel_spec("") == []
+    assert parse_tunnel_spec(" 3:14444 , bad , 5:9 ") == [(3, 14444), (5, 9)]
 
 
 def test_tunnel_registry_delivers_to_stream_queue() -> None:

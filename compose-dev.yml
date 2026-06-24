@@ -46,9 +46,12 @@ services:
       DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
       DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
       DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
+      # GUI-proxy tunnels: "instance:port" list, each forwards to that firewall's GUI.
+      DASH_GUI_TUNNELS: ${DASH_GUI_TUNNELS:-}
       TZ: ${TZ:-UTC}
     ports:
       - "${DASH_BACKEND_PORT:-8000}:8000"
+      - "14444:14444"
     volumes:
       - ./backend/src:/app/src
       - ./backend/alembic:/app/alembic
@@ -76,6 +79,19 @@ services:
       # shadowing the container's installed deps.
       - ./frontend:/app
       - /app/node_modules
+    depends_on:
+      - backend
+
+  # GUI proxy: terminates TLS per-instance-port and reverse-proxies to the
+  # in-container tunnel forwarder (backend:14444). Prod swaps the port vhost for a
+  # wildcard subdomain. See docker/Caddyfile.dev and §18.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "9003:9003"
+    volumes:
+      - ./docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro
     depends_on:
       - backend
 

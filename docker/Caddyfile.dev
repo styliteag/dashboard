@@ -1,0 +1,18 @@
+# Dev GUI proxy: terminate TLS with Caddy's internal CA and reverse-proxy a
+# per-instance PORT to that firewall's in-container tunnel forwarder. The upstream
+# (backend:14444) speaks the firewall's own HTTPS through the agent tunnel, so we
+# skip cert verification there. In prod this becomes a wildcard subdomain vhost
+# (gui-<id>.example.com) instead of a port — same reverse_proxy block.
+{
+	auto_https disable_redirects
+}
+
+# instance 3 (.199 OPNsense) -> https://localhost:9003
+localhost:9003 {
+	tls internal
+	reverse_proxy https://backend:14444 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}

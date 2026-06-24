@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.agent_hub.gui_tunnel import parse_tunnel_spec, start_gui_tunnel
 from app.agent_hub.hub import hub
 from app.agent_hub.routes import router as agent_router
 from app.apikeys.routes import router as apikeys_router
@@ -65,10 +67,22 @@ async def lifespan(app: FastAPI):
     # Start the background poller
     start_scheduler()
 
+    # GUI-proxy tunnels: bind a per-instance port that forwards to the firewall GUI
+    # through its agent (DASH_GUI_TUNNELS="3:14444,4:14445"). A reverse proxy (Caddy)
+    # fronts these to give a per-instance origin + valid cert.
+    gui_servers = []
+    for instance_id, port in parse_tunnel_spec(os.environ.get("DASH_GUI_TUNNELS", "")):
+        try:
+            gui_servers.append(await start_gui_tunnel(instance_id, "0.0.0.0", port))
+        except Exception as exc:  # noqa: BLE001 — a bad tunnel must not block startup
+            log.error("gui_tunnel.start_failed", instance_id=instance_id, port=port, error=str(exc))
+
     try:
         yield
     finally:
         log.info("shutdown")
+        for server in gui_servers:
+            server.close()
         await stop_scheduler()
         await registry.close_all()
         await dispose_engine()

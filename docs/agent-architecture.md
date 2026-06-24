@@ -599,3 +599,34 @@ braucht aktuell `pip install websockets` (oder ein stdlib-WS-Client wie im Agent
 über Session hinaus (kurzlebiges Tunnel-Token), Tunnel-Audit, Egress-/Port-Policy · Backpressure
 bei großen Downloads · pfSense identisch (Agent öffnet seinen GUI-Port — nicht separat getestet,
 gleicher Pfad).
+
+### §18 GUI-Proxy — HTTP-Reverse-Proxy per Port/Subdomain (✅ dev-verifiziert 2026-06-24)
+
+Userentscheid (nach „kein lokales pip/python, im Container an eine URL binden, dev mit Ports,
+prod hinter Wildcard"): **HTTP-Reverse-Proxy, Per-Origin**. Der lokale CLI-Forwarder wandert in
+den **Backend-Container**; ein Reverse-Proxy (**Caddy**) terminiert TLS und liefert den
+Per-Instanz-Origin.
+
+- **In-Container-Forwarder** (`app/agent_hub/gui_tunnel.py`): bindet pro Instanz einen Port
+  (`DASH_GUI_TUNNELS="3:14444"`), bridged jede TCP-Verbindung in-process über den Hub zum Agent
+  → firewall:4444 (reuse §18-Tunnel, Agent unverändert). Kein lokales Tool nötig.
+- **Caddy** (`docker/Caddyfile.dev`, neuer Service in `compose-dev.yml`): `localhost:9003`
+  (tls internal) → `reverse_proxy https://backend:14444` (`tls_insecure_skip_verify`). Caddy macht
+  Cookies/Redirects/WS/Keep-Alive nativ. **Prod:** Wildcard-Subdomain statt Port
+  (`docker/Caddyfile.prod.example`) — gleicher `reverse_proxy`-Block.
+
+**Warum Per-Origin (Port ODER Subdomain) das Absolute-URL-Problem löst:** der Browser-Origin ist
+`localhost:9003` (bzw. `gui-3.example.com`); absolute Pfade wie `/ui/.../main.css` lösen gegen
+diesen Origin auf → treffen Caddy → werden durchproxyt. Ein Port ist ein eigener Origin, **ein
+Cert für den Basis-Host deckt alle Ports** → kein Wildcard-DNS in dev nötig.
+
+**✅ Live in `just dev` (Browser-Origin → Caddy → Forwarder → Agent → .199):**
+`https://localhost:9003/` → OPNsense-GUI; **absoluter** CSS-Pfad → 200 text/css (160 KB); JS → 200;
+`Set-Cookie: PHPSESSID=…; secure; HttpOnly` ohne Domain → host-only → auf den Origin gescoped →
+Login/Session tragen. 3 parallele Streams ~0,03 s. Tests: `parse_tunnel_spec` + Hub-Registry.
+
+**Offen (Phase 2):** Auth-Gate am Caddy-Origin (Forward-Auth zur Dashboard-Session — **wichtig**,
+sonst hängt die Firewall-Admin-GUI offen; aktuell nur durch den Firewall-eigenen Login geschützt)
+· dynamische Per-Instanz-Port/Subdomain-Allokation (statt statischem `DASH_GUI_TUNNELS`) ·
+Frontend-„Open GUI"-Button · prod-Caddyfile produktiv machen (DNS-01-Wildcard). Der lokale
+`scripts/orbit-gui-tunnel.py` bleibt als Alternative ohne Port-Exposure.
