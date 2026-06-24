@@ -316,6 +316,25 @@ def test_ipsec_descriptions_missing_file_returns_empty() -> None:
     assert agent._ipsec_descriptions("/nonexistent/config.xml") == {}
 
 
+# pfSense config.xml shape confirmed on the box (2.8.1-RELEASE): legacy <ipsec>
+# with phase1/phase2 entries keyed by ikeid; swanctl names the connection "conN".
+_PFSENSE_CONFIG_XML = (
+    "<pfsense><ipsec>"
+    "<phase1><ikeid>1</ikeid><descr>opn1</descr></phase1>"
+    "<phase2><ikeid>1</ikeid><descr>opn1-p2</descr></phase2>"
+    "<phase1><ikeid>2</ikeid><descr>site-b</descr></phase1>"
+    "</ipsec></pfsense>"
+)
+
+
+def test_ipsec_descriptions_pfsense_phase1_not_phase2(tmp_path) -> None:
+    p = tmp_path / "config.xml"
+    p.write_text(_PFSENSE_CONFIG_XML)
+    descriptions = agent._ipsec_descriptions(str(p))
+    # con1 must be the phase1 name "opn1", NOT the phase2 name "opn1-p2".
+    assert descriptions == {"con1": "opn1", "con2": "site-b"}
+
+
 def test_collect_ipsec_merges_conns_and_sas(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd: list[str], timeout: int = 5) -> str:
         if "--list-conns" in cmd:
