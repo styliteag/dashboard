@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -438,16 +438,23 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
     for name, ike in _iter_sections(_tokenize_vici(out), _IKE_SA_MARKERS):
         children = ike.get("child-sas")
         bytes_in = bytes_out = 0
+        phase2_up = phase2_total = 0  # one IKE_SA may carry several child (phase-2) SAs
         if isinstance(children, dict):
             for child in children.values():
                 if isinstance(child, dict):
+                    phase2_total += 1
                     bytes_in += _to_int(child.get("bytes-in"))
                     bytes_out += _to_int(child.get("bytes-out"))
+                    if str(child.get("state", "")).upper() == "INSTALLED":
+                        phase2_up += 1
         sas.append({
             "name": name,  # the SA's connection name — may be stale after a config reload
             "remote": ike.get("remote-host", ""),
             "local": ike.get("local-host", ""),
             "status": ike.get("state", "unknown"),  # IKE-level, not the child's INSTALLED
+            "phase2_up": phase2_up,  # installed child SAs
+            "phase2_total": phase2_total,  # live child SAs (fallback "n" when no conn match)
+            "seconds_established": _to_int(ike.get("established")),  # phase-1 uptime, seconds
             "bytes_in": bytes_in,
             "bytes_out": bytes_out,
             "unique_id": str(ike.get("uniqueid", "")),  # stable handle for --terminate --ike-id
@@ -465,10 +472,13 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
         return []
     conns = []
     for name, conn in _iter_sections(_tokenize_vici(out), _CONN_MARKERS):
+        children = conn.get("children")
         conns.append({
             "name": name,
             "local": _first(conn.get("local_addrs")),
             "remote": _first(conn.get("remote_addrs")),
+            # configured phase-2 children → the "n" in "x/n up"
+            "phase2_total": len(children) if isinstance(children, dict) else 0,
         })
     return conns
 
@@ -517,6 +527,10 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
             "remote": sa["remote"] or conn.get("remote", ""),
             "local": sa["local"] or conn.get("local", ""),
             "status": sa["status"],
+            "phase2_up": sa.get("phase2_up", 0),
+            # prefer the configured child count from the conn; fall back to live SAs
+            "phase2_total": conn.get("phase2_total") or sa.get("phase2_total", 0),
+            "seconds_established": sa.get("seconds_established", 0),
             "bytes_in": sa["bytes_in"],
             "bytes_out": sa["bytes_out"],
             "unique_id": sa["unique_id"],  # → `swanctl --terminate --ike-id <unique_id>`
@@ -526,6 +540,9 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
         "remote": conn.get("remote", ""),
         "local": conn.get("local", ""),
         "status": "down",
+        "phase2_up": 0,
+        "phase2_total": conn.get("phase2_total", 0),
+        "seconds_established": 0,
         "bytes_in": 0,
         "bytes_out": 0,
         "unique_id": "",
@@ -575,6 +592,9 @@ def collect_ipsec() -> dict:
                 "remote": "",
                 "local": "",
                 "status": match.group(3).lower(),
+                "phase2_up": 1 if match.group(3) == "INSTALLED" else 0,
+                "phase2_total": 1,
+                "seconds_established": 0,  # statusall format carries no uptime here
                 "bytes_in": 0,
                 "bytes_out": 0,
                 "unique_id": match.group(2),

@@ -200,6 +200,50 @@ def test_parse_swanctl_sas_no_raw_blob_in_name() -> None:
     assert len(s["name"]) < 60
 
 
+def test_parse_swanctl_sas_uptime_and_phase2_count() -> None:
+    # Phase-1 uptime comes from the IKE-level `established=1235` (seconds);
+    # phase-2 is counted across the nested child SAs (one INSTALLED here).
+    s = agent._parse_swanctl_sas(_SWANCTL_SAS)[0]
+    assert s["seconds_established"] == 1235
+    assert s["phase2_up"] == 1
+    assert s["phase2_total"] == 1
+
+
+def test_parse_swanctl_sas_counts_multiple_children() -> None:
+    # Two children, one down → "1/2 up".
+    raw = (
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "established=42 child-sas {a-1 {state=INSTALLED bytes-in=1 bytes-out=2} "
+        "a-2 {state=REKEYING bytes-in=0 bytes-out=0}}}"
+    )
+    s = agent._parse_swanctl_sas(raw)[0]
+    assert s["phase2_up"] == 1
+    assert s["phase2_total"] == 2
+
+
+def test_parse_swanctl_conns_counts_phase2() -> None:
+    # The configured connection contributes the "n" (one child in the fixture).
+    assert agent._parse_swanctl_conns(_SWANCTL_CONNS)[0]["phase2_total"] == 1
+
+
+def test_tunnel_carries_uptime_and_phase2() -> None:
+    # The merged dashboard row must surface the new fields when an SA is present
+    # and zero them for a configured-but-down tunnel.
+    sa = agent._parse_swanctl_sas(_SWANCTL_SAS)[0]
+    up = agent._tunnel("conn", None, sa, {})
+    assert up["seconds_established"] == 1235
+    assert up["phase2_up"] == 1
+    assert up["phase2_total"] == 1  # falls back to live child count when no conn
+    # the configured conn count ("n") is preferred over the live SA count
+    preferred = agent._tunnel("conn", {"phase2_total": 2}, sa, {})
+    assert preferred["phase2_up"] == 1
+    assert preferred["phase2_total"] == 2
+    down = agent._tunnel("conn", {"local": "", "remote": "", "phase2_total": 2}, None, {})
+    assert down["seconds_established"] == 0
+    assert down["phase2_up"] == 0
+    assert down["phase2_total"] == 2
+
+
 def test_parse_swanctl_sas_sums_child_bytes() -> None:
     raw = (
         "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "

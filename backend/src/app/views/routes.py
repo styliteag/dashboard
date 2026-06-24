@@ -30,6 +30,9 @@ class GlobalTunnel(BaseModel):
     remote: str
     local: str
     phase1_status: str
+    phase2_up: int
+    phase2_total: int
+    seconds_established: int
     bytes_in: int
     bytes_out: int
 
@@ -74,6 +77,9 @@ async def global_vpn_overview(
                     remote=t.remote,
                     local=t.local,
                     phase1_status=t.phase1_status,
+                    phase2_up=t.phase2_up,
+                    phase2_total=t.phase2_total,
+                    seconds_established=t.seconds_established,
                     bytes_in=t.bytes_in,
                     bytes_out=t.bytes_out,
                 )

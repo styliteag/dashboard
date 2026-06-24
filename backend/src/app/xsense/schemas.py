@@ -100,6 +100,9 @@ class IPsecTunnel(BaseModel):
         ""  # active IKE_SA id — `swanctl --terminate --ike-id <unique_id>` (Disconnect)
     )
     established: str | None = None  # timestamp or duration string
+    seconds_established: int = 0  # phase-1 uptime in seconds (agent path; 0 if down/unknown)
+    phase2_up: int = 0  # installed child (phase-2) SAs
+    phase2_total: int = 0  # configured child (phase-2) SAs — the "n" in "x/n up"
 
 
 class IPsecServiceStatus(BaseModel):

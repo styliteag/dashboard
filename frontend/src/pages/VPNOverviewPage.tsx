@@ -12,6 +12,9 @@ interface GlobalTunnel {
   remote: string;
   local: string;
   phase1_status: string;
+  phase2_up: number;
+  phase2_total: number;
+  seconds_established: number;
   bytes_in: number;
   bytes_out: number;
 }
@@ -101,6 +104,8 @@ export default function VPNOverviewPage() {
                 <th className="px-3 py-2">Tunnel</th>
                 <th className="px-3 py-2">Remote</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Phase 2</th>
+                <th className="px-3 py-2">Uptime</th>
                 <th className="px-3 py-2 text-right">IN</th>
                 <th className="px-3 py-2 text-right">OUT</th>
               </tr>
@@ -126,6 +131,26 @@ export default function VPNOverviewPage() {
                         {t.phase1_status}
                       </span>
                     </td>
+                    <td className="px-3 py-2">
+                      {t.phase2_total > 0 ? (
+                        <span
+                          className={`rounded px-1.5 py-0.5 font-mono text-xs ${
+                            t.phase2_up === 0
+                              ? "bg-red-600/20 text-red-400"
+                              : t.phase2_up < t.phase2_total
+                                ? "bg-amber-600/20 text-amber-400"
+                                : "bg-emerald-600/20 text-emerald-400"
+                          }`}
+                        >
+                          {t.phase2_up}/{t.phase2_total}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-600">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                      {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
                   </tr>
@@ -146,6 +171,16 @@ function KpiTile({ label, value, color }: { label: string; value: number; color:
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
     </div>
   );
+}
+
+function fmtDuration(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${seconds}s`;
 }
 
 function fmtBytes(b: number): string {
