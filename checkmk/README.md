@@ -18,10 +18,19 @@ chmod +x ~/local/share/check_mk/agents/special/agent_styliteorbit
 Wire it as a **datasource program** (or test from the CLI):
 
 ```sh
-ORBIT_URL=http://dashboard.example.com \
-ORBIT_USER=admin \
-ORBIT_PASSWORD=secret \
-  ./agent_styliteorbit
+# Preferred: a read-only API key (works in prod)
+ORBIT_URL=http://dashboard.example.com ORBIT_API_KEY=orbit_xxxxx ./agent_styliteorbit
+
+# Or (dev only): username/password login
+ORBIT_URL=http://dashboard.example.com ORBIT_USER=admin ORBIT_PASSWORD=secret ./agent_styliteorbit
+```
+
+Mint a key (admin):
+
+```sh
+curl -X POST http://dashboard.example.com/api/apikeys \
+  -H "Authorization: Bearer <admin-token>" -H "Content-Type: application/json" \
+  -d '{"name":"checkmk"}'      # returns {"key":"orbit_..."} — shown once
 ```
 
 Output (excerpt):
@@ -36,13 +45,14 @@ Output (excerpt):
 
 Then add the piggyback hosts in Checkmk and run service discovery.
 
-## Auth (limitation)
+## Auth
 
-v1 logs in via `/api/auth/login` and uses the returned bearer token, which the
-dashboard issues **only when `DASH_ENV=dev`**. A dedicated read-only **API key**
-for service accounts is a follow-up (ties into RBAC — see
-`docs/agent-architecture.md` §14). Don't put the admin password in production
-WATO until then.
+Use a **read-only API key** (`ORBIT_API_KEY`) — minted via `POST /api/apikeys`,
+stored hashed, rejected on any non-GET request, revocable via
+`DELETE /api/apikeys/{id}`. This works in production and keeps the admin
+password out of WATO. The username/password fallback only works with
+`DASH_ENV=dev` (the dev bearer token). Full per-role RBAC is still a follow-up
+(see `docs/agent-architecture.md` §14).
 
 ## Dev
 

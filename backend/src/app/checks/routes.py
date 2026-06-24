@@ -7,10 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
-from app.auth.deps import current_user
+from app.auth.deps import read_principal
 from app.checks import ServiceCheck, evaluate_checks
 from app.db.base import get_session
-from app.db.models import Instance, User
+from app.db.models import Instance
 from app.opnsense.registry import registry
 from app.opnsense.schemas import (
     FirmwareStatus,
@@ -55,7 +55,7 @@ async def _gather(
 async def instance_checks(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _principal=Depends(read_principal),
 ) -> list[ServiceCheck]:
     """Evaluated OK/WARN/CRIT checks for one instance (memory, disks, gateways, IPsec, firmware)."""
     inst = await session.get(Instance, instance_id)
@@ -69,7 +69,7 @@ async def instance_checks(
 @router.get("/export/checkmk")
 async def export_checkmk(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _principal=Depends(read_principal),
 ) -> dict:
     """All instances' checks in one call — consumed by the Checkmk special agent.
 

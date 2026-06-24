@@ -130,3 +130,23 @@ class Metric(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     metric: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[float] = mapped_column(nullable=False)
+
+
+class ApiKey(Base):
+    """Read-only API key for service accounts (e.g. the Checkmk special agent).
+
+    Stores only the SHA-256 of the token (the token is high-entropy random, so a
+    fast hash is fine); the full token is shown once at creation.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(20), nullable=False)  # for display
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.agent_hub.routes import router as agent_router
+from app.apikeys.routes import router as apikeys_router
 from app.audit.routes import router as audit_router
 from app.auth.bootstrap import ensure_admin
 from app.auth.routes import router as auth_router
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(bulk_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
     app.include_router(checks_router, prefix="/api")
+    app.include_router(apikeys_router, prefix="/api")
     return app
 
 

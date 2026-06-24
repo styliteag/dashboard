@@ -93,25 +93,33 @@ def _request(url: str, *, data: bytes | None = None, headers: dict | None = None
         return json.loads(resp.read().decode())
 
 
-def fetch_export(base_url: str, username: str, password: str) -> dict:
-    login = _request(
-        f"{base_url}/api/auth/login",
-        data=json.dumps({"username": username, "password": password}).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    token = login.get("session_token")
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+def fetch_export(base_url: str, *, api_key: str = "", username: str = "", password: str = "") -> dict:
+    """Fetch the export. Prefer a read-only API key; fall back to login (dev)."""
+    if api_key:
+        headers = {"Authorization": f"Bearer {api_key}"}
+    else:
+        login = _request(
+            f"{base_url}/api/auth/login",
+            data=json.dumps({"username": username, "password": password}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        token = login.get("session_token")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
     return _request(f"{base_url}/api/export/checkmk", headers=headers)
 
 
 def main() -> None:
     base = (os.environ.get("ORBIT_URL") or (sys.argv[1] if len(sys.argv) > 1 else "")).rstrip("/")
-    user = os.environ.get("ORBIT_USER", "admin")
-    password = os.environ.get("ORBIT_PASSWORD", "")
     if not base:
-        sys.stderr.write("usage: set ORBIT_URL / ORBIT_USER / ORBIT_PASSWORD env vars\n")
+        sys.stderr.write("usage: set ORBIT_URL (+ ORBIT_API_KEY, or ORBIT_USER/ORBIT_PASSWORD)\n")
         sys.exit(2)
-    sys.stdout.write(render_checkmk(fetch_export(base, user, password)))
+    export = fetch_export(
+        base,
+        api_key=os.environ.get("ORBIT_API_KEY", ""),
+        username=os.environ.get("ORBIT_USER", "admin"),
+        password=os.environ.get("ORBIT_PASSWORD", ""),
+    )
+    sys.stdout.write(render_checkmk(export))
 
 
 if __name__ == "__main__":
