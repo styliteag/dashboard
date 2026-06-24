@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
+from app.maintenance.jobs import prune_metrics, rollup_5m
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.opnsense.registry import registry
@@ -178,6 +179,9 @@ def start_scheduler() -> None:
         id="check_stale_agents",
         max_instances=1,
     )
+    # Metrics maintenance: 5-min rollup + retention prune (replaces TimescaleDB).
+    _scheduler.add_job(rollup_5m, "interval", minutes=5, id="metrics_rollup", max_instances=1)
+    _scheduler.add_job(prune_metrics, "interval", hours=1, id="metrics_prune", max_instances=1)
     _scheduler.start()
     log.info("scheduler.started", interval_s=settings.poll_interval_seconds)
 
