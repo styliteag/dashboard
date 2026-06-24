@@ -113,6 +113,18 @@ def test_uninstall_success_clears_agent_mode(monkeypatch):
     assert inst.transport == "direct"
 
 
+# --- gui proxy disabled by default -------------------------------------------
+
+
+def test_gui_open_404_when_proxy_disabled(monkeypatch):
+    # gui_proxy_enabled defaults False -> /gui/open is gated off.
+    inst = SimpleNamespace(id=7, deleted_at=None)
+    app = _app(monkeypatch, _FakeSession(instance=inst), agent=None)
+    with TestClient(app) as c:
+        r = c.post("/api/instances/7/gui/open")
+    assert r.status_code == 404
+
+
 # --- relay enable ------------------------------------------------------------
 
 

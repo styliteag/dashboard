@@ -35,6 +35,7 @@ from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.auth.security import limiter
+from app.config import get_settings
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import EnrollmentCode, Instance, User
 from app.devices.types import Transport
@@ -256,6 +257,7 @@ class AgentStatusResponse(BaseModel):
     agent_version: str | None = None  # reported by the connected agent
     served_version: str | None = None  # version shipped in this container
     update_available: bool = False
+    gui_proxy_enabled: bool = False  # whether the GUI proxy is configured (global)
 
 
 def _client_ip(request: Request) -> str:
@@ -370,6 +372,7 @@ async def agent_status(
         agent_version=agent_version,
         served_version=served,
         update_available=update_available,
+        gui_proxy_enabled=get_settings().gui_proxy_enabled,
     )
 
 
@@ -652,6 +655,8 @@ async def gui_open(
     user: User = Depends(current_user),
 ) -> GuiOpenResponse:
     """Mint a short-lived handoff URL that logs the browser into the GUI proxy origin."""
+    if not get_settings().gui_proxy_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="gui proxy disabled")
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
@@ -692,14 +697,28 @@ async def gui_handoff(t: str) -> RedirectResponse:
     return resp
 
 
+def _instance_from_host(host: str) -> int | None:
+    """Extract the instance id from a `gui-<id>.…` proxy origin (Traefik wildcard)."""
+    m = re.match(r"gui-(\d+)\.", host or "")
+    return int(m.group(1)) if m else None
+
+
 @router.get("/gui/authcheck")
-async def gui_authcheck(request: Request, instance: int) -> dict:
+async def gui_authcheck(request: Request, instance: int | None = None) -> dict:
     """forward_auth target: 200 only if the orbit_gui cookie is valid for THIS instance.
 
-    Zero-I/O (HMAC verify only) — runs on every asset. The instance binding (cookie's
-    instance must equal the origin's instance) stops a cookie minted for one firewall
-    from satisfying another's gate.
+    Zero-I/O (HMAC verify only) — runs on every asset. The origin's instance comes
+    from the `instance` query (Caddy per-port dev) or the `gui-<id>` Host (Traefik
+    wildcard prod). The cookie's instance must equal it — a cookie minted for one
+    firewall can't satisfy another's gate (cross-tenant defense).
     """
+    if instance is None:
+        # Traefik ForwardAuth puts the real origin in X-Forwarded-Host; the auth
+        # subrequest's own Host is the auth server. Prefer the forwarded one.
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        instance = _instance_from_host(host)
+    if instance is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no instance")
     token = request.cookies.get(COOKIE_NAME, "")
     cookie_instance = verify_gui_token(token) if token else None
     if cookie_instance is None or cookie_instance != instance:

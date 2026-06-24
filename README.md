@@ -87,6 +87,42 @@ tail -f /var/log/orbit_agent.log
 The agent auto-discovers the box's own GUI/API port from `config.xml` (it does not
 assume 443/4444). Config reference: [`agent/orbit-agent.conf.example`](agent/orbit-agent.conf.example).
 
+## Firewall GUI proxy (optional)
+
+Reach a NAT'd firewall's **web GUI** through its agent — no inbound access or VPN.
+The dashboard tunnels raw TCP to the firewall over the agent's WebSocket; a reverse
+proxy in front gives each firewall a **per-instance origin** (so the GUI's absolute
+URLs resolve) and a valid TLS cert. The browser speaks TLS end-to-end with the
+firewall — nothing is rewritten, so AJAX/forms/live views work. Access is gated by a
+one-time handoff from your dashboard session → an origin-scoped cookie checked on
+every request (`forwardAuth`), bound to that one firewall.
+
+**Off by default.** It needs the reverse proxy set up, so enable it only then:
+
+```sh
+DASH_GUI_PROXY_ENABLED=true
+DASH_GUI_BASE_TEMPLATE=https://gui-{id}.example.com   # prod; {id} = instance id
+DASH_GUI_IDLE_MINUTES=15                               # close idle forwarders
+```
+
+With it on, instance pages show an **Open GUI** button (→ new tab). Leave it `false`
+and the button is hidden — no wildcard/DNS needed.
+
+- **Dev** (ports, no wildcard): `just dev` runs Caddy ([`docker/Caddyfile.dev`](docker/Caddyfile.dev))
+  mapping `https://localhost:900<id>` → instance `<id>`'s forwarder. Already enabled
+  in `compose-dev.yml`. Accept Caddy's internal-CA cert once.
+- **Prod, behind Traefik** (wildcard subdomain): put the `app` container on Traefik's
+  network, get a wildcard cert for `*.gui.example.com` (DNS-01), and add the routers/
+  service/middleware from [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)
+  — one router per firewall → `app:14400+id`, the shared `forwardAuth` gate, and
+  `insecureSkipVerify` (the upstream is the firewall's self-signed TLS through the
+  tunnel). Set `DASH_GUI_BASE_TEMPLATE` to your domain. For many firewalls, generate
+  that file (or use Traefik's HTTP provider) instead of editing by hand.
+
+> Security: each origin fronts a firewall **admin** GUI — the `forwardAuth` gate is
+> what keeps it closed. Don't remove it, and keep the forwarder ports off the public
+> internet (reachable only by your reverse proxy). See `docs/agent-architecture.md` §18.
+
 ## Layout
 
 ```

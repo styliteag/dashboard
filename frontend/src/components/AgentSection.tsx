@@ -17,6 +17,7 @@ interface AgentStatus {
   agent_version: string | null;
   served_version: string | null;
   update_available: boolean;
+  gui_proxy_enabled?: boolean;
 }
 
 interface AgentUpdateResponse {
@@ -489,7 +490,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
               </div>
             </div>
 
-            {/* Firewall GUI proxy */}
+            {/* Firewall GUI proxy — only when the proxy is configured (DASH_GUI_PROXY_ENABLED) */}
+            {status?.gui_proxy_enabled && (
             <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -511,6 +513,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 </button>
               </div>
             </div>
+            )}
 
             {/* Guide toggle */}
             <button

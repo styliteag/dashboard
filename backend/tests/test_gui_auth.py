@@ -82,3 +82,13 @@ def test_handoff_invalid_token_is_403(monkeypatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/api/gui/handoff", params={"t": "bad"}, follow_redirects=False)
     assert r.status_code == 403
+
+
+def test_authcheck_instance_from_host(monkeypatch) -> None:
+    # Traefik wildcard: no ?instance, the gui-<id> Host carries it.
+    with _client(monkeypatch) as client:
+        client.cookies.set(COOKIE_NAME, sign_gui_token(3, 60))
+        ok = client.get("/api/gui/authcheck", headers={"host": "gui-3.example.com"})
+        bad = client.get("/api/gui/authcheck", headers={"host": "gui-7.example.com"})
+    assert ok.status_code == 200
+    assert bad.status_code == 401  # cookie-3 must not satisfy gui-7's gate

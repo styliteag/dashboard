@@ -41,8 +41,11 @@ class Settings(BaseSettings):
     metrics_retention_days: int = 30  # raw metrics kept this long
     metrics_5m_retention_days: int = 365  # 5-min rollup kept this long
 
-    # GUI-proxy: close an instance's forwarder after this many minutes with no
-    # active connections (re-opened on the next "Open GUI"). 0 disables teardown.
+    # GUI proxy (optional): tunnel a firewall's web GUI through its agent, fronted
+    # by a reverse proxy giving a per-instance origin (Caddy/port in dev, Traefik/
+    # wildcard subdomain in prod). OFF by default — needs that proxy set up.
+    gui_proxy_enabled: bool = False
+    # Close an instance's forwarder after this many idle minutes (0 = never).
     gui_idle_minutes: int = 15
 
     # Notifications (all optional)

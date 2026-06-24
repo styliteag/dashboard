@@ -671,3 +671,12 @@ Reaper (60s-Tick) schließt einen Forwarder nach `DASH_GUI_IDLE_MINUTES` ohne ak
 (default 15, 0 = aus) — der nächste „Open GUI" startet ihn neu. Per-Verbindung räumt der Bridge
 ohnehin beim Tab-Schließen auf. Live: bei idle=1min war die GUI nach ~75s reaped (502). compose
 muss `DASH_GUI_IDLE_MINUTES` durchreichen (sonst Container-Default).
+
+**Opt-in + Prod (2026-06-24):** GUI-Proxy ist **default aus** (`DASH_GUI_PROXY_ENABLED=false`) —
+Nutzer ohne Reverse-Proxy/Wildcard lassen es weg (Frontend-Button via `gui_proxy_enabled` im
+Agent-Status ausgeblendet, `/gui/open` → 404). Dev: an (compose-dev, Caddy/Ports). Prod hinter
+**Traefik**: `app` ins Traefik-Netz, Wildcard-Cert `*.gui.<domain>` (DNS-01),
+`docker/traefik-gui.example.yml` (Router pro Firewall → `app:14400+id`, geteilte `forwardAuth`-
+Gate, `insecureSkipVerify`), `DASH_GUI_BASE_TEMPLATE=https://gui-{id}.<domain>`. `authcheck` ist
+Host-aware (Instanz aus `?instance` ODER `X-Forwarded-Host` gui-<id>). README-Sektion „Firewall GUI
+proxy". Tests: Host-aware authcheck, gui_open-disabled→404. Backend 97.

@@ -46,7 +46,8 @@ services:
       DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
       DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
       DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
-      # GUI proxy: close an instance forwarder after N idle minutes (0 disables).
+      # GUI proxy (on in dev — Caddy fronts it per-port; see docker/Caddyfile.dev).
+      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       TZ: ${TZ:-UTC}
     ports:
