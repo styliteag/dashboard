@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.agent_hub import routes
+
+
+def test_iso_utc_tags_naive_as_utc() -> None:
+    # MariaDB returns naive datetimes (still UTC) → must gain a +00:00 offset so
+    # the browser doesn't render them as local time.
+    naive = datetime(2026, 6, 24, 6, 22, 54)
+    assert routes._iso_utc(naive) == "2026-06-24T06:22:54+00:00"
+
+
+def test_iso_utc_preserves_aware() -> None:
+    aware = datetime(2026, 6, 24, 6, 22, 54, tzinfo=timezone.utc)
+    assert routes._iso_utc(aware) == "2026-06-24T06:22:54+00:00"
+
+
+def test_iso_utc_none() -> None:
+    assert routes._iso_utc(None) is None
 
 
 def test_served_agent_version_parses(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

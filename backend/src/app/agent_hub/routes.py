@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import (
@@ -232,6 +233,22 @@ async def disable_agent(
     return {"ok": True}
 
 
+def _iso_utc(dt: datetime | None) -> str | None:
+    """ISO-8601 with an explicit UTC offset.
+
+    Timestamps are written as `datetime.now(timezone.utc)` but MariaDB DATETIME
+    columns drop tzinfo, so the value reads back naive (still UTC wall-clock).
+    Without an offset the browser parses the string as local time — e.g. a tunnel
+    last seen at 08:22 CEST renders as 06:22. Tag naive values as UTC so the
+    frontend can convert correctly.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 @router.get("/instances/{instance_id}/agent/status", response_model=AgentStatusResponse)
 async def agent_status(
     instance_id: int,
@@ -252,7 +269,7 @@ async def agent_status(
         instance_name=inst.name,
         agent_mode=inst.agent_mode,
         agent_connected=hub.is_connected(instance_id),
-        agent_last_seen=inst.agent_last_seen.isoformat() if inst.agent_last_seen else None,
+        agent_last_seen=_iso_utc(inst.agent_last_seen),
         agent_version=agent_version,
         served_version=served,
         update_available=update_available,
