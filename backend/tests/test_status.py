@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.metrics.store import is_online, to_rate
 
-_NOW = datetime(2026, 6, 24, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 6, 24, 12, 0, 0, tzinfo=UTC)
 _EARLIER = _NOW - timedelta(minutes=5)
 
 

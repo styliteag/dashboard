@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -94,7 +94,7 @@ async def revoke_apikey(
     if key is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     if key.revoked_at is None:
-        key.revoked_at = datetime.now(timezone.utc)
+        key.revoked_at = datetime.now(UTC)
     await write_audit(
         session,
         action="apikey.revoke",

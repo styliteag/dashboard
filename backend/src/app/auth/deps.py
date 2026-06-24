@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -71,7 +71,7 @@ async def read_principal(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail="API key is read-only"
                 )
-            key.last_used_at = datetime.now(timezone.utc)
+            key.last_used_at = datetime.now(UTC)
             await session.commit()
             return key
     return await current_user(request, session)

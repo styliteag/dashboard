@@ -1,4 +1,5 @@
 """Gateway status, config backup, reboot, firewall log endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -60,16 +61,29 @@ async def config_backup(
     if inst.agent_mode:
         agent = hub.get(instance_id)
         if agent is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
         result = await agent.send_command("config.backup")
         if not result.get("success"):
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=result.get("output", "backup failed"))
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=result.get("output", "backup failed"),
+            )
         xml = result.get("config_xml", "")
-        await write_audit(session, action="config.backup", result="ok", user_id=user.id,
-                          target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+        await write_audit(
+            session,
+            action="config.backup",
+            result="ok",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+        )
         await session.commit()
         return PlainTextResponse(
-            content=xml, media_type="application/xml",
+            content=xml,
+            media_type="application/xml",
             headers={"Content-Disposition": f'attachment; filename="{inst.name}_config.xml"'},
         )
 
@@ -79,11 +93,19 @@ async def config_backup(
     except OPNsenseError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(session, action="config.backup", result="ok", user_id=user.id,
-                      target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+    await write_audit(
+        session,
+        action="config.backup",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+    )
     await session.commit()
     return PlainTextResponse(
-        content=xml, media_type="application/xml",
+        content=xml,
+        media_type="application/xml",
         headers={"Content-Disposition": f'attachment; filename="{inst.name}_config.xml"'},
     )
 
@@ -102,10 +124,19 @@ async def reboot(
     if inst.agent_mode:
         agent = hub.get(instance_id)
         if agent is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
         result = await agent.send_command("reboot")
-        await write_audit(session, action="system.reboot", result="ok", user_id=user.id,
-                          target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+        await write_audit(
+            session,
+            action="system.reboot",
+            result="ok",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+        )
         await session.commit()
         return ActionResult(success=result.get("success", False), message=result.get("output", ""))
 
@@ -113,14 +144,28 @@ async def reboot(
         client = await registry.get(inst)
         result = await client.reboot()
     except OPNsenseError as exc:
-        await write_audit(session, action="system.reboot", result="error", user_id=user.id,
-                          target_type="instance", target_id=str(instance_id),
-                          source_ip=_client_ip(request), detail={"error": str(exc)})
+        await write_audit(
+            session,
+            action="system.reboot",
+            result="error",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+            detail={"error": str(exc)},
+        )
         await session.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(session, action="system.reboot", result="ok", user_id=user.id,
-                      target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+    await write_audit(
+        session,
+        action="system.reboot",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+    )
     await session.commit()
     return result
 

@@ -4,6 +4,7 @@ We use Fernet (AES-128-CBC + HMAC) keyed by ``DASH_MASTER_KEY``. The plaintext
 never leaves the backend process: it is decrypted only when constructing the
 HTTP client for an instance, and never returned by the API.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -23,7 +24,8 @@ def _fernet() -> Fernet:
     if not key:
         raise CryptoError(
             "DASH_MASTER_KEY is not set. Generate one with "
-            "`python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`"
+            "`python -c 'from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())'`"
         )
     try:
         return Fernet(key.encode("utf-8"))

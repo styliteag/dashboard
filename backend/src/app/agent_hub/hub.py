@@ -7,8 +7,9 @@ commands from the dashboard to the correct agent.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import WebSocket
@@ -126,7 +127,7 @@ class ConnectedAgent:
         self.ws = ws
         self.instance_id = instance_id
         self.instance_name = instance_name
-        self.connected_at = datetime.now(timezone.utc)
+        self.connected_at = datetime.now(UTC)
         # Reported in the agent's hello frame.
         self.agent_version: str = ""
         self.platform: str = ""
@@ -151,7 +152,7 @@ class ConnectedAgent:
 
         try:
             return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"success": False, "output": "command timed out"}
         finally:
             self._pending_commands.pop(request_id, None)
@@ -195,10 +196,8 @@ class AgentHub:
         # Disconnect old connection if exists
         old = self._agents.get(instance_id)
         if old:
-            try:
+            with contextlib.suppress(Exception):
                 await old.ws.close()
-            except Exception:
-                pass
 
         agent = ConnectedAgent(ws, instance_id, instance_name)
         self._agents[instance_id] = agent
@@ -231,7 +230,7 @@ class AgentHub:
     async def handle_metrics(self, instance_id: int, data: dict) -> None:
         """Process a metrics push from an agent."""
         sessionmaker = get_sessionmaker()
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
 
         status = status_from_agent(data)
         self._last_status[instance_id] = status

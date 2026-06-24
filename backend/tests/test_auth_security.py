@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from app.auth.security import (
-    LoginLimiter,
     MAX_FAILED,
+    LoginLimiter,
     hash_password,
     verify_password,
 )

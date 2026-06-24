@@ -13,7 +13,6 @@ from app.db.base import get_session
 from app.db.models import Instance, User
 from app.opnsense.client import OPNsenseError
 from app.opnsense.registry import registry
-from app.opnsense.schemas import FirmwareStatus, IPsecTunnel
 
 router = APIRouter(tags=["views"])
 

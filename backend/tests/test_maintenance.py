@@ -5,7 +5,7 @@ the retention cutoffs without a real MariaDB."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -65,7 +65,7 @@ async def test_prune_deletes_both_tables_with_cutoffs(session: _Session) -> None
     assert "DELETE FROM metrics WHERE ts <" in sql_raw
     assert "DELETE FROM metrics_5m WHERE bucket <" in sql_agg
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # raw kept 30 days, agg 365 — cutoffs in the past, raw newer than agg
     assert p_raw["c"] < now and p_agg["c"] < now
     assert p_raw["c"] > p_agg["c"]

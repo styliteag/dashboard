@@ -8,7 +8,7 @@ instances and polls them in parallel with a concurrency limit of
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -31,7 +31,7 @@ _scheduler: AsyncIOScheduler | None = None
 async def _poll_instance(instance_id: int, instance_name: str) -> None:
     """Poll a single instance, persist metrics, update status columns."""
     sessionmaker = get_sessionmaker()
-    ts = datetime.now(timezone.utc)
+    ts = datetime.now(UTC)
 
     try:
         async with sessionmaker() as session:
@@ -126,7 +126,7 @@ async def _check_stale_agents() -> None:
     """
     settings = get_settings()
     sessionmaker = get_sessionmaker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(seconds=settings.agent_stale_seconds)
 
     async with sessionmaker() as session:
@@ -170,7 +170,7 @@ def start_scheduler() -> None:
         seconds=settings.poll_interval_seconds,
         id="poll_all",
         max_instances=1,
-        next_run_time=datetime.now(timezone.utc),  # run immediately on startup
+        next_run_time=datetime.now(UTC),  # run immediately on startup
     )
     _scheduler.add_job(
         _check_stale_agents,

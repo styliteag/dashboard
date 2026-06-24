@@ -5,10 +5,11 @@ Configured via environment variables:
   DASH_NOTIFY_TELEGRAM_TOKEN + DASH_NOTIFY_TELEGRAM_CHAT_ID — Telegram bot
   DASH_NOTIFY_NTFY_URL      — ntfy topic URL (e.g. https://ntfy.sh/my-opnsense)
 """
+
 from __future__ import annotations
 
-import structlog
 import httpx
+import structlog
 
 from app.config import get_settings
 
@@ -24,9 +25,14 @@ async def send_notification(title: str, message: str, level: str = "info") -> No
     if webhook_url:
         try:
             async with httpx.AsyncClient(timeout=10) as c:
-                await c.post(webhook_url, json={
-                    "title": title, "message": message, "level": level,
-                })
+                await c.post(
+                    webhook_url,
+                    json={
+                        "title": title,
+                        "message": message,
+                        "level": level,
+                    },
+                )
             log.info("notify.webhook.sent", title=title)
         except Exception as exc:  # noqa: BLE001
             log.warning("notify.webhook.failed", error=str(exc))
@@ -39,7 +45,11 @@ async def send_notification(title: str, message: str, level: str = "info") -> No
             async with httpx.AsyncClient(timeout=10) as c:
                 await c.post(
                     f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                    json={"chat_id": tg_chat, "text": f"*{title}*\n{message}", "parse_mode": "Markdown"},
+                    json={
+                        "chat_id": tg_chat,
+                        "text": f"*{title}*\n{message}",
+                        "parse_mode": "Markdown",
+                    },
                 )
             log.info("notify.telegram.sent", title=title)
         except Exception as exc:  # noqa: BLE001
@@ -50,11 +60,15 @@ async def send_notification(title: str, message: str, level: str = "info") -> No
     if ntfy_url:
         try:
             async with httpx.AsyncClient(timeout=10) as c:
-                await c.post(ntfy_url, content=message, headers={
-                    "Title": title,
-                    "Priority": {"error": "high", "warning": "default"}.get(level, "low"),
-                    "Tags": "shield",
-                })
+                await c.post(
+                    ntfy_url,
+                    content=message,
+                    headers={
+                        "Title": title,
+                        "Priority": {"error": "high", "warning": "default"}.get(level, "low"),
+                        "Tags": "shield",
+                    },
+                )
             log.info("notify.ntfy.sent", title=title)
         except Exception as exc:  # noqa: BLE001
             log.warning("notify.ntfy.failed", error=str(exc))

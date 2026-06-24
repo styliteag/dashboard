@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -17,7 +17,7 @@ def test_iso_utc_tags_naive_as_utc() -> None:
 
 
 def test_iso_utc_preserves_aware() -> None:
-    aware = datetime(2026, 6, 24, 6, 22, 54, tzinfo=timezone.utc)
+    aware = datetime(2026, 6, 24, 6, 22, 54, tzinfo=UTC)
     assert routes._iso_utc(aware) == "2026-06-24T06:22:54+00:00"
 
 

@@ -1,7 +1,8 @@
 """Audit log read endpoint (US-6.1). Read-only, no delete via API."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -40,7 +41,9 @@ class AuditPage(BaseModel):
 async def list_audit(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    action: str | None = Query(default=None, description="Filter by action prefix, e.g. 'auth' or 'ipsec.connect'"),
+    action: str | None = Query(
+        default=None, description="Filter by action prefix, e.g. 'auth' or 'ipsec.connect'"
+    ),
     instance_id: int | None = Query(default=None),
     hours: int | None = Query(default=None, description="Only show entries from the last N hours"),
     session: AsyncSession = Depends(get_session),
@@ -53,7 +56,7 @@ async def list_audit(
     if instance_id is not None:
         base = base.where(AuditLog.detail["instance_id"].as_integer() == instance_id)
     if hours is not None:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         base = base.where(AuditLog.ts >= cutoff)
 
     # Count
@@ -61,11 +64,7 @@ async def list_audit(
     total = (await session.execute(count_q)).scalar() or 0
 
     # Fetch page with optional user join
-    rows_q = (
-        base.order_by(AuditLog.ts.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
+    rows_q = base.order_by(AuditLog.ts.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await session.execute(rows_q)).scalars().all()
 
     # Resolve usernames in a single query

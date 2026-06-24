@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,7 +93,7 @@ async def update_instance(
 
 
 async def soft_delete_instance(session: AsyncSession, inst: Instance) -> None:
-    inst.deleted_at = datetime.now(timezone.utc)
+    inst.deleted_at = datetime.now(UTC)
     await session.flush()
     await registry.invalidate(inst.id)
 

@@ -5,8 +5,10 @@ Wraps ``httpx.AsyncClient`` with:
 - Per-instance pinned CA bundle (no blanket ``verify=False``)
 - Sane timeouts and a small connection pool
 """
+
 from __future__ import annotations
 
+import contextlib
 import ssl
 from typing import Any
 
@@ -126,6 +128,7 @@ class OPNsenseClient:
                 if "idle" in str(line).lower():
                     # Parse "85.0% idle" → idle=85.0 → total=15.0
                     import re
+
                     match = re.search(r"([\d.]+)%\s*idle", str(line))
                     if match:
                         idle = float(match.group(1))
@@ -138,7 +141,8 @@ class OPNsenseClient:
         """Parse memory from systemResources.
 
         OPNsense returns:
-          {"memory": {"total": "4248293376", "used": 1870169729, "total_frmt": "4051", "used_frmt": "1783", ...}}
+          {"memory": {"total": "4248293376", "used": 1870169729,
+                      "total_frmt": "4051", "used_frmt": "1783", ...}}
         total/used are in BYTES, *_frmt are in MB.
         """
         try:
@@ -148,7 +152,9 @@ class OPNsenseClient:
             total_mb = float(mem.get("total_frmt", 0)) or (float(mem.get("total", 0)) / 1024 / 1024)
             used_mb = float(mem.get("used_frmt", 0)) or (float(mem.get("used", 0)) / 1024 / 1024)
             used_pct = (used_mb / total_mb * 100) if total_mb > 0 else 0.0
-            return MemoryUsage(used_pct=round(used_pct, 1), total_mb=round(total_mb, 1), used_mb=round(used_mb, 1))
+            return MemoryUsage(
+                used_pct=round(used_pct, 1), total_mb=round(total_mb, 1), used_mb=round(used_mb, 1)
+            )
         except (ValueError, TypeError, KeyError):
             return MemoryUsage()
 
@@ -203,14 +209,13 @@ class OPNsenseClient:
         """Parse interface statistics.
 
         OPNsense returns:
-          {"statistics": {"[LAN] (vmx0) / 00:50:56:be:dd:5b": {"name": "vmx0", "flags": "0x8843", ...}}}
+          {"statistics": {"[LAN] (vmx0) / 00:50:56:be:dd:5b":
+                          {"name": "vmx0", "flags": "0x8843", ...}}}
         The outer key is a human-readable label; the inner "name" has the short BSD name.
         We deduplicate by short name (same iface appears multiple times for each address).
         """
         try:
-            data = await self._get(
-                "/api/diagnostics/interface/getInterfaceStatistics"
-            )
+            data = await self._get("/api/diagnostics/interface/getInterfaceStatistics")
             stats = data.get("statistics", data) if isinstance(data, dict) else data
             # Deduplicate: keep the first entry per short interface name
             seen: dict[str, InterfaceStats] = {}
@@ -230,8 +235,12 @@ class OPNsenseClient:
                         name=display_name,
                         status=status,
                         address=info.get("address"),
-                        bytes_received=int(info.get("received-bytes", info.get("bytes received", 0))),
-                        bytes_transmitted=int(info.get("sent-bytes", info.get("bytes transmitted", 0))),
+                        bytes_received=int(
+                            info.get("received-bytes", info.get("bytes received", 0))
+                        ),
+                        bytes_transmitted=int(
+                            info.get("sent-bytes", info.get("bytes transmitted", 0))
+                        ),
                     )
             return list(seen.values())
         except (ValueError, TypeError, KeyError):
@@ -242,7 +251,8 @@ class OPNsenseClient:
     async def _parse_uptime(self) -> str | None:
         """Extract uptime from the activity endpoint header.
 
-        Header line: "last pid: 80943;  load averages:  0.45,  0.33,  0.26  up 1+18:18:17    10:16:21"
+        Header line:
+          "last pid: 80943;  load averages:  0.45,  0.33,  0.26  up 1+18:18:17    10:16:21"
         """
         try:
             import re
@@ -277,35 +287,23 @@ class OPNsenseClient:
         ifaces: list[InterfaceStats] = []
         uptime: str | None = None
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             info = await self.system_information()
-        except OPNsenseError:
-            pass
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             cpu = await self.cpu_usage()
-        except OPNsenseError:
-            pass
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             mem = await self.memory_usage()
-        except OPNsenseError:
-            pass
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             disks = await self.disk_usage()
-        except OPNsenseError:
-            pass
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             ifaces = await self.interface_statistics()
-        except OPNsenseError:
-            pass
 
-        try:
+        with contextlib.suppress(OPNsenseError):
             uptime = await self._parse_uptime()
-        except OPNsenseError:
-            pass
 
         return SystemStatus(
             name=info.name,
@@ -382,18 +380,22 @@ class OPNsenseClient:
         new_pkgs = data.get("new_packages", [])
         all_updates: list[dict] = []
         for s in upgrade_sets:
-            all_updates.append({
-                "name": s.get("name", ""),
-                "current": s.get("current_version", ""),
-                "new": s.get("new_version", ""),
-                "size": s.get("size", ""),
-            })
+            all_updates.append(
+                {
+                    "name": s.get("name", ""),
+                    "current": s.get("current_version", ""),
+                    "new": s.get("new_version", ""),
+                    "size": s.get("size", ""),
+                }
+            )
         for p in upgrade_pkgs + new_pkgs:
-            all_updates.append({
-                "name": p.get("name", ""),
-                "current": p.get("current_version", p.get("installed", "")),
-                "new": p.get("new_version", p.get("provided", "")),
-            })
+            all_updates.append(
+                {
+                    "name": p.get("name", ""),
+                    "current": p.get("current_version", p.get("installed", "")),
+                    "new": p.get("new_version", p.get("provided", "")),
+                }
+            )
 
         # Determine latest version from sets or product_latest
         product_latest = data.get("product_latest", "")
@@ -402,7 +404,6 @@ class OPNsenseClient:
 
         status_val = data.get("status", "")
         needs_reboot = data.get("needs_reboot", "0")
-        upgrade_needs_reboot = data.get("upgrade_needs_reboot", "0")
 
         return FirmwareStatus(
             product_name=data.get("product_name", data.get("product_id", "")),

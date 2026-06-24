@@ -7,7 +7,7 @@ GET /api/overview                 — global KPI tiles
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -105,7 +105,7 @@ async def instance_metrics(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     td, bucket = RANGE_BUCKETS.get(range, RANGE_BUCKETS["24h"])
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - td
 
     points_raw = await read_metrics(session, instance_id, metric, start, end, bucket)
@@ -121,7 +121,7 @@ async def overview(
     _user: User = Depends(current_user),
 ) -> OverviewResponse:
     """Global KPI tiles (US-3.4)."""
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    cutoff = datetime.now(UTC) - timedelta(minutes=5)
 
     # Subqueries for each bucket
     base = select(Instance).where(Instance.deleted_at.is_(None))

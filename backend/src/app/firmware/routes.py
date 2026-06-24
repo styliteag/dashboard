@@ -3,6 +3,7 @@
 All actions are audited. Update is intentionally behind a separate POST so it
 can't be triggered accidentally.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -68,26 +69,42 @@ async def firmware_check(
     if inst.agent_mode:
         agent = hub.get(instance_id)
         if agent is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
         result_raw = await agent.send_command("firmware.check", timeout=90)
         output = result_raw.get("output", "")
-        upgrade_available = "can be updated" in output.lower() or "updates available" in output.lower()
+        upgrade_available = (
+            "can be updated" in output.lower() or "updates available" in output.lower()
+        )
         # firmware.check now returns the version too; fall back to what we already cached
-        product_version = (
-            result_raw.get("product_version")
-            or (hub.get_last_firmware(instance_id).product_version if hub.get_last_firmware(instance_id) else "")
+        product_version = result_raw.get("product_version") or (
+            hub.get_last_firmware(instance_id).product_version
+            if hub.get_last_firmware(instance_id)
+            else ""
         )
         import datetime as _dt
-        hub.set_firmware(instance_id, FirmwareStatus(
-            product_version=product_version,
-            product_latest=product_version,
-            upgrade_available=upgrade_available,
-            updates_available=1 if upgrade_available else 0,
-            status_msg=output[:500],
-            last_check=_dt.datetime.now(_dt.timezone.utc).isoformat(),
-        ))
-        await write_audit(session, action="firmware.check", result="ok", user_id=user.id,
-                          target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+
+        hub.set_firmware(
+            instance_id,
+            FirmwareStatus(
+                product_version=product_version,
+                product_latest=product_version,
+                upgrade_available=upgrade_available,
+                updates_available=1 if upgrade_available else 0,
+                status_msg=output[:500],
+                last_check=_dt.datetime.now(_dt.UTC).isoformat(),
+            ),
+        )
+        await write_audit(
+            session,
+            action="firmware.check",
+            result="ok",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+        )
         await session.commit()
         return ActionResult(success=True, message=output[:200] or "check complete")
 
@@ -97,8 +114,15 @@ async def firmware_check(
     except OPNsenseError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(session, action="firmware.check", result="ok", user_id=user.id,
-                      target_type="instance", target_id=str(instance_id), source_ip=_client_ip(request))
+    await write_audit(
+        session,
+        action="firmware.check",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+    )
     await session.commit()
     return result
 
@@ -116,29 +140,51 @@ async def firmware_update(
     if inst.agent_mode:
         agent = hub.get(instance_id)
         if agent is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
         result_raw = await agent.send_command("firmware.update")
-        await write_audit(session, action="firmware.update",
-                          result="ok" if result_raw.get("success") else "error",
-                          user_id=user.id, target_type="instance", target_id=str(instance_id),
-                          source_ip=_client_ip(request))
+        await write_audit(
+            session,
+            action="firmware.update",
+            result="ok" if result_raw.get("success") else "error",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+        )
         await session.commit()
-        return ActionResult(success=result_raw.get("success", False),
-                            message=result_raw.get("output", "")[:200])
+        return ActionResult(
+            success=result_raw.get("success", False), message=result_raw.get("output", "")[:200]
+        )
 
     try:
         client = await registry.get(inst)
         result = await client.firmware_update()
     except OPNsenseError as exc:
-        await write_audit(session, action="firmware.update", result="error", user_id=user.id,
-                          target_type="instance", target_id=str(instance_id),
-                          source_ip=_client_ip(request), detail={"error": str(exc)})
+        await write_audit(
+            session,
+            action="firmware.update",
+            result="error",
+            user_id=user.id,
+            target_type="instance",
+            target_id=str(instance_id),
+            source_ip=_client_ip(request),
+            detail={"error": str(exc)},
+        )
         await session.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    await write_audit(session, action="firmware.update", result="ok" if result.success else "error",
-                      user_id=user.id, target_type="instance", target_id=str(instance_id),
-                      source_ip=_client_ip(request), detail={"message": result.message})
+    await write_audit(
+        session,
+        action="firmware.update",
+        result="ok" if result.success else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=_client_ip(request),
+        detail={"message": result.message},
+    )
     await session.commit()
     return result
 

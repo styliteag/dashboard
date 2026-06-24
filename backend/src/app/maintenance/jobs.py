@@ -11,7 +11,7 @@ Both are idempotent and run off the shared AsyncSession factory.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import text
@@ -57,7 +57,7 @@ async def rollup_5m() -> int:
 async def prune_metrics() -> tuple[int, int]:
     """Delete metrics older than the retention windows. Returns (raw, agg) deleted."""
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     raw_cutoff = now - timedelta(days=settings.metrics_retention_days)
     agg_cutoff = now - timedelta(days=settings.metrics_5m_retention_days)
 

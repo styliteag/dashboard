@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -151,7 +151,7 @@ async def export_instances_csv(
         ])
 
     buf.seek(0)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     return StreamingResponse(
         content=buf,
         media_type="text/csv",
