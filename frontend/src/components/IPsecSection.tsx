@@ -3,7 +3,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link2, Unlink, RotateCw, Shield } from "lucide-react";
+import { Unlink, RotateCw, Shield } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type { IPsecServiceStatus, TunnelActionResponse, ActionResult } from "../lib/types";
 
@@ -24,11 +24,21 @@ export default function IPsecSection({ instanceId }: Props) {
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const clearMsg = () => setTimeout(() => setActionMsg(null), 5000);
 
-  const connectMut = useMutation({
-    mutationFn: (tunnelId: string) =>
-      api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/connect/${tunnelId}`),
+  // Reconnect = (terminate the live SA if up, best-effort) then re-initiate.
+  // Uses the existing connect/disconnect endpoints so it works in agent mode
+  // without a new agent command. Disconnect keys on the active IKE_SA id, connect
+  // on the connection name.
+  const reconnectMut = useMutation({
+    mutationFn: async (t: { id: string; unique_id: string; up: boolean }) => {
+      if (t.up && t.unique_id) {
+        await api
+          .post(`/api/instances/${instanceId}/ipsec/disconnect/${t.unique_id}`)
+          .catch(() => undefined);
+      }
+      return api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/connect/${t.id}`);
+    },
     onSuccess: (r) => {
-      setActionMsg({ ok: r.success, text: r.success ? "Connected" : r.message });
+      setActionMsg({ ok: r.success, text: r.success ? "Reconnected" : r.message });
       queryClient.invalidateQueries({ queryKey: qk });
       clearMsg();
     },
@@ -69,7 +79,7 @@ export default function IPsecSection({ instanceId }: Props) {
     },
   });
 
-  const busy = connectMut.isPending || disconnectMut.isPending || restartMut.isPending;
+  const busy = reconnectMut.isPending || disconnectMut.isPending || restartMut.isPending;
 
   return (
     <section className="mt-8">
@@ -160,24 +170,25 @@ export default function IPsecSection({ instanceId }: Props) {
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {up ? (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        {up && (
+                          <button
+                            onClick={() => disconnectMut.mutate(t.unique_id || t.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <Unlink className="h-3 w-3" /> Down
+                          </button>
+                        )}
                         <button
-                          onClick={() => disconnectMut.mutate(t.unique_id || t.id)}
-                          disabled={busy}
-                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
-                        >
-                          <Unlink className="h-3 w-3" /> Disconnect
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => connectMut.mutate(t.id)}
+                          onClick={() => reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })}
                           disabled={busy}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          <Link2 className="h-3 w-3" /> Connect
+                          <RotateCw className="h-3 w-3" /> Reconnect
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -26,6 +26,7 @@ class GlobalTunnel(BaseModel):
     instance_id: int
     instance_name: str
     tunnel_id: str
+    unique_id: str  # active IKE_SA id — needed to disconnect (terminate) from the overview
     description: str
     remote: str
     local: str
@@ -73,6 +74,7 @@ async def global_vpn_overview(
                     instance_id=inst.id,
                     instance_name=inst.name,
                     tunnel_id=t.id,
+                    unique_id=t.unique_id,
                     description=t.description,
                     remote=t.remote,
                     local=t.local,

@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Shield, Link2, Unlink, Search } from "lucide-react";
-import { api } from "../lib/api";
+import { Shield, Link2, Unlink, RotateCw, Search } from "lucide-react";
+import { api, ApiError } from "../lib/api";
+import type { TunnelActionResponse } from "../lib/types";
 
 interface GlobalTunnel {
   instance_id: number;
   instance_name: string;
   tunnel_id: string;
+  unique_id: string;
   description: string;
   remote: string;
   local: string;
@@ -35,11 +37,50 @@ export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "up" | "down">("all");
 
+  const queryClient = useQueryClient();
+  const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const flash = (m: { ok: boolean; text: string }) => {
+    setActionMsg(m);
+    setTimeout(() => setActionMsg(null), 5000);
+  };
+
   const { data, isLoading } = useQuery({
     queryKey: ["vpn-overview"],
     queryFn: () => api.get<GlobalVPNResponse>("/api/vpn/overview"),
     refetchInterval: 30_000,
   });
+
+  const disconnectMut = useMutation({
+    mutationFn: ({ instanceId, tunnelId }: { instanceId: number; tunnelId: string }) =>
+      api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/disconnect/${tunnelId}`),
+    onSuccess: (r) => {
+      flash({ ok: r.success, text: r.success ? "Disconnected" : r.message });
+      queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
+    },
+    onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
+  });
+
+  // Reconnect = terminate the live SA (if up, best-effort) then re-initiate,
+  // via the existing connect/disconnect endpoints (works in agent mode).
+  const reconnectMut = useMutation({
+    mutationFn: async ({ instanceId, t }: { instanceId: number; t: GlobalTunnel }) => {
+      if (isUp(t.phase1_status) && t.unique_id) {
+        await api
+          .post(`/api/instances/${instanceId}/ipsec/disconnect/${t.unique_id}`)
+          .catch(() => undefined);
+      }
+      return api.post<TunnelActionResponse>(
+        `/api/instances/${instanceId}/ipsec/connect/${t.tunnel_id}`,
+      );
+    },
+    onSuccess: (r) => {
+      flash({ ok: r.success, text: r.success ? "Reconnected" : r.message });
+      queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
+    },
+    onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
+  });
+
+  const busy = disconnectMut.isPending || reconnectMut.isPending;
 
   const filtered = (data?.tunnels ?? []).filter((t) => {
     const matchSearch =
@@ -91,6 +132,16 @@ export default function VPNOverviewPage() {
         ))}
       </div>
 
+      {actionMsg && (
+        <div
+          className={`mt-3 rounded-lg px-3 py-2 text-sm ${
+            actionMsg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
+          }`}
+        >
+          {actionMsg.text}
+        </div>
+      )}
+
       {isLoading ? (
         <p className="mt-6 text-slate-500">Loading VPN status of all instances…</p>
       ) : filtered.length === 0 ? (
@@ -108,6 +159,7 @@ export default function VPNOverviewPage() {
                 <th className="px-3 py-2">Uptime</th>
                 <th className="px-3 py-2 text-right">IN</th>
                 <th className="px-3 py-2 text-right">OUT</th>
+                <th className="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -153,6 +205,31 @@ export default function VPNOverviewPage() {
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        {up && (
+                          <button
+                            onClick={() =>
+                              disconnectMut.mutate({
+                                instanceId: t.instance_id,
+                                tunnelId: t.unique_id || t.tunnel_id,
+                              })
+                            }
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <Unlink className="h-3 w-3" /> Down
+                          </button>
+                        )}
+                        <button
+                          onClick={() => reconnectMut.mutate({ instanceId: t.instance_id, t })}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          <RotateCw className="h-3 w-3" /> Reconnect
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
