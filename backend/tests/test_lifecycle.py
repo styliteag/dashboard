@@ -113,6 +113,28 @@ def test_uninstall_success_clears_agent_mode(monkeypatch):
     assert inst.transport == "direct"
 
 
+# --- relay enable ------------------------------------------------------------
+
+
+def test_relay_enable_503_when_not_connected(monkeypatch):
+    inst = SimpleNamespace(id=7, deleted_at=None)
+    app = _app(monkeypatch, _FakeSession(instance=inst), agent=None)
+    with TestClient(app) as c:
+        r = c.post("/api/instances/7/relay/enable")
+    assert r.status_code == 503
+
+
+def test_relay_enable_forwards_command(monkeypatch):
+    inst = SimpleNamespace(id=7, deleted_at=None)
+    fa = _FakeAgent({"success": True, "output": "relay enabled (pfsense)"})
+    app = _app(monkeypatch, _FakeSession(instance=inst), agent=fa)
+    with TestClient(app) as c:
+        r = c.post("/api/instances/7/relay/enable")
+    assert r.status_code == 200
+    assert fa.calls[0][0] == "relay.enable"
+    assert r.json()["result"]["success"] is True
+
+
 # --- enroll-code (admin) -----------------------------------------------------
 
 
