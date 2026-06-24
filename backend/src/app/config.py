@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     # Master key for Fernet encryption of OPNsense API secrets at rest.
-    # Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    # Generate with: just gen-key
     master_key: str = Field(default="", description="Fernet master key (base64, 32 bytes)")
 
     # Initial admin password (used only on first start when no admin exists yet)
@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Polling
     poll_interval_seconds: int = 30
     poll_concurrency: int = 20
+
+    # Agent push staleness: mark a push-mode instance offline if no metrics push
+    # arrives within this many seconds (~4 missed 30s pushes). Generous enough to
+    # tolerate the brief reconnect during a self-update restart.
+    agent_stale_seconds: int = 120
 
     # Notifications (all optional)
     notify_webhook_url: str = ""

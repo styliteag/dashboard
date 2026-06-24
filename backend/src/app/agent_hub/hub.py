@@ -15,7 +15,8 @@ from fastapi import WebSocket
 
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
-from app.metrics.store import write_poll_metrics
+from app.metrics.store import is_online, write_poll_metrics
+from app.notifications.notifier import send_notification
 from app.opnsense.schemas import (
     CpuUsage,
     DiskUsage,
@@ -254,10 +255,15 @@ class AgentHub:
         if data.get("firmware"):
             self._last_firmware[instance_id] = firmware_from_agent(data, ts.isoformat())
 
+        recovered_name: str | None = None
         async with sessionmaker() as session:
             inst = await session.get(Instance, instance_id)
             if inst is None:
                 return
+            # Was this instance offline (e.g. flagged by the staleness watchdog)?
+            # If so, this push is a recovery — notify once.
+            if not is_online(inst.last_success_at, inst.last_error_at) and inst.last_error_at:
+                recovered_name = inst.name
             await write_poll_metrics(session, instance_id, ts, status)
             inst.last_success_at = ts
             inst.last_error_at = None
@@ -265,6 +271,12 @@ class AgentHub:
             inst.agent_last_seen = ts
             await session.commit()
 
+        if recovered_name:
+            await send_notification(
+                f"✅ {recovered_name} agent back online",
+                f"Agent for {recovered_name} resumed pushing metrics.",
+                level="info",
+            )
         log.debug("agent.metrics", instance_id=instance_id, cpu=status.cpu.total)
 
 

@@ -8,7 +8,7 @@ instances and polls them in parallel with a concurrency limit of
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
-from app.metrics.store import write_poll_metrics
+from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.opnsense.registry import registry
 
@@ -115,6 +115,50 @@ async def _poll_all() -> None:
     log.info("poll.cycle_end", count=len(rows))
 
 
+async def _check_stale_agents() -> None:
+    """Flip push-mode instances offline when their agent stops pushing.
+
+    Direct-poll instances get offline detection from the poller; push instances
+    would otherwise stay green forever after their agent dies, because nothing
+    polls them. A push older than ``agent_stale_seconds`` is treated as offline
+    (the threshold tolerates the brief reconnect during a self-update restart).
+    """
+    settings = get_settings()
+    sessionmaker = get_sessionmaker()
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=settings.agent_stale_seconds)
+
+    async with sessionmaker() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Instance).where(
+                        Instance.deleted_at.is_(None),
+                        Instance.transport == Transport.PUSH.value,
+                        Instance.agent_last_seen.is_not(None),
+                        Instance.agent_last_seen < cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        for inst in rows:
+            # Only the online→offline transition fires a notification (idempotent).
+            if not is_online(inst.last_success_at, inst.last_error_at):
+                continue
+            inst.last_error_at = now
+            inst.last_error_message = f"agent silent for >{settings.agent_stale_seconds}s"
+            await session.commit()
+            log.warning("agent.stale", instance=inst.name, instance_id=inst.id)
+            await send_notification(
+                f"🔴 {inst.name} agent offline",
+                f"No metrics push from {inst.name} for over {settings.agent_stale_seconds}s.",
+                level="error",
+            )
+
+
 def start_scheduler() -> None:
     global _scheduler
     settings = get_settings()
@@ -126,6 +170,13 @@ def start_scheduler() -> None:
         id="poll_all",
         max_instances=1,
         next_run_time=datetime.now(timezone.utc),  # run immediately on startup
+    )
+    _scheduler.add_job(
+        _check_stale_agents,
+        "interval",
+        seconds=settings.poll_interval_seconds,
+        id="check_stale_agents",
+        max_instances=1,
     )
     _scheduler.start()
     log.info("scheduler.started", interval_s=settings.poll_interval_seconds)

@@ -18,6 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.opnsense.schemas import SystemStatus
 
 
+def is_online(last_success_at: datetime | None, last_error_at: datetime | None) -> bool:
+    """A target is online when its last success is more recent than its last error.
+
+    Shared by the poller, the agent hub (recovery), and the staleness watchdog so
+    the online/offline transition is decided in exactly one place.
+    """
+    return bool(last_success_at and (not last_error_at or last_success_at > last_error_at))
+
+
 async def write_poll_metrics(
     session: AsyncSession,
     instance_id: int,
