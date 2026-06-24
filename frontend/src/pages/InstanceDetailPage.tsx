@@ -24,6 +24,7 @@ import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
 import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
 import GatewaySection from "../components/GatewaySection";
+import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
@@ -208,6 +209,9 @@ export default function InstanceDetailPage() {
 
       {/* Service checks (green/red per service) */}
       <ChecksSection instanceId={Number(id)} />
+
+      {/* Interfaces with live throughput */}
+      <InterfacesSection instanceId={Number(id)} />
 
       {/* Gateways */}
       <GatewaySection instanceId={Number(id)} />

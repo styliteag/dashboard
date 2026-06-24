@@ -4,6 +4,7 @@ GET /api/instances/{id}/status    — current status snapshot from last poll
 GET /api/instances/{id}/metrics   — historical time-series for a metric
 GET /api/overview                 — global KPI tiles
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ from app.agent_hub.hub import hub
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
-from app.metrics.store import read_metrics
+from app.metrics.store import read_metrics, to_rate
 from app.opnsense.registry import registry
 from app.opnsense.schemas import SystemStatus
 
@@ -25,6 +26,7 @@ router = APIRouter(tags=["status"])
 
 
 # ----- Schemas ---------------------------------------------------------------
+
 
 class OverviewResponse(BaseModel):
     total: int
@@ -47,15 +49,16 @@ class MetricResponse(BaseModel):
 # ----- Time-range helpers ---------------------------------------------------
 
 RANGE_BUCKETS: dict[str, tuple[timedelta, int]] = {
-    "1h": (timedelta(hours=1), 0),       # raw
-    "6h": (timedelta(hours=6), 60),       # 1min buckets
-    "24h": (timedelta(hours=24), 300),    # 5min buckets
-    "7d": (timedelta(days=7), 900),       # 15min buckets
-    "30d": (timedelta(days=30), 3600),    # 1h buckets
+    "1h": (timedelta(hours=1), 0),  # raw
+    "6h": (timedelta(hours=6), 60),  # 1min buckets
+    "24h": (timedelta(hours=24), 300),  # 5min buckets
+    "7d": (timedelta(days=7), 900),  # 15min buckets
+    "30d": (timedelta(days=30), 3600),  # 1h buckets
 }
 
 
 # ----- Endpoints ------------------------------------------------------------
+
 
 @router.get("/instances/{instance_id}/status", response_model=SystemStatus)
 async def instance_status(
@@ -93,6 +96,7 @@ async def instance_metrics(
     instance_id: int,
     metric: str = Query(default="cpu.total", description="Metric name"),
     range: str = Query(default="24h", description="Time range: 1h, 6h, 24h, 7d, 30d"),
+    rate: bool = Query(default=False, description="Differentiate a counter into a per-second rate"),
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> MetricResponse:
@@ -105,6 +109,8 @@ async def instance_metrics(
     start = end - td
 
     points_raw = await read_metrics(session, instance_id, metric, start, end, bucket)
+    if rate:
+        points_raw = to_rate(points_raw)
     points = [MetricPoint(ts=p["ts"], value=p["value"]) for p in points_raw]
     return MetricResponse(metric=metric, instance_id=instance_id, points=points)
 
@@ -124,12 +130,18 @@ async def overview(
     online_q = base.where(Instance.last_success_at >= cutoff).where(
         (Instance.last_error_at.is_(None)) | (Instance.last_success_at > Instance.last_error_at)
     )
-    online = (await session.execute(select(func.count()).select_from(online_q.subquery()))).scalar() or 0
+    online = (
+        await session.execute(select(func.count()).select_from(online_q.subquery()))
+    ).scalar() or 0
 
-    degraded_q = base.where(Instance.last_success_at >= cutoff).where(
-        Instance.last_error_at >= cutoff
-    ).where(Instance.last_error_at >= Instance.last_success_at)
-    degraded = (await session.execute(select(func.count()).select_from(degraded_q.subquery()))).scalar() or 0
+    degraded_q = (
+        base.where(Instance.last_success_at >= cutoff)
+        .where(Instance.last_error_at >= cutoff)
+        .where(Instance.last_error_at >= Instance.last_success_at)
+    )
+    degraded = (
+        await session.execute(select(func.count()).select_from(degraded_q.subquery()))
+    ).scalar() or 0
 
     offline = total - online - degraded
     return OverviewResponse(total=total, online=online, offline=offline, degraded=degraded)

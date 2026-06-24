@@ -18,6 +18,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.opnsense.schemas import SystemStatus
 
 
+def to_rate(points: list[dict]) -> list[dict]:
+    """Turn a monotonic counter series into a per-second rate.
+
+    Used for interface byte counters (iface.*.bytes_rx/tx) → bytes/sec. Drops the
+    first point (no predecessor) and clamps counter resets (negative deltas, e.g.
+    after a reboot) to 0. Works for both push and poll — they store the same raw
+    counters, so the rate is derived on read with no in-memory state.
+    """
+    out: list[dict] = []
+    for prev, cur in zip(points, points[1:], strict=False):
+        dt = (
+            datetime.fromisoformat(cur["ts"]) - datetime.fromisoformat(prev["ts"])
+        ).total_seconds()
+        if dt <= 0:
+            continue
+        delta = cur["value"] - prev["value"]
+        out.append({"ts": cur["ts"], "value": (delta / dt) if delta >= 0 else 0.0})
+    return out
+
+
 def is_online(last_success_at: datetime | None, last_error_at: datetime | None) -> bool:
     """A target is online when its last success is more recent than its last error.
 

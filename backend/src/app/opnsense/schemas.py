@@ -61,7 +61,8 @@ class InterfaceStats(BaseModel):
     address: str | None = None
     bytes_received: int = 0
     bytes_transmitted: int = 0
-    # Rates are computed by the poller by diffing two consecutive polls.
+    # These are raw counters. Throughput (bytes/sec) is derived on read — via
+    # to_rate() on the metrics endpoint (?rate=true) and client-side in the UI.
 
 
 class SystemStatus(BaseModel):
