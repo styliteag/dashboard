@@ -39,6 +39,17 @@ export default function VPNOverviewPage() {
 
   const queryClient = useQueryClient();
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Per-tunnel in-flight tracking — an action only disables ITS row, never the
+  // whole list, and several tunnels can be actioned concurrently.
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const rowKey = (t: GlobalTunnel) => `${t.instance_id}-${t.tunnel_id}`;
+  const setBusy = (k: string, on: boolean) =>
+    setPending((s) => {
+      const n = new Set(s);
+      if (on) n.add(k);
+      else n.delete(k);
+      return n;
+    });
   const flash = (m: { ok: boolean; text: string }) => {
     setActionMsg(m);
     setTimeout(() => setActionMsg(null), 5000);
@@ -51,8 +62,12 @@ export default function VPNOverviewPage() {
   });
 
   const disconnectMut = useMutation({
-    mutationFn: ({ instanceId, tunnelId }: { instanceId: number; tunnelId: string }) =>
-      api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/disconnect/${tunnelId}`),
+    mutationFn: (t: GlobalTunnel) =>
+      api.post<TunnelActionResponse>(
+        `/api/instances/${t.instance_id}/ipsec/disconnect/${t.unique_id || t.tunnel_id}`,
+      ),
+    onMutate: (t) => setBusy(rowKey(t), true),
+    onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
     onSuccess: (r) => {
       flash({ ok: r.success, text: r.success ? "Disconnected" : r.message });
       queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
@@ -63,24 +78,24 @@ export default function VPNOverviewPage() {
   // Reconnect = terminate the live SA (if up, best-effort) then re-initiate,
   // via the existing connect/disconnect endpoints (works in agent mode).
   const reconnectMut = useMutation({
-    mutationFn: async ({ instanceId, t }: { instanceId: number; t: GlobalTunnel }) => {
+    mutationFn: async (t: GlobalTunnel) => {
       if (isUp(t.phase1_status) && t.unique_id) {
         await api
-          .post(`/api/instances/${instanceId}/ipsec/disconnect/${t.unique_id}`)
+          .post(`/api/instances/${t.instance_id}/ipsec/disconnect/${t.unique_id}`)
           .catch(() => undefined);
       }
       return api.post<TunnelActionResponse>(
-        `/api/instances/${instanceId}/ipsec/connect/${t.tunnel_id}`,
+        `/api/instances/${t.instance_id}/ipsec/connect/${t.tunnel_id}`,
       );
     },
+    onMutate: (t) => setBusy(rowKey(t), true),
+    onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
     onSuccess: (r) => {
       flash({ ok: r.success, text: r.success ? "Reconnected" : r.message });
       queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
     },
     onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
   });
-
-  const busy = disconnectMut.isPending || reconnectMut.isPending;
 
   const filtered = (data?.tunnels ?? []).filter((t) => {
     const matchSearch =
@@ -209,24 +224,22 @@ export default function VPNOverviewPage() {
                       <div className="flex items-center justify-end gap-1">
                         {up && (
                           <button
-                            onClick={() =>
-                              disconnectMut.mutate({
-                                instanceId: t.instance_id,
-                                tunnelId: t.unique_id || t.tunnel_id,
-                              })
-                            }
-                            disabled={busy}
+                            onClick={() => disconnectMut.mutate(t)}
+                            disabled={pending.has(rowKey(t))}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
                           >
                             <Unlink className="h-3 w-3" /> Down
                           </button>
                         )}
                         <button
-                          onClick={() => reconnectMut.mutate({ instanceId: t.instance_id, t })}
-                          disabled={busy}
+                          onClick={() => reconnectMut.mutate(t)}
+                          disabled={pending.has(rowKey(t))}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          <RotateCw className="h-3 w-3" /> Reconnect
+                          <RotateCw
+                            className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`}
+                          />{" "}
+                          Reconnect
                         </button>
                       </div>
                     </td>

@@ -23,6 +23,15 @@ export default function IPsecSection({ instanceId }: Props) {
 
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const clearMsg = () => setTimeout(() => setActionMsg(null), 5000);
+  // Per-tunnel in-flight tracking so an action disables only its own row.
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const setBusy = (id: string, on: boolean) =>
+    setPending((s) => {
+      const n = new Set(s);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
 
   // Reconnect = (terminate the live SA if up, best-effort) then re-initiate.
   // Uses the existing connect/disconnect endpoints so it works in agent mode
@@ -37,6 +46,8 @@ export default function IPsecSection({ instanceId }: Props) {
       }
       return api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/connect/${t.id}`);
     },
+    onMutate: (t) => setBusy(t.id, true),
+    onSettled: (_d, _e, t) => setBusy(t.id, false),
     onSuccess: (r) => {
       setActionMsg({ ok: r.success, text: r.success ? "Reconnected" : r.message });
       queryClient.invalidateQueries({ queryKey: qk });
@@ -49,8 +60,12 @@ export default function IPsecSection({ instanceId }: Props) {
   });
 
   const disconnectMut = useMutation({
-    mutationFn: (tunnelId: string) =>
-      api.post<TunnelActionResponse>(`/api/instances/${instanceId}/ipsec/disconnect/${tunnelId}`),
+    mutationFn: (t: { id: string; unique_id: string }) =>
+      api.post<TunnelActionResponse>(
+        `/api/instances/${instanceId}/ipsec/disconnect/${t.unique_id || t.id}`,
+      ),
+    onMutate: (t) => setBusy(t.id, true),
+    onSettled: (_d, _e, t) => setBusy(t.id, false),
     onSuccess: (r) => {
       setActionMsg({ ok: r.success, text: r.success ? "Disconnected" : r.message });
       queryClient.invalidateQueries({ queryKey: qk });
@@ -78,8 +93,6 @@ export default function IPsecSection({ instanceId }: Props) {
       clearMsg();
     },
   });
-
-  const busy = reconnectMut.isPending || disconnectMut.isPending || restartMut.isPending;
 
   return (
     <section className="mt-8">
@@ -174,8 +187,8 @@ export default function IPsecSection({ instanceId }: Props) {
                       <div className="flex items-center justify-end gap-1">
                         {up && (
                           <button
-                            onClick={() => disconnectMut.mutate(t.unique_id || t.id)}
-                            disabled={busy}
+                            onClick={() => disconnectMut.mutate({ id: t.id, unique_id: t.unique_id })}
+                            disabled={pending.has(t.id)}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
                           >
                             <Unlink className="h-3 w-3" /> Down
@@ -183,10 +196,11 @@ export default function IPsecSection({ instanceId }: Props) {
                         )}
                         <button
                           onClick={() => reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })}
-                          disabled={busy}
+                          disabled={pending.has(t.id)}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
                         >
-                          <RotateCw className="h-3 w-3" /> Reconnect
+                          <RotateCw className={`h-3 w-3 ${pending.has(t.id) ? "animate-spin" : ""}`} />{" "}
+                          Reconnect
                         </button>
                       </div>
                     </td>
