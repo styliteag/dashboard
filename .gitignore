@@ -228,5 +228,5 @@ backend/.env
 .DS_Store
 
 # Agent self-update signature — produced at release time, not committed
-agent/opnsense_agent.py.sig
+agent/orbit_agent.py.sig
 *local.md
