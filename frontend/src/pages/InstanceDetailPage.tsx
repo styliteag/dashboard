@@ -22,6 +22,7 @@ import {
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
 import AgentSection from "../components/AgentSection";
+import ChecksSection from "../components/ChecksSection";
 import GatewaySection from "../components/GatewaySection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
@@ -204,6 +205,9 @@ export default function InstanceDetailPage() {
           ))}
         </div>
       </section>
+
+      {/* Service checks (green/red per service) */}
+      <ChecksSection instanceId={Number(id)} />
 
       {/* Gateways */}
       <GatewaySection instanceId={Number(id)} />
