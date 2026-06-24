@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1500,6 +1500,16 @@ async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> Non
         "result": {"success": ok, "output": output},
     }))
     log.warning("agent.uninstall: %s", output)
+
+    if ok:
+        # Exit NOW so the detached script reparents to init — a still-running
+        # descendant can't reliably SIGKILL its own ancestors on FreeBSD (the kill
+        # silently no-ops), but once we exit, the script is outside the tree and
+        # the kill works (the supervisor respawns us once; the script's retry loop
+        # reaps that). The script sleeps briefly to let this exit land first.
+        with contextlib.suppress(Exception):
+            await ws.close()
+        os._exit(0)
 
 
 async def _probation_watchdog(healthy: asyncio.Event) -> None:
