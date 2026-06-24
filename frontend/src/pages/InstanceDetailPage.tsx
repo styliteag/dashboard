@@ -1,15 +1,7 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Cpu,
-  HardDrive,
-  MemoryStick,
-  Clock,
-  Server,
-  RefreshCw,
-} from "lucide-react";
+import { Cpu, HardDrive, MemoryStick, Clock, Server } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -21,6 +13,8 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
+import InstanceHeader from "../components/InstanceHeader";
+import EditInstanceDialog from "../components/EditInstanceDialog";
 import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
 import GatewaySection from "../components/GatewaySection";
@@ -28,7 +22,6 @@ import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
-import SystemActions from "../components/SystemActions";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Range = (typeof RANGES)[number];
@@ -38,9 +31,25 @@ const METRICS = [
   { key: "memory.used_pct", label: "RAM %", color: "#6366f1" },
 ] as const;
 
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "network", label: "Network" },
+  { key: "security", label: "Security" },
+  { key: "firmware", label: "Firmware" },
+  { key: "agent", label: "Agent" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
+
 export default function InstanceDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const nid = Number(id);
   const [range, setRange] = useState<Range>("24h");
+  const [editOpen, setEditOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem("instance.tab") as Tab) || "overview");
+  const selectTab = (t: Tab) => {
+    localStorage.setItem("instance.tab", t);
+    setTab(t);
+  };
 
   const { data: instance } = useQuery({
     queryKey: ["instance", id],
@@ -60,179 +69,145 @@ export default function InstanceDetailPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link to="/" className="text-slate-500 hover:text-slate-300">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <h1 className="text-xl font-semibold">
-          {instance?.name ?? `Instance ${id}`}
-        </h1>
-        {instance?.location && (
-          <span className="text-sm text-slate-500">{instance.location}</span>
-        )}
-        <button
-          onClick={() => refetchStatus()}
-          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
-        </button>
+      <InstanceHeader
+        instance={instance}
+        status={status}
+        fallbackId={id}
+        onRefresh={() => refetchStatus()}
+        onEdit={() => setEditOpen(true)}
+      />
+
+      {/* Tabs */}
+      <div className="mt-5 flex flex-wrap gap-1 border-b border-slate-800">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => selectTab(t.key)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+              tab === t.key
+                ? "border-emerald-500 text-slate-100"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Status tiles */}
-      {statusLoading ? (
-        <p className="mt-6 text-slate-500">Loading status…</p>
-      ) : status ? (
+      {/* Overview: KPIs + metrics + service checks */}
+      {tab === "overview" && (
         <>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <Tile
-              icon={<Cpu className="h-5 w-5 text-emerald-400" />}
-              label="CPU"
-              value={`${status.cpu.total.toFixed(1)}%`}
-            />
-            <Tile
-              icon={<MemoryStick className="h-5 w-5 text-indigo-400" />}
-              label="RAM"
-              value={`${status.memory.used_pct.toFixed(1)}%`}
-              sub={`${status.memory.used_mb.toFixed(0)} / ${status.memory.total_mb.toFixed(0)} MB`}
-            />
-            {status.disks.slice(0, 1).map((d) => (
+          {statusLoading ? (
+            <p className="mt-6 text-slate-500">Loading status…</p>
+          ) : status ? (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <Tile
-                key={d.mountpoint}
-                icon={<HardDrive className="h-5 w-5 text-amber-400" />}
-                label={`Disk ${d.mountpoint}`}
-                value={`${d.used_pct.toFixed(1)}%`}
+                icon={<Cpu className="h-5 w-5 text-emerald-400" />}
+                label="CPU"
+                value={`${status.cpu.total.toFixed(1)}%`}
               />
-            ))}
-            <Tile
-              icon={<Clock className="h-5 w-5 text-sky-400" />}
-              label="Uptime"
-              value={status.uptime || "—"}
-            />
-            <Tile
-              icon={<Server className="h-5 w-5 text-slate-400" />}
-              label="Version"
-              value={status.version || "—"}
-            />
-          </div>
-
-          {/* Interfaces table */}
-          {status.interfaces.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-sm font-semibold text-slate-400">
-                Interfaces
-              </h2>
-              <div className="mt-2 overflow-x-auto rounded-lg border border-slate-800">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-900 text-left text-xs text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Address</th>
-                      <th className="px-3 py-2 text-right">RX</th>
-                      <th className="px-3 py-2 text-right">TX</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {status.interfaces.map((iface) => (
-                      <tr
-                        key={iface.name}
-                        className="border-t border-slate-800"
-                      >
-                        <td className="px-3 py-2 font-mono">{iface.name}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={
-                              iface.status.includes("up")
-                                ? "text-emerald-400"
-                                : "text-red-400"
-                            }
-                          >
-                            {iface.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-slate-400">
-                          {iface.address ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono">
-                          {formatBytes(iface.bytes_received)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono">
-                          {formatBytes(iface.bytes_transmitted)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+              <Tile
+                icon={<MemoryStick className="h-5 w-5 text-indigo-400" />}
+                label="RAM"
+                value={`${status.memory.used_pct.toFixed(1)}%`}
+                sub={`${status.memory.used_mb.toFixed(0)} / ${status.memory.total_mb.toFixed(0)} MB`}
+              />
+              {status.disks.slice(0, 1).map((d) => (
+                <Tile
+                  key={d.mountpoint}
+                  icon={<HardDrive className="h-5 w-5 text-amber-400" />}
+                  label={`Disk ${d.mountpoint}`}
+                  value={`${d.used_pct.toFixed(1)}%`}
+                />
+              ))}
+              <Tile
+                icon={<Clock className="h-5 w-5 text-sky-400" />}
+                label="Uptime"
+                value={status.uptime || "—"}
+              />
+              <Tile
+                icon={<Server className="h-5 w-5 text-slate-400" />}
+                label="Version"
+                value={status.version || "—"}
+              />
+            </div>
+          ) : (
+            <p className="mt-6 text-red-400">Status not available.</p>
           )}
+
+          <section className="mt-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-400">Metrics</h2>
+              <div className="flex gap-1">
+                {RANGES.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRange(r)}
+                    className={`rounded-md px-2 py-1 text-xs ${
+                      range === r ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-6 lg:grid-cols-2">
+              {METRICS.map((m) => (
+                <MetricChart
+                  key={m.key}
+                  instanceId={nid}
+                  metric={m.key}
+                  label={m.label}
+                  color={m.color}
+                  range={range}
+                />
+              ))}
+            </div>
+          </section>
+
+          <ChecksSection instanceId={nid} />
         </>
-      ) : (
-        <p className="mt-6 text-red-400">Status not available.</p>
       )}
 
-      {/* Metrics charts */}
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-400">Metrics</h2>
-          <div className="flex gap-1">
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={`rounded-md px-2 py-1 text-xs ${
-                  range === r
-                    ? "bg-emerald-600 text-white"
-                    : "text-slate-400 hover:bg-slate-800"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+      {/* Network: interfaces (live throughput) + gateways */}
+      {tab === "network" && (
+        <div>
+          <InterfacesSection instanceId={nid} />
+          <GatewaySection instanceId={nid} />
         </div>
+      )}
 
-        <div className="mt-4 grid gap-6 lg:grid-cols-2">
-          {METRICS.map((m) => (
-            <MetricChart
-              key={m.key}
-              instanceId={Number(id)}
-              metric={m.key}
-              label={m.label}
-              color={m.color}
-              range={range}
-            />
-          ))}
+      {/* Security: IPsec + firewall log */}
+      {tab === "security" && (
+        <div>
+          <IPsecSection instanceId={nid} />
+          <FirewallLogSection instanceId={nid} />
         </div>
-      </section>
+      )}
 
-      {/* Service checks (green/red per service) */}
-      <ChecksSection instanceId={Number(id)} />
+      {/* Firmware */}
+      {tab === "firmware" && (
+        <div>
+          <FirmwareSection
+            instanceId={nid}
+            instanceName={instance?.name ?? ""}
+            agentMode={instance?.agent_mode ?? false}
+          />
+        </div>
+      )}
 
-      {/* Interfaces with live throughput */}
-      <InterfacesSection instanceId={Number(id)} />
+      {/* Agent */}
+      {tab === "agent" && (
+        <div>
+          <AgentSection instanceId={nid} agentMode={instance?.agent_mode ?? false} />
+        </div>
+      )}
 
-      {/* Gateways */}
-      <GatewaySection instanceId={Number(id)} />
-
-      {/* IPsec (US-4.1..4.5) */}
-      <IPsecSection instanceId={Number(id)} />
-
-      {/* Firmware (US-5.1..5.3) */}
-      <FirmwareSection instanceId={Number(id)} instanceName={instance?.name ?? ""} agentMode={instance?.agent_mode ?? false} />
-
-      {/* Firewall Log */}
-      <FirewallLogSection instanceId={Number(id)} />
-
-      {/* System Actions: Config Backup + Reboot */}
-      <SystemActions instanceId={Number(id)} instanceName={instance?.name ?? ""} />
-
-      {/* Agent Mode */}
-      <AgentSection
-        instanceId={Number(id)}
-        agentMode={instance?.agent_mode ?? false}
-      />
+      {editOpen && instance && (
+        <EditInstanceDialog instance={instance} onClose={() => setEditOpen(false)} />
+      )}
     </div>
   );
 }
@@ -296,9 +271,7 @@ function MetricChart({
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
       <h3 className="mb-3 text-xs text-slate-500">{label}</h3>
       {points.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-600">
-          No data for this range.
-        </p>
+        <p className="py-8 text-center text-sm text-slate-600">No data for this range.</p>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={points}>
@@ -314,11 +287,7 @@ function MetricChart({
               tick={{ fontSize: 10, fill: "#64748b" }}
               interval="preserveStartEnd"
             />
-            <YAxis
-              tick={{ fontSize: 10, fill: "#64748b" }}
-              domain={[0, 100]}
-              width={35}
-            />
+            <YAxis tick={{ fontSize: 10, fill: "#64748b" }} domain={[0, 100]} width={35} />
             <Tooltip
               contentStyle={{
                 backgroundColor: "#0f172a",
@@ -338,13 +307,4 @@ function MetricChart({
       )}
     </div>
   );
-}
-
-// ----- Helpers --------------------------------------------------------------
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
