@@ -37,7 +37,7 @@ def _load_private_key(key_file: str | None) -> Ed25519PrivateKey:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Sign the agent for self-update.")
-    ap.add_argument("--agent", default="agent/opnsense_agent.py")
+    ap.add_argument("--agent", default="agent/orbit_agent.py")
     ap.add_argument("--key-file", help="file containing the base64 raw private key")
     ap.add_argument("--gen", action="store_true", help="generate a keypair and exit")
     args = ap.parse_args()

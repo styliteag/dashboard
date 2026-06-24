@@ -12,7 +12,7 @@ from __future__ import annotations
 import base64
 import json
 
-import opnsense_agent as agent
+import orbit_agent as agent
 import pytest
 
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# install.sh — Install the opnsense-dash agent on an OPNsense firewall.
+# install.sh — Install the orbit agent on an OPNsense firewall.
 #
 # Usage:
 #   fetch -o - https://dashboard.example.com/agent/install.sh | sh
@@ -7,17 +7,17 @@
 #   curl -sS https://dashboard.example.com/agent/install.sh | sh
 #
 # After install, edit the config and enable the service:
-#   vi /usr/local/etc/opnsense-dash-agent.conf   (set dashboard_url + agent_token)
-#   sysrc opnsense_dash_agent_enable=YES
-#   service opnsense_dash_agent start
+#   vi /usr/local/etc/orbit-agent.conf   (set dashboard_url + agent_token)
+#   sysrc orbit_agent_enable=YES
+#   service orbit_agent start
 
 set -eu
 
-INSTALL_DIR="/usr/local/opnsense-dash-agent"
-CONFIG_FILE="/usr/local/etc/opnsense-dash-agent.conf"
-RC_SCRIPT="/usr/local/etc/rc.d/opnsense_dash_agent"
+INSTALL_DIR="/usr/local/orbit-agent"
+CONFIG_FILE="/usr/local/etc/orbit-agent.conf"
+RC_SCRIPT="/usr/local/etc/rc.d/orbit_agent"
 
-echo "=== opnsense-dash agent installer ==="
+echo "=== orbit agent installer ==="
 echo ""
 
 # Check we're on FreeBSD / OPNsense
@@ -50,13 +50,13 @@ mkdir -p "${INSTALL_DIR}"
 # Copy agent script (if running from repo checkout, use local file;
 # otherwise this section would be replaced with a fetch from the dashboard)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "${SCRIPT_DIR}/opnsense_agent.py" ]; then
-    cp "${SCRIPT_DIR}/opnsense_agent.py" "${INSTALL_DIR}/opnsense_agent.py"
+if [ -f "${SCRIPT_DIR}/orbit_agent.py" ]; then
+    cp "${SCRIPT_DIR}/orbit_agent.py" "${INSTALL_DIR}/orbit_agent.py"
 else
-    echo "ERROR: opnsense_agent.py not found in ${SCRIPT_DIR}"
+    echo "ERROR: orbit_agent.py not found in ${SCRIPT_DIR}"
     exit 1
 fi
-chmod 755 "${INSTALL_DIR}/opnsense_agent.py"
+chmod 755 "${INSTALL_DIR}/orbit_agent.py"
 
 # Copy the supervisor (provides respawn + self-update rollback)
 if [ -f "${SCRIPT_DIR}/run-agent.sh" ]; then
@@ -70,8 +70,8 @@ fi
 # Copy example config if no config exists
 echo "[3/4] Setting up configuration..."
 if [ ! -f "${CONFIG_FILE}" ]; then
-    if [ -f "${SCRIPT_DIR}/opnsense-dash-agent.conf.example" ]; then
-        cp "${SCRIPT_DIR}/opnsense-dash-agent.conf.example" "${CONFIG_FILE}"
+    if [ -f "${SCRIPT_DIR}/orbit-agent.conf.example" ]; then
+        cp "${SCRIPT_DIR}/orbit-agent.conf.example" "${CONFIG_FILE}"
     else
         cat > "${CONFIG_FILE}" << 'CONF'
 {
@@ -90,10 +90,10 @@ fi
 
 # Install rc.d script
 echo "[4/4] Installing service script..."
-if [ -f "${SCRIPT_DIR}/rc.d/opnsense_dash_agent" ]; then
-    cp "${SCRIPT_DIR}/rc.d/opnsense_dash_agent" "${RC_SCRIPT}"
+if [ -f "${SCRIPT_DIR}/rc.d/orbit_agent" ]; then
+    cp "${SCRIPT_DIR}/rc.d/orbit_agent" "${RC_SCRIPT}"
 else
-    echo "ERROR: rc.d/opnsense_dash_agent not found"
+    echo "ERROR: rc.d/orbit_agent not found"
     exit 1
 fi
 chmod 755 "${RC_SCRIPT}"
@@ -104,7 +104,7 @@ echo "=== Next steps ==="
 echo "1. Edit config:    vi ${CONFIG_FILE}"
 echo "   Set dashboard_url and agent_token from your dashboard."
 echo ""
-echo "2. Enable service: sysrc opnsense_dash_agent_enable=YES"
-echo "3. Start agent:    service opnsense_dash_agent start"
-echo "4. Check logs:     tail -f /var/log/opnsense_dash_agent.log"
+echo "2. Enable service: sysrc orbit_agent_enable=YES"
+echo "3. Start agent:    service orbit_agent start"
+echo "4. Check logs:     tail -f /var/log/orbit_agent.log"
 echo ""

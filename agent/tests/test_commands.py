@@ -6,7 +6,7 @@ contract that the (future) self-update action will extend.
 
 from __future__ import annotations
 
-import opnsense_agent as agent
+import orbit_agent as agent
 import pytest
 
 

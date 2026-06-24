@@ -34,7 +34,7 @@ log = structlog.get_logger("app.agent_hub")
 
 
 # --- Agent → domain conversion (pure; testable without a DB) ------------------
-# These map the agent's push payload (see agent/opnsense_agent.py collect_all)
+# These map the agent's push payload (see agent/orbit_agent.py collect_all)
 # onto our domain schemas. Keep them in sync with the agent's output shape.
 
 

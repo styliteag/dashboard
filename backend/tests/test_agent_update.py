@@ -26,7 +26,7 @@ def test_iso_utc_none() -> None:
 
 
 def test_served_agent_version_parses(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / "opnsense_agent.py").write_text(
+    (tmp_path / "orbit_agent.py").write_text(
         '#!/usr/bin/env python3\n__version__ = "1.2.3"\n\nx = 1\n'
     )
     monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
@@ -34,7 +34,7 @@ def test_served_agent_version_parses(tmp_path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_served_agent_version_single_quotes(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / "opnsense_agent.py").write_text("__version__ = '0.3.0'\n")
+    (tmp_path / "orbit_agent.py").write_text("__version__ = '0.3.0'\n")
     monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
     assert routes._served_agent_version() == "0.3.0"
 
@@ -48,7 +48,7 @@ def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     import base64
     import hashlib
 
-    src = tmp_path / "opnsense_agent.py"
+    src = tmp_path / "orbit_agent.py"
     src.write_text('__version__ = "1.2.3"\nx = 1\n')
     monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
 

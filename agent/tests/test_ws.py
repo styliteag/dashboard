@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import struct
 
-import opnsense_agent as agent
+import orbit_agent as agent
 import pytest
 import websockets
 

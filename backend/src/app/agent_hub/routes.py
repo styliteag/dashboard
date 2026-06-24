@@ -45,7 +45,7 @@ router = APIRouter(tags=["agent"])
 def _served_agent_version() -> str | None:
     """Parse __version__ from the agent script shipped in this container."""
     try:
-        text = (_AGENT_DIR / "opnsense_agent.py").read_text()
+        text = (_AGENT_DIR / "orbit_agent.py").read_text()
     except OSError:
         return None
     m = re.search(r"""^__version__\s*=\s*["']([^"']+)["']""", text, re.MULTILINE)
@@ -55,15 +55,15 @@ def _served_agent_version() -> str | None:
 def _agent_update_params() -> dict | None:
     """Build the agent.update command params, or None.
 
-    Includes the offline-produced Ed25519 signature (opnsense_agent.py.sig) when
+    Includes the offline-produced Ed25519 signature (orbit_agent.py.sig) when
     present — the dashboard only relays it, it never holds the signing key.
     """
     try:
-        code = (_AGENT_DIR / "opnsense_agent.py").read_bytes()
+        code = (_AGENT_DIR / "orbit_agent.py").read_bytes()
     except OSError:
         return None
     try:
-        signature = (_AGENT_DIR / "opnsense_agent.py.sig").read_text().strip()
+        signature = (_AGENT_DIR / "orbit_agent.py.sig").read_text().strip()
     except OSError:
         signature = ""
     return {
@@ -527,20 +527,20 @@ async def get_agent_token(
 
 @router.get("/agent/script", include_in_schema=False)
 async def download_agent_script() -> FileResponse:
-    """Serve opnsense_agent.py for direct download on OPNsense (no auth required)."""
-    script = _AGENT_DIR / "opnsense_agent.py"
+    """Serve orbit_agent.py for direct download on OPNsense (no auth required)."""
+    script = _AGENT_DIR / "orbit_agent.py"
     if not script.exists():
         raise HTTPException(status_code=404, detail="agent script not available")
-    return FileResponse(str(script), media_type="text/x-python", filename="opnsense_agent.py")
+    return FileResponse(str(script), media_type="text/x-python", filename="orbit_agent.py")
 
 
 @router.get("/agent/rc", include_in_schema=False)
 async def download_agent_rc() -> FileResponse:
     """Serve the rc.d service script for direct download on OPNsense (no auth required)."""
-    rc = _AGENT_DIR / "rc.d" / "opnsense_dash_agent"
+    rc = _AGENT_DIR / "rc.d" / "orbit_agent"
     if not rc.exists():
         raise HTTPException(status_code=404, detail="rc script not available")
-    return FileResponse(str(rc), media_type="text/plain", filename="opnsense_dash_agent")
+    return FileResponse(str(rc), media_type="text/plain", filename="orbit_agent")
 
 
 @router.get("/agent/run", include_in_schema=False)

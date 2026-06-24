@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 
-import opnsense_agent as agent
+import orbit_agent as agent
 import pytest
 from cryptography.hazmat.primitives import serialization as _ser
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -70,39 +70,39 @@ def test_verify_rejects_syntax_error() -> None:
 
 
 def test_apply_and_rollback(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    target = tmp_path / "opnsense_agent.py"
+    target = tmp_path / "orbit_agent.py"
     target.write_bytes(b"OLD VERSION\n")
     monkeypatch.setenv("AGENT_SELF_PATH", str(target))
 
     agent._apply_update(b"NEW VERSION\n", "9.9.9")
     assert target.read_bytes() == b"NEW VERSION\n"
-    assert (tmp_path / "opnsense_agent.py.bak").read_bytes() == b"OLD VERSION\n"
-    assert (tmp_path / "opnsense_agent.py.updating").read_text() == "9.9.9"
-    assert not (tmp_path / "opnsense_agent.py.new").exists()  # temp consumed by rename
+    assert (tmp_path / "orbit_agent.py.bak").read_bytes() == b"OLD VERSION\n"
+    assert (tmp_path / "orbit_agent.py.updating").read_text() == "9.9.9"
+    assert not (tmp_path / "orbit_agent.py.new").exists()  # temp consumed by rename
 
     assert agent._rollback() is True
     assert target.read_bytes() == b"OLD VERSION\n"
-    assert not (tmp_path / "opnsense_agent.py.updating").exists()
+    assert not (tmp_path / "orbit_agent.py.updating").exists()
 
 
 def test_clear_probation_removes_marker_and_backup(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target = tmp_path / "opnsense_agent.py"
+    target = tmp_path / "orbit_agent.py"
     target.write_bytes(b"X\n")
     monkeypatch.setenv("AGENT_SELF_PATH", str(target))
-    (tmp_path / "opnsense_agent.py.bak").write_bytes(b"OLD\n")
-    (tmp_path / "opnsense_agent.py.updating").write_text("1.0")
+    (tmp_path / "orbit_agent.py.bak").write_bytes(b"OLD\n")
+    (tmp_path / "orbit_agent.py.updating").write_text("1.0")
 
     agent._clear_probation()
-    assert not (tmp_path / "opnsense_agent.py.bak").exists()
-    assert not (tmp_path / "opnsense_agent.py.updating").exists()
+    assert not (tmp_path / "orbit_agent.py.bak").exists()
+    assert not (tmp_path / "orbit_agent.py.updating").exists()
 
 
 def test_rollback_without_backup_returns_false(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target = tmp_path / "opnsense_agent.py"
+    target = tmp_path / "orbit_agent.py"
     target.write_bytes(b"X\n")
     monkeypatch.setenv("AGENT_SELF_PATH", str(target))
     assert agent._rollback() is False

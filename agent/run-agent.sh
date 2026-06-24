@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-agent.sh — supervisor for the opnsense-dash agent (DR-5).
+# run-agent.sh — supervisor for the orbit agent (DR-5).
 #
 # Plain daemon(8) (no -r) does not respawn, so this wrapper provides both the
 # respawn loop and the self-update rollback that make self-update safe:
@@ -13,7 +13,7 @@
 
 set -u
 
-AGENT="${AGENT_PATH:-/usr/local/opnsense-dash-agent/opnsense_agent.py}"
+AGENT="${AGENT_PATH:-/usr/local/orbit-agent/orbit_agent.py}"
 PY="${1:-}"
 if [ -z "${PY}" ]; then
     for _py in /usr/local/bin/python3 /usr/local/bin/python3.11 \
@@ -50,7 +50,7 @@ while true; do
     if [ -f "${MARKER}" ] && [ "${runtime}" -lt "${MIN_HEALTHY}" ] && [ -f "${BAK}" ]; then
         cp "${BAK}" "${AGENT}"
         rm -f "${MARKER}"
-        logger -t opnsense_dash_agent \
+        logger -t orbit_agent \
             "self-update rollback: agent exited rc=${rc} after ${runtime}s; restored backup"
     fi
     sleep 2

@@ -1,4 +1,4 @@
-"""Make the single-file agent importable as ``opnsense_agent`` from these tests."""
+"""Make the single-file agent importable as ``orbit_agent`` from these tests."""
 
 import pathlib
 import sys

@@ -1,33 +1,33 @@
 #!/bin/sh
 #
-# PROVIDE: opnsense_dash_agent
+# PROVIDE: orbit_agent
 # REQUIRE: NETWORKING
 # KEYWORD: shutdown
 #
 # Add the following line to /etc/rc.conf to enable the agent:
-#   opnsense_dash_agent_enable="YES"
+#   orbit_agent_enable="YES"
 
 . /etc/rc.subr
 
-name="opnsense_dash_agent"
+name="orbit_agent"
 rcvar="${name}_enable"
 desc="OPNsense Dashboard Agent"
 
-: ${opnsense_dash_agent_enable:="NO"}
-: ${opnsense_dash_agent_config:="/usr/local/etc/opnsense-dash-agent.conf"}
-: ${opnsense_dash_agent_pidfile:="/var/run/${name}.pid"}
-: ${opnsense_dash_agent_logfile:="/var/log/${name}.log"}
+: ${orbit_agent_enable:="NO"}
+: ${orbit_agent_config:="/usr/local/etc/orbit-agent.conf"}
+: ${orbit_agent_pidfile:="/var/run/${name}.pid"}
+: ${orbit_agent_logfile:="/var/log/${name}.log"}
 
-pidfile="${opnsense_dash_agent_pidfile}"
+pidfile="${orbit_agent_pidfile}"
 
 # Resolve a Python interpreter. OPNsense ships /usr/local/bin/python3, but pfSense
 # may install only a versioned binary (e.g. python3.11) with no python3 symlink.
-: ${opnsense_dash_agent_python:=""}
-if [ -z "${opnsense_dash_agent_python}" ]; then
+: ${orbit_agent_python:=""}
+if [ -z "${orbit_agent_python}" ]; then
     for _py in /usr/local/bin/python3 /usr/local/bin/python3.11 \
                /usr/local/bin/python3.10 /usr/local/bin/python3.9; do
         if [ -x "${_py}" ]; then
-            opnsense_dash_agent_python="${_py}"
+            orbit_agent_python="${_py}"
             break
         fi
     done
@@ -36,7 +36,7 @@ fi
 # Run the supervisor (run-agent.sh), not python directly: it provides the
 # respawn loop + self-update rollback (DR-5). The interpreter is passed as $1.
 command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -o ${opnsense_dash_agent_logfile} -t ${name} /bin/sh /usr/local/opnsense-dash-agent/run-agent.sh ${opnsense_dash_agent_python}"
+command_args="-p ${pidfile} -o ${orbit_agent_logfile} -t ${name} /bin/sh /usr/local/orbit-agent/run-agent.sh ${orbit_agent_python}"
 
 start_precmd="${name}_prestart"
 # The pidfile holds run-agent.sh's pid, not /usr/sbin/daemon's, so rc.subr's
@@ -45,17 +45,17 @@ start_precmd="${name}_prestart"
 stop_cmd="${name}_stop"
 status_cmd="${name}_status"
 
-opnsense_dash_agent_prestart() {
-    if [ ! -f "${opnsense_dash_agent_config}" ]; then
-        echo "Config file ${opnsense_dash_agent_config} not found."
-        echo "Copy the example: cp /usr/local/opnsense-dash-agent/opnsense-dash-agent.conf.example ${opnsense_dash_agent_config}"
+orbit_agent_prestart() {
+    if [ ! -f "${orbit_agent_config}" ]; then
+        echo "Config file ${orbit_agent_config} not found."
+        echo "Copy the example: cp /usr/local/orbit-agent/orbit-agent.conf.example ${orbit_agent_config}"
         return 1
     fi
     # Ensure log file exists
-    touch "${opnsense_dash_agent_logfile}"
+    touch "${orbit_agent_logfile}"
 }
 
-opnsense_dash_agent_stop() {
+orbit_agent_stop() {
     if [ -f "${pidfile}" ]; then
         _pid=$(cat "${pidfile}")
         echo "Stopping ${name} (pid ${_pid})."
@@ -68,7 +68,7 @@ opnsense_dash_agent_stop() {
     rm -f "${pidfile}"
 }
 
-opnsense_dash_agent_status() {
+orbit_agent_status() {
     if [ -f "${pidfile}" ] && kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
         echo "${name} is running as pid $(cat "${pidfile}")."
     else

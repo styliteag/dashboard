@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""opnsense-dash agent — runs on OPNsense (FreeBSD), pushes data to the central dashboard.
+"""orbit agent — runs on OPNsense (FreeBSD), pushes data to the central dashboard.
 
 Collects system metrics locally (no API needed), connects outbound via WebSocket,
 and executes commands received from the dashboard.
 
 Dependencies: Python 3.9+ only — no pip packages (stdlib WebSocket client).
-Config: /usr/local/etc/opnsense-dash-agent.conf (JSON)
+Config: /usr/local/etc/orbit-agent.conf (JSON)
 """
 from __future__ import annotations
 
@@ -33,14 +33,25 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
 
-CONFIG_PATH = os.environ.get("AGENT_CONFIG", "/usr/local/etc/opnsense-dash-agent.conf")
+def _path_with_legacy(new: str, legacy: str) -> str:
+    """Prefer the new path; fall back to the legacy name so an agent that
+    self-updates in place (config/cache files keep their old names) keeps
+    working after the opnsense-dash -> orbit rename."""
+    if not os.path.exists(new) and os.path.exists(legacy):
+        return legacy
+    return new
 
-log = logging.getLogger("opnsense-agent")
+
+CONFIG_PATH = os.environ.get("AGENT_CONFIG") or _path_with_legacy(
+    "/usr/local/etc/orbit-agent.conf", "/usr/local/etc/opnsense-dash-agent.conf"
+)
+
+log = logging.getLogger("orbit-agent")
 
 # Active config — set in main(). The HTTP relay (execute_command runs without a
 # cfg arg) reads the local OPNsense API settings from here.
@@ -703,8 +714,8 @@ def collect_all() -> dict:
 # the dashboard (the relay route requires an admin session).
 # =============================================================================
 
-_APIKEY_CACHE = os.environ.get(
-    "AGENT_APIKEY_CACHE", "/usr/local/etc/opnsense-dash-agent.apikey"
+_APIKEY_CACHE = os.environ.get("AGENT_APIKEY_CACHE") or _path_with_legacy(
+    "/usr/local/etc/orbit-agent.apikey", "/usr/local/etc/opnsense-dash-agent.apikey"
 )
 
 # Hop-by-hop headers (RFC 7230 §6.1) plus auth/host/cookie — never forwarded.
@@ -1511,7 +1522,7 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    log.info("opnsense-dash agent v%s starting (id=%s)", __version__, cfg.agent_id)
+    log.info("orbit agent v%s starting (id=%s)", __version__, cfg.agent_id)
     log.info("dashboard: %s", cfg.dashboard_url)
     log.info("push interval: %ds", cfg.push_interval)
 

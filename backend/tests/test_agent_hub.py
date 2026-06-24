@@ -1,7 +1,7 @@
 """Tests for the agent → domain conversion in the agent hub.
 
 These pin the contract between the agent's push payload
-(agent/opnsense_agent.py collect_all) and the dashboard's domain schemas, so
+(agent/orbit_agent.py collect_all) and the dashboard's domain schemas, so
 drift on either side is caught. DB-free: the converters are pure.
 """
 
