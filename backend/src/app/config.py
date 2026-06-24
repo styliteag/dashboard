@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     metrics_retention_days: int = 30  # raw metrics kept this long
     metrics_5m_retention_days: int = 365  # 5-min rollup kept this long
 
+    # GUI-proxy: close an instance's forwarder after this many minutes with no
+    # active connections (re-opened on the next "Open GUI"). 0 disables teardown.
+    gui_idle_minutes: int = 15
+
     # Notifications (all optional)
     notify_webhook_url: str = ""
     notify_telegram_token: str = ""

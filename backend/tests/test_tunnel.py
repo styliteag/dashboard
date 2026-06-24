@@ -24,6 +24,34 @@ def test_gui_forwarder_port_is_stable_per_instance() -> None:
     assert GuiTunnelManager.port_for(3) != GuiTunnelManager.port_for(4)
 
 
+def test_reap_idle_closes_only_long_idle_forwarders() -> None:
+    import time
+
+    from app.agent_hub.gui_tunnel import _Slot
+
+    class _FakeServer:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    m = GuiTunnelManager()
+    long_idle = _Slot(_FakeServer())
+    long_idle.active, long_idle.idle_since = 0, time.monotonic() - 100
+    recent_idle = _Slot(_FakeServer())
+    recent_idle.active, recent_idle.idle_since = 0, time.monotonic()
+    busy = _Slot(_FakeServer())
+    busy.active, busy.idle_since = 1, None
+    m._slots = {1: long_idle, 2: recent_idle, 3: busy}
+
+    m.reap_idle(idle_seconds=60)
+
+    assert 1 not in m._slots and long_idle.server.closed  # idle long enough → reaped
+    assert 2 in m._slots  # idle but too recent
+    assert 3 in m._slots  # has an active connection
+
+
 def test_tunnel_registry_delivers_to_stream_queue() -> None:
     h = AgentHub()
     q = h.open_tunnel("s1")

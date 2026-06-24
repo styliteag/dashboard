@@ -665,3 +665,9 @@ neuen Tab.
 müssen ausgerollt werden) · Single-Use-Handoff-Token (aktuell 60s-TTL) · Forwarder-Teardown bei Idle ·
 echte On-Demand-Caddy-Routen statt Vhost-Range/map (Caddy-Admin-API). Tests: gui_auth (8), port_for,
 Hub-Registry; Backend 94, Frontend grün.
+
+**Idle-Teardown (2026-06-24):** `GuiTunnelManager` zählt aktive Verbindungen pro Forwarder; ein
+Reaper (60s-Tick) schließt einen Forwarder nach `DASH_GUI_IDLE_MINUTES` ohne aktive Verbindung
+(default 15, 0 = aus) — der nächste „Open GUI" startet ihn neu. Per-Verbindung räumt der Bridge
+ohnehin beim Tab-Schließen auf. Live: bei idle=1min war die GUI nach ~75s reaped (502). compose
+muss `DASH_GUI_IDLE_MINUTES` durchreichen (sonst Container-Default).

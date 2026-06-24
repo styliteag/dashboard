@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import time
 import uuid
 
 import structlog
@@ -97,11 +98,24 @@ def parse_tunnel_spec(spec: str) -> list[tuple[int, int]]:
 _FORWARDER_BASE_PORT = 14400
 
 
+class _Slot:
+    def __init__(self, server: asyncio.AbstractServer) -> None:
+        self.server = server
+        self.active = 0  # currently bridged connections
+        self.idle_since: float | None = time.monotonic()  # set whenever active hits 0
+
+
 class GuiTunnelManager:
-    """Starts one forwarder per instance on demand, on a stable convention port."""
+    """Starts one forwarder per instance on demand (stable port), reaps idle ones.
+
+    A forwarder is closed after `gui_idle_minutes` with no active connections — the
+    next "Open GUI" re-opens it. The listener is internal + gated by forward_auth,
+    so this is housekeeping, not a security boundary.
+    """
 
     def __init__(self) -> None:
-        self._servers: dict[int, asyncio.AbstractServer] = {}
+        self._slots: dict[int, _Slot] = {}
+        self._reaper: asyncio.Task | None = None
 
     @staticmethod
     def port_for(instance_id: int) -> int:
@@ -109,16 +123,67 @@ class GuiTunnelManager:
 
     async def ensure(self, instance_id: int) -> int:
         """Ensure a forwarder is running for this instance; return its port."""
-        if instance_id not in self._servers:
-            self._servers[instance_id] = await start_gui_tunnel(
-                instance_id, "0.0.0.0", self.port_for(instance_id)
+        if instance_id not in self._slots:
+            server = await asyncio.start_server(
+                lambda r, w: self._handle(instance_id, r, w),
+                "0.0.0.0",
+                self.port_for(instance_id),
+            )
+            self._slots[instance_id] = _Slot(server)
+            log.info(
+                "gui_tunnel.listening", instance_id=instance_id, port=self.port_for(instance_id)
             )
         return self.port_for(instance_id)
 
+    async def _handle(
+        self, instance_id: int, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        slot = self._slots.get(instance_id)
+        if slot is None:
+            writer.close()
+            return
+        slot.active += 1
+        slot.idle_since = None
+        try:
+            await _bridge(reader, writer, instance_id)
+        finally:
+            slot.active -= 1
+            if slot.active <= 0:
+                slot.idle_since = time.monotonic()
+
+    def reap_idle(self, idle_seconds: float) -> None:
+        """Close forwarders idle (no active connections) for >= idle_seconds."""
+        now = time.monotonic()
+        for instance_id, slot in list(self._slots.items()):
+            if (
+                slot.active <= 0
+                and slot.idle_since is not None
+                and now - slot.idle_since >= idle_seconds
+            ):
+                slot.server.close()
+                del self._slots[instance_id]
+                log.info("gui_tunnel.reaped_idle", instance_id=instance_id)
+
+    def start_reaper(self, idle_minutes: int) -> None:
+        """Run the idle reaper every minute (0 disables teardown)."""
+        if idle_minutes <= 0:
+            return
+        idle_seconds = idle_minutes * 60
+
+        async def _loop() -> None:
+            while True:
+                await asyncio.sleep(60)
+                self.reap_idle(idle_seconds)
+
+        self._reaper = asyncio.create_task(_loop())
+
     def close_all(self) -> None:
-        for server in self._servers.values():
-            server.close()
-        self._servers.clear()
+        if self._reaper is not None:
+            self._reaper.cancel()
+            self._reaper = None
+        for slot in self._slots.values():
+            slot.server.close()
+        self._slots.clear()
 
 
 gui_tunnels = GuiTunnelManager()

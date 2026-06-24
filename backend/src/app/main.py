@@ -68,7 +68,9 @@ async def lifespan(app: FastAPI):
 
     # GUI-proxy forwarders are started on demand by POST /instances/{id}/gui/open
     # (each on a stable per-instance port); a reverse proxy (Caddy) fronts them to
-    # give a per-instance origin + valid cert. Nothing to pre-start here.
+    # give a per-instance origin + valid cert. The reaper closes ones idle past
+    # DASH_GUI_IDLE_MINUTES.
+    gui_tunnels.start_reaper(get_settings().gui_idle_minutes)
 
     try:
         yield
