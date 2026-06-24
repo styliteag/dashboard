@@ -1,13 +1,14 @@
 {
     "dashboard_url": "wss://dashboard.example.com/api/ws/agent",
+
+    "_comment_auth": "Provide EITHER agent_token (paste from the dashboard) OR enroll_code (a one-time code from the dashboard; the agent trades it for a token at first start and writes the token back here). enroll_url overrides the URL derived from dashboard_url.",
     "agent_token": "PASTE_TOKEN_FROM_DASHBOARD_HERE",
+    "enroll_code": "",
+
     "agent_id": "",
     "push_interval": 30,
     "log_level": "INFO",
 
-    "_comment_relay": "Local API relay (§15). The agent forwards dashboard HTTP requests to the box's own REST API. On OPNsense it auto-provisions its own key (dedicated 'orbit' user) — leave the creds empty. Set them only to use a hand-made key instead, or set relay_provision=false to disable auto-provisioning.",
-    "local_api_url": "https://127.0.0.1:4444",
-    "local_api_key": "",
-    "local_api_secret": "",
+    "_comment_relay": "Local API relay (§15). The agent forwards dashboard HTTP requests to the box's own REST API. The local port is auto-discovered from config.xml — set local_api_url ONLY to pin it (that disables discovery). On OPNsense the agent auto-provisions its own key (dedicated 'orbit' user); set local_api_key/secret to use a hand-made key instead, or relay_provision=false to disable auto-provisioning.",
     "relay_provision": true
 }

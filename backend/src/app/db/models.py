@@ -155,3 +155,25 @@ class ApiKey(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EnrollmentCode(Base):
+    """One-time agent enrollment code (see §16 chunk C2).
+
+    The admin mints a short-lived code for an instance; the agent exchanges it at
+    /api/agent/enroll for that instance's agent_token. Single-use (used_at) and
+    time-limited (expires_at). Only the SHA-256 of the code is stored.
+    """
+
+    __tablename__ = "enrollment_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

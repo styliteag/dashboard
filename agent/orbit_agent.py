@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -80,6 +80,11 @@ class Config:
         # True once the config file pins local_api_url — then port-discovery
         # (the box's GUI port is admin-configurable) must not override it.
         self.local_api_url_explicit: bool = False
+        # Enrollment: a one-time code exchanged for an agent_token at first start
+        # (so the admin needn't paste the token). enroll_url overrides the URL
+        # derived from dashboard_url.
+        self.enroll_code: str = ""
+        self.enroll_url: str = ""
         self.load()
 
     def load(self) -> None:
@@ -102,6 +107,8 @@ class Config:
         )
         self.relay_provision = bool(data.get("relay_provision", self.relay_provision))
         self.local_api_url_explicit = "local_api_url" in data or "opnsense_api_url" in data
+        self.enroll_code = data.get("enroll_code", self.enroll_code)
+        self.enroll_url = data.get("enroll_url", self.enroll_url)
 
 
 # =============================================================================
@@ -864,14 +871,18 @@ def _ensure_api_credentials(cfg: Config) -> tuple[str, str] | None:
 def _http_request(
     url: str, method: str, headers: dict, body: bytes | None, timeout: int
 ) -> tuple[int, list[tuple[str, str]], bytes]:
-    """One HTTPS request to the local API (self-signed cert → unverified context)."""
+    """One HTTP(S) request. HTTPS uses an unverified context (self-signed local API)."""
     parts = urlsplit(url)
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    conn = http.client.HTTPSConnection(
-        parts.hostname or "127.0.0.1", parts.port or 443, timeout=timeout, context=ctx
-    )
+    host = parts.hostname or "127.0.0.1"
+    if parts.scheme == "http":
+        conn: http.client.HTTPConnection = http.client.HTTPConnection(
+            host, parts.port or 80, timeout=timeout
+        )
+    else:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        conn = http.client.HTTPSConnection(host, parts.port or 443, timeout=timeout, context=ctx)
     try:
         path = parts.path + (f"?{parts.query}" if parts.query else "")
         conn.request(method, path or "/", body=body, headers=headers)
@@ -1393,6 +1404,92 @@ async def _send_update_result(ws: WebSocket, request_id: str, success: bool, out
     }))
 
 
+# =============================================================================
+# Uninstall (dashboard-triggered) — remove the agent's own footprint.
+#
+# The agent can't cleanly remove itself while running: the supervisor respawns it
+# on any exit. So we ack the command, then a DETACHED script (own session, see
+# start_new_session) does the teardown AFTER we're gone — killing the supervisor
+# FIRST so nothing respawns, then the agent, then files + rc.d + the OPNsense
+# orbit user. We deliberately do NOT exit here (an exit would just flap a respawn).
+# =============================================================================
+
+# Remove the auto-provisioned `orbit` OPNsense user (reverse of provisioning).
+_DEPROVISION_PHP = r"""<?php
+require_once('legacy_bindings.inc');
+use OPNsense\Core\Config;
+use OPNsense\Auth\User;
+Config::getInstance()->lock();
+$mdl = new User();
+$removed = 0;
+foreach ($mdl->user->iterateItems() as $uuid => $node) {
+    if ((string)$node->name === 'orbit') { $mdl->user->del($uuid); $removed++; }
+}
+if ($removed > 0) { $mdl->serializeToConfig(false, true); Config::getInstance()->save(); }
+echo "removed=$removed";
+"""
+
+
+def _build_uninstall_script(
+    install_dir: str, rc_script: str, php_path: str, deprovision: bool
+) -> str:
+    """Build the detached teardown script. Order matters: supervisor dies first."""
+    deprovision_line = (
+        f"[ -x /usr/local/bin/php ] && /usr/local/bin/php {php_path} >/dev/null 2>&1\n"
+        if deprovision and php_path
+        else ""
+    )
+    return (
+        "#!/bin/sh\n"
+        "sleep 3\n"  # let the ack flush over the WS before we kill the agent
+        "pkill -f run-agent.sh 2>/dev/null\n"  # supervisor FIRST — else it respawns us
+        "pkill -f orbit_agent.py 2>/dev/null\n"  # then the agent itself
+        "sysrc -x orbit_agent_enable >/dev/null 2>&1\n"  # don't revive on reboot
+        f"rm -f {rc_script}\n"
+        + deprovision_line
+        + f"rm -rf {install_dir}\n"
+        f"rm -f {CONFIG_PATH} /usr/local/etc/opnsense-dash-agent.conf\n"
+        f"rm -f {_APIKEY_CACHE} /usr/local/etc/opnsense-dash-agent.apikey\n"
+        f"rm -f {php_path}\n"
+    )
+
+
+async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> None:
+    """Ack, then a detached script removes the agent (supervisor first) + cleans up."""
+    install_dir = os.path.dirname(_self_path())
+    rc_script = "/usr/local/etc/rc.d/orbit_agent"
+    deprovision = bool(params.get("deprovision", True))
+
+    php_path = "/tmp/orbit-deprovision.php"
+    try:
+        Path(php_path).write_text(_DEPROVISION_PHP)
+    except OSError:
+        php_path = ""
+
+    sh_path = "/tmp/orbit-uninstall.sh"
+    try:
+        Path(sh_path).write_text(
+            _build_uninstall_script(install_dir, rc_script, php_path, deprovision)
+        )
+        subprocess.Popen(
+            ["/bin/sh", sh_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # detach so it survives the agent's death
+        )
+        ok, output = True, "uninstall started; agent removing itself"
+    except OSError as exc:
+        ok, output = False, f"uninstall failed to start: {exc}"
+
+    await ws.send(json.dumps({
+        "type": "command_result",
+        "request_id": request_id,
+        "action": "agent.uninstall",
+        "result": {"success": ok, "output": output},
+    }))
+    log.warning("agent.uninstall: %s", output)
+
+
 async def _probation_watchdog(healthy: asyncio.Event) -> None:
     """If we just self-updated, demand a healthy reconnect or roll back."""
     try:
@@ -1517,6 +1614,11 @@ async def _listen_loop(ws: WebSocket) -> None:
                     await _handle_self_update(ws, request_id, params)
                     continue
 
+                if action == "agent.uninstall":
+                    # Acks, then a detached script removes the agent — no return.
+                    await _handle_uninstall(ws, request_id, params)
+                    continue
+
                 # Execute in thread pool to not block the event loop
                 result = await asyncio.get_event_loop().run_in_executor(
                     None, execute_command, action, params
@@ -1539,6 +1641,77 @@ async def _listen_loop(ws: WebSocket) -> None:
             log.warning("received non-JSON message, ignoring")
         except Exception as exc:
             log.warning("error handling message: %s", exc)
+
+
+# =============================================================================
+# Enrollment — exchange a one-time code for an agent token (see §16 chunk C2)
+# =============================================================================
+
+def _derive_enroll_url(dashboard_url: str) -> str:
+    """Turn the WS dashboard_url into the HTTP(S) enroll endpoint, or '' if unknown."""
+    parts = urlsplit(dashboard_url)
+    if not parts.netloc:
+        return ""
+    scheme = {"wss": "https", "ws": "http"}.get(parts.scheme, parts.scheme or "https")
+    path = parts.path
+    if path.endswith("/ws/agent"):
+        path = path[: -len("/ws/agent")] + "/agent/enroll"
+    else:
+        path = "/api/agent/enroll"
+    return f"{scheme}://{parts.netloc}{path}"
+
+
+def _persist_token(cfg: Config, token: str) -> None:
+    """Write the obtained token into the config file and drop the spent code.
+
+    Critical: the enrollment code is single-use, so the token MUST survive a
+    restart — otherwise the next boot re-enrolls with a consumed code and the
+    agent can never reconnect.
+    """
+    try:
+        p = Path(cfg.path)
+        data = json.loads(p.read_text()) if p.exists() else {}
+        data["agent_token"] = token
+        data.pop("enroll_code", None)
+        p.write_text(json.dumps(data, indent=4))
+    except (OSError, ValueError) as exc:
+        log.warning("enroll: could not persist token to %s: %s", cfg.path, exc)
+
+
+def _enroll(cfg: Config) -> bool:
+    """Exchange enroll_code for an agent_token before connecting, then persist it.
+
+    Skips when an agent_token already exists (prefer it — a stored token must never
+    be replaced by a re-enroll) or no code is configured. Returns True on success.
+    """
+    if cfg.agent_token or not cfg.enroll_code:
+        return False
+    url = cfg.enroll_url or _derive_enroll_url(cfg.dashboard_url)
+    if not url:
+        log.error("enroll: cannot derive enroll URL from dashboard_url")
+        return False
+    body = json.dumps({"code": cfg.enroll_code}).encode()
+    try:
+        status, _, data = _http_request(
+            url, "POST", {"Content-Type": "application/json"}, body, timeout=15
+        )
+    except (OSError, http.client.HTTPException) as exc:
+        log.error("enroll: request to %s failed: %s", url, exc)
+        return False
+    if status != 200:
+        log.error("enroll: server rejected code (HTTP %s)", status)
+        return False
+    try:
+        token = json.loads(data).get("agent_token", "")
+    except ValueError:
+        token = ""
+    if not token:
+        log.error("enroll: no token in response")
+        return False
+    cfg.agent_token = token
+    _persist_token(cfg, token)
+    log.info("enroll: obtained and persisted agent token")
+    return True
 
 
 # =============================================================================
@@ -1569,6 +1742,11 @@ def main() -> None:
     log.info("orbit agent v%s starting (id=%s)", __version__, cfg.agent_id)
     log.info("dashboard: %s", cfg.dashboard_url)
     log.info("push interval: %ds", cfg.push_interval)
+
+    # Enrollment: if bootstrapped with a one-time code instead of a token, trade it
+    # for an agent_token and persist it before we try to connect (§16 chunk C2).
+    if not cfg.agent_token and cfg.enroll_code:
+        _enroll(cfg)
 
     # Relay startup: discover the box's real GUI/API port, then (on OPNsense) make
     # sure a key already exists — so the first relay request isn't a cold provision
