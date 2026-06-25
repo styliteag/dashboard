@@ -35,6 +35,7 @@ const TABS = [
   { key: "overview", label: "Overview" },
   { key: "network", label: "Network" },
   { key: "security", label: "VPN" },
+  { key: "log", label: "Log" },
   { key: "firmware", label: "Firmware" },
   { key: "agent", label: "Agent" },
 ] as const;
@@ -179,10 +180,16 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Security: IPsec + firewall log */}
+      {/* VPN: IPsec tunnels */}
       {tab === "security" && (
         <div>
           <IPsecSection instanceId={nid} />
+        </div>
+      )}
+
+      {/* Log: firewall log */}
+      {tab === "log" && (
+        <div>
           <FirewallLogSection instanceId={nid} />
         </div>
       )}
