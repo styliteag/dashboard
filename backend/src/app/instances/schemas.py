@@ -40,6 +40,7 @@ class InstanceUpdate(BaseModel):
     api_secret: str | None = None
     ca_bundle: str | None = None
     ssl_verify: bool | None = None
+    gui_login_enabled: bool | None = None
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
@@ -52,6 +53,7 @@ class InstanceResponse(BaseModel):
     name: str
     base_url: str
     ssl_verify: bool
+    gui_login_enabled: bool
     transport: str
     device_type: str
     agent_mode: bool

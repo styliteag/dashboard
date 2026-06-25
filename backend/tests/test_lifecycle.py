@@ -125,6 +125,79 @@ def test_gui_open_404_when_proxy_disabled(monkeypatch):
     assert r.status_code == 404
 
 
+# --- gui auto-login (opt-in, §18) --------------------------------------------
+
+
+def _gui_proxy_on():
+    return SimpleNamespace(gui_proxy_enabled=True)
+
+
+def _gui_open(monkeypatch, inst, agent):
+    app = _app(monkeypatch, _FakeSession(instance=inst), agent=agent)
+    monkeypatch.setattr(routes_mod, "get_settings", _gui_proxy_on)
+    monkeypatch.setattr(routes_mod.gui_tunnels, "ensure", _noop)
+    with TestClient(app) as c:
+        return c.post("/api/instances/7/gui/open")
+
+
+def _token_of(resp):
+    from urllib.parse import parse_qs, urlsplit
+
+    return parse_qs(urlsplit(resp.json()["url"]).query)["t"][0]
+
+
+def test_gui_open_replays_login_when_enabled(monkeypatch):
+    from app.agent_hub.gui_session import gui_sessions
+
+    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=True)
+    fa = _FakeAgent({"success": True, "cookies": [{"name": "PHPSESSID", "value": "sess-xyz"}]})
+    r = _gui_open(monkeypatch, inst, fa)
+    assert r.status_code == 200
+    assert ("gui.login", {}) in fa.calls
+    # the replayed session cookie is stashed under the one-time handoff token
+    assert gui_sessions.pop(_token_of(r)) == [("PHPSESSID", "sess-xyz")]
+
+
+def test_gui_open_skips_login_when_disabled(monkeypatch):
+    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=False)
+    fa = _FakeAgent({"success": True, "cookies": []})
+    r = _gui_open(monkeypatch, inst, fa)
+    assert r.status_code == 200
+    assert fa.calls == []  # no gui.login when opt-in is off
+
+
+def test_gui_open_degrades_when_login_fails(monkeypatch):
+    from app.agent_hub.gui_session import gui_sessions
+
+    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=True)
+    fa = _FakeAgent({"success": False, "output": "gui login rejected"})
+    r = _gui_open(monkeypatch, inst, fa)
+    assert r.status_code == 200  # still opens — just lands on the login page
+    assert gui_sessions.pop(_token_of(r)) == []
+
+
+def test_agent_command_refuses_internal_gui_login(monkeypatch):
+    # gui.login returns a live admin cookie — must not run via the generic endpoint
+    # (which echoes the result back + into audit). Refused before the agent is hit.
+    inst = SimpleNamespace(id=7, deleted_at=None)
+    fa = _FakeAgent({"success": True, "cookies": [{"name": "PHPSESSID", "value": "x"}]})
+    app = _app(monkeypatch, _FakeSession(instance=inst), agent=fa)
+    with TestClient(app) as c:
+        r = c.post("/api/instances/7/agent/command", json={"action": "gui.login"})
+    assert r.status_code == 400
+    assert fa.calls == []  # never reached the agent
+
+
+def test_redact_audit_masks_credential_keys():
+    out = routes_mod._redact_audit(
+        {"success": True, "cookies": [{"name": "x"}], "secret": "s", "output": "ok"}
+    )
+    assert out["cookies"] == "<redacted>"
+    assert out["secret"] == "<redacted>"
+    assert out["success"] is True
+    assert out["output"] == "ok"
+
+
 # --- relay enable ------------------------------------------------------------
 
 

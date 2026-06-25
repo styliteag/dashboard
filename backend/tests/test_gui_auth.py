@@ -84,6 +84,30 @@ def test_handoff_invalid_token_is_403(monkeypatch) -> None:
     assert r.status_code == 403
 
 
+def test_handoff_sets_firewall_session_cookie_from_stash(monkeypatch) -> None:
+    # Opt-in auto-login: a cookie stashed by gui/open is set onto the proxy origin.
+    from app.agent_hub.gui_session import gui_sessions
+
+    token = sign_gui_token(3, 60)
+    gui_sessions.put(token, [{"name": "PHPSESSID", "value": "sess-xyz"}], ttl_seconds=60)
+    with _client(monkeypatch) as client:
+        r = client.get("/api/gui/handoff", params={"t": token}, follow_redirects=False)
+    assert r.status_code == 302
+    setcookies = [v for k, v in r.headers.multi_items() if k.lower() == "set-cookie"]
+    assert any(c.startswith("PHPSESSID=sess-xyz") for c in setcookies)
+    assert any(c.startswith(f"{COOKIE_NAME}=") for c in setcookies)
+
+
+def test_handoff_without_stash_sets_only_orbit_cookie(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get(
+            "/api/gui/handoff", params={"t": sign_gui_token(5, 60)}, follow_redirects=False
+        )
+    setcookies = [v for k, v in r.headers.multi_items() if k.lower() == "set-cookie"]
+    assert all(not c.startswith("PHPSESSID=") for c in setcookies)
+    assert any(c.startswith(f"{COOKIE_NAME}=") for c in setcookies)
+
+
 def test_authcheck_instance_from_host(monkeypatch) -> None:
     # Traefik wildcard: no ?instance, the gui-<id> Host carries it.
     with _client(monkeypatch) as client:

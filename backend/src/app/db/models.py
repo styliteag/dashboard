@@ -68,6 +68,12 @@ class Instance(Base):
     )
     agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     agent_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Opt-in: when True, "Open GUI" replays a WebUI login through the agent so the
+    # browser lands authenticated (see docs/agent-architecture.md §18). The admin
+    # credential is provisioned + held agent-side — nothing is stored here.
+    gui_login_enabled: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

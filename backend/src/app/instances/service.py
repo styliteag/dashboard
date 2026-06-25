@@ -80,6 +80,8 @@ async def update_instance(
         inst.ca_bundle = payload.ca_bundle or None
     if payload.ssl_verify is not None:
         inst.ssl_verify = payload.ssl_verify
+    if payload.gui_login_enabled is not None:
+        inst.gui_login_enabled = payload.gui_login_enabled
     if payload.location is not None:
         inst.location = payload.location or None
     if payload.notes is not None:

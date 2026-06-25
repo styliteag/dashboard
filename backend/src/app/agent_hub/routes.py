@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.gui_auth import COOKIE_NAME, sign_gui_token, verify_gui_token
+from app.agent_hub.gui_session import gui_sessions
 from app.agent_hub.gui_tunnel import gui_tunnels
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
@@ -259,6 +260,7 @@ class AgentStatusResponse(BaseModel):
     served_version: str | None = None  # version shipped in this container
     update_available: bool = False
     gui_proxy_enabled: bool = False  # whether the GUI proxy is configured (global)
+    gui_login_enabled: bool = False  # per-instance: replay a WebUI login on "Open GUI"
     platform: str | None = None  # "opnsense" / "pfsense", reported by the connected agent
 
 
@@ -375,8 +377,24 @@ async def agent_status(
         served_version=served,
         update_available=update_available,
         gui_proxy_enabled=get_settings().gui_proxy_enabled,
+        gui_login_enabled=inst.gui_login_enabled,
         platform=connected.platform if connected else None,
     )
+
+
+# Actions that return live credentials and must only run via their dedicated,
+# purpose-built routes — never through this generic passthrough (which echoes the
+# result to the caller and the audit log).
+_INTERNAL_AGENT_ACTIONS = frozenset({"gui.login"})
+
+# Result keys that may carry a live credential (firewall session cookie, API key,
+# password) — masked before a command result is written to the audit log.
+_SENSITIVE_RESULT_KEYS = frozenset({"cookies", "secret", "password", "key"})
+
+
+def _redact_audit(result: dict) -> dict:
+    """Copy a command result with credential-bearing keys masked for audit storage."""
+    return {k: ("<redacted>" if k in _SENSITIVE_RESULT_KEYS else v) for k, v in result.items()}
 
 
 @router.post("/instances/{instance_id}/agent/command")
@@ -388,14 +406,19 @@ async def send_agent_command(
     user: User = Depends(current_user),
 ) -> dict:
     """Send a command to a connected agent."""
+    action = body.get("action", "")
+    params = body.get("params", {})
+    if action in _INTERNAL_AGENT_ACTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"action '{action}' is internal; use its dedicated endpoint",
+        )
+
     agent = hub.get(instance_id)
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
         )
-
-    action = body.get("action", "")
-    params = body.get("params", {})
 
     result = await agent.send_command(action, params)
 
@@ -407,7 +430,7 @@ async def send_agent_command(
         target_type="instance",
         target_id=str(instance_id),
         source_ip=_client_ip(request),
-        detail={"action": action, "result": result},
+        detail={"action": action, "result": _redact_audit(result)},
     )
     await session.commit()
     return result
@@ -718,12 +741,26 @@ async def gui_open(
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    if hub.get(instance_id) is None:
+    agent = hub.get(instance_id)
+    if agent is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
         )
     await gui_tunnels.ensure(instance_id)  # start this instance's forwarder on demand
     token = sign_gui_token(instance_id, ttl_seconds=60)  # short-lived handoff
+    # Opt-in: replay the firewall's WebUI login through the agent and stash the
+    # resulting session cookie so handoff can set it — the browser then lands
+    # already authenticated. Failure degrades gracefully to the login page.
+    if inst.gui_login_enabled:
+        result = await agent.send_command("gui.login", {}, timeout=20)
+        if result.get("success") and result.get("cookies"):
+            gui_sessions.put(token, result["cookies"], ttl_seconds=60)
+        else:
+            log.warning(
+                "agent.gui_login_failed",
+                instance_id=instance_id,
+                output=result.get("output"),
+            )
     await write_audit(
         session,
         action="agent.gui_open",
@@ -752,6 +789,10 @@ async def gui_handoff(t: str) -> RedirectResponse:
         samesite="lax",
         path="/",
     )
+    # Opt-in auto-login (see §18): replay the firewall's own session cookie onto
+    # this origin so the browser is already authenticated when it reaches the GUI.
+    for name, value in gui_sessions.pop(t):
+        resp.set_cookie(name, value, httponly=True, secure=True, samesite="lax", path="/")
     return resp
 
 
