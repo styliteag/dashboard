@@ -21,13 +21,31 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
-# Agent self-update signing guard: if a public key is baked into the agent, a
-# matching, valid signature MUST ship with it — otherwise every deployed agent
-# rejects future updates. Verifies the committed .sig against _UPDATE_PUBKEY.
-if ! uv --project backend run python scripts/sign_agent.py --verify; then
-    echo "Error: agent self-update signature check failed (see above)."
-    echo "Sign first: DASH_AGENT_SIGNING_KEY=<priv> just sign-agent"
-    exit 1
+# Agent self-update signing: if a public key is baked into the agent, the served
+# .sig MUST match it (else deployed agents reject every update). Re-sign here so a
+# release always ships a signature current with the agent bytes, then verify.
+AGENT_PUBKEY=$(grep -E '^_UPDATE_PUBKEY = ' agent/orbit_agent.py | sed -E 's/.*"([0-9a-fA-F]*)".*/\1/')
+if [[ -n "$AGENT_PUBKEY" ]]; then
+    # Offline signing key: from the environment, else extracted from .env (gitignored).
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -f .env ]]; then
+        DASH_AGENT_SIGNING_KEY=$(grep -E '^DASH_AGENT_SIGNING_KEY=' .env | head -1 \
+            | sed -E 's/^[^=]+=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')
+        export DASH_AGENT_SIGNING_KEY
+    fi
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" ]]; then
+        echo "Error: _UPDATE_PUBKEY is baked in but no signing key found"
+        echo "       (set DASH_AGENT_SIGNING_KEY or put it in .env). Only the offline"
+        echo "       key holder can cut a release."
+        exit 1
+    fi
+    echo "Signing agent for self-update..."
+    uv --project backend run python scripts/sign_agent.py >/dev/null
+    if ! uv --project backend run python scripts/sign_agent.py --verify; then
+        echo "Error: agent signature failed to verify after signing."
+        exit 1
+    fi
+    echo "✓ Agent signed and verified"
+    echo ""
 fi
 
 # Read current version
@@ -125,8 +143,9 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Commit changes
+# Commit changes (include a refreshed agent signature when signing is enabled)
 git add VERSION CHANGELOG.md
+[[ -f agent/orbit_agent.py.sig ]] && git add agent/orbit_agent.py.sig
 git commit -m "chore: bump version to $NEW_VERSION"
 
 # Create annotated tag

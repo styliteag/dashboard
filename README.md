@@ -241,16 +241,19 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
 - Agent **self-update is signature-verified** (Ed25519). The agent bakes a public key
   (`_UPDATE_PUBKEY` in `agent/orbit_agent.py`); every pushed update must carry a valid
   signature over the code, so a compromised dashboard can't push forged agent code — the
-  dashboard only relays the signature, it never holds the key. Per release:
+  dashboard only relays the signature, it never holds the key. Setup:
   1. Generate a keypair once, offline: `just sign-agent --gen` → keep `PRIV_B64` offline,
      bake `PUB_HEX` into `_UPDATE_PUBKEY`.
-  2. Sign each agent change: `DASH_AGENT_SIGNING_KEY=<PRIV_B64> just sign-agent` → writes
-     `agent/orbit_agent.py.sig` (committed so CI bakes it into the image; the signature is
-     not secret, only the private key is).
+  2. Put the private key where the release machine can read it: `DASH_AGENT_SIGNING_KEY` in
+     the environment or the gitignored repo-root `.env`.
 
-  > **Never release a build where `_UPDATE_PUBKEY` is set but the served `.sig` is missing
-  > or stale** — deployed agents would reject every subsequent update. Bake the key, sign,
-  > and ship the matching `.sig` in the same release.
+  `release.sh` (`just release`) then **signs the agent automatically** before tagging —
+  it refreshes `agent/orbit_agent.py.sig` from the current agent bytes, verifies it against
+  the baked `_UPDATE_PUBKEY`, and includes it in the release commit (the signature is
+  committed because it isn't secret; only the private key is). If `_UPDATE_PUBKEY` is set
+  but no signing key is available, the release **aborts** — so only the offline key holder
+  can cut a release, and a build that would brick every agent's self-update can't ship.
+  To sign by hand outside a release: `DASH_AGENT_SIGNING_KEY=<PRIV_B64> just sign-agent`.
 
 ## Further docs
 
