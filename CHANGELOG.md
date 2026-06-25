@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-26
+
 ### Added
 
 - **Persistent GUI URLs via instance slug** — each instance gets a stable, URL-safe `slug` (auto-derived from its name, e.g. "Firewall Büro Süd" → `firewall-buero-sued`; editable and unique). The prod GUI proxy origin becomes `https://gui-<slug>.<domain>` (`DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.…`) instead of the numeric `gui-<id>`. The slug stays put across name edits, so the GUI URL is durable.
