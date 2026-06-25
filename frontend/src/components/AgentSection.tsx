@@ -281,22 +281,26 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
         log_level: "INFO",
       };
 
+  const downloadCmds = [
+    `mkdir -p /usr/local/orbit-agent`,
+    `fetch -o /usr/local/orbit-agent/orbit_agent.py \\`,
+    `  ${proto}//${host}/api/agent/script`,
+    `fetch -o /usr/local/orbit-agent/run-agent.sh \\`,
+    `  ${proto}//${host}/api/agent/run`,
+    `chmod 755 /usr/local/orbit-agent/run-agent.sh`,
+    `fetch -o /usr/local/etc/rc.d/orbit_agent \\`,
+    `  ${proto}//${host}/api/agent/rc`,
+    `chmod 755 /usr/local/etc/rc.d/orbit_agent`,
+  ].join("\n");
+  // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are flaky.
+  const configCmd = `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/orbit-agent.conf`;
+  const startCmd = `sysrc orbit_agent_enable=YES\nservice orbit_agent start`;
+
   const steps = {
     prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
-    download: [
-      `mkdir -p /usr/local/orbit-agent`,
-      `fetch -o /usr/local/orbit-agent/orbit_agent.py \\`,
-      `  ${proto}//${host}/api/agent/script`,
-      `fetch -o /usr/local/orbit-agent/run-agent.sh \\`,
-      `  ${proto}//${host}/api/agent/run`,
-      `chmod 755 /usr/local/orbit-agent/run-agent.sh`,
-      `fetch -o /usr/local/etc/rc.d/orbit_agent \\`,
-      `  ${proto}//${host}/api/agent/rc`,
-      `chmod 755 /usr/local/etc/rc.d/orbit_agent`,
-    ].join("\n"),
-    // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are flaky.
-    config: `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/orbit-agent.conf`,
-    start: `sysrc orbit_agent_enable=YES\nservice orbit_agent start`,
+    // Download + config + start in one paste (steps 4–6 combined). Blank-line
+    // separated, no '#' comments — the tcsh root shell mishandles them interactively.
+    install: [downloadCmds, configCmd, startCmd].join("\n\n"),
     logs: `tail -f /var/log/orbit_agent.log`,
   };
 
@@ -528,8 +532,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ① Token */}
                 <Step number={1} title="Copy your agent token">
                   <p className="text-xs text-slate-500">
-                    This token authenticates the agent with this dashboard. You
-                    will paste it into the config file in step 5.
+                    This token authenticates the agent with this dashboard. It's
+                    already pre-filled into the install command in step 4.
                   </p>
                   <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
                     <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">
@@ -611,36 +615,27 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   <CodeBlock code={steps.prereq} />
                 </Step>
 
-                {/* ④ Download */}
-                <Step number={4} title="Download agent files from this dashboard">
+                {/* ④ Install + configure + start — one copy-paste */}
+                <Step
+                  number={4}
+                  title="Install, configure & start the agent"
+                >
                   <p className="text-xs text-slate-500">
-                    Fetch the agent, the supervisor, and the rc.d service file
-                    directly from this dashboard — no GitHub access required.
-                  </p>
-                  <CodeBlock code={steps.download} />
-                </Step>
-
-                {/* ⑤ Config */}
-                <Step number={5} title="Create the configuration file">
-                  <p className="text-xs text-slate-500">
-                    The dashboard URL and your token are pre-filled. Copy and
-                    run the command as-is.
+                    One copy-paste does it all: downloads the agent, supervisor
+                    and rc.d service from this dashboard (no GitHub access
+                    needed), writes the config file (dashboard URL and token
+                    pre-filled), then enables and starts the service.
                     {!token && (
                       <span className="ml-1 text-amber-400">
                         Token will appear once agent mode is enabled.
                       </span>
                     )}
                   </p>
-                  <CodeBlock code={steps.config} />
+                  <CodeBlock code={steps.install} />
                 </Step>
 
-                {/* ⑥ Start */}
-                <Step number={6} title="Enable and start the agent service">
-                  <CodeBlock code={steps.start} />
-                </Step>
-
-                {/* ⑦ Verify */}
-                <Step number={7} title="Verify the connection" done={connected}>
+                {/* ⑤ Verify */}
+                <Step number={5} title="Verify the connection" done={connected}>
                   <div
                     className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm ${
                       connected
