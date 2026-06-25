@@ -34,7 +34,7 @@ const METRICS = [
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "network", label: "Network" },
-  { key: "security", label: "Security" },
+  { key: "security", label: "VPN" },
   { key: "firmware", label: "Firmware" },
   { key: "agent", label: "Agent" },
 ] as const;
