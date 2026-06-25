@@ -690,3 +690,27 @@ generiert: `scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod` (defau
 verbietet Placeholder im TLS-Upstream → `import`-Args = literale Ports). Live in dev gegen die
 prod-Config (Host-Header) verifiziert: kein-Cookie→401, Handoff→302, authed(gui-3)→200,
 Cross-Tenant(gui-7)→401. `docker/traefik-gui.example.yml` = externer-Traefik-Route-Beispiel.
+
+**Auto-Login — WebUI-Session-Replay (2026-06-25, Userwunsch, ✅ e2e .198 + .200):** der GUI-Proxy
+landet bisher auf der **eigenen Login-Maske der Firewall** (OPNsense/pfSense PHP-Session ≠
+`orbit_gui`-Gate). Opt-in pro Instanz (`instances.gui_login_enabled`, Migration 006, Toggle in
+`AgentSection`) lässt den Agent das Login **lokal replayen** und übergibt den Browser eingeloggt.
+
+- **Agent `gui.login`** (`orbit_agent.py`, stdlib `html.parser`): GET Loginseite → Pre-Session-Cookie
+  + **alle** Hidden-Inputs (CSRF-Tokenname ist random/plattform-spezifisch: OPNsense
+  `X-<rand>`, pfSense `__csrf_magic` — generisch gefangen) → POST `usernamefld`/`passwordfld` +
+  Hidden → Erfolg = 302 **und** rotierter Session-Cookie (Failure re-rendert die Maske, kein
+  rotierter Cookie). Liefert den Session-Cookie zurück (nie geloggt).
+- **Credential reuse `orbit`-User** (keine neue Dashboard-Secret): pfSense — das Relay-Secret IST
+  das WebUI-Passwort (`bcrypt-hash`), wird gecached gewiederverwendet. OPNsense — der Relay-User hat
+  ein random/unbekanntes Passwort (API-Key separat), der Agent mintet+cached ein eigenes WebUI-
+  Passwort (`_GUI_PROVISION_PHP`, setzt `$user->password`; apikeys verifiziert **intakt**). Cache
+  `*.guipw` mode 0600 (`_write_private`, kein world-readable-Window).
+- **Backend**: `gui/open` schickt `gui.login`, **stasht** den Cookie server-seitig keyed by
+  Handoff-Token (`gui_session.py`, single-use, 60s, nie in der URL); `gui/handoff` setzt ihn als
+  `Set-Cookie` (Secure/HttpOnly/Lax/Path=/) auf dem `gui-<id>`-Origin → Browser landet authed.
+  Fail-open: scheitert das Login, öffnet die GUI trotzdem (Login-Maske). `gui.login` ist auf dem
+  generischen `/agent/command`-Endpoint gesperrt + sensible Result-Keys im Audit redacted.
+- **Spike (advisor-gated) vor dem Bau**: kein **UA-Binding** (Cookie authed mit anderem Browser-UA);
+  `scope=automation`+`page-all` kann GUI-login; Source-IP = 127.0.0.1 (Agent auf der Box, wie der
+  Tunnel). e2e mit echtem Agent-Code: OPNsense 26.1.10 (.198) + pfSense 2.8.1 (.200) → beide AUTHED.
