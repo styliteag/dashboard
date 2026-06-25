@@ -21,7 +21,7 @@ All workflows go through the `justfile`. Don't invent ad-hoc invocations — rea
 - Frontend: `just frontend-install` · `just frontend-dev` · `just frontend-build` · `just frontend-lint` · `just frontend-fmt`
 - Prod stack: `just up` · `just down` · `just logs`
 - Dev stack: `just dev-up` · `just dev-down` · `just dev-logs`
-- Release: `just release patch|minor|major` (bumps `VERSION`, updates `CHANGELOG.md`, tags, pushes — CI publishes image to Docker Hub + GHCR)
+- Release: `just release patch|minor|major` (bumps `VERSION`, promotes the `CHANGELOG.md` `[Unreleased]` section, tags, pushes — CI publishes image to Docker Hub + GHCR). See [CHANGELOG](#changelog) — release does **not** generate entries.
 - Misc: `just gen-key`
 
 `backend-test` runs `pytest -q` against `backend/tests/`. There are **no frontend tests** — `just frontend-build` (which runs `tsc -b`) is the only frontend gate.
@@ -39,6 +39,12 @@ Migrations run automatically via `alembic upgrade head` in `docker/start.sh` (co
 ## Done-criteria for agent changes
 
 When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates on a version diff — an unchanged version means the fix never deploys to a box) and run `just agent-test`. Likewise run `just checkmk-test` after any `checkmk/` change.
+
+## CHANGELOG
+
+`CHANGELOG.md` is kept and follows [Keep a Changelog](https://keepachangelog.com/) + SemVer. For any user-visible change, add a bullet under `## [Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` …) **as part of the same change** — don't leave it for later.
+
+`just release` (via `release.sh`) only **promotes** `[Unreleased]` to a dated `[X.Y.Z]` section and opens a fresh empty `[Unreleased]`; it does **not** read git history or generate entries. An empty `[Unreleased]` ships empty release notes. Never delete the file or hand-edit already-released sections.
 
 ## Hard rules
 
