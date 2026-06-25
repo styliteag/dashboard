@@ -25,15 +25,16 @@ import struct
 import subprocess
 import time
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from xml.etree import ElementTree
 
 # No external dependencies — the WebSocket client below is pure stdlib (see DR-4
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -857,6 +858,22 @@ def _apply_port_discovery(cfg: Config) -> None:
         cfg.local_api_url = discovered
 
 
+def _write_private(path: Path, data: str) -> None:
+    """Write a secret file mode 0600 from creation — no world-readable window.
+
+    `Path.write_text` creates with the process umask (0644 under root's default),
+    leaving a window before any chmod where a local non-root process could read an
+    admin credential. Open O_CREAT with 0600 and fchmod to enforce it on a
+    pre-existing file too; a failure to lock perms must raise, not be swallowed.
+    """
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, data.encode())
+    finally:
+        os.close(fd)
+
+
 def _load_cached_credentials() -> tuple[str, str] | None:
     """Return the (key, secret) the agent provisioned earlier, or None."""
     try:
@@ -869,10 +886,7 @@ def _load_cached_credentials() -> tuple[str, str] | None:
 
 def _cache_credentials(key: str, secret: str) -> None:
     """Persist the provisioned key:secret (mode 600 — it is an admin credential)."""
-    path = Path(_APIKEY_CACHE)
-    path.write_text(json.dumps({"user": "orbit", "key": key, "secret": secret}))
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o600)
+    _write_private(Path(_APIKEY_CACHE), json.dumps({"user": "orbit", "key": key, "secret": secret}))
 
 
 # pfSense has no native REST API — the dashboard-triggered relay.enable installs the
@@ -1088,6 +1102,202 @@ def _relay_http(params: dict, cfg: Config | None) -> dict:
 
 
 # =============================================================================
+# GUI auto-login (see docs/agent-architecture.md §18)
+# =============================================================================
+#
+# The dashboard's GUI proxy lands the operator on the firewall's own WebUI, which
+# still shows its login page. To skip it, the agent replays the form login locally
+# and hands the resulting session cookie back to the dashboard, which sets it on
+# the per-instance proxy origin so the browser arrives already authenticated.
+#
+# Credentials reuse the relay's `orbit` user (page-all). On pfSense its password IS
+# the cached relay secret (pfRest BasicAuth == WebUI password), so we reuse it. On
+# OPNsense the relay user's password is a random unknown (API-key auth is separate),
+# so we mint + cache a dedicated WebUI password here.
+
+_GUIPW_CACHE = os.environ.get("AGENT_GUIPW_CACHE") or _path_with_legacy(
+    "/usr/local/etc/orbit-agent.guipw", "/usr/local/etc/opnsense-dash-agent.guipw"
+)
+
+_GUI_UA = f"orbit-agent/{__version__}"
+
+# A transient cookie OPNsense sets to probe cookie support — not the auth session,
+# never worth forwarding to the browser.
+_GUI_TRANSIENT_COOKIES = frozenset({"cookie_test"})
+
+# Set a known WebUI password on the existing `orbit` user (OPNsense). The User model
+# hashes it; the relay's API key (separate apikeys auth) is left untouched.
+_GUI_PROVISION_PHP = r"""<?php
+require_once('legacy_bindings.inc');
+use OPNsense\Core\Config;
+use OPNsense\Auth\User;
+$username = 'orbit';
+$pw = base64_encode(random_bytes(24));
+Config::getInstance()->lock();
+$mdl = new User();
+$user = $mdl->getUserByName($username);
+if (!$user) { echo json_encode(["error" => "no orbit user"]); exit; }
+$hash = $mdl->generatePasswordHash($pw);
+if ($hash === false || strpos($hash, '$') !== 0) { echo json_encode(["error" => "hash failed"]); exit; }
+$user->password = $hash;
+$mdl->serializeToConfig(false, true);
+Config::getInstance()->save();
+echo json_encode(["user" => $username, "password" => $pw]);
+"""
+
+
+def _load_cached_gui_password() -> str | None:
+    """Return the WebUI password the agent provisioned earlier, or None."""
+    try:
+        data = json.loads(Path(_GUIPW_CACHE).read_text())
+    except (OSError, ValueError):
+        return None
+    pw = data.get("password")
+    return pw if pw else None
+
+
+def _cache_gui_password(user: str, password: str) -> None:
+    """Persist the provisioned WebUI password (mode 600 — admin credential)."""
+    _write_private(Path(_GUIPW_CACHE), json.dumps({"user": user, "password": password}))
+
+
+def _provision_gui_password() -> tuple[str, str] | None:
+    """OPNsense: set + cache a known WebUI password on the orbit user."""
+    tmp = f"{_GUIPW_CACHE}.provision.php"
+    try:
+        Path(tmp).write_text(_GUI_PROVISION_PHP)
+        out = _run(["/usr/local/bin/php", tmp], timeout=30)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+    try:
+        data = json.loads(out.strip())
+    except ValueError:
+        log.error("gui: provisioning produced no valid password")
+        return None
+    user, pw = data.get("user"), data.get("password")
+    if not user or not pw:
+        log.error("gui: provisioning failed (%s)", data.get("error", "unknown"))
+        return None
+    _cache_gui_password(user, pw)
+    return user, pw
+
+
+def _ensure_gui_credentials(cfg: Config) -> tuple[str, str] | None:
+    """(username, password) for replaying the firewall WebUI login.
+
+    pfSense reuses the cached relay secret (it IS the user's password). OPNsense
+    mints + caches a dedicated WebUI password (the relay user's own password is a
+    random unknown — its API auth uses a separate key pair).
+    """
+    if detect_platform() == "pfsense":
+        cached = _load_cached_credentials()
+        return (cached[0], cached[1]) if cached else None
+    cached_pw = _load_cached_gui_password()
+    if cached_pw:
+        return ("orbit", cached_pw)
+    return _provision_gui_password()
+
+
+class _LoginForm(HTMLParser):
+    """Collect <input> fields (esp. hidden CSRF tokens) and the form action."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inputs: list[dict[str, str]] = []
+        self.action: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = {k: (v or "") for k, v in attrs}
+        if tag == "form" and self.action is None:
+            self.action = a.get("action")
+        if tag == "input":
+            self.inputs.append(a)
+
+
+def _parse_login_form(body: bytes) -> tuple[dict[str, str], str | None]:
+    """Return (hidden field name->value, form action) from a login page."""
+    parser = _LoginForm()
+    parser.feed(body.decode("utf-8", "replace"))
+    hidden = {
+        i["name"]: i.get("value", "")
+        for i in parser.inputs
+        if i.get("type") == "hidden" and i.get("name")
+    }
+    return hidden, parser.action
+
+
+def _parse_set_cookies(headers: list[tuple[str, str]]) -> dict[str, str]:
+    """Extract cookie name->value pairs from every Set-Cookie response header."""
+    jar: dict[str, str] = {}
+    for name, value in headers:
+        if name.lower() != "set-cookie":
+            continue
+        pair = value.split(";", 1)[0]
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            jar[k.strip()] = v.strip()
+    return jar
+
+
+def _gui_login(cfg: Config | None) -> dict:
+    """Replay the firewall WebUI login; return its session cookie(s) for the browser.
+
+    params: none. → {success, cookies:[{name,value}], output?}. The session cookie
+    is the secret — returned to the dashboard over the (TLS) WebSocket, never logged.
+    Works on OPNsense and pfSense: both use usernamefld/passwordfld; their CSRF token
+    is a hidden field of a random/platform-specific name, captured generically.
+    """
+    if cfg is None:
+        return {"success": False, "output": "agent config unavailable"}
+    creds = _ensure_gui_credentials(cfg)
+    if creds is None:
+        return {"success": False, "output": "no GUI credentials"}
+    user, password = creds
+    base = cfg.local_api_url.rstrip("/")
+
+    # 1. GET the login page → pre-session cookie + CSRF hidden fields.
+    try:
+        _, headers, body = _http_request(f"{base}/", "GET", {"User-Agent": _GUI_UA}, None, 15)
+    except (OSError, http.client.HTTPException) as exc:
+        return {"success": False, "output": f"gui login GET failed: {exc}"}
+    pre_jar = _parse_set_cookies(headers)
+    hidden, action = _parse_login_form(body)
+
+    # 2. POST credentials + every hidden field (the CSRF token name is not fixed).
+    fields = dict(hidden)
+    fields["usernamefld"] = user
+    fields["passwordfld"] = password
+    fields["login"] = "1"
+    post_body = urlencode(fields).encode()
+    post_headers = {
+        "User-Agent": _GUI_UA,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": str(len(post_body)),
+        "Cookie": "; ".join(f"{k}={v}" for k, v in pre_jar.items()),
+    }
+    login_url = f"{base}/{(action or '').lstrip('/')}"
+    try:
+        status, headers, _ = _http_request(login_url, "POST", post_headers, post_body, 15)
+    except (OSError, http.client.HTTPException) as exc:
+        return {"success": False, "output": f"gui login POST failed: {exc}"}
+
+    # A successful login redirects (302 → dashboard) AND rotates the session id.
+    # Keep only cookies the POST freshly set or changed vs the pre-login jar (drop
+    # transients): a redirect that re-renders the login page on failure leaves the
+    # session cookie unchanged, yielding no rotated cookie -> treated as failure.
+    new_jar = _parse_set_cookies(headers)
+    session_cookies = [
+        {"name": k, "value": v}
+        for k, v in new_jar.items()
+        if k not in _GUI_TRANSIENT_COOKIES and pre_jar.get(k) != v
+    ]
+    if not (300 <= status < 400) or not session_cookies:
+        return {"success": False, "output": "gui login rejected (bad credentials?)"}
+    return {"success": True, "cookies": session_cookies}
+
+
+# =============================================================================
 # Command executor
 # =============================================================================
 
@@ -1162,6 +1372,9 @@ def execute_command(action: str, params: dict) -> dict:
         # relay credential. Kept off the startup path on purpose (§16 #3) — on
         # pfSense it pulls a package from the internet.
         return _relay_enable()
+
+    elif action == "gui.login":
+        return _gui_login(_CONFIG)
 
     elif action == "http.relay":
         # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
