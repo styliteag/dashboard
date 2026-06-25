@@ -7,15 +7,32 @@ The API never returns the API key/secret. On update, empty strings mean
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.devices.types import DeviceType, Transport
 
 
+def _normalize_base_urls(value: str) -> str:
+    """Validate a comma-separated list of http(s) URLs; return them ', '-joined.
+
+    ``base_url`` may carry several clickable web-UI links (the first is also the
+    API endpoint for direct/relay mode). Each entry must be a real http(s) URL.
+    """
+    urls = [u.strip() for u in value.split(",") if u.strip()]
+    if not urls:
+        raise ValueError("at least one base URL is required")
+    for url in urls:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(f"invalid URL: {url!r}")
+    return ", ".join(urls)
+
+
 class InstanceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    base_url: AnyHttpUrl
+    base_url: str
     # API key/secret are optional when using agent mode (agent collects data locally).
     api_key: str | None = None
     api_secret: str | None = None
@@ -31,10 +48,15 @@ class InstanceCreate(BaseModel):
     notes: str | None = None
     tags: list[str] | None = None
 
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, v: str) -> str:
+        return _normalize_base_urls(v)
+
 
 class InstanceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
-    base_url: AnyHttpUrl | None = None
+    base_url: str | None = None
     # Empty/omitted means "keep existing".
     api_key: str | None = None
     api_secret: str | None = None
@@ -44,6 +66,11 @@ class InstanceUpdate(BaseModel):
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, v: str | None) -> str | None:
+        return _normalize_base_urls(v) if v is not None else None
 
 
 class InstanceResponse(BaseModel):

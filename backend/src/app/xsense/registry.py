@@ -26,7 +26,7 @@ class ClientRegistry:
             client = self._clients.get(instance.id)
             if client is None:
                 client = OPNsenseClient(
-                    base_url=instance.base_url,
+                    base_url=instance.primary_base_url,
                     api_key=decrypt(instance.api_key_enc),
                     api_secret=decrypt(instance.api_secret_enc),
                     ca_bundle_pem=instance.ca_bundle,

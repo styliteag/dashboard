@@ -49,7 +49,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
 
     inst = Instance(
         name=payload.name,
-        base_url=str(payload.base_url),
+        base_url=payload.base_url,
         api_key_enc=placeholder,
         api_secret_enc=placeholder_secret,
         ca_bundle=payload.ca_bundle,
@@ -71,7 +71,7 @@ async def update_instance(
     if payload.name is not None:
         inst.name = payload.name
     if payload.base_url is not None:
-        inst.base_url = str(payload.base_url)
+        inst.base_url = payload.base_url
     if payload.api_key:
         inst.api_key_enc = encrypt(payload.api_key)
     if payload.api_secret:
@@ -105,7 +105,7 @@ async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None,
     from app.crypto.secrets import decrypt
 
     client = OPNsenseClient(
-        base_url=inst.base_url,
+        base_url=inst.primary_base_url,
         api_key=decrypt(inst.api_key_enc),
         api_secret=decrypt(inst.api_secret_enc),
         ca_bundle_pem=inst.ca_bundle,

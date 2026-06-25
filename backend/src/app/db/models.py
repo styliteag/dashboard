@@ -106,6 +106,15 @@ class Instance(Base):
         """Back-compat: True when push-mode (data arrives via the agent hub)."""
         return self.transport == Transport.PUSH.value
 
+    @property
+    def primary_base_url(self) -> str:
+        """First of the (comma-separated) base URLs — the one the API client uses.
+
+        ``base_url`` may hold several clickable web-UI links; only the first is the
+        canonical API endpoint for direct/relay polling.
+        """
+        return self.base_url.split(",", 1)[0].strip()
+
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
