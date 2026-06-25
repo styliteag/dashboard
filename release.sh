@@ -21,6 +21,15 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
+# Agent self-update signing guard: if a public key is baked into the agent, a
+# matching, valid signature MUST ship with it — otherwise every deployed agent
+# rejects future updates. Verifies the committed .sig against _UPDATE_PUBKEY.
+if ! uv --project backend run python scripts/sign_agent.py --verify; then
+    echo "Error: agent self-update signature check failed (see above)."
+    echo "Sign first: DASH_AGENT_SIGNING_KEY=<priv> just sign-agent"
+    exit 1
+fi
+
 # Read current version
 if [[ ! -f VERSION ]]; then
     echo "Error: VERSION file not found."

@@ -34,7 +34,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.5"
+__version__ = "0.9.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1596,11 +1596,13 @@ def _backup_path() -> str:
 
 
 # --- Update signing (Ed25519, pure stdlib verify) ----------------------------
-# Empty by default → signature NOT enforced (dev). A production release bakes the
-# prod public key (hex) here and signs the agent (scripts/sign_agent.py); then
-# every update must carry a valid signature, so a compromised dashboard cannot
-# push forged code (the private key is offline, never on the dashboard).
-_UPDATE_PUBKEY = ""
+# Set → every self-update must carry a valid Ed25519 signature over the code, so a
+# compromised dashboard cannot push forged code (the private key is offline, never
+# on the dashboard). Sign each release with scripts/sign_agent.py (just sign-agent),
+# which writes orbit_agent.py.sig; the dashboard relays it. Empty disables enforcement.
+# IMPORTANT: never release a build with this set but no matching .sig served — the
+# agent would reject every subsequent update.
+_UPDATE_PUBKEY = "082a588e9b9e4aec7eb3799f18ff545878be235b3158a07562db335a006cdedd"
 
 _ED_P = 2**255 - 19
 _ED_D = (-121665 * pow(121666, _ED_P - 2, _ED_P)) % _ED_P

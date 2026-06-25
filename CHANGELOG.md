@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Agent self-update signing is now enforced** — the agent bakes an Ed25519 public key (`_UPDATE_PUBKEY`) and rejects any pushed update without a valid signature over the code, so a compromised dashboard can't push forged agent code (the dashboard only relays the offline-produced `.sig`). `scripts/sign_agent.py` gains `--verify`, and `release.sh` refuses to release when the baked key has no matching/valid signature. The `.sig` is committed (it isn't secret); the private key stays offline.
+
 ## [1.3.0] - 2026-06-26
 
 ### Changed

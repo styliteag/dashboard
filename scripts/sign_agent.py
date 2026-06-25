@@ -35,12 +35,55 @@ def _load_private_key(key_file: str | None) -> Ed25519PrivateKey:
     return Ed25519PrivateKey.from_private_bytes(raw)
 
 
+def _baked_pubkey_hex(agent_path: str) -> str:
+    """The hex value of ``_UPDATE_PUBKEY`` baked into the agent ("" if signing is off)."""
+    import re
+
+    src = Path(agent_path).read_text()
+    m = re.search(r'^_UPDATE_PUBKEY = "([0-9a-fA-F]*)"', src, re.MULTILINE)
+    return m.group(1) if m else ""
+
+
+def _verify(agent_path: str) -> None:
+    """Release guard: the committed .sig must verify against the baked pubkey.
+
+    Exits non-zero (with a clear message) if signing is enabled but the signature is
+    missing or stale — which would make deployed agents reject every future update.
+    """
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    pub_hex = _baked_pubkey_hex(agent_path)
+    if not pub_hex:
+        print(f"{agent_path}: _UPDATE_PUBKEY empty — self-update signing is OFF.")
+        return
+    sig_path = Path(agent_path + ".sig")
+    if not sig_path.exists():
+        sys.exit(f"_UPDATE_PUBKEY is set but {sig_path} is missing — sign before releasing.")
+    code = Path(agent_path).read_bytes()
+    sig = base64.b64decode(sig_path.read_text().strip())
+    try:
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_hex)).verify(sig, code)
+    except InvalidSignature:
+        sys.exit(f"{sig_path} does not verify against _UPDATE_PUBKEY — re-sign the agent.")
+    print(f"{agent_path}: signature verifies against baked _UPDATE_PUBKEY. OK")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Sign the agent for self-update.")
     ap.add_argument("--agent", default="agent/orbit_agent.py")
     ap.add_argument("--key-file", help="file containing the base64 raw private key")
     ap.add_argument("--gen", action="store_true", help="generate a keypair and exit")
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="verify the committed .sig against the baked pubkey (no private key needed)",
+    )
     args = ap.parse_args()
+
+    if args.verify:
+        _verify(args.agent)
+        return
 
     if args.gen:
         k = Ed25519PrivateKey.generate()

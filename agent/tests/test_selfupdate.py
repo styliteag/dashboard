@@ -40,9 +40,18 @@ def test_ed25519_verify_rejects_tampering() -> None:
     assert agent._ed25519_verify(sig, b"original", other) is False  # wrong key
 
 
-def test_signature_disabled_without_pubkey() -> None:
-    # default _UPDATE_PUBKEY == "" → signing not enforced (dev)
+def test_signature_disabled_without_pubkey(monkeypatch: pytest.MonkeyPatch) -> None:
+    # empty _UPDATE_PUBKEY → signing not enforced (dev). Forced here so the test is
+    # independent of whether this build ships a baked production key.
+    monkeypatch.setattr(agent, "_UPDATE_PUBKEY", "")
     assert agent._signature_ok(b"anything", "") is True
+
+
+def test_shipped_build_enforces_signing() -> None:
+    # Guard: this build must ship a baked, valid Ed25519 public key (32 bytes hex),
+    # so signing stays enforced and an accidental blank-out is caught in CI.
+    assert agent._UPDATE_PUBKEY != "", "agent ships with signing DISABLED"
+    assert len(bytes.fromhex(agent._UPDATE_PUBKEY)) == 32
 
 
 def test_signature_enforced_with_pubkey(monkeypatch: pytest.MonkeyPatch) -> None:

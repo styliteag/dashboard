@@ -238,9 +238,19 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
   never root.
 - **Checkmk** integration authenticates with a **read-only API key** (`POST /api/apikeys`,
   stored hashed, rejected on any non-GET request) — the admin password stays out of WATO.
-- Agent **self-update** signing tooling exists (`just sign-agent`, Ed25519), but the agent
-  ships with verification **disabled by default** (dev mode) — enable it by baking a public
-  key into the agent before relying on it.
+- Agent **self-update is signature-verified** (Ed25519). The agent bakes a public key
+  (`_UPDATE_PUBKEY` in `agent/orbit_agent.py`); every pushed update must carry a valid
+  signature over the code, so a compromised dashboard can't push forged agent code — the
+  dashboard only relays the signature, it never holds the key. Per release:
+  1. Generate a keypair once, offline: `just sign-agent --gen` → keep `PRIV_B64` offline,
+     bake `PUB_HEX` into `_UPDATE_PUBKEY`.
+  2. Sign each agent change: `DASH_AGENT_SIGNING_KEY=<PRIV_B64> just sign-agent` → writes
+     `agent/orbit_agent.py.sig` (committed so CI bakes it into the image; the signature is
+     not secret, only the private key is).
+
+  > **Never release a build where `_UPDATE_PUBKEY` is set but the served `.sig` is missing
+  > or stale** — deployed agents would reject every subsequent update. Bake the key, sign,
+  > and ship the matching `.sig` in the same release.
 
 ## Further docs
 
