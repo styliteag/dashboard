@@ -9,7 +9,7 @@ default:
 backend-install:
     cd backend && uv sync --all-extras
 
-backend-run:
+backend-run: _sign-if-key
     cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 backend-test:
@@ -35,6 +35,23 @@ checkmk-test:
 sign-agent *ARGS:
     uv --project backend run python scripts/sign_agent.py {{ARGS}}
 
+# Re-sign the agent IF a signing key is available (env or gitignored .env);
+# no-op + skip message otherwise. A dependency of the dev/run recipes so the
+# served orbit_agent.py.sig stays fresh and self-update verifies. Never fails.
+_sign-if-key:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -f .env ]]; then
+        DASH_AGENT_SIGNING_KEY=$(grep -E '^DASH_AGENT_SIGNING_KEY=' .env | head -1 \
+            | sed -E 's/^[^=]+=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')
+    fi
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" ]]; then
+        echo "agent signing: no DASH_AGENT_SIGNING_KEY (env or .env) — skipping"
+        exit 0
+    fi
+    export DASH_AGENT_SIGNING_KEY
+    uv --project backend run python scripts/sign_agent.py
+
 # --- Frontend --------------------------------------------------------------
 
 frontend-install:
@@ -54,7 +71,7 @@ frontend-fmt:
 
 # --- Stack (production: single combined image) -----------------------------
 
-up:
+up: _sign-if-key
     docker compose up -d --build
 
 down:
@@ -65,10 +82,10 @@ logs:
 
 # --- Stack (development: backend + frontend separate, src bind-mounted) ----
 
-dev:
+dev: _sign-if-key
     docker compose -f compose-dev.yml up --build
 
-dev-up:
+dev-up: _sign-if-key
     docker compose -f compose-dev.yml up -d --build
 
 dev-down:

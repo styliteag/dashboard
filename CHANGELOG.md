@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Agent self-update signing is now enforced** — the agent bakes an Ed25519 public key (`_UPDATE_PUBKEY`) and rejects any pushed update without a valid signature over the code, so a compromised dashboard can't push forged agent code (the dashboard only relays the offline-produced `.sig`). `release.sh` signs the agent automatically at release time (key from `DASH_AGENT_SIGNING_KEY` / `.env`), verifies the signature against the baked key, and aborts if no key is available — so only the offline key holder can cut a release. `scripts/sign_agent.py` gains `--verify`. The `.sig` is committed (it isn't secret); the private key stays offline.
 - **Dev-only signature bypass** — the agent skips self-update signature verification when `AGENT_INSECURE_SKIP_SIG=1` (env, for a locally-run agent) or `insecure_skip_sig: true` in its config (installed agent) is set, logging a loud warning. Off by default; lets a dev iterate on the agent without re-signing. Never use in production.
+- **Dev recipes auto-sign the agent** — `just dev`, `dev-up`, `up`, and `backend-run` re-sign the agent first when a signing key is available (`DASH_AGENT_SIGNING_KEY` env or `.env`), so the served `.sig` stays fresh and self-update verifies. No key → skipped, dev still starts.
 
 ## [1.3.0] - 2026-06-26
 
