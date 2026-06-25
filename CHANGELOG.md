@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-26
+
 ### Changed
 
 - **Agent installation guide: one-paste install** — the OPNsense/pfSense agent guide now combines the former download, config, and start steps (4–6) into a single copy-paste block, so the whole install runs from one command box.
