@@ -259,6 +259,7 @@ class AgentStatusResponse(BaseModel):
     served_version: str | None = None  # version shipped in this container
     update_available: bool = False
     gui_proxy_enabled: bool = False  # whether the GUI proxy is configured (global)
+    platform: str | None = None  # "opnsense" / "pfsense", reported by the connected agent
 
 
 def _client_ip(request: Request) -> str:
@@ -374,6 +375,7 @@ async def agent_status(
         served_version=served,
         update_available=update_available,
         gui_proxy_enabled=get_settings().gui_proxy_enabled,
+        platform=connected.platform if connected else None,
     )
 
 
