@@ -18,6 +18,7 @@ interface AgentStatus {
   served_version: string | null;
   update_available: boolean;
   gui_proxy_enabled?: boolean;
+  gui_login_enabled?: boolean;
 }
 
 interface AgentUpdateResponse {
@@ -235,6 +236,15 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
     },
     onError: (e) =>
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
+  });
+
+  const guiLoginMut = useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.patch<unknown>(`/api/instances/${instanceId}`, { gui_login_enabled: enabled }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] }),
+    onError: (e) =>
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not change auto-login" }),
   });
 
   const uninstallMut = useMutation({
@@ -507,6 +517,21 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   )}
                 </div>
               </div>
+              {status?.gui_proxy_enabled && (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={status?.gui_login_enabled ?? false}
+                    disabled={guiLoginMut.isPending}
+                    onChange={(e) => guiLoginMut.mutate(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <span>
+                    Auto-login — replay the firewall&apos;s WebUI login so{" "}
+                    <span className="text-slate-300">Open GUI</span> lands already signed in
+                  </span>
+                </label>
+              )}
             </div>
 
             {/* Guide toggle */}
