@@ -79,16 +79,21 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
             {[platform, version].filter(Boolean).join(" ")}
           </span>
         )}
-        {instance?.base_url && (
-          <a
-            href={instance.base_url}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-xs text-slate-500 hover:text-slate-300 hover:underline"
-          >
-            {instance.base_url}
-          </a>
-        )}
+        {instance?.base_url
+          ?.split(",")
+          .map((u) => u.trim())
+          .filter(Boolean)
+          .map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-xs text-slate-500 hover:text-slate-300 hover:underline"
+            >
+              {url}
+            </a>
+          ))}
         {instance?.location && <span className="text-xs text-slate-500">· {instance.location}</span>}
         {instance?.tags?.map((t) => (
           <span key={t} className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">

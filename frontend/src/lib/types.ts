@@ -8,6 +8,7 @@ export interface Instance {
   name: string;
   base_url: string;
   ssl_verify: boolean;
+  gui_login_enabled: boolean;
   agent_mode: boolean;
   agent_last_seen: string | null;
   location: string | null;

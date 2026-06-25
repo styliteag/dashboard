@@ -20,6 +20,9 @@ export interface InstanceViewProps {
   onDelete: () => void;
 }
 
+/** base_url may hold several comma-separated web-UI URLs; split + trim them. */
+const splitUrls = (s: string): string[] => s.split(",").map((u) => u.trim()).filter(Boolean);
+
 interface StatusMeta {
   icon: ReactNode;
   label: string;
@@ -90,11 +93,12 @@ function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceView
     "flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200";
   return (
     <div className="flex items-center gap-1.5">
-      {!inst.agent_mode && (
-        <a href={inst.base_url} target="_blank" rel="noreferrer" title="Open web UI" className={linkCls}>
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
+      {!inst.agent_mode &&
+        splitUrls(inst.base_url).map((url) => (
+          <a key={url} href={url} target="_blank" rel="noreferrer" title={`Open ${url}`} className={linkCls}>
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ))}
       <TestConnectionButton instanceId={inst.id} />
       <Link to={`/instances/${inst.id}`} className={linkCls}>
         <Activity className="h-3 w-3" /> Details
@@ -135,7 +139,19 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
         <AgentBadge inst={inst} agent={agent} />
       </div>
 
-      <p className="mt-2 truncate text-xs text-slate-500">{inst.base_url}</p>
+      <div className="mt-2 flex flex-wrap gap-x-2 text-xs text-slate-500">
+        {splitUrls(inst.base_url).map((url) => (
+          <a
+            key={url}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="truncate hover:text-slate-300 hover:underline"
+          >
+            {url}
+          </a>
+        ))}
+      </div>
       {inst.location && <p className="text-xs text-slate-500">{inst.location}</p>}
 
       {inst.last_error_message && <p className="mt-2 truncate text-xs text-red-400">{inst.last_error_message}</p>}

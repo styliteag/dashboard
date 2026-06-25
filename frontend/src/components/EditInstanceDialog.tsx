@@ -11,12 +11,17 @@ interface Props {
 
 export default function EditInstanceDialog({ instance, onClose }: Props) {
   const queryClient = useQueryClient();
+  // Agent mode reaches the firewall through the agent (push + relay), so the
+  // direct-API fields (key/secret, TLS verify) don't apply — only the agent-only
+  // Auto-Login does. Mirror AddInstanceDialog's per-mode field set.
+  const agentMode = instance.agent_mode;
   const [form, setForm] = useState({
     name: instance.name,
     base_url: instance.base_url,
     api_key: "",
     api_secret: "",
     ssl_verify: instance.ssl_verify,
+    gui_login_enabled: instance.gui_login_enabled,
     location: instance.location ?? "",
     tags: (instance.tags ?? []).join(", "),
     notes: instance.notes ?? "",
@@ -31,16 +36,20 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       const body: Record<string, unknown> = {
         name: form.name,
         base_url: form.base_url,
-        ssl_verify: form.ssl_verify,
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
           ? form.tags.split(",").map((t) => t.trim()).filter(Boolean)
           : null,
       };
-      // Only send secrets if the user typed something new (US-2.2).
-      if (form.api_key) body.api_key = form.api_key;
-      if (form.api_secret) body.api_secret = form.api_secret;
+      if (agentMode) {
+        body.gui_login_enabled = form.gui_login_enabled;
+      } else {
+        body.ssl_verify = form.ssl_verify;
+        // Only send secrets if the user typed something new (US-2.2).
+        if (form.api_key) body.api_key = form.api_key;
+        if (form.api_secret) body.api_secret = form.api_secret;
+      }
       return api.patch<Instance>(`/api/instances/${instance.id}`, body);
     },
     onSuccess: () => {
@@ -65,32 +74,56 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name" value={form.name} onChange={set("name")} required />
-        <Input label="Base URL" value={form.base_url} onChange={set("base_url")} required />
         <Input
-          label="API Key (empty = unchanged)"
-          value={form.api_key}
-          onChange={set("api_key")}
-          type="password"
-          placeholder="unchanged"
+          label="Base URLs (comma-separated, all clickable)"
+          value={form.base_url}
+          onChange={set("base_url")}
+          placeholder="https://10.0.0.1:4444, https://fw.example"
+          required
         />
-        <Input
-          label="API Secret (empty = unchanged)"
-          value={form.api_secret}
-          onChange={set("api_secret")}
-          type="password"
-          placeholder="unchanged"
-        />
+        {!agentMode && (
+          <>
+            <Input
+              label="API Key (empty = unchanged)"
+              value={form.api_key}
+              onChange={set("api_key")}
+              type="password"
+              placeholder="unchanged"
+            />
+            <Input
+              label="API Secret (empty = unchanged)"
+              value={form.api_secret}
+              onChange={set("api_secret")}
+              type="password"
+              placeholder="unchanged"
+            />
+          </>
+        )}
         <Input label="Location" value={form.location} onChange={set("location")} />
         <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
-        <label className="flex items-center gap-2 text-sm text-slate-400">
-          <input
-            type="checkbox"
-            checked={!form.ssl_verify}
-            onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
-            className="rounded border-slate-600"
-          />
-          Skip SSL verification (self-signed certs)
-        </label>
+        {!agentMode && (
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            <input
+              type="checkbox"
+              checked={!form.ssl_verify}
+              onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
+              className="rounded border-slate-600"
+            />
+            Skip SSL verification (self-signed certs)
+          </label>
+        )}
+        {agentMode && (
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            <input
+              type="checkbox"
+              checked={form.gui_login_enabled}
+              onChange={(e) => setForm((f) => ({ ...f, gui_login_enabled: e.target.checked }))}
+              className="rounded border-slate-600"
+            />
+            Auto-login — replay the firewall&apos;s WebUI login so &quot;Open GUI&quot; lands signed
+            in (requires GUI proxy)
+          </label>
+        )}
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Notes</label>
           <textarea

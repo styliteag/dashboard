@@ -79,7 +79,12 @@ export default function AddInstanceDialog({ onClose }: Props) {
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name *" value={form.name} onChange={set("name")} required />
-        <Input label="Base URL (HTTPS) *" value={form.base_url} onChange={set("base_url")} required />
+        <Input
+          label="Base URLs (comma-separated, HTTPS) *"
+          value={form.base_url}
+          onChange={set("base_url")}
+          required
+        />
 
         {/* Mode toggle */}
         <div className="flex gap-2">
