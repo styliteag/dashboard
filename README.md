@@ -118,8 +118,17 @@ and the button is hidden — no wildcard/DNS needed.
   Caddy host-matches `gui-<slug>`, runs the `forwardAuth` gate, and proxies to that
   firewall's forwarder (`app:14400+id`), so Traefik needs **no per-instance config**.
   Set `ORBIT_GUI_DOMAIN=gui.example.com`, `DASH_GUI_PROXY_ENABLED=true`,
-  `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`, attach `gui-proxy` to
+  `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`,
+  `DASH_GUI_CADDY_ADMIN_URL=http://gui-proxy:2019/load`, attach `gui-proxy` to
   Traefik's network, then `docker compose --profile gui up -d`.
+
+  > **`DASH_GUI_CADDY_ADMIN_URL` is required** — it's how the backend pushes the
+  > vhost map to Caddy. The bundled `compose.yml` defaults it for you
+  > (`${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}`), but a **hand-written
+  > compose / Swarm stack has no such default** — you must set it explicitly. If it's
+  > unset while the proxy is enabled, the hot-load **silently no-ops**: Caddy stays on
+  > the empty bootstrap and every `gui-<slug>` host returns a blank `200`. The backend
+  > logs `gui_caddy.admin_url_unset` at startup when this happens.
 
   Each instance gets a **persistent, URL-safe `slug`** (auto-derived from its name —
   "Firewall Büro Süd" → `firewall-buero-sued`, editable, unique). Because the host is

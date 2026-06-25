@@ -61,7 +61,9 @@ services:
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
       # Caddy admin endpoint the backend hot-loads the per-slug vhost map to
       # (reachable as gui-proxy:2019 on the internal compose network — NOT published
-      # to the host). Only used when the proxy is enabled.
+      # to the host). REQUIRED when the proxy is enabled — without it the push
+      # silently no-ops and gui-<slug> hosts return a blank 200. The default below
+      # only applies to THIS compose; a hand-written/Swarm stack must set it itself.
       DASH_GUI_CADDY_ADMIN_URL: ${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       TZ: ${TZ:-UTC}

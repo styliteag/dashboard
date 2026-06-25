@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **GUI proxy: surface a missing `DASH_GUI_CADDY_ADMIN_URL`** — when the prod GUI proxy is enabled but the Caddy admin URL is unset, the vhost hot-load silently no-opped and every `gui-<slug>` host returned a blank `200`. The backend now logs `gui_caddy.admin_url_unset` at startup, and the docs (README, `.env.example`, `compose.yml`) state the variable is required and that the compose default does **not** carry over to a hand-written / Swarm stack.
+
 ## [1.2.0] - 2026-06-26
 
 ### Added

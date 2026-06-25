@@ -76,6 +76,14 @@ async def lifespan(app: FastAPI):
     # Push the full GUI-proxy vhost map to Caddy (prod, decision B) so a fresh
     # Caddy container — booted from the empty bootstrap file — learns every live
     # instance's slug→port binding. No-op when the proxy is off. Never blocks boot.
+    _settings = get_settings()
+    if _settings.gui_proxy_enabled and not _settings.gui_caddy_admin_url:
+        # Loud, actionable signal: the proxy is on but the push has nowhere to go —
+        # Caddy stays on the empty bootstrap and every gui-<slug> host returns blank.
+        log.warning(
+            "gui_caddy.admin_url_unset",
+            hint="set DASH_GUI_CADDY_ADMIN_URL=http://gui-proxy:2019/load",
+        )
     try:
         async with get_sessionmaker()() as session:
             await gui_caddy.reconcile(session)
