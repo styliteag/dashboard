@@ -714,3 +714,31 @@ landet bisher auf der **eigenen Login-Maske der Firewall** (OPNsense/pfSense PHP
 - **Spike (advisor-gated) vor dem Bau**: kein **UA-Binding** (Cookie authed mit anderem Browser-UA);
   `scope=automation`+`page-all` kann GUI-login; Source-IP = 127.0.0.1 (Agent auf der Box, wie der
   Tunnel). e2e mit echtem Agent-Code: OPNsense 26.1.10 (.198) + pfSense 2.8.1 (.200) → beide AUTHED.
+
+**Persistente URLs via Slug (2026-06-26, Userwunsch):** der Prod-Host war `gui-<id>` (arithmetisch
+→ Port `14400+id`). Jetzt **persistenter, URL-safer `slug`** pro Instanz (`instances.slug`, Migration
+007, `UNIQUE`): aus dem Anzeigenamen abgeleitet (`slugify_name`, dt. Umlaute ä/ö/ü/ß→ae/oe/ue/ss,
+DNS-Label ≤63), separat editierbar, **stabil bei Rename** (URL bleibt), bei Soft-delete freigegeben
+(suffixt, da `UNIQUE` global). Validierung: Schema (DNS-Label-Regex) + Service-Uniqueness (expliziter
+Slug → 409-Konflikt; abgeleiteter → auto-suffix `-2/-3`).
+
+- **Caddy-Sync (Entscheid B):** Host→Port ist nicht mehr arithmetisch → Binding lebt in der DB. Das
+  gemountete `Caddyfile.gui-prod` ist nur noch **Bootstrap** (Global-Block + `admin 0.0.0.0:2019` +
+  leere Wildcard). Das Backend baut die Per-Slug-Vhost-Map (`gui_caddy.build_caddyfile`) und
+  **hot-loaded** sie via Caddy-Admin-API (`POST gui-proxy:2019/load`, `text/caddyfile`) bei jedem
+  Create/Slug-Change/Delete, beim Startup **und in `gui/open`** (`reconcile`, best-effort: Push-Fail
+  loggt, bricht CRUD nie ab). Der `gui/open`-Push ist der Robustheits-Anker: gui-proxy startet
+  (`depends_on`) nach app, der Startup-Push verpufft also bei `up` — `gui/open` garantiert den Vhost
+  genau dann, wenn er gebraucht wird (auch nach `restart gui-proxy`). Kein `gui-N`-Cap mehr, kein
+  File-Editieren. Admin-API nur im internen Compose-Netz (nicht published).
+  Verifiziert: `caddy adapt` über eine populated Config (Hyphen-Matcher, `instance=<id>` eingebacken,
+  Upstream `app:14400+id`, `admin :2019`) → valides JSON, keine fmt-Warnung.
+- **Kein authcheck-Change:** die Instanz-id wird pro Vhost in `forward_auth ?instance=<id>` eingebacken
+  (2. Snippet-Arg, wie dev) → server-seitig, nicht client-spoofbar, kein Slug→id-Lookup/Cache nötig.
+  Forwarder-Port bleibt `14400+id` (stabil, Rename verschiebt keinen Tunnel).
+- **Traefik:** Wildcard-Regel `gui-[0-9]+` → `gui-[a-z0-9-]+` aufgeweitet (deckt Slugs); Wildcard-Cert
+  `*.gui.<domain>` deckt sie ohnehin. Weiterhin **keine Per-Instanz-Config**. Beispiele in v2- **und**
+  v3-Syntax (`docker/traefik-gui.example.yml`, compose-Label-Block).
+- **Config:** `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.<domain>` (`{slug}` bevorzugt, `{id}`
+  back-compat), `DASH_GUI_CADDY_ADMIN_URL` (compose default `http://gui-proxy:2019/load`).
+  Tests: slug-helper (10), gui_caddy-builder (3), slug-service/schema (9). Backend grün.

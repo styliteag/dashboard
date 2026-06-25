@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub import gui_caddy
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
@@ -51,10 +52,13 @@ async def create(
 ) -> Instance:
     try:
         inst = await service.create_instance(session, payload)
+    except service.SlugConflictError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="instance name already exists"
+            status_code=status.HTTP_409_CONFLICT, detail="instance name or slug already exists"
         ) from exc
     await write_audit(
         session,
@@ -68,6 +72,7 @@ async def create(
     )
     await session.commit()
     await session.refresh(inst)
+    await gui_caddy.reconcile(session)  # add this instance's vhost to the GUI proxy
     return inst
 
 
@@ -96,10 +101,13 @@ async def update(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     try:
         await service.update_instance(session, inst, payload)
+    except service.SlugConflictError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="instance name already exists"
+            status_code=status.HTTP_409_CONFLICT, detail="instance name or slug already exists"
         ) from exc
     await write_audit(
         session,
@@ -115,6 +123,7 @@ async def update(
     )
     await session.commit()
     await session.refresh(inst)
+    await gui_caddy.reconcile(session)  # reflect a possible slug change
     return inst
 
 
@@ -140,6 +149,7 @@ async def delete(
         detail={"name": inst.name},
     )
     await session.commit()
+    await gui_caddy.reconcile(session)  # drop this instance's vhost from the GUI proxy
 
 
 @router.post("/{instance_id}/test", response_model=TestConnectionResponse)

@@ -12,8 +12,47 @@ from app.crypto.secrets import encrypt
 from app.db.models import Instance
 from app.devices.types import Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
+from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
 from app.xsense.client import OPNsenseClient, OPNsenseError
 from app.xsense.registry import registry
+
+
+class SlugConflictError(ValueError):
+    """An explicitly requested slug is already in use by another instance."""
+
+
+async def _slug_taken(session: AsyncSession, slug: str, exclude_id: int | None) -> bool:
+    # Only *active* instances reserve a slug (soft-deleted rows free it — mirrors the
+    # name_active_key generated-column constraint).
+    query = select(Instance.id).where(Instance.slug == slug, Instance.deleted_at.is_(None))
+    if exclude_id is not None:
+        query = query.where(Instance.id != exclude_id)
+    return (await session.execute(query.limit(1))).first() is not None
+
+
+async def _resolve_slug(
+    session: AsyncSession,
+    desired: str,
+    *,
+    exclude_id: int | None = None,
+    auto_suffix: bool,
+) -> str:
+    """Return a free, valid slug. ``auto_suffix`` appends -2/-3… instead of conflicting.
+
+    Used with ``auto_suffix=True`` for name-derived slugs (must always succeed) and
+    ``auto_suffix=False`` for an explicit user slug (a clash is an error, not a rename).
+    """
+    base = desired if is_valid_slug(desired) else slugify_name(desired)
+    if not auto_suffix:
+        if await _slug_taken(session, base, exclude_id):
+            raise SlugConflictError(f"slug {base!r} is already in use")
+        return base
+    candidate, n = base, 2
+    while await _slug_taken(session, candidate, exclude_id):
+        suffix = f"-{n}"
+        candidate = f"{base[: MAX_SLUG_LEN - len(suffix)].rstrip('-')}{suffix}"
+        n += 1
+    return candidate
 
 
 async def list_instances(session: AsyncSession) -> list[Instance]:
@@ -47,8 +86,14 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
     # transport is the source of truth; fall back to the agent_mode flag when omitted.
     transport = payload.transport or (Transport.PUSH if payload.agent_mode else Transport.DIRECT)
 
+    # Explicit slug must be free (conflict surfaces); a name-derived one auto-suffixes.
+    slug = await _resolve_slug(
+        session, payload.slug or payload.name, auto_suffix=payload.slug is None
+    )
+
     inst = Instance(
         name=payload.name,
+        slug=slug,
         base_url=payload.base_url,
         api_key_enc=placeholder,
         api_secret_enc=placeholder_secret,
@@ -69,7 +114,11 @@ async def update_instance(
     session: AsyncSession, inst: Instance, payload: InstanceUpdate
 ) -> Instance:
     if payload.name is not None:
-        inst.name = payload.name
+        inst.name = payload.name  # slug stays put → the GUI URL is persistent
+    if payload.slug is not None and payload.slug != inst.slug:
+        inst.slug = await _resolve_slug(
+            session, payload.slug, exclude_id=inst.id, auto_suffix=False
+        )
     if payload.base_url is not None:
         inst.base_url = payload.base_url
     if payload.api_key:
@@ -96,6 +145,8 @@ async def update_instance(
 
 async def soft_delete_instance(session: AsyncSession, inst: Instance) -> None:
     inst.deleted_at = datetime.now(UTC)
+    # The slug_active_key generated column auto-NULLs on soft-delete, so the slug
+    # (and its GUI URL) is freed for reuse without mutating the stored value.
     await session.flush()
     await registry.invalidate(inst.id)
 

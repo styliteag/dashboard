@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # by a reverse proxy giving a per-instance origin (Caddy/port in dev, Traefik/
     # wildcard subdomain in prod). OFF by default — needs that proxy set up.
     gui_proxy_enabled: bool = False
+    # Public origin template for the prod proxy; ``{slug}`` is the instance slug,
+    # e.g. https://gui-{slug}.gui.example.com. Empty → dev per-port convention.
+    gui_base_template: str = ""
+    # Caddy admin /load endpoint the backend pushes the regenerated vhost map to
+    # (prod, decision B). Empty → no hot-load (dev, or a statically-mounted file).
+    gui_caddy_admin_url: str = ""
     # Close an instance's forwarder after this many idle minutes (0 = never).
     gui_idle_minutes: int = 15
 

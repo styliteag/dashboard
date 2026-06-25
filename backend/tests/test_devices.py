@@ -46,6 +46,7 @@ def test_instance_response_includes_transport_and_device_type() -> None:
     row = SimpleNamespace(
         id=1,
         name="fw",
+        slug="fw",
         base_url="https://fw.example.test",
         ssl_verify=True,
         gui_login_enabled=False,

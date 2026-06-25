@@ -1,8 +1,8 @@
 # Example config for your EXTERNAL Traefik to expose the optional firewall GUI
 # proxy. Traefik does only two things here: terminate TLS for the wildcard and
 # forward everything to Orbit's `gui-proxy` Caddy (over HTTP). Caddy does the
-# per-firewall host-matching, the auth gate, and the tunnel proxying — so Traefik
-# needs NO per-instance config. See README "Firewall GUI proxy" and §18.
+# per-firewall host-matching (gui-<slug>), the auth gate, and the tunnel proxying —
+# so Traefik needs NO per-instance config. See README "Firewall GUI proxy" and §18.
 #
 # This is the FILE-PROVIDER form (load it via Traefik's file provider). If your
 # Traefik uses the Docker/Swarm provider instead, use the equivalent LABEL form
@@ -12,12 +12,16 @@
 # Prereqs: Orbit's `gui-proxy` service reachable on Traefik's network (e.g. attach
 # it to the Traefik network), a wildcard cert for *.gui.example.com (DNS-01), and
 # the dashboard set with DASH_GUI_PROXY_ENABLED=true and
-# DASH_GUI_BASE_TEMPLATE=https://gui-{id}.gui.example.com.
+# DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com.
 
 http:
   routers:
     orbit-gui:
-      rule: "HostRegexp(`^gui-[0-9]+\\.gui\\.example\\.com$`)"
+      # Traefik v2 HostRegexp: a named group {name:regexp}, literal text outside it,
+      # no ^$ anchors (the whole host is matched). Covers every gui-<slug> subdomain.
+      rule: "HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)"
+      # Traefik v3 instead uses a raw Go regexp (anchored, no named group):
+      #   rule: "HostRegexp(`^gui-[a-z0-9-]+\\.gui\\.example\\.com$`)"
       service: orbit-gui
       tls:
         certResolver: letsencrypt        # DNS-01 wildcard for *.gui.example.com
@@ -32,6 +36,6 @@ http:
         # attach gui-proxy to Traefik's docker network, or use its IP:80.
         servers:
           - url: "http://gui-proxy:80"
-        # Pass the original Host through so Caddy can match gui-<id> (Traefik also
+        # Pass the original Host through so Caddy can match gui-<slug> (Traefik also
         # sets X-Forwarded-Host, which the auth check reads).
         passHostHeader: true

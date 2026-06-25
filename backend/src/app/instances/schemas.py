@@ -12,6 +12,19 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.devices.types import DeviceType, Transport
+from app.instances.slug import is_valid_slug
+
+
+def _check_slug(value: str | None) -> str | None:
+    """Reject a malformed user-supplied slug early (uniqueness is checked in the service)."""
+    if value is None:
+        return None
+    if not is_valid_slug(value):
+        raise ValueError(
+            "slug must be a DNS label: lowercase a-z, 0-9, hyphen; "
+            "no leading/trailing hyphen; 1-63 chars"
+        )
+    return value
 
 
 def _normalize_base_urls(value: str) -> str:
@@ -32,6 +45,8 @@ def _normalize_base_urls(value: str) -> str:
 
 class InstanceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
+    # Optional: omit to auto-derive a URL-safe slug from ``name`` (§18 GUI proxy).
+    slug: str | None = Field(default=None, max_length=63)
     base_url: str
     # API key/secret are optional when using agent mode (agent collects data locally).
     api_key: str | None = None
@@ -53,9 +68,16 @@ class InstanceCreate(BaseModel):
     def _check_base_url(cls, v: str) -> str:
         return _normalize_base_urls(v)
 
+    @field_validator("slug")
+    @classmethod
+    def _validate_slug(cls, v: str | None) -> str | None:
+        return _check_slug(v)
+
 
 class InstanceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    # Stable across name edits → persistent GUI URL; change it explicitly here.
+    slug: str | None = Field(default=None, max_length=63)
     base_url: str | None = None
     # Empty/omitted means "keep existing".
     api_key: str | None = None
@@ -72,12 +94,18 @@ class InstanceUpdate(BaseModel):
     def _check_base_url(cls, v: str | None) -> str | None:
         return _normalize_base_urls(v) if v is not None else None
 
+    @field_validator("slug")
+    @classmethod
+    def _validate_slug(cls, v: str | None) -> str | None:
+        return _check_slug(v)
+
 
 class InstanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
+    slug: str
     base_url: str
     ssl_verify: bool
     gui_login_enabled: bool

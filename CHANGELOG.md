@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Persistent GUI URLs via instance slug** — each instance gets a stable, URL-safe `slug` (auto-derived from its name, e.g. "Firewall Büro Süd" → `firewall-buero-sued`; editable and unique). The prod GUI proxy origin becomes `https://gui-<slug>.<domain>` (`DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.…`) instead of the numeric `gui-<id>`. The slug stays put across name edits, so the GUI URL is durable.
+
+### Changed
+
+- **Prod GUI-proxy Caddy is now hot-loaded** — because the public host is a slug (not arithmetic from the id), the host→port map lives in the DB. The mounted `Caddyfile.gui-prod` is just a bootstrap (admin API + empty wildcard); the backend regenerates the per-slug vhost map and pushes it through Caddy's admin API on every instance create/slug-change/delete and at startup. No more `gui-1..gui-25` cap or manual file regeneration. The external Traefik wildcard rule widens from `gui-[0-9]+` to `gui-[a-z0-9-]+` (examples given in both Traefik v2 and v3 syntax).
+
 ## [1.1.1] - 2026-06-26
 
 ### Added

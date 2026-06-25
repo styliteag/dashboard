@@ -101,7 +101,7 @@ every request (`forwardAuth`), bound to that one firewall.
 
 ```sh
 DASH_GUI_PROXY_ENABLED=true
-DASH_GUI_BASE_TEMPLATE=https://gui-{id}.example.com   # prod; {id} = instance id
+DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.example.com # prod; {slug} = instance slug
 DASH_GUI_IDLE_MINUTES=15                               # close idle forwarders
 ```
 
@@ -115,19 +115,29 @@ and the button is hidden — no wildcard/DNS needed.
   Caddy (in `compose.yml`, `--profile gui`). Your **external Traefik** terminates TLS
   for `*.gui.example.com` (DNS-01 wildcard cert) and forwards the wildcard to that
   Caddy over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
-  Caddy host-matches `gui-<id>`, runs the `forwardAuth` gate, and proxies to that
+  Caddy host-matches `gui-<slug>`, runs the `forwardAuth` gate, and proxies to that
   firewall's forwarder (`app:14400+id`), so Traefik needs **no per-instance config**.
   Set `ORBIT_GUI_DOMAIN=gui.example.com`, `DASH_GUI_PROXY_ENABLED=true`,
-  `DASH_GUI_BASE_TEMPLATE=https://gui-{id}.gui.example.com`, attach `gui-proxy` to
-  Traefik's network, then `docker compose --profile gui up -d`. The bundled Caddyfile
-  covers `gui-1..gui-25`; for more, regenerate it:
-  `python scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod`.
+  `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`, attach `gui-proxy` to
+  Traefik's network, then `docker compose --profile gui up -d`.
+
+  Each instance gets a **persistent, URL-safe `slug`** (auto-derived from its name —
+  "Firewall Büro Süd" → `firewall-buero-sued`, editable, unique). Because the host is
+  now a slug (not arithmetic from the id), the host→port binding lives in the DB: the
+  mounted Caddyfile is just a **bootstrap** (admin API + empty wildcard), and the
+  backend regenerates the per-slug vhost map and **hot-loads it through Caddy's admin
+  API** (`gui-proxy:2019`, internal network only — never publish it) on every instance
+  create/slug-change/delete and at startup. No per-instance file editing, no `gui-N`
+  cap. Regenerate the bootstrap only if its global block changes:
+  `uv --project backend run python scripts/gen-gui-caddyfile.py > docker/Caddyfile.gui-prod`.
 
   Wire the Traefik router either via the **file provider**
   ([`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)) or, if your
   Traefik uses the **Docker/Swarm provider**, via **labels** — see the commented
   `deploy.labels` block on the `gui-proxy` service in `compose.yml`. Either way the
-  router is a single wildcard `HostRegexp(^gui-[0-9]+\.<domain>$)` → `gui-proxy:80`;
+  router is a single wildcard rule → `gui-proxy:80` — `HostRegexp(`{subdomain:gui-[a-z0-9-]+}.<domain>`)`
+  in Traefik **v2** (named group, no anchors), or the raw Go regexp
+  `HostRegexp(^gui-[a-z0-9-]+\.<domain>$)` in **v3**.
   Traefik needs no per-instance config. Two gotchas: `deploy.labels` is read only by
   Traefik's **Swarm** provider (plain compose → use top-level `labels:`), and `gui-proxy`
   must share a network with Traefik (set `traefik.docker.network` if it's on several).

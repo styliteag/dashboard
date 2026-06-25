@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.agent_hub import gui_caddy
 from app.agent_hub.gui_tunnel import gui_tunnels
 from app.agent_hub.hub import hub
 from app.agent_hub.routes import router as agent_router
@@ -19,7 +20,7 @@ from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
 from app.checks.routes import router as checks_router
 from app.config import get_settings
-from app.db.base import dispose_engine
+from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
@@ -71,6 +72,15 @@ async def lifespan(app: FastAPI):
     # give a per-instance origin + valid cert. The reaper closes ones idle past
     # DASH_GUI_IDLE_MINUTES.
     gui_tunnels.start_reaper(get_settings().gui_idle_minutes)
+
+    # Push the full GUI-proxy vhost map to Caddy (prod, decision B) so a fresh
+    # Caddy container — booted from the empty bootstrap file — learns every live
+    # instance's slug→port binding. No-op when the proxy is off. Never blocks boot.
+    try:
+        async with get_sessionmaker()() as session:
+            await gui_caddy.reconcile(session)
+    except Exception as exc:  # noqa: BLE001
+        log.error("gui_caddy.startup_reconcile_failed", error=str(exc))
 
     try:
         yield

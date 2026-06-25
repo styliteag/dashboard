@@ -43,6 +43,11 @@ class Instance(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # URL-safe DNS label for the prod GUI-proxy origin gui-<slug>.<domain> (§18).
+    # Unique among *active* instances via the generated ``slug_active_key`` column
+    # (same partial-unique trick as ``name``; freed automatically on soft-delete).
+    # Stable across name edits → persistent GUI URLs.
+    slug: Mapped[str] = mapped_column(String(63), nullable=False)
     base_url: Mapped[str] = mapped_column(String(512), nullable=False)
     # Encrypted with Fernet at rest. Stored as base64 token bytes.
     api_key_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)

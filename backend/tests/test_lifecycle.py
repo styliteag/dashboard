@@ -129,7 +129,8 @@ def test_gui_open_404_when_proxy_disabled(monkeypatch):
 
 
 def _gui_proxy_on():
-    return SimpleNamespace(gui_proxy_enabled=True)
+    # dev convention (no prod template) → _gui_base_url falls back to the per-port URL
+    return SimpleNamespace(gui_proxy_enabled=True, gui_base_template="")
 
 
 def _gui_open(monkeypatch, inst, agent):

@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub import gui_caddy
 from app.agent_hub.gui_auth import COOKIE_NAME, sign_gui_token, verify_gui_token
 from app.agent_hub.gui_session import gui_sessions
 from app.agent_hub.gui_tunnel import gui_tunnels
@@ -716,12 +717,15 @@ async def relay_to_agent(
 # --- GUI proxy auth gate (token handoff + forward_auth, see §18) -------------
 
 
-def _gui_base_url(instance_id: int) -> str:
-    """The per-instance GUI origin: a prod subdomain template, else the dev port."""
-    template = os.environ.get("DASH_GUI_BASE_TEMPLATE", "")
+def _gui_base_url(inst: Instance) -> str:
+    """The per-instance GUI origin: a prod ``{slug}`` subdomain, else the dev port.
+
+    The template accepts ``{slug}`` (preferred, persistent) and ``{id}`` (legacy).
+    """
+    template = get_settings().gui_base_template
     if template:
-        return template.format(id=instance_id)
-    return f"https://localhost:{9000 + instance_id}"  # dev convention (Caddy vhost)
+        return template.format(slug=inst.slug, id=inst.id)
+    return f"https://localhost:{9000 + inst.id}"  # dev convention (Caddy vhost)
 
 
 class GuiOpenResponse(BaseModel):
@@ -747,6 +751,10 @@ async def gui_open(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
         )
     await gui_tunnels.ensure(instance_id)  # start this instance's forwarder on demand
+    # Ensure this instance's vhost exists in the proxy *now* — robust against a
+    # startup push that raced gui-proxy's boot, or a gui-proxy restart (no-op when
+    # the proxy is off or already in sync).
+    await gui_caddy.reconcile(session)
     token = sign_gui_token(instance_id, ttl_seconds=60)  # short-lived handoff
     # Opt-in: replay the firewall's WebUI login through the agent and stash the
     # resulting session cookie so handoff can set it — the browser then lands
@@ -771,7 +779,7 @@ async def gui_open(
         source_ip=_client_ip(request),
     )
     await session.commit()
-    return GuiOpenResponse(url=f"{_gui_base_url(instance_id)}/__orbit/auth?t={token}")
+    return GuiOpenResponse(url=f"{_gui_base_url(inst)}/__orbit/auth?t={token}")
 
 
 @router.get("/gui/handoff")
