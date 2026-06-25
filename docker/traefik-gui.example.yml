@@ -4,6 +4,11 @@
 # per-firewall host-matching, the auth gate, and the tunnel proxying — so Traefik
 # needs NO per-instance config. See README "Firewall GUI proxy" and §18.
 #
+# This is the FILE-PROVIDER form (load it via Traefik's file provider). If your
+# Traefik uses the Docker/Swarm provider instead, use the equivalent LABEL form
+# in the commented `deploy.labels` block on the gui-proxy service in compose.yml.
+# Use one or the other, not both.
+#
 # Prereqs: Orbit's `gui-proxy` service reachable on Traefik's network (e.g. attach
 # it to the Traefik network), a wildcard cert for *.gui.example.com (DNS-01), and
 # the dashboard set with DASH_GUI_PROXY_ENABLED=true and

@@ -123,6 +123,15 @@ and the button is hidden — no wildcard/DNS needed.
   covers `gui-1..gui-25`; for more, regenerate it:
   `python scripts/gen-gui-caddyfile.py <N> > docker/Caddyfile.gui-prod`.
 
+  Wire the Traefik router either via the **file provider**
+  ([`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)) or, if your
+  Traefik uses the **Docker/Swarm provider**, via **labels** — see the commented
+  `deploy.labels` block on the `gui-proxy` service in `compose.yml`. Either way the
+  router is a single wildcard `HostRegexp(^gui-[0-9]+\.<domain>$)` → `gui-proxy:80`;
+  Traefik needs no per-instance config. Two gotchas: `deploy.labels` is read only by
+  Traefik's **Swarm** provider (plain compose → use top-level `labels:`), and `gui-proxy`
+  must share a network with Traefik (set `traefik.docker.network` if it's on several).
+
 > Security: each origin fronts a firewall **admin** GUI — the `forwardAuth` gate is
 > what keeps it closed. Don't remove it, and keep the forwarder ports off the public
 > internet (reachable only by your reverse proxy). See `docs/agent-architecture.md` §18.
