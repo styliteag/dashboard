@@ -33,7 +33,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.2"
+__version__ = "0.9.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -356,11 +356,22 @@ def _vici_parse(tokens: list[str]) -> dict:
     for tok in tokens:
         kind, cont = stack[-1]
         if tok == "{" or tok == "[":
-            child: object = {} if tok == "{" else []
             key = pending if pending is not None else str(len(cont))  # type: ignore[arg-type]
+            child: object
             if isinstance(cont, dict):
-                cont[key] = child
+                # swanctl --raw emits one `… event { <record> }` envelope per
+                # record, every one keyed `event` at the same level. Merge a
+                # repeated section into the existing dict instead of clobbering
+                # it, so every record survives — otherwise only the last tunnel
+                # is parsed and a box with N tunnels shows just one.
+                existing = cont.get(key)
+                if tok == "{" and isinstance(existing, dict):
+                    child = existing
+                else:
+                    child = {} if tok == "{" else []
+                    cont[key] = child
             else:
+                child = {} if tok == "{" else []
                 cont.append(child)  # type: ignore[union-attr]
             stack.append(("section" if tok == "{" else "list", child))
             pending = None
@@ -425,6 +436,25 @@ def _first(v: object) -> str:
 _IKE_SA_MARKERS = frozenset({"uniqueid", "state", "local-host", "remote-host", "child-sas"})
 _CONN_MARKERS = frozenset({"local_addrs", "remote_addrs", "children"})
 
+# Real child-SA modes carry traffic; PASS/DROP are policy shunts, not tunnels.
+_TUNNEL_CHILD_MODES = frozenset({"TUNNEL", "TRANSPORT", "BEET"})
+
+
+def _is_shunt_conn(children: object) -> bool:
+    """True when a connection is a pure policy shunt, not a real tunnel.
+
+    pfSense auto-generates a `bypass` connection whose `bypasslan` child is
+    `mode=PASS` (exclude local nets from IPsec). It creates no IKE_SA, never
+    establishes, and would otherwise sit in the UI as a permanently-down row.
+    A shunt has children but none in a traffic-carrying mode.
+    """
+    if not isinstance(children, dict):
+        return False
+    modes = [
+        str(c.get("mode", "")).upper() for c in children.values() if isinstance(c, dict)
+    ]
+    return bool(modes) and not any(m in _TUNNEL_CHILD_MODES for m in modes)
+
 
 def _parse_swanctl_sas(out: str) -> list[dict]:
     """Parse `swanctl --list-sas --raw` into one record per active IKE_SA.
@@ -473,6 +503,8 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
     conns = []
     for name, conn in _iter_sections(_tokenize_vici(out), _CONN_MARKERS):
         children = conn.get("children")
+        if _is_shunt_conn(children):
+            continue  # pfSense `bypass` passthrough policy — not a real tunnel
         conns.append({
             "name": name,
             "local": _first(conn.get("local_addrs")),

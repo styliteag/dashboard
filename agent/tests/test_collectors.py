@@ -282,6 +282,87 @@ def test_parse_swanctl_conns_empty() -> None:
     assert agent._parse_swanctl_conns("") == []
 
 
+# Regression: swanctl --raw emits one `list-conn event { … }` envelope PER
+# configured connection, every one keyed `event` at the same level. A box with
+# three tunnels must yield three records — the earlier parser overwrote the
+# shared `event` key and surfaced only the last connection (UI showed 1 of 3).
+_SWANCTL_CONNS_MULTI = (
+    "no files found matching '/usr/local/etc/strongswan.opnsense.d/*.conf'\n"
+    "list-conn event {aaaa0000-0000-0000-0000-000000000001 "
+    "{local_addrs=[10.21.7.100] remote_addrs=[10.21.7.101] version=IKEv2 "
+    "children {c1 {mode=TUNNEL local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}}\n"
+    "list-conn event {bbbb0000-0000-0000-0000-000000000002 "
+    "{local_addrs=[10.21.7.100] remote_addrs=[2.2.2.2] version=IKEv2 "
+    "children {c2 {mode=TUNNEL local-ts=[10.1.1.0/24] remote-ts=[2.2.2.0/24]}}}}\n"
+    "list-conn event {cccc0000-0000-0000-0000-000000000003 "
+    "{local_addrs=[10.21.7.100] remote_addrs=[10.21.7.102] version=IKEv2 "
+    "children {c3 {mode=TUNNEL local-ts=[10.1.1.0/24] remote-ts=[10.3.3.0/24]}}}}\n"
+    "list-conns reply {}"
+)
+
+
+def test_parse_swanctl_conns_multiple_records() -> None:
+    # Three repeated `event` envelopes must not collapse into one.
+    conns = agent._parse_swanctl_conns(_SWANCTL_CONNS_MULTI)
+    assert len(conns) == 3
+    assert [c["name"] for c in conns] == [
+        "aaaa0000-0000-0000-0000-000000000001",
+        "bbbb0000-0000-0000-0000-000000000002",
+        "cccc0000-0000-0000-0000-000000000003",
+    ]
+    assert [c["remote"] for c in conns] == ["10.21.7.101", "2.2.2.2", "10.21.7.102"]
+
+
+# Verbatim `swanctl --list-conns --raw` from a pfSense box (10.20.1.200): a real
+# tunnel `con1` plus the auto-generated `bypass` connection whose `bypasslan`
+# child is mode=PASS (exclude local nets from IPsec). The bypass shunt must not
+# surface as a permanently-down UI row.
+_SWANCTL_CONNS_PFSENSE_BYPASS = (
+    "list-conn event {bypass {local_addrs=[%any] remote_addrs=[127.0.0.1] "
+    "version=IKEv1/2 reauth_time=0 rekey_time=14400 unique=UNIQUE_NO "
+    "local-1 {groups=[] certs=[] cacerts=[]} remote-1 {groups=[] certs=[] cacerts=[]} "
+    "children {bypasslan {mode=PASS rekey_time=3600 dpd_action=none close_action=none "
+    "local-ts=[10.20.0.0/22|/0] remote-ts=[10.20.0.0/22|/0]}}}}\n"
+    "list-conn event {con1 {local_addrs=[10.21.7.102] remote_addrs=[10.21.7.100] "
+    "version=IKEv2 children {con1-p2 {mode=TUNNEL "
+    "local-ts=[10.3.3.0/24] remote-ts=[10.1.1.0/24]}}}}\n"
+    "list-conns reply {}"
+)
+
+
+def test_parse_swanctl_conns_skips_pfsense_bypass() -> None:
+    # The `bypass` PASS-policy shunt is dropped; the real tunnel `con1` survives.
+    conns = agent._parse_swanctl_conns(_SWANCTL_CONNS_PFSENSE_BYPASS)
+    assert [c["name"] for c in conns] == ["con1"]
+    assert conns[0]["remote"] == "10.21.7.100"
+
+
+def test_is_shunt_conn() -> None:
+    assert agent._is_shunt_conn({"bypasslan": {"mode": "PASS"}}) is True
+    assert agent._is_shunt_conn({"x": {"mode": "DROP"}}) is True
+    assert agent._is_shunt_conn({"p2": {"mode": "TUNNEL"}}) is False
+    # Mixed: a real TUNNEL child keeps the connection.
+    assert agent._is_shunt_conn({"a": {"mode": "PASS"}, "b": {"mode": "TUNNEL"}}) is False
+    # No children / missing mode → not a shunt (don't drop real tunnels).
+    assert agent._is_shunt_conn({}) is False
+    assert agent._is_shunt_conn(None) is False
+
+
+def test_parse_swanctl_sas_multiple_records() -> None:
+    # Same envelope-per-record shape for live SAs.
+    raw = (
+        "list-sa event {conn-a {uniqueid=1 state=ESTABLISHED "
+        "local-host=9.9.9.9 remote-host=1.1.1.1 established=10}}\n"
+        "list-sa event {conn-b {uniqueid=2 state=ESTABLISHED "
+        "local-host=9.9.9.9 remote-host=2.2.2.2 established=20}}\n"
+        "list-sas reply {}"
+    )
+    sas = agent._parse_swanctl_sas(raw)
+    assert len(sas) == 2
+    assert {s["name"] for s in sas} == {"conn-a", "conn-b"}
+    assert {s["unique_id"] for s in sas} == {"1", "2"}
+
+
 def test_merge_ipsec_matches_by_name() -> None:
     conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
     sas = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1",
