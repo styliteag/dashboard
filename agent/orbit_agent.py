@@ -34,7 +34,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.6"
+__version__ = "0.9.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -78,6 +78,10 @@ class Config:
         self.local_api_key: str = ""
         self.local_api_secret: str = ""
         self.relay_provision: bool = True
+        # DEV ONLY: skip self-update signature verification. Lets a dev dashboard push
+        # an agent with a stale/missing .sig without re-signing. Also settable via the
+        # AGENT_INSECURE_SKIP_SIG=1 env var (for a locally-run agent). NEVER in prod.
+        self.insecure_skip_sig: bool = False
         # True once the config file pins local_api_url — then port-discovery
         # (the box's GUI port is admin-configurable) must not override it.
         self.local_api_url_explicit: bool = False
@@ -107,6 +111,7 @@ class Config:
             "local_api_secret", data.get("opnsense_api_secret", self.local_api_secret)
         )
         self.relay_provision = bool(data.get("relay_provision", self.relay_provision))
+        self.insecure_skip_sig = bool(data.get("insecure_skip_sig", self.insecure_skip_sig))
         self.local_api_url_explicit = "local_api_url" in data or "opnsense_api_url" in data
         self.enroll_code = data.get("enroll_code", self.enroll_code)
         self.enroll_url = data.get("enroll_url", self.enroll_url)
@@ -1682,6 +1687,25 @@ def _signature_ok(code: bytes, signature_b64: str) -> bool:
     return _ed25519_verify(sig, code, pub)
 
 
+def _skip_sig_check() -> bool:
+    """DEV ONLY: True if signature enforcement is explicitly disabled.
+
+    Honors the AGENT_INSECURE_SKIP_SIG=1 env var (locally-run agent) and the
+    ``insecure_skip_sig`` config flag (installed agent). Logs loudly so an accidental
+    prod use is obvious. Never returns True on its own — both channels are opt-in.
+    """
+    env_on = os.environ.get("AGENT_INSECURE_SKIP_SIG") == "1"
+    cfg_on = bool(getattr(globals().get("cfg"), "insecure_skip_sig", False))
+    if env_on or cfg_on:
+        log.warning(
+            "INSECURE: self-update signature verification DISABLED "
+            "(%s) — dev only, never use in production",
+            "env AGENT_INSECURE_SKIP_SIG" if env_on else "config insecure_skip_sig",
+        )
+        return True
+    return False
+
+
 def _verify_update_code(code: bytes, expected_sha256: str) -> bool:
     """Integrity (sha256) + syntax (compile) check before any swap.
 
@@ -1748,7 +1772,7 @@ async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> N
     if not _verify_update_code(code, params.get("sha256", "")):
         await _send_update_result(ws, request_id, False, "verification failed (sha256/syntax)")
         return
-    if not _signature_ok(code, params.get("signature", "")):
+    if not _skip_sig_check() and not _signature_ok(code, params.get("signature", "")):
         await _send_update_result(ws, request_id, False, "signature verification failed")
         return
     try:

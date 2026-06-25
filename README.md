@@ -255,6 +255,18 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
   can cut a release, and a build that would brick every agent's self-update can't ship.
   To sign by hand outside a release: `DASH_AGENT_SIGNING_KEY=<PRIV_B64> just sign-agent`.
 
+  **Dev escape hatch.** While iterating on the agent you can push an unsigned/stale build
+  without re-signing by telling the *agent* (not the dashboard) to skip the check — it's
+  off by default and logs a loud warning when active. Two channels, since the agent runs on
+  the box, not in compose:
+  - **Locally-run agent:** `AGENT_INSECURE_SKIP_SIG=1 python agent/orbit_agent.py`.
+  - **Installed agent (rc.d):** add `"insecure_skip_sig": true` to its
+    `/usr/local/etc/orbit-agent.conf` and restart it (`service orbit_agent restart`) — the
+    env var doesn't reach an rc.d-launched process, so use the config flag there.
+
+  > Never set either in production — it disables the forgery protection. It doesn't flow
+  > from `compose-dev`; you set it on the agent itself.
+
 ## Further docs
 
 - [`docs/agent-architecture.md`](docs/agent-architecture.md) — agent & connectivity design (transports, self-update, pfSense port, relay, Checkmk).

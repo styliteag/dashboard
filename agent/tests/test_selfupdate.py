@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from types import SimpleNamespace
 
 import orbit_agent as agent
 import pytest
@@ -62,6 +63,24 @@ def test_signature_enforced_with_pubkey(monkeypatch: pytest.MonkeyPatch) -> None
     assert agent._signature_ok(code, sig_b64) is True
     assert agent._signature_ok(b"forged code", sig_b64) is False  # signature/code mismatch
     assert agent._signature_ok(code, "!!notbase64") is False
+
+
+def test_skip_sig_check_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_INSECURE_SKIP_SIG", raising=False)
+    monkeypatch.setattr(agent, "cfg", SimpleNamespace(insecure_skip_sig=False), raising=False)
+    assert agent._skip_sig_check() is False
+
+
+def test_skip_sig_check_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "cfg", SimpleNamespace(insecure_skip_sig=False), raising=False)
+    monkeypatch.setenv("AGENT_INSECURE_SKIP_SIG", "1")
+    assert agent._skip_sig_check() is True
+
+
+def test_skip_sig_check_via_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_INSECURE_SKIP_SIG", raising=False)
+    monkeypatch.setattr(agent, "cfg", SimpleNamespace(insecure_skip_sig=True), raising=False)
+    assert agent._skip_sig_check() is True
 
 
 def test_verify_accepts_matching_sha_and_valid_syntax() -> None:
