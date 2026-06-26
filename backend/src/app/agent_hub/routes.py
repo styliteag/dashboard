@@ -263,6 +263,10 @@ class AgentStatusResponse(BaseModel):
     gui_proxy_enabled: bool = False  # whether the GUI proxy is configured (global)
     gui_login_enabled: bool = False  # per-instance: replay a WebUI login on "Open GUI"
     platform: str | None = None  # "opnsense" / "pfsense", reported by the connected agent
+    # Last self-update attempt the agent refused (e.g. signature/sha256), so the GUI
+    # can show why it didn't update. None when the last attempt took (or none yet).
+    last_update_error: str | None = None
+    last_update_version: str | None = None
 
 
 def _client_ip(request: Request) -> str:
@@ -380,6 +384,8 @@ async def agent_status(
         gui_proxy_enabled=get_settings().gui_proxy_enabled,
         gui_login_enabled=inst.gui_login_enabled,
         platform=connected.platform if connected else None,
+        last_update_error=connected.last_update_error if connected else None,
+        last_update_version=connected.last_update_version if connected else None,
     )
 
 
@@ -466,6 +472,16 @@ async def update_agent(
         )
 
     result = await agent.send_command("agent.update", params, timeout=30)
+
+    # Persist a rejection on the connection so the reason stays visible in the GUI
+    # (the agent stays connected when it refuses an update). A success restarts the
+    # agent → fresh connection, which clears this.
+    if result.get("success"):
+        agent.last_update_error = None
+        agent.last_update_version = None
+    else:
+        agent.last_update_error = result.get("output") or "update failed"
+        agent.last_update_version = params["version"]
 
     await write_audit(
         session,

@@ -135,6 +135,12 @@ class ConnectedAgent:
         # Reported in the agent's hello frame.
         self.agent_version: str = ""
         self.platform: str = ""
+        # Last self-update attempt that did NOT take effect (e.g. signature/sha256
+        # rejected). Surfaced in agent status so the reason is visible in the GUI
+        # even after a page reload. Cleared by a connection reset (a successful
+        # update restarts the agent → fresh connection).
+        self.last_update_error: str | None = None
+        self.last_update_version: str | None = None
         self._pending_commands: dict[str, asyncio.Future] = {}
 
     async def send_command(

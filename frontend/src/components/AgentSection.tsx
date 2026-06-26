@@ -19,6 +19,8 @@ interface AgentStatus {
   update_available: boolean;
   gui_proxy_enabled?: boolean;
   gui_login_enabled?: boolean;
+  last_update_error?: string | null;
+  last_update_version?: string | null;
 }
 
 interface AgentUpdateResponse {
@@ -418,6 +420,13 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                         </span>
                       )}
                     </span>
+                  </div>
+                )}
+                {status?.last_update_error && (
+                  <div className="mt-2 rounded-lg border border-red-800/50 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+                    <span className="font-medium">Last update rejected</span>
+                    {status.last_update_version ? ` (→ ${status.last_update_version})` : ""}:{" "}
+                    {status.last_update_error}
                   </div>
                 )}
               </div>
