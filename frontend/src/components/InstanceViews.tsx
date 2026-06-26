@@ -1,13 +1,8 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import {
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  Activity,
-  ExternalLink,
-  ArrowUpCircle,
-} from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle, Globe } from "lucide-react";
+import { api, ApiError } from "../lib/api";
 import type { ConnectedAgent, Instance } from "../lib/types";
 import TestConnectionButton from "./TestConnectionButton";
 
@@ -49,6 +44,40 @@ function statusMeta(inst: Instance): StatusMeta {
 
 function fmtTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString("en-US") : "—";
+}
+
+/** Status badge — links to the instance detail page, same as clicking the name. */
+function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
+  const status = statusMeta(inst);
+  return (
+    <Link
+      to={`/instances/${inst.id}`}
+      className={`inline-flex items-center gap-1.5 hover:underline ${status.color}`}
+    >
+      {status.icon}
+      {!compact && status.label}
+    </Link>
+  );
+}
+
+/** "WebUI" action: opens the box's GUI through the agent tunnel (GUI-proxy handoff). */
+function TunneledGuiLink({ inst, className }: { inst: Instance; className: string }) {
+  const guiMut = useMutation({
+    mutationFn: () => api.post<{ url: string }>(`/api/instances/${inst.id}/gui/open`),
+    onSuccess: (r) => window.open(r.url, "_blank", "noopener"),
+  });
+  return (
+    <button
+      onClick={() => guiMut.mutate()}
+      disabled={guiMut.isPending}
+      title={
+        guiMut.error instanceof ApiError ? guiMut.error.message : "Open tunneled WebUI (GUI proxy)"
+      }
+      className={`${className} ${guiMut.isError ? "text-red-400" : ""}`}
+    >
+      <Globe className="h-3 w-3" /> {guiMut.isPending ? "…" : "WebUI"}
+    </button>
+  );
 }
 
 /** Push-mode platform + agent version (+ update indicator), or an "API" badge. */
@@ -96,24 +125,23 @@ function Tags({ tags }: { tags: string[] | null }) {
   );
 }
 
-/** Shared action cluster. The direct web-UI link is hidden for agent-mode
- *  instances — those boxes sit behind NAT and are reached via the GUI proxy
- *  ("Open GUI" on the detail page), so a raw base_url link would be dead. */
+/** Shared action cluster: Test, then the two box links (primary URL + tunneled
+ *  WebUI), then Edit/Delete. The status badge and name already link to Details,
+ *  so a separate Details button is redundant. The tunneled WebUI shows only for
+ *  agent/NAT'd boxes (reached via the GUI proxy). */
 function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceViewProps, "selected" | "onToggleSelect" | "agent">) {
   const linkCls =
     "flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200";
+  const primary = splitUrls(inst.base_url)[0];
   return (
     <div className="flex items-center gap-1.5">
-      {!inst.agent_mode &&
-        splitUrls(inst.base_url).map((url) => (
-          <a key={url} href={url} target="_blank" rel="noreferrer" title={`Open ${url}`} className={linkCls}>
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        ))}
       <TestConnectionButton instanceId={inst.id} />
-      <Link to={`/instances/${inst.id}`} className={linkCls}>
-        <Activity className="h-3 w-3" /> Details
-      </Link>
+      {primary && (
+        <a href={primary} target="_blank" rel="noreferrer" title={`Open ${primary}`} className={linkCls}>
+          <ExternalLink className="h-3 w-3" /> URL
+        </a>
+      )}
+      {inst.agent_mode && <TunneledGuiLink inst={inst} className={linkCls} />}
       <button onClick={onEdit} className={linkCls}>
         Edit
       </button>
@@ -128,7 +156,6 @@ function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceView
 }
 
 export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, onEdit, onDelete }: InstanceViewProps) {
-  const status = statusMeta(inst);
   return (
     <div
       className={`rounded-xl border p-4 shadow ${
@@ -138,7 +165,7 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <input type="checkbox" checked={selected} onChange={onToggleSelect} className="rounded border-slate-600" />
-          {status.icon}
+          <StatusBadge inst={inst} compact />
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
           </Link>
@@ -177,17 +204,13 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
 }
 
 export function InstanceRow({ instance: inst, agent, selected, onToggleSelect, onEdit, onDelete }: InstanceViewProps) {
-  const status = statusMeta(inst);
   return (
     <tr className={`border-t border-slate-800 ${selected ? "bg-emerald-900/10" : ""}`}>
       <td className="px-3 py-2">
         <input type="checkbox" checked={selected} onChange={onToggleSelect} className="rounded border-slate-600" />
       </td>
       <td className="px-3 py-2">
-        <span className={`inline-flex items-center gap-1.5 ${status.color}`}>
-          {status.icon}
-          {status.label}
-        </span>
+        <StatusBadge inst={inst} />
       </td>
       <td className="px-3 py-2">
         <Link to={`/instances/${inst.id}`} className="font-medium text-slate-100 hover:text-emerald-400">
