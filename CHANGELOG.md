@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-06-26
+
 ### Fixed
 
 - **Agent crash-looped on Python < 3.11 (`ImportError: cannot import name 'UTC'`)** — `from datetime import UTC` requires Python 3.11, so on an older pfSense shipping only `python3.8` the agent failed at import on every (re)start and never connected, even once the launcher found the 3.8 binary. The agent now aliases `UTC = timezone.utc` (same object on 3.11+), so it actually runs on Python 3.8+. (Agent `__version__` → 1.5.6.) Crash-looping boxes can't self-update — the fixed `orbit_agent.py` must be copied to the box (or reinstalled) once.
