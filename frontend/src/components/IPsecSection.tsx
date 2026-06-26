@@ -1,14 +1,29 @@
 /**
  * IPsec tunnel table with connect/disconnect buttons (US-4.1 .. US-4.5).
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Unlink, RotateCw, Shield } from "lucide-react";
+import { Unlink, RotateCw, Shield, ChevronRight, ChevronDown } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import type { IPsecServiceStatus, TunnelActionResponse, ActionResult } from "../lib/types";
+import type {
+  IPsecServiceStatus,
+  IPsecChild,
+  IPsecPingMonitor,
+  TunnelActionResponse,
+  ActionResult,
+} from "../lib/types";
+import { Phase2Badge, Phase2ChildList, PingSummary } from "./IPsecPhase2";
+import PingMonitorDialog from "./PingMonitorDialog";
 
 interface Props {
   instanceId: number;
+}
+
+interface DialogTarget {
+  tunnelId: string;
+  tunnelDescription: string;
+  child: IPsecChild;
+  existing: IPsecPingMonitor | null;
 }
 
 export default function IPsecSection({ instanceId }: Props) {
@@ -20,6 +35,23 @@ export default function IPsecSection({ instanceId }: Props) {
     queryFn: () => api.get<IPsecServiceStatus>(`/api/instances/${instanceId}/ipsec`),
     refetchInterval: 30_000,
   });
+
+  const { data: monitors = [] } = useQuery({
+    queryKey: ["ipsec-ping-monitors", instanceId],
+    queryFn: () =>
+      api.get<IPsecPingMonitor[]>(`/api/instances/${instanceId}/ipsec/ping-monitors`),
+  });
+
+  // Expanded tunnels (showing Phase-2 detail) + the open ping-config dialog.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const [dialog, setDialog] = useState<DialogTarget | null>(null);
 
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const clearMsg = () => setTimeout(() => setActionMsg(null), 5000);
@@ -163,6 +195,7 @@ export default function IPsecSection({ instanceId }: Props) {
                 <th className="px-3 py-2">Tunnel</th>
                 <th className="px-3 py-2">Remote</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Phase 2</th>
                 <th className="px-3 py-2 text-right">IN</th>
                 <th className="px-3 py-2 text-right">OUT</th>
                 <th className="px-3 py-2 text-right">Action</th>
@@ -172,39 +205,85 @@ export default function IPsecSection({ instanceId }: Props) {
               {data.tunnels.map((t) => {
                 const up = t.phase1_status.toLowerCase().includes("established") ||
                            t.phase1_status.toLowerCase().includes("connected");
+                const isOpen = expanded.has(t.id);
+                const hasChildren = (t.children?.length ?? 0) > 0;
                 return (
-                  <tr key={t.id} className="border-t border-slate-800">
-                    <td className="px-3 py-2">{t.description || t.id}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
-                    <td className="px-3 py-2">
-                      <span className={up ? "text-emerald-400" : "text-red-400"}>
-                        {t.phase1_status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        {up && (
-                          <button
-                            onClick={() => disconnectMut.mutate({ id: t.id, unique_id: t.unique_id })}
-                            disabled={pending.has(t.id)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            <Unlink className="h-3 w-3" /> Down
-                          </button>
-                        )}
+                  <Fragment key={t.id}>
+                    <tr className="border-t border-slate-800">
+                      <td className="px-3 py-2">
                         <button
-                          onClick={() => reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })}
-                          disabled={pending.has(t.id)}
-                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                          onClick={() => toggleExpand(t.id)}
+                          disabled={!hasChildren}
+                          className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
                         >
-                          <RotateCw className={`h-3 w-3 ${pending.has(t.id) ? "animate-spin" : ""}`} />{" "}
-                          Reconnect
+                          {hasChildren ? (
+                            isOpen ? (
+                              <ChevronDown className="h-3 w-3" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3" />
+                            )
+                          ) : (
+                            <span className="inline-block w-3" />
+                          )}
+                          {t.description || t.id}
                         </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
+                      <td className="px-3 py-2">
+                        <span className={up ? "text-emerald-400" : "text-red-400"}>
+                          {t.phase1_status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
+                          <PingSummary entries={t.children ?? []} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-1">
+                          {up && (
+                            <button
+                              onClick={() => disconnectMut.mutate({ id: t.id, unique_id: t.unique_id })}
+                              disabled={pending.has(t.id)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              <Unlink className="h-3 w-3" /> Down
+                            </button>
+                          )}
+                          <button
+                            onClick={() => reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })}
+                            disabled={pending.has(t.id)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <RotateCw className={`h-3 w-3 ${pending.has(t.id) ? "animate-spin" : ""}`} />{" "}
+                            Reconnect
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-t border-slate-800/50 bg-slate-900/40">
+                        <td colSpan={7} className="px-3 py-1">
+                          <Phase2ChildList
+                            tunnelId={t.id}
+                            entries={t.children ?? []}
+                            monitors={monitors}
+                            onConfigure={(child, existing) =>
+                              setDialog({
+                                tunnelId: t.id,
+                                tunnelDescription: t.description || t.id,
+                                child,
+                                existing,
+                              })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -214,6 +293,17 @@ export default function IPsecSection({ instanceId }: Props) {
 
       {data && data.tunnels.length === 0 && (
         <p className="mt-3 text-sm text-slate-500">No IPsec tunnels configured.</p>
+      )}
+
+      {dialog && (
+        <PingMonitorDialog
+          instanceId={instanceId}
+          tunnelId={dialog.tunnelId}
+          tunnelDescription={dialog.tunnelDescription}
+          child={dialog.child}
+          existing={dialog.existing}
+          onClose={() => setDialog(null)}
+        />
       )}
     </section>
   );

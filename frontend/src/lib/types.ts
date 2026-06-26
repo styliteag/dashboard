@@ -100,6 +100,22 @@ export interface MetricResponse {
 
 // ----- IPsec ---------------------------------------------------------------
 
+export type PingState = "none" | "ok" | "fail" | "error";
+
+export interface IPsecChild {
+  name: string; // child SA name (Phase-2 id)
+  local_ts: string; // local traffic selector, e.g. "10.1.1.0/24"
+  remote_ts: string; // remote traffic selector, e.g. "10.2.2.0/24"
+  state: string; // INSTALLED / REKEYING / "" (configured but down)
+  bytes_in: number;
+  bytes_out: number;
+  suggested_source: string; // agent-suggested local source IP for the ping
+  ping_state: PingState | string; // none | ok | fail | error
+  ping_rtt_ms: number | null;
+  ping_loss_pct: number | null;
+  ping_ts: string | null;
+}
+
 export interface IPsecTunnel {
   id: string; // connection name — used to Connect (initiate)
   description: string;
@@ -112,7 +128,26 @@ export interface IPsecTunnel {
   bytes_in: number;
   bytes_out: number;
   unique_id: string; // active IKE_SA id — used to Disconnect (terminate); empty when down
+  children: IPsecChild[]; // per-Phase-2 detail (agent mode)
 }
+
+export interface IPsecPingMonitor {
+  id: number;
+  instance_id: number;
+  tunnel_id: string;
+  child_name: string;
+  local_ts: string;
+  remote_ts: string;
+  description: string;
+  source: string;
+  destination: string;
+  enabled: boolean;
+  ping_count: number;
+}
+
+// Create/update payloads for ping monitors (PATCH is partial → all optional).
+export type PingMonitorCreate = Omit<IPsecPingMonitor, "id" | "instance_id">;
+export type PingMonitorUpdate = Partial<PingMonitorCreate>;
 
 export interface IPsecServiceStatus {
   running: boolean;

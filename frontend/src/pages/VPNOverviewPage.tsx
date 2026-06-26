@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Shield, Link2, Unlink, RotateCw, Search } from "lucide-react";
+import { Shield, Link2, Unlink, RotateCw, Search, ChevronRight, ChevronDown } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import type { IPsecServiceStatus, TunnelActionResponse } from "../lib/types";
+import type {
+  IPsecChild,
+  IPsecPingMonitor,
+  IPsecServiceStatus,
+  TunnelActionResponse,
+} from "../lib/types";
+import { Phase2Badge, Phase2ChildList, PingSummary } from "../components/IPsecPhase2";
+import PingMonitorDialog from "../components/PingMonitorDialog";
 
 interface GlobalTunnel {
   instance_id: number;
@@ -19,6 +26,38 @@ interface GlobalTunnel {
   seconds_established: number;
   bytes_in: number;
   bytes_out: number;
+  children: IPsecChild[];
+}
+
+interface DialogTarget {
+  instanceId: number;
+  tunnelId: string;
+  tunnelDescription: string;
+  child: IPsecChild;
+  existing: IPsecPingMonitor | null;
+}
+
+/** Expanded Phase-2 detail for one tunnel; fetches that instance's monitors. */
+function ExpandedPhase2({
+  tunnel,
+  onConfigure,
+}: {
+  tunnel: GlobalTunnel;
+  onConfigure: (tunnel: GlobalTunnel, child: IPsecChild, existing: IPsecPingMonitor | null) => void;
+}) {
+  const { data: monitors = [] } = useQuery({
+    queryKey: ["ipsec-ping-monitors", tunnel.instance_id],
+    queryFn: () =>
+      api.get<IPsecPingMonitor[]>(`/api/instances/${tunnel.instance_id}/ipsec/ping-monitors`),
+  });
+  return (
+    <Phase2ChildList
+      tunnelId={tunnel.tunnel_id}
+      entries={tunnel.children ?? []}
+      monitors={monitors}
+      onConfigure={(child, existing) => onConfigure(tunnel, child, existing)}
+    />
+  );
 }
 
 interface GlobalVPNResponse {
@@ -55,6 +94,16 @@ export default function VPNOverviewPage() {
     setTimeout(() => setActionMsg(null), 5000);
   };
 
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (k: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  const [dialog, setDialog] = useState<DialogTarget | null>(null);
+
   // Targeted refresh: after an action, refetch only the acted instance's IPsec
   // and patch its rows into the overview cache — avoids a full cross-instance
   // fan-out on every click. Falls back to a normal refetch on error.
@@ -77,6 +126,7 @@ export default function VPNOverviewPage() {
             seconds_established: ft.seconds_established,
             bytes_in: ft.bytes_in,
             bytes_out: ft.bytes_out,
+            children: ft.children,
           };
         });
         const up = tunnels.filter((t) => isUp(t.phase1_status)).length;
@@ -212,75 +262,115 @@ export default function VPNOverviewPage() {
             <tbody>
               {filtered.map((t, i) => {
                 const up = isUp(t.phase1_status);
+                const k = `${rowKey(t)}-${i}`;
+                const isOpen = expanded.has(k);
+                const hasChildren = (t.children?.length ?? 0) > 0;
                 return (
-                  <tr key={`${t.instance_id}-${t.tunnel_id}-${i}`} className="border-t border-slate-800">
-                    <td className="px-3 py-2">
-                      <Link
-                        to={`/instances/${t.instance_id}`}
-                        className="text-emerald-400 hover:underline"
-                      >
-                        {t.instance_name}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">{t.description || t.tunnel_id}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
-                    <td className="px-3 py-2">
-                      <span className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
-                        {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
-                        {t.phase1_status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      {t.phase2_total > 0 ? (
-                        <span
-                          className={`rounded px-1.5 py-0.5 font-mono text-xs ${
-                            t.phase2_up === 0
-                              ? "bg-red-600/20 text-red-400"
-                              : t.phase2_up < t.phase2_total
-                                ? "bg-amber-600/20 text-amber-400"
-                                : "bg-emerald-600/20 text-emerald-400"
-                          }`}
+                  <Fragment key={k}>
+                    <tr className="border-t border-slate-800">
+                      <td className="px-3 py-2">
+                        <Link
+                          to={`/instances/${t.instance_id}`}
+                          className="text-emerald-400 hover:underline"
                         >
-                          {t.phase2_up}/{t.phase2_total}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-600">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-400">
-                      {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        {up && (
-                          <button
-                            onClick={() => disconnectMut.mutate(t)}
-                            disabled={pending.has(rowKey(t))}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            <Unlink className="h-3 w-3" /> Down
-                          </button>
-                        )}
+                          {t.instance_name}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2">
                         <button
-                          onClick={() => reconnectMut.mutate(t)}
-                          disabled={pending.has(rowKey(t))}
-                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                          onClick={() => toggleExpand(k)}
+                          disabled={!hasChildren}
+                          className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
                         >
-                          <RotateCw
-                            className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`}
-                          />{" "}
-                          Reconnect
+                          {hasChildren ? (
+                            isOpen ? (
+                              <ChevronDown className="h-3 w-3" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3" />
+                            )
+                          ) : (
+                            <span className="inline-block w-3" />
+                          )}
+                          {t.description || t.tunnel_id}
                         </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
+                          {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
+                          {t.phase1_status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
+                          <PingSummary entries={t.children ?? []} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                        {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-1">
+                          {up && (
+                            <button
+                              onClick={() => disconnectMut.mutate(t)}
+                              disabled={pending.has(rowKey(t))}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              <Unlink className="h-3 w-3" /> Down
+                            </button>
+                          )}
+                          <button
+                            onClick={() => reconnectMut.mutate(t)}
+                            disabled={pending.has(rowKey(t))}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <RotateCw
+                              className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`}
+                            />{" "}
+                            Reconnect
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-t border-slate-800/50 bg-slate-900/40">
+                        <td colSpan={9} className="px-3 py-1">
+                          <ExpandedPhase2
+                            tunnel={t}
+                            onConfigure={(tn, child, existing) =>
+                              setDialog({
+                                instanceId: tn.instance_id,
+                                tunnelId: tn.tunnel_id,
+                                tunnelDescription: tn.description || tn.tunnel_id,
+                                child,
+                                existing,
+                              })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {dialog && (
+        <PingMonitorDialog
+          instanceId={dialog.instanceId}
+          tunnelId={dialog.tunnelId}
+          tunnelDescription={dialog.tunnelDescription}
+          child={dialog.child}
+          existing={dialog.existing}
+          onClose={() => setDialog(null)}
+        />
       )}
     </div>
   );
