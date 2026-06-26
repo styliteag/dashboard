@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sortable columns on the Instances, VPN and Firmware lists** — click a column header to sort (toggles asc/desc, arrow shows the active column). Instances sorts by status / name / location / mode / tags / last poll (applies to both list and card views); Firmware by status / instance / location / installed / latest / updates / last check; VPN by instance / tunnel / remote / status / Phase 2 / uptime / IN / OUT. Shared `useSort` hook + `SortHeader` component.
+- **Optional VPN aggregation** — the global VPN overview's paired-tunnel grouping is now toggleable via a **Grouped / Flat** button. Flat shows every tunnel end as its own sortable row (grouping/collapse off); Grouped keeps the paired view with the combined-health header and collapse. The choice is remembered (localStorage).
+
+### Fixed
+
+- **pfSense IPsec traffic selectors showed a `|/0` suffix (e.g. `10.3.3.0/24|/0`)** — pfSense's strongSwan reports traffic selectors with a trailing protocol/port part (`10.3.3.0/24|/0`) where OPNsense reports a bare subnet. The agent passed it through verbatim, so the VPN overview's Phase-2 rows showed `10.3.3.0/24|/0 → 10.1.1.0/24|/0` on pfSense ends, and the suggested ping source broke (`ipaddress.ip_network` can't parse the suffix). The agent now normalizes selectors to just the subnet (strips any `|proto/port` or `[proto/port]` tail) in both the SA and conn parsers. OPNsense unaffected. (Agent `__version__` → 1.5.7.)
+
 ## [1.5.3] - 2026-06-26
 
 ### Fixed

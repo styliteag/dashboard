@@ -20,6 +20,8 @@ import type {
 } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, PingSummary } from "../components/IPsecPhase2";
 import { worstPing } from "../lib/ipsec-ping";
+import { useSort, type Accessors } from "../lib/use-sort";
+import SortHeader from "../components/SortHeader";
 import PingMonitorDialog from "../components/PingMonitorDialog";
 import TunnelHistoryDialog from "../components/TunnelHistoryDialog";
 
@@ -129,10 +131,27 @@ function isUp(phase1_status: string): boolean {
   return s.includes("established") || s.includes("connected");
 }
 
+const VPN_ACCESSORS: Accessors<GlobalTunnel> = {
+  instance: (t) => t.instance_name.toLowerCase(),
+  tunnel: (t) => (t.description || t.tunnel_id).toLowerCase(),
+  remote: (t) => t.remote,
+  status: (t) => (isUp(t.phase1_status) ? 0 : 1),
+  phase2: (t) => t.phase2_up,
+  uptime: (t) => t.seconds_established,
+  in: (t) => t.bytes_in,
+  out: (t) => t.bytes_out,
+};
+
 export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "up" | "down">("all");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  // Pairing/aggregation is optional: off → a flat, sortable list.
+  const [grouped, setGrouped] = useState(() => localStorage.getItem("vpn.grouped") !== "0");
+  const setGroupedPersisted = (v: boolean) => {
+    localStorage.setItem("vpn.grouped", v ? "1" : "0");
+    setGrouped(v);
+  };
 
   const queryClient = useQueryClient();
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -277,6 +296,7 @@ export default function VPNOverviewPage() {
     return matchSearch && matchFilter && matchTag;
   });
 
+  const { sorted, sort, toggle: sortToggle } = useSort(filtered, VPN_ACCESSORS);
   const groups = buildGroups(filtered);
   const groupBothUp = (g: TunnelGroup) =>
     g.paired && pairHealth(g.members[0], g.members[1]).label === "both up";
@@ -293,6 +313,108 @@ export default function VPNOverviewPage() {
     }
   };
   const hasCollapsiblePairs = groups.some((g) => g.paired);
+
+  const renderRow = (t: GlobalTunnel, inGroup: boolean) => {
+    const up = isUp(t.phase1_status);
+    const k = rowKey(t);
+    const isOpen = expanded.has(k);
+    const hasChildren = (t.children?.length ?? 0) > 0;
+    return (
+      <Fragment key={k}>
+        <tr className="border-t border-slate-800">
+          <td className="px-3 py-2">
+            <Link
+              to={`/instances/${t.instance_id}`}
+              className={`hover:underline ${inGroup ? "pl-3 text-emerald-400" : "text-emerald-400"}`}
+            >
+              {t.instance_name}
+            </Link>
+          </td>
+          <td className="px-3 py-2">
+            <button
+              onClick={() => toggleExpand(k)}
+              disabled={!hasChildren}
+              className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
+            >
+              {hasChildren ? (
+                isOpen ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )
+              ) : (
+                <span className="inline-block w-3" />
+              )}
+              {t.description || t.tunnel_id}
+            </button>
+          </td>
+          <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
+          <td className="px-3 py-2">
+            <span className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
+              {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
+              {t.phase1_status}
+            </span>
+          </td>
+          <td className="px-3 py-2">
+            <div className="flex items-center gap-2">
+              <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
+              <PingSummary entries={t.children ?? []} />
+            </div>
+          </td>
+          <td className="px-3 py-2 font-mono text-xs text-slate-400">
+            {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
+          </td>
+          <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
+          <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
+          <td className="px-3 py-2">
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => setHistoryTarget(t)}
+                title="State-change history"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              >
+                <History className="h-3 w-3" /> History
+              </button>
+              {up && (
+                <button
+                  onClick={() => disconnectMut.mutate(t)}
+                  disabled={pending.has(rowKey(t))}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  <Unlink className="h-3 w-3" /> Down
+                </button>
+              )}
+              <button
+                onClick={() => reconnectMut.mutate(t)}
+                disabled={pending.has(rowKey(t))}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+              >
+                <RotateCw className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`} /> Reconnect
+              </button>
+            </div>
+          </td>
+        </tr>
+        {isOpen && (
+          <tr className="border-t border-slate-800/50 bg-slate-900/40">
+            <td colSpan={9} className="px-3 py-1">
+              <ExpandedPhase2
+                tunnel={t}
+                onConfigure={(tn, child, existing) =>
+                  setDialog({
+                    instanceId: tn.instance_id,
+                    tunnelId: tn.tunnel_id,
+                    tunnelDescription: tn.description || tn.tunnel_id,
+                    child,
+                    existing,
+                  })
+                }
+              />
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
 
   return (
     <div>
@@ -332,10 +454,19 @@ export default function VPNOverviewPage() {
             {{ all: "All", up: "Connected", down: "Disconnected" }[f]}
           </button>
         ))}
-        {hasCollapsiblePairs && (
+        <button
+          onClick={() => setGroupedPersisted(!grouped)}
+          title="Group the two ends of each tunnel together"
+          className={`ml-auto inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs ${
+            grouped ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
+          }`}
+        >
+          <Link2 className="h-3 w-3" /> {grouped ? "Grouped" : "Flat"}
+        </button>
+        {grouped && hasCollapsiblePairs && (
           <button
             onClick={toggleAll}
-            className="ml-auto inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+            className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
           >
             {anyCollapsed ? (
               <>
@@ -394,19 +525,35 @@ export default function VPNOverviewPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
-                <th className="px-3 py-2">Instance</th>
-                <th className="px-3 py-2">Tunnel</th>
-                <th className="px-3 py-2">Remote</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Phase 2</th>
-                <th className="px-3 py-2">Uptime</th>
-                <th className="px-3 py-2 text-right">IN</th>
-                <th className="px-3 py-2 text-right">OUT</th>
+                {grouped ? (
+                  <>
+                    <th className="px-3 py-2">Instance</th>
+                    <th className="px-3 py-2">Tunnel</th>
+                    <th className="px-3 py-2">Remote</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Phase 2</th>
+                    <th className="px-3 py-2">Uptime</th>
+                    <th className="px-3 py-2 text-right">IN</th>
+                    <th className="px-3 py-2 text-right">OUT</th>
+                  </>
+                ) : (
+                  <>
+                    <SortHeader label="Instance" colKey="instance" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="Tunnel" colKey="tunnel" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="Remote" colKey="remote" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="Status" colKey="status" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="Phase 2" colKey="phase2" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="Uptime" colKey="uptime" sort={sort} toggle={sortToggle} />
+                    <SortHeader label="IN" colKey="in" sort={sort} toggle={sortToggle} align="right" className="text-right" />
+                    <SortHeader label="OUT" colKey="out" sort={sort} toggle={sortToggle} align="right" className="text-right" />
+                  </>
+                )}
                 <th className="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
-              {groups.map((group, gi) => {
+              {grouped
+                ? groups.map((group, gi) => {
                 const [a, b] = group.members;
                 const h = group.paired ? pairHealth(a, b) : null;
                 const bothUp = !!h && h.label === "both up";
@@ -447,114 +594,11 @@ export default function VPNOverviewPage() {
                         </td>
                       </tr>
                     )}
-                    {open &&
-                      group.members.map((t) => {
-                    const up = isUp(t.phase1_status);
-                    const k = rowKey(t);
-                    const isOpen = expanded.has(k);
-                    const hasChildren = (t.children?.length ?? 0) > 0;
-                    return (
-                      <Fragment key={k}>
-                        <tr className="border-t border-slate-800">
-                          <td className="px-3 py-2">
-                            <Link
-                              to={`/instances/${t.instance_id}`}
-                              className={`hover:underline ${group.paired ? "pl-3 text-emerald-400" : "text-emerald-400"}`}
-                            >
-                              {t.instance_name}
-                            </Link>
-                          </td>
-                      <td className="px-3 py-2">
-                        <button
-                          onClick={() => toggleExpand(k)}
-                          disabled={!hasChildren}
-                          className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
-                        >
-                          {hasChildren ? (
-                            isOpen ? (
-                              <ChevronDown className="h-3 w-3" />
-                            ) : (
-                              <ChevronRight className="h-3 w-3" />
-                            )
-                          ) : (
-                            <span className="inline-block w-3" />
-                          )}
-                          {t.description || t.tunnel_id}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
-                      <td className="px-3 py-2">
-                        <span className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
-                          {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
-                          {t.phase1_status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
-                          <PingSummary entries={t.children ?? []} />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs text-slate-400">
-                        {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setHistoryTarget(t)}
-                            title="State-change history"
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                          >
-                            <History className="h-3 w-3" /> History
-                          </button>
-                          {up && (
-                            <button
-                              onClick={() => disconnectMut.mutate(t)}
-                              disabled={pending.has(rowKey(t))}
-                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
-                            >
-                              <Unlink className="h-3 w-3" /> Down
-                            </button>
-                          )}
-                          <button
-                            onClick={() => reconnectMut.mutate(t)}
-                            disabled={pending.has(rowKey(t))}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
-                          >
-                            <RotateCw
-                              className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`}
-                            />{" "}
-                            Reconnect
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr className="border-t border-slate-800/50 bg-slate-900/40">
-                        <td colSpan={9} className="px-3 py-1">
-                          <ExpandedPhase2
-                            tunnel={t}
-                            onConfigure={(tn, child, existing) =>
-                              setDialog({
-                                instanceId: tn.instance_id,
-                                tunnelId: tn.tunnel_id,
-                                tunnelDescription: tn.description || tn.tunnel_id,
-                                child,
-                                existing,
-                              })
-                            }
-                          />
-                        </td>
-                      </tr>
-                    )}
+                    {open && group.members.map((t) => renderRow(t, true))}
                       </Fragment>
                     );
-                  })}
-                </Fragment>
-                );
-              })}
+                  })
+                : sorted.map((t) => renderRow(t, false))}
             </tbody>
           </table>
         </div>

@@ -7,6 +7,24 @@ import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
 import { InstanceCard, InstanceRow } from "../components/InstanceViews";
+import { useSort, type Accessors } from "../lib/use-sort";
+import SortHeader from "../components/SortHeader";
+
+const INST_ACCESSORS: Accessors<Instance> = {
+  status: (i) =>
+    i.last_error_at && !i.last_success_at
+      ? 0
+      : i.last_error_at && i.last_success_at && i.last_error_at > i.last_success_at
+        ? 1
+        : i.last_success_at
+          ? 2
+          : 3,
+  name: (i) => i.name.toLowerCase(),
+  location: (i) => (i.location ?? "").toLowerCase(),
+  mode: (i) => (i.agent_mode ? "agent" : "api"),
+  tags: (i) => (i.tags ?? []).join(",").toLowerCase(),
+  last_poll: (i) => (i.last_success_at ? Date.parse(i.last_success_at) : 0),
+};
 
 export default function InstancesPage() {
   const queryClient = useQueryClient();
@@ -115,6 +133,8 @@ export default function InstancesPage() {
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
     return matchSearch && matchTag;
   });
+
+  const { sorted, sort, toggle } = useSort(filtered, INST_ACCESSORS);
 
   return (
     <div>
@@ -267,7 +287,7 @@ export default function InstancesPage() {
         </p>
       ) : view === "grid" ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((inst) => (
+          {sorted.map((inst) => (
             <InstanceCard
               key={inst.id}
               instance={inst}
@@ -293,17 +313,17 @@ export default function InstancesPage() {
                     aria-label="Select all"
                   />
                 </th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Location</th>
-                <th className="px-3 py-2">Agent / Mode</th>
-                <th className="px-3 py-2">Tags</th>
-                <th className="px-3 py-2">Last poll</th>
+                <SortHeader label="Status" colKey="status" sort={sort} toggle={toggle} />
+                <SortHeader label="Name" colKey="name" sort={sort} toggle={toggle} />
+                <SortHeader label="Location" colKey="location" sort={sort} toggle={toggle} />
+                <SortHeader label="Agent / Mode" colKey="mode" sort={sort} toggle={toggle} />
+                <SortHeader label="Tags" colKey="tags" sort={sort} toggle={toggle} />
+                <SortHeader label="Last poll" colKey="last_poll" sort={sort} toggle={toggle} />
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((inst) => (
+              {sorted.map((inst) => (
                 <InstanceRow
                   key={inst.id}
                   instance={inst}

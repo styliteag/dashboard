@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Package, AlertTriangle, CheckCircle, HelpCircle, Search } from "lucide-react";
 import { api } from "../lib/api";
+import { useSort, type Accessors } from "../lib/use-sort";
+import SortHeader from "../components/SortHeader";
 
 interface FirmwareEntry {
   instance_id: number;
@@ -16,6 +18,16 @@ interface FirmwareEntry {
   needs_reboot: boolean;
   last_check: string;
 }
+
+const FW_ACCESSORS: Accessors<FirmwareEntry> = {
+  status: (e) => (e.product_version === "?" ? 2 : e.upgrade_available ? 0 : 1),
+  instance: (e) => e.instance_name.toLowerCase(),
+  location: (e) => (e.location ?? "").toLowerCase(),
+  installed: (e) => e.product_version,
+  latest: (e) => e.product_latest,
+  updates: (e) => e.updates_available,
+  last_check: (e) => e.last_check,
+};
 
 interface FirmwareComplianceResponse {
   instances: FirmwareEntry[];
@@ -46,6 +58,8 @@ export default function FirmwareCompliancePage() {
       (filter === "unknown" && e.product_version === "?");
     return matchSearch && matchFilter;
   });
+
+  const { sorted, sort, toggle } = useSort(filtered, FW_ACCESSORS);
 
   return (
     <div>
@@ -93,17 +107,17 @@ export default function FirmwareCompliancePage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Instance</th>
-                <th className="px-3 py-2">Location</th>
-                <th className="px-3 py-2">Installed</th>
-                <th className="px-3 py-2">Latest</th>
-                <th className="px-3 py-2">Updates</th>
-                <th className="px-3 py-2">Last check</th>
+                <SortHeader label="Status" colKey="status" sort={sort} toggle={toggle} />
+                <SortHeader label="Instance" colKey="instance" sort={sort} toggle={toggle} />
+                <SortHeader label="Location" colKey="location" sort={sort} toggle={toggle} />
+                <SortHeader label="Installed" colKey="installed" sort={sort} toggle={toggle} />
+                <SortHeader label="Latest" colKey="latest" sort={sort} toggle={toggle} />
+                <SortHeader label="Updates" colKey="updates" sort={sort} toggle={toggle} />
+                <SortHeader label="Last check" colKey="last_check" sort={sort} toggle={toggle} />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {sorted.map((e) => (
                 <tr key={e.instance_id} className="border-t border-slate-800">
                   <td className="px-3 py-2">
                     {e.product_version === "?" ? (
