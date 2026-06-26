@@ -20,16 +20,16 @@ desc="OPNsense Dashboard Agent"
 
 pidfile="${orbit_agent_pidfile}"
 
-# Resolve a Python interpreter. OPNsense ships /usr/local/bin/python3, but pfSense
-# may install only a versioned binary (e.g. python3.11) with no python3 symlink.
+# Resolve a Python interpreter without hardcoding the version. OPNsense ships
+# /usr/local/bin/python3; pfSense may install only a versioned binary (no python3
+# symlink) and the version varies by release (3.8 on older boxes, 3.11+ on newer).
+# Prefer an unversioned python3, else pick the NEWEST python3.N found.
 : ${orbit_agent_python:=""}
 if [ -z "${orbit_agent_python}" ]; then
-    for _py in /usr/local/bin/python3 /usr/local/bin/python3.11 \
-               /usr/local/bin/python3.10 /usr/local/bin/python3.9; do
-        if [ -x "${_py}" ]; then
-            orbit_agent_python="${_py}"
-            break
-        fi
+    for _d in /usr/local/bin /usr/bin; do
+        if [ -x "${_d}/python3" ]; then orbit_agent_python="${_d}/python3"; break; fi
+        _cand=$(ls "${_d}"/python3.* 2>/dev/null | grep -E '/python3\.[0-9]+$' | sort -t. -k2 -rn | head -1)
+        if [ -n "${_cand}" ] && [ -x "${_cand}" ]; then orbit_agent_python="${_cand}"; break; fi
     done
 fi
 

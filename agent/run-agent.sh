@@ -15,10 +15,15 @@ set -u
 
 AGENT="${AGENT_PATH:-/usr/local/orbit-agent/orbit_agent.py}"
 PY="${1:-}"
+# Resolve a Python 3 interpreter without hardcoding the version. OPNsense ships
+# /usr/local/bin/python3; pfSense may install only a versioned binary and the
+# version varies by release (python3.8 on older boxes, 3.11+ on newer, etc).
+# Prefer an unversioned python3, else pick the NEWEST python3.N found.
 if [ -z "${PY}" ]; then
-    for _py in /usr/local/bin/python3 /usr/local/bin/python3.11 \
-               /usr/local/bin/python3.10 /usr/local/bin/python3.9; do
-        [ -x "${_py}" ] && PY="${_py}" && break
+    for _d in /usr/local/bin /usr/bin; do
+        if [ -x "${_d}/python3" ]; then PY="${_d}/python3"; break; fi
+        _cand=$(ls "${_d}"/python3.* 2>/dev/null | grep -E '/python3\.[0-9]+$' | sort -t. -k2 -rn | head -1)
+        if [ -n "${_cand}" ] && [ -x "${_cand}" ]; then PY="${_cand}"; break; fi
     done
 fi
 
