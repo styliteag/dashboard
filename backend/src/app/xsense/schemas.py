@@ -99,6 +99,9 @@ class IPsecChild(BaseModel):
     state: str = ""  # INSTALLED / REKEYING / … ; "" = configured but down
     bytes_in: int = 0
     bytes_out: int = 0
+    # ESP SPIs — shared across both ends (A.spi_out == B.spi_in); for tunnel pairing.
+    spi_in: str = ""
+    spi_out: str = ""
     # Agent-suggested local source IP (box-owned, inside local_ts) for the monitor.
     suggested_source: str = ""
     # Ping monitor result: none (unconfigured) | ok | fail (no reply) | error (misconfig).
@@ -129,6 +132,9 @@ class IPsecTunnel(BaseModel):
     phase2_up: int = 0  # installed child (phase-2) SAs
     phase2_total: int = 0  # configured child (phase-2) SAs — the "n" in "x/n up"
     children: list[IPsecChild] = []  # per-Phase-2 detail (agent path); [] in direct mode
+    # IKE cookie pair — IDENTICAL on both tunnel ends; NAT-proof pairing key (agent path).
+    ike_init_spi: str = ""
+    ike_resp_spi: str = ""
 
 
 class IPsecServiceStatus(BaseModel):

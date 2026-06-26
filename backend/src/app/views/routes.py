@@ -42,7 +42,52 @@ class GlobalTunnel(BaseModel):
     seconds_established: int
     bytes_in: int
     bytes_out: int
+    tags: list[str] = []  # the owning instance's tags — for filtering the overview
     children: list[IPsecChild] = []
+    ike_init_spi: str = ""
+    ike_resp_spi: str = ""
+    # The matched other end of this tunnel (another managed instance), if found.
+    peer_instance_id: int | None = None
+    peer_instance_name: str | None = None
+    peer_tunnel_id: str | None = None
+
+
+def _attach_peers(tunnels: list[GlobalTunnel]) -> None:
+    """Link the two ends of the same tunnel across instances (mutates in place).
+
+    Primary key: the IKE cookie pair (initiator+responder SPI) — both peers report
+    the IDENTICAL pair, and it survives NAT. Fallback: the reversed transport-IP
+    pair (A.local==B.remote && A.remote==B.local), which also covers down /
+    pre-establish tunnels that have no live SPI yet. SPIs rotate on rekey but both
+    ends rotate together, so a 30s poll keeps them in sync.
+    """
+    by_ike: dict[tuple[str, str], list[GlobalTunnel]] = {}
+    by_ep: dict[tuple[str, str], list[GlobalTunnel]] = {}
+    for t in tunnels:
+        if t.ike_init_spi and t.ike_resp_spi:
+            by_ike.setdefault((t.ike_init_spi, t.ike_resp_spi), []).append(t)
+        if t.local and t.remote:
+            by_ep.setdefault((t.local, t.remote), []).append(t)
+    for t in tunnels:
+        peer: GlobalTunnel | None = None
+        if t.ike_init_spi and t.ike_resp_spi:
+            peer = next(
+                (
+                    p
+                    for p in by_ike.get((t.ike_init_spi, t.ike_resp_spi), [])
+                    if p.instance_id != t.instance_id
+                ),
+                None,
+            )
+        if peer is None and t.local and t.remote:
+            peer = next(
+                (p for p in by_ep.get((t.remote, t.local), []) if p.instance_id != t.instance_id),
+                None,
+            )
+        if peer is not None:
+            t.peer_instance_id = peer.instance_id
+            t.peer_instance_name = peer.instance_name
+            t.peer_tunnel_id = peer.tunnel_id
 
 
 class GlobalVPNResponse(BaseModel):
@@ -91,7 +136,10 @@ async def global_vpn_overview(
                     seconds_established=t.seconds_established,
                     bytes_in=t.bytes_in,
                     bytes_out=t.bytes_out,
+                    tags=inst.tags or [],
                     children=t.children,
+                    ike_init_spi=t.ike_init_spi,
+                    ike_resp_spi=t.ike_resp_spi,
                 )
                 for t in status.tunnels
             ]
@@ -100,6 +148,7 @@ async def global_vpn_overview(
 
     results = await asyncio.gather(*(fetch_tunnels(i) for i in instances))
     all_tunnels = [t for group in results for t in group]
+    _attach_peers(all_tunnels)
     up = sum(
         1
         for t in all_tunnels

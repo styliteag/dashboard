@@ -99,6 +99,8 @@ def _child_from_agent(c: dict) -> IPsecChild:
         state=c.get("state", ""),
         bytes_in=int(c.get("bytes_in", 0)),
         bytes_out=int(c.get("bytes_out", 0)),
+        spi_in=c.get("spi_in", ""),
+        spi_out=c.get("spi_out", ""),
         suggested_source=c.get("suggested_source", ""),
         ping_state=c.get("ping_state", "none"),
         ping_rtt_ms=c.get("ping_rtt_ms"),
@@ -124,6 +126,8 @@ def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
                 bytes_in=int(t.get("bytes_in", 0)),
                 bytes_out=int(t.get("bytes_out", 0)),
                 unique_id=t.get("unique_id", ""),
+                ike_init_spi=t.get("ike_init_spi", ""),
+                ike_resp_spi=t.get("ike_resp_spi", ""),
                 children=[_child_from_agent(c) for c in t.get("children", [])],
             )
             for t in ipsec_data.get("tunnels", [])
