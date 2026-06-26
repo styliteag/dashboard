@@ -13,6 +13,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -175,6 +176,52 @@ class ApiKey(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IPsecPingMonitor(Base):
+    """Optional per-Phase-2 connectivity probe for an IPsec child SA.
+
+    The dashboard stores a (source, destination) pair per child SA; the agent
+    pings it each push cycle and reports ok/fail/error so a tunnel that is
+    INSTALLED but not actually passing traffic still shows red. Keyed by the
+    child SA's swanctl name; the traffic selectors are cached both for display
+    and as a stable fallback match when OPNsense regenerates child UUIDs on a
+    config apply (the same drift ``_merge_ipsec`` already tolerates per tunnel).
+    """
+
+    __tablename__ = "ipsec_ping_monitors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # swanctl connection name (Phase-1 conn id; UUID on OPNsense, "conN" on pfSense).
+    tunnel_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # child SA name (Phase-2). "" applies to the whole tunnel (reserved for later).
+    child_name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="")
+    # Cached Phase-2 traffic selectors — display + UUID-regen fallback match.
+    local_ts: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    remote_ts: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    # Cached human description (tunnel desc) for resilient display.
+    description: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    # Local source IP — must be box-owned and inside local_ts. "" = default route.
+    source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    destination: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
+    ping_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("instance_id", "tunnel_id", "child_name", name="uq_ipsec_ping_monitor"),
+    )
 
 
 class EnrollmentCode(Base):

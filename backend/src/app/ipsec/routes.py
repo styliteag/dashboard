@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
@@ -15,6 +16,8 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
+from app.ipsec import ping_service
+from app.ipsec.ping_schemas import PingMonitorCreate, PingMonitorRead, PingMonitorUpdate
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, IPsecServiceStatus
@@ -251,3 +254,112 @@ async def ipsec_restart(
     )
     await session.commit()
     return result
+
+
+# --- Phase-2 ping monitors (US: optional per-Phase-2 connectivity check) ------
+
+
+@router.get("/ping-monitors", response_model=list[PingMonitorRead])
+async def list_ping_monitors(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[PingMonitorRead]:
+    """List the configured Phase-2 ping monitors for an instance."""
+    await _get_instance(instance_id, session)
+    monitors = await ping_service.list_monitors(session, instance_id)
+    return [PingMonitorRead.model_validate(m) for m in monitors]
+
+
+@router.post("/ping-monitors", response_model=PingMonitorRead, status_code=status.HTTP_201_CREATED)
+async def create_ping_monitor(
+    instance_id: int,
+    body: PingMonitorCreate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> PingMonitorRead:
+    """Create a Phase-2 ping monitor and push the updated set to the agent."""
+    await _get_instance(instance_id, session)
+    try:
+        monitor = await ping_service.create_monitor(session, instance_id, body)
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="a ping monitor for this Phase 2 already exists",
+        ) from exc
+    await write_audit(
+        session,
+        action="ipsec.ping_monitor.create",
+        result="ok",
+        user_id=user.id,
+        target_type="ipsec_tunnel",
+        target_id=monitor.tunnel_id,
+        source_ip=_client_ip(request),
+        detail={"instance_id": instance_id, "child_name": monitor.child_name},
+    )
+    await session.commit()
+    await session.refresh(monitor)
+    await ping_service.push_to_agent(session, instance_id)
+    return PingMonitorRead.model_validate(monitor)
+
+
+@router.patch("/ping-monitors/{monitor_id}", response_model=PingMonitorRead)
+async def update_ping_monitor(
+    instance_id: int,
+    monitor_id: int,
+    body: PingMonitorUpdate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> PingMonitorRead:
+    """Update a Phase-2 ping monitor and push the updated set to the agent."""
+    await _get_instance(instance_id, session)
+    monitor = await ping_service.get_monitor(session, instance_id, monitor_id)
+    if monitor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")
+    monitor = await ping_service.update_monitor(session, monitor, body)
+    await write_audit(
+        session,
+        action="ipsec.ping_monitor.update",
+        result="ok",
+        user_id=user.id,
+        target_type="ipsec_tunnel",
+        target_id=monitor.tunnel_id,
+        source_ip=_client_ip(request),
+        detail={"instance_id": instance_id, "monitor_id": monitor_id},
+    )
+    await session.commit()
+    await session.refresh(monitor)
+    await ping_service.push_to_agent(session, instance_id)
+    return PingMonitorRead.model_validate(monitor)
+
+
+@router.delete("/ping-monitors/{monitor_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ping_monitor(
+    instance_id: int,
+    monitor_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> None:
+    """Delete a Phase-2 ping monitor and push the updated set to the agent."""
+    await _get_instance(instance_id, session)
+    monitor = await ping_service.get_monitor(session, instance_id, monitor_id)
+    if monitor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")
+    tunnel_id = monitor.tunnel_id
+    await ping_service.delete_monitor(session, monitor)
+    await write_audit(
+        session,
+        action="ipsec.ping_monitor.delete",
+        result="ok",
+        user_id=user.id,
+        target_type="ipsec_tunnel",
+        target_id=tunnel_id,
+        source_ip=_client_ip(request),
+        detail={"instance_id": instance_id, "monitor_id": monitor_id},
+    )
+    await session.commit()
+    await ping_service.push_to_agent(session, instance_id)
