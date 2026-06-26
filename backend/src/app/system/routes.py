@@ -12,6 +12,7 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import User
 from app.instances import service as inst_service
+from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, GatewayStatus
@@ -90,7 +91,7 @@ async def config_backup(
     try:
         client = await registry.get(inst)
         xml = await client.download_config()
-    except OPNsenseError as exc:
+    except (OPNsenseError, SecurepointError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     await write_audit(

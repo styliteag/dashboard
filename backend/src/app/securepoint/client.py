@@ -26,6 +26,9 @@ import httpx
 
 from app.xsense.schemas import (
     ActionResult,
+    FirmwareStatus,
+    FirmwareUpgradeStatus,
+    GatewayStatus,
     IPsecChild,
     IPsecServiceStatus,
     IPsecTunnel,
@@ -299,3 +302,33 @@ class SecurepointClient:
             name = str(info.get("hostname") or info.get("productname") or "")
             version = info.get("version") or info.get("productversion") or None
         return SystemStatus(name=name, version=version)
+
+    # ----- OPNsense-capability stubs (unsupported, neutral) ---------------
+    # The poller and several routes call these on the cached device client.
+    # Securepoint doesn't manage firmware/gateways/config-backup here, so return
+    # neutral/empty data (status reads) or a not-supported result (actions),
+    # rather than 500ing. These are why a Securepoint instance renders cleanly.
+
+    async def firmware_status(self) -> FirmwareStatus:
+        return FirmwareStatus(status_msg=_READ_ONLY)
+
+    async def firmware_check(self) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
+
+    async def firmware_update(self) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
+
+    async def firmware_upgrade_status(self) -> FirmwareUpgradeStatus:
+        return FirmwareUpgradeStatus(status="unsupported")
+
+    async def gateway_status(self) -> list[GatewayStatus]:
+        return []
+
+    async def firewall_log(self, limit: int = 50) -> list[dict]:
+        return []
+
+    async def reboot(self) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
+
+    async def download_config(self) -> str:
+        raise SecurepointError(_READ_ONLY)

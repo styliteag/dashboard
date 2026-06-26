@@ -113,6 +113,24 @@ async def test_all_phase2_down_maps_to_down() -> None:
 
 
 @pytest.mark.asyncio
+async def test_opnsense_capability_stubs_are_neutral() -> None:
+    """Routes call firmware/gateway/reboot on the cached client; these must return
+    neutral data (not AttributeError-500) for a Securepoint instance."""
+    sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)
+    try:
+        assert (await sp.firmware_status()).product_version == ""
+        assert await sp.gateway_status() == []
+        assert await sp.firewall_log() == []
+        assert (await sp.firmware_check()).success is False
+        assert (await sp.reboot()).success is False
+        assert (await sp.firmware_upgrade_status()).status == "unsupported"
+        with pytest.raises(SecurepointError):
+            await sp.download_config()
+    finally:
+        await sp.aclose()
+
+
+@pytest.mark.asyncio
 async def test_ipsec_get_is_refused_to_protect_psk() -> None:
     with respx.mock(base_url=_BASE) as mock:
         mock.post("/spcgi.cgi").mock(side_effect=_router)
