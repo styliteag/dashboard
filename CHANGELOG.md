@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Faster Phase-2 ping checks** — the agent now paces ping packets 0.3s apart (`ping -i 0.3`, sub-second interval allowed as root) instead of the default 1s/packet, and tightens the per-probe deadline from `max(count+1, 3)` to `max(count, 2)`s. A healthy tunnel now answers in ~0.6s instead of ~2s (count 3), and a dead/timing-out tunnel waits ~3s instead of ~4s — pings already run concurrently (up to 8 workers), so this shortens each push cycle's worst case. (Agent `__version__` → 1.5.3.)
 - **Agent disk metrics drop pseudo filesystems and collapse ZFS pools** — `collect_disk` now reads `df -T` and skips pseudo filesystems (`devfs`, `fdescfs`, `procfs`, `nullfs`, `linprocfs`, `linsysfs`), and reports a single entry per ZFS pool instead of one row per dataset (datasets in a pool share the same free space). The collapsed entry keeps a stable label (the pool's `/` mount) but reports the pool's **worst** dataset fill, so a separate dataset filling up (e.g. `/var/log`) is still surfaced rather than masked by a near-empty root. On a stock OPNsense/ZFS box this cuts the disk rows from ~16 to ~2 per push, shrinking the stored time-series substantially at fleet scale. (Agent `__version__` → 1.4.3.)
 
 ### Removed
