@@ -539,6 +539,13 @@ async def update_all_agents(
         if agent is None:
             continue
         result = await agent.send_command("agent.update", params, timeout=30)
+        # Persist a rejection so it stays visible in the list (same as single update).
+        if result.get("success"):
+            agent.last_update_error = None
+            agent.last_update_version = None
+        else:
+            agent.last_update_error = result.get("output") or "update failed"
+            agent.last_update_version = served
         results.append(
             {
                 "instance_id": a["instance_id"],

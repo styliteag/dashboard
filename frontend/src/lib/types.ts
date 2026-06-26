@@ -35,6 +35,8 @@ export interface ConnectedAgent {
   served_version: string | null;
   update_available: boolean;
   platform: string;
+  last_update_error?: string | null;
+  last_update_version?: string | null;
 }
 
 export interface TestConnectionResult {

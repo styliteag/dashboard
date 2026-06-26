@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Self-update rejection reason in the GUI** — when an agent refuses a pushed update (e.g. signature or sha256 verification failed), the reason is now persisted on the connection and shown in the agent panel ("Last update rejected (→ version): …"), so it survives a page reload instead of only flashing as a transient toast.
+- **Self-update rejection reason in the GUI** — when an agent refuses a pushed update (e.g. signature or sha256 verification failed), the reason is now persisted on the connection and surfaced everywhere it's triggered: the single-instance agent panel ("Last update rejected (→ version): …"), a red "update rejected" badge per row on the Instances list (full reason on hover), and the "Update all agents" banner (shows how many were rejected and why). It survives a page reload instead of only flashing as a transient toast.
 
 ### Security
 

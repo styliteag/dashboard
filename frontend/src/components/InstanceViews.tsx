@@ -68,6 +68,17 @@ function AgentBadge({ inst, agent }: { inst: Instance; agent?: ConnectedAgent })
       {agent.update_available && (
         <ArrowUpCircle className="h-3.5 w-3.5 text-amber-400" aria-label="Agent update available" />
       )}
+      {agent.last_update_error && (
+        <span
+          className="inline-flex items-center gap-1 rounded bg-red-900/40 px-1.5 py-0.5 text-xs text-red-300"
+          title={`Last update${
+            agent.last_update_version ? ` → ${agent.last_update_version}` : ""
+          } rejected: ${agent.last_update_error}`}
+        >
+          <AlertTriangle className="h-3 w-3" />
+          update rejected
+        </span>
+      )}
     </span>
   );
 }

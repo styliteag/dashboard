@@ -217,6 +217,8 @@ class AgentHub:
                 "connected_at": a.connected_at.isoformat(),
                 "agent_version": a.agent_version,
                 "platform": a.platform,
+                "last_update_error": a.last_update_error,
+                "last_update_version": a.last_update_version,
             }
             for a in self._agents.values()
         ]

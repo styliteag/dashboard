@@ -14,7 +14,7 @@ export default function InstancesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Instance | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
-  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [updateMsg, setUpdateMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [view, setView] = useState<"list" | "grid">(
     () => (localStorage.getItem("instances.view") as "list" | "grid") || "list",
   );
@@ -35,12 +35,31 @@ export default function InstancesPage() {
 
   const updateAllMut = useMutation({
     mutationFn: () =>
-      api.post<{ served_version: string; updated: { instance_id: number }[] }>(
-        "/api/agents/update-all",
-      ),
+      api.post<{
+        served_version: string;
+        updated: {
+          instance_id: number;
+          instance_name: string;
+          result: { success: boolean; output: string };
+        }[];
+      }>("/api/agents/update-all"),
     onSuccess: (data) => {
-      setUpdateMsg(`Updating ${data.updated.length} agent(s) to ${data.served_version}…`);
-      setTimeout(() => setUpdateMsg(null), 6000);
+      const failed = data.updated.filter((u) => !u.result.success);
+      const ok = data.updated.length - failed.length;
+      if (failed.length) {
+        const reason = failed[0].result.output || "rejected";
+        setUpdateMsg({
+          ok: false,
+          text: `${ok} updating to ${data.served_version}, ${failed.length} rejected: ${reason}`,
+        });
+        setTimeout(() => setUpdateMsg(null), 12000);
+      } else {
+        setUpdateMsg({
+          ok: true,
+          text: `Updating ${data.updated.length} agent(s) to ${data.served_version}…`,
+        });
+        setTimeout(() => setUpdateMsg(null), 6000);
+      }
       queryClient.invalidateQueries({ queryKey: ["agents-connected"] });
     },
   });
@@ -138,8 +157,12 @@ export default function InstancesPage() {
         </div>
       )}
       {updateMsg && (
-        <div className="mt-2 rounded-lg bg-amber-900/40 px-3 py-2 text-sm text-amber-300">
-          {updateMsg}
+        <div
+          className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+            updateMsg.ok ? "bg-amber-900/40 text-amber-300" : "bg-red-900/40 text-red-300"
+          }`}
+        >
+          {updateMsg.text}
         </div>
       )}
 
