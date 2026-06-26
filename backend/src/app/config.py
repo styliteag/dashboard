@@ -39,6 +39,9 @@ class Settings(BaseSettings):
 
     # Metrics maintenance (replaces TimescaleDB retention).
     metrics_retention_days: int = 30  # raw metrics kept this long
+    # IPsec tunnel state-change history (VPN-overview popup); transition log is
+    # tiny, so a longer window is cheap.
+    ipsec_event_retention_days: int = 90
 
     # GUI proxy (optional): tunnel a firewall's web GUI through its agent, fronted
     # by a reverse proxy giving a per-instance origin (Caddy/port in dev, Traefik/

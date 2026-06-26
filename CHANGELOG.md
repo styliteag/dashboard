@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **IPsec tunnel state-change history with a popup on the VPN overview** — the dashboard now remembers each tunnel's past states, not just the current one. On every agent push the backend diffs the new IPsec snapshot against the previous one and appends the transitions to a compact event log (Alembic `010`, `ipsec_tunnel_events`): Phase-1 up/down (and other status changes), Phase-2 installed-count changes (e.g. `2/2 → 1/2`), and per-child ping `ok`/`fail`. A new **History** button on each tunnel row in the VPN overview opens a popup with the newest-first timeline (`GET …/ipsec/{tunnel_id}/history`). It's a transition log (one row per change, not periodic snapshots), keyed on the stable swanctl connection name, and the previous snapshot survives a backend restart (re-hydrated from `status_snapshot`) so reboots don't fabricate events. Retention is `DASH_IPSEC_EVENT_RETENTION_DAYS` (default 90) via a daily prune job. Push-mode only — direct-API instances return an empty history. No agent change required.
+
 ## [1.5.0] - 2026-06-26
 
 ### Added

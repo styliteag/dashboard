@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
-from app.maintenance.jobs import prune_metrics
+from app.maintenance.jobs import prune_ipsec_events, prune_metrics
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.xsense.registry import registry
@@ -181,6 +181,10 @@ def start_scheduler() -> None:
     )
     # Metrics maintenance: raw-metrics retention prune (replaces TimescaleDB).
     _scheduler.add_job(prune_metrics, "interval", hours=1, id="metrics_prune", max_instances=1)
+    # IPsec tunnel-event history retention (tiny table — daily is plenty).
+    _scheduler.add_job(
+        prune_ipsec_events, "interval", hours=24, id="ipsec_events_prune", max_instances=1
+    )
     _scheduler.start()
     log.info("scheduler.started", interval_s=settings.poll_interval_seconds)
 

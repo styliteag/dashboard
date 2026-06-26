@@ -17,6 +17,7 @@ from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
 from app.ipsec import ping_service
+from app.ipsec.event_store import read_tunnel_events
 from app.ipsec.ping_schemas import (
     PingMonitorCreate,
     PingMonitorRead,
@@ -69,6 +70,44 @@ async def ipsec_status(
         return await client.ipsec_status()
     except OPNsenseError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+class TunnelHistoryEvent(BaseModel):
+    ts: str
+    tunnel_id: str
+    child_name: str
+    event_type: str
+    old_value: str
+    new_value: str
+
+
+@router.get("/{tunnel_id}/history", response_model=list[TunnelHistoryEvent])
+async def ipsec_tunnel_history(
+    instance_id: int,
+    tunnel_id: str,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[TunnelHistoryEvent]:
+    """Recorded state-change history for one tunnel, most recent first.
+
+    Populated by the agent-push ingest (push mode); direct-API instances have no
+    history yet and return an empty list.
+    """
+    await _get_instance(instance_id, session)
+    limit = max(1, min(limit, 500))
+    rows = await read_tunnel_events(session, instance_id, tunnel_id, limit)
+    return [
+        TunnelHistoryEvent(
+            ts=row.ts.isoformat(),
+            tunnel_id=row.tunnel_id,
+            child_name=row.child_name,
+            event_type=row.event_type,
+            old_value=row.old_value,
+            new_value=row.new_value,
+        )
+        for row in rows
+    ]
 
 
 @router.post("/connect/{tunnel_id}", response_model=TunnelActionResponse)

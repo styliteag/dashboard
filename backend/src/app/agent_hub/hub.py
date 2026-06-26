@@ -17,6 +17,8 @@ from sqlalchemy import select
 
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
+from app.ipsec.event_store import record_tunnel_events
+from app.ipsec.history import diff_ipsec
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.xsense.schemas import (
@@ -364,8 +366,15 @@ class AgentHub:
             self._last_gateways[instance_id] = gateways_from_agent(data)
 
         # Cache IPsec — same guard: only when the agent sent an ipsec section.
+        # Capture the previous snapshot BEFORE overwriting so we can diff it into
+        # the tunnel state-change history below (prev survives a backend restart
+        # via the hydrated status_snapshot, so we don't spam events on startup).
+        tunnel_events = []
         if data.get("ipsec"):
-            self._last_ipsec[instance_id] = ipsec_from_agent(data)
+            prev_ipsec = self._last_ipsec.get(instance_id)
+            new_ipsec = ipsec_from_agent(data)
+            self._last_ipsec[instance_id] = new_ipsec
+            tunnel_events = diff_ipsec(prev_ipsec, new_ipsec)
 
         # Cache firewall log
         fw_log = data.get("firewall_log")
@@ -386,6 +395,8 @@ class AgentHub:
             if not is_online(inst.last_success_at, inst.last_error_at) and inst.last_error_at:
                 recovered_name = inst.name
             await write_poll_metrics(session, instance_id, ts, status)
+            # Append any IPsec tunnel state transitions (same commit as the push).
+            await record_tunnel_events(session, instance_id, ts, tunnel_events)
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None

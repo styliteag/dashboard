@@ -1,7 +1,16 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Shield, Link2, Unlink, RotateCw, Search, ChevronRight, ChevronDown } from "lucide-react";
+import {
+  Shield,
+  Link2,
+  Unlink,
+  RotateCw,
+  Search,
+  ChevronRight,
+  ChevronDown,
+  History,
+} from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type {
   IPsecChild,
@@ -12,6 +21,7 @@ import type {
 import { Phase2Badge, Phase2ChildList, PingSummary } from "../components/IPsecPhase2";
 import { worstPing } from "../lib/ipsec-ping";
 import PingMonitorDialog from "../components/PingMonitorDialog";
+import TunnelHistoryDialog from "../components/TunnelHistoryDialog";
 
 interface GlobalTunnel {
   instance_id: number;
@@ -151,6 +161,7 @@ export default function VPNOverviewPage() {
       return n;
     });
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<GlobalTunnel | null>(null);
 
   // Paired-group collapse: healthy ("both up") pairs collapse to just their header
   // by default (problems stay expanded). Two explicit-override sets let the user
@@ -491,6 +502,13 @@ export default function VPNOverviewPage() {
                       <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setHistoryTarget(t)}
+                            title="State-change history"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                          >
+                            <History className="h-3 w-3" /> History
+                          </button>
                           {up && (
                             <button
                               onClick={() => disconnectMut.mutate(t)}
@@ -550,6 +568,15 @@ export default function VPNOverviewPage() {
           child={dialog.child}
           existing={dialog.existing}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {historyTarget && (
+        <TunnelHistoryDialog
+          instanceId={historyTarget.instance_id}
+          tunnelId={historyTarget.tunnel_id}
+          tunnelDescription={historyTarget.description || historyTarget.tunnel_id}
+          onClose={() => setHistoryTarget(null)}
         />
       )}
     </div>

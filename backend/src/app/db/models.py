@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -222,6 +223,39 @@ class IPsecPingMonitor(Base):
     __table_args__ = (
         UniqueConstraint("instance_id", "tunnel_id", "child_name", name="uq_ipsec_ping_monitor"),
     )
+
+
+class IPsecTunnelEvent(Base):
+    """One recorded IPsec tunnel state transition (history behind the GUI popup).
+
+    Appended by the agent-push ingest (``agent_hub.hub.handle_metrics``) whenever a
+    pushed snapshot differs from the previous one (see ``app.ipsec.history``):
+    Phase-1 up/down, Phase-2 installed-count changes, and per-child ping ok/fail.
+    A transition log, not periodic snapshots — one row per change, so it stays tiny
+    and renders standalone. Keyed by the stable swanctl ``tunnel_id`` (connection
+    name); ``child_name`` is "" for tunnel-level events. Pruned by
+    ``prune_ipsec_events`` after ``ipsec_event_retention_days``.
+    """
+
+    __tablename__ = "ipsec_tunnel_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    # swanctl connection name (Phase-1 conn id). Stable across rekeys.
+    tunnel_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Phase-2 child SA name for ping events; "" for tunnel-level (phase1/phase2).
+    child_name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="")
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # phase1_up | phase1_down | phase1_changed | phase2_changed | ping_ok | ping_fail
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    old_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    new_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+
+    __table_args__ = (Index("ix_ipsec_event_lookup", "instance_id", "tunnel_id", "ts"),)
 
 
 class EnrollmentCode(Base):

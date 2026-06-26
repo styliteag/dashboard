@@ -164,6 +164,17 @@ export interface IPsecServiceStatus {
   tunnels: IPsecTunnel[];
 }
 
+// Recorded tunnel state transition (history popup). event_type is one of
+// phase1_up | phase1_down | phase1_changed | phase2_changed | ping_ok | ping_fail.
+export interface IPsecTunnelEvent {
+  ts: string; // ISO timestamp
+  tunnel_id: string;
+  child_name: string; // "" for tunnel-level events
+  event_type: string;
+  old_value: string;
+  new_value: string;
+}
+
 export interface TunnelActionResponse {
   success: boolean;
   message: string;
