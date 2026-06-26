@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Activity, Trash2 } from "lucide-react";
 import Dialog from "./Dialog";
 import { api, ApiError } from "../lib/api";
+import { firstHostFromSelector } from "../lib/ipsec-ping";
 import type {
   IPsecChild,
   IPsecPingMonitor,
@@ -35,9 +36,12 @@ export default function PingMonitorDialog({
 }: Props) {
   const queryClient = useQueryClient();
   const [source, setSource] = useState(existing?.source ?? child.suggested_source ?? "");
-  // New monitor: prefill the destination with the remote selector CIDR so the
-  // user sees the target network and edits it down to a concrete host to ping.
-  const [destination, setDestination] = useState(existing?.destination ?? child.remote_ts);
+  // New monitor: prefill a concrete pingable host derived from the remote
+  // selector (network + 1) — a bare CIDR like "192.168.48.0/24|/0" isn't
+  // pingable. User edits it to the real target if needed.
+  const [destination, setDestination] = useState(
+    existing?.destination ?? firstHostFromSelector(child.remote_ts),
+  );
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
   const [pingCount, setPingCount] = useState(existing?.ping_count ?? 3);
   const [error, setError] = useState<string | null>(null);

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Phase-2 ping-check dialog prefilled an unpingable destination** — a new ping monitor prefilled the destination with the raw remote traffic selector (e.g. `192.168.48.0/24|/0`), a network, not a host, so "Test now" failed unless the user hand-edited it. It now derives a concrete pingable host from the remote selector (network + 1, a common remote gateway/firewall IP) — `192.168.48.0/24|/0` → `192.168.48.1`; a host or `/31`-`/32` selector is used unchanged. Still editable.
 - **pfSense agent did not restart after a reboot** — pfSense (unlike OPNsense / stock FreeBSD) does not auto-start rcvar services from `/usr/local/etc/rc.d/` at boot, so the installed rc.d script + `orbit_agent_enable=YES` never fired and the agent stayed down until started by hand. The agent now registers pfSense's native `afterbootupshellcmd` boot hook (`/usr/local/etc/rc.d/orbit_agent onestart`) at every startup — idempotent and non-destructive (skips if present, appends rather than clobbering any existing command). Already-deployed pfSense agents self-heal on the next deploy: the self-updated code runs this on start. OPNsense unaffected (no-op). (Agent `__version__` → 1.5.5.)
 
 ## [1.5.0] - 2026-06-26
