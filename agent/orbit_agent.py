@@ -36,7 +36,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.3"
+__version__ = "1.5.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -569,6 +569,10 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
                     "state": str(child.get("state", "")).upper(),
                     "bytes_in": _to_int(child.get("bytes-in")),
                     "bytes_out": _to_int(child.get("bytes-out")),
+                    # ESP SPIs — shared across both tunnel ends (A.spi_out == B.spi_in),
+                    # NAT-proof identifiers for cross-instance tunnel pairing.
+                    "spi_in": str(child.get("spi-in", "")),
+                    "spi_out": str(child.get("spi-out", "")),
                 })
         child_rows = _dedupe_children(child_rows)
         phase2_total = len(child_rows)  # distinct phase-2 (selector pairs)
@@ -586,6 +590,10 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
             "bytes_in": bytes_in,
             "bytes_out": bytes_out,
             "unique_id": str(ike.get("uniqueid", "")),  # stable handle for --terminate --ike-id
+            # IKE cookie pair — IDENTICAL on both tunnel ends (one IKE_SA, two peers),
+            # NAT-proof key for cross-instance tunnel pairing.
+            "ike_init_spi": str(ike.get("initiator-spi", "")),
+            "ike_resp_spi": str(ike.get("responder-spi", "")),
             "children": child_rows,  # per-Phase-2 detail for the dashboard
         })
     return sas
@@ -667,6 +675,8 @@ def _child_row(cc: dict | None, sc: dict | None) -> dict:
         "state": sc.get("state", ""),  # "" = configured but no live child SA (down)
         "bytes_in": sc.get("bytes_in", 0),
         "bytes_out": sc.get("bytes_out", 0),
+        "spi_in": sc.get("spi_in", ""),  # live ESP SPIs (empty when down) — for pairing
+        "spi_out": sc.get("spi_out", ""),
     }
 
 
@@ -716,6 +726,8 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
             "bytes_in": sa["bytes_in"],
             "bytes_out": sa["bytes_out"],
             "unique_id": sa["unique_id"],  # → `swanctl --terminate --ike-id <unique_id>`
+            "ike_init_spi": sa.get("ike_init_spi", ""),  # shared IKE cookie pair (pairing)
+            "ike_resp_spi": sa.get("ike_resp_spi", ""),
         }
     return {
         **base,
@@ -728,6 +740,8 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
         "bytes_in": 0,
         "bytes_out": 0,
         "unique_id": "",
+        "ike_init_spi": "",  # down: no live IKE_SA → no SPI (pair via IP fallback)
+        "ike_resp_spi": "",
     }
 
 

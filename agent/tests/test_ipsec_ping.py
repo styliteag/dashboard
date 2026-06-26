@@ -61,6 +61,36 @@ def test_parse_sas_keeps_distinct_selectors() -> None:
     assert len(s["children"]) == 2
 
 
+def test_parse_sas_exposes_spis() -> None:
+    # SPIs for cross-instance pairing: child spi-in/out + IKE initiator/responder.
+    raw = (
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "initiator-spi=aaaa1111 responder-spi=bbbb2222 "
+        "child-sas {a {name=a state=INSTALLED spi-in=c4b835fe spi-out=ce1dea08 "
+        "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}"
+    )
+    s = agent._parse_swanctl_sas(raw)[0]
+    assert s["ike_init_spi"] == "aaaa1111"
+    assert s["ike_resp_spi"] == "bbbb2222"
+    assert s["children"][0]["spi_in"] == "c4b835fe"
+    assert s["children"][0]["spi_out"] == "ce1dea08"
+
+
+def test_tunnel_carries_spis() -> None:
+    sa = agent._parse_swanctl_sas(
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "initiator-spi=aaaa1111 responder-spi=bbbb2222 "
+        "child-sas {a {name=a state=INSTALLED spi-in=11 spi-out=22 "
+        "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}"
+    )[0]
+    t = agent._tunnel("c", None, sa, {})
+    assert t["ike_init_spi"] == "aaaa1111"
+    assert t["children"][0]["spi_out"] == "22"
+    # down tunnel: no SPIs
+    down = agent._tunnel("c", {"phase2_total": 1, "children": []}, None, {})
+    assert down["ike_init_spi"] == ""
+
+
 def test_parse_conns_keeps_child_selectors() -> None:
     child = agent._parse_swanctl_conns(_CONNS)[0]["children"][0]
     assert child["name"] == "y"
