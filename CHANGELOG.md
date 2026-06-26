@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-26
+
 ### Added
 
 - **Paired-tunnel view in the VPN overview** — the global VPN overview now detects the two ends of the same site-to-site tunnel across managed instances (e.g. opn1↔opn2) and renders them grouped under one header with a combined health badge that flags asymmetry (`status mismatch` / `ping mismatch` / `both up` / `both down`). Pairing is keyed primarily on the **IKE cookie pair** (`initiator`+`responder` SPI — identical on both ends and NAT-proof), falling back to the reversed transport-IP pair for down / pre-establish tunnels. Healthy (`both up`) pairs collapse to a single header row showing the link uptime (expandable, plus an "Expand/Collapse all" toggle); mismatched/down pairs stay expanded. A tag-filter chip row (mirroring the Instances list) lets you scope the overview to selected instance tags. The agent now also reports the IKE SPIs and per-child ESP SPIs (`spi-in`/`spi-out`). (Agent `__version__` → 1.5.4.)
