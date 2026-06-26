@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-06-26
+
 ### Added
 
 - **Sortable columns on the Instances, VPN and Firmware lists** — click a column header to sort (toggles asc/desc, arrow shows the active column). Instances sorts by status / name / location / mode / tags / last poll (applies to both list and card views); Firmware by status / instance / location / installed / latest / updates / last check; VPN by instance / tunnel / remote / status / Phase 2 / uptime / IN / OUT. Shared `useSort` hook + `SortHeader` component.
