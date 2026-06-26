@@ -37,9 +37,8 @@ class Settings(BaseSettings):
     # tolerate the brief reconnect during a self-update restart.
     agent_stale_seconds: int = 120
 
-    # Metrics maintenance (replaces TimescaleDB retention + continuous aggregate).
+    # Metrics maintenance (replaces TimescaleDB retention).
     metrics_retention_days: int = 30  # raw metrics kept this long
-    metrics_5m_retention_days: int = 365  # 5-min rollup kept this long
 
     # GUI proxy (optional): tunnel a firewall's web GUI through its agent, fronted
     # by a reverse proxy giving a per-instance origin (Caddy/port in dev, Traefik/

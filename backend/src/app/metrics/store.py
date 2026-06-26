@@ -4,8 +4,8 @@ Metric names follow the pattern ``<category>.<name>`` — e.g. ``cpu.total``,
 ``memory.used_pct``, ``disk.root.used_pct``, ``iface.wan.bytes_rx``.
 
 Backend is MariaDB; bucketing is done client-side via UNIX_TIMESTAMP / DIV.
-A periodic APScheduler job is responsible for retention and the metrics_5m
-roll-up (replaces TimescaleDB built-ins).
+A periodic APScheduler job (``prune_metrics``) enforces raw-metrics retention
+(replaces TimescaleDB built-ins).
 """
 
 from __future__ import annotations
