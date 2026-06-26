@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Cpu, HardDrive, MemoryStick, Clock, Server } from "lucide-react";
@@ -57,6 +57,18 @@ export default function InstanceDetailPage() {
     queryFn: () => api.get<Instance>(`/api/instances/${id}`),
   });
 
+  // Securepoint is direct-only — no agent mode, so hide the Agent tab/switch.
+  const isSecurepoint = instance?.device_type === "securepoint";
+  const tabs = isSecurepoint ? TABS.filter((t) => t.key !== "agent") : TABS;
+
+  // The selected tab persists across instances; if it's not available here
+  // (e.g. "agent" on a Securepoint box), fall back to overview.
+  useEffect(() => {
+    if (!tabs.some((t) => t.key === tab)) {
+      setTab("overview");
+    }
+  }, [tabs, tab]);
+
   const {
     data: status,
     isLoading: statusLoading,
@@ -80,7 +92,7 @@ export default function InstanceDetailPage() {
 
       {/* Tabs */}
       <div className="mt-5 flex flex-wrap gap-1 border-b border-slate-800">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => selectTab(t.key)}
@@ -205,8 +217,8 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Agent */}
-      {tab === "agent" && (
+      {/* Agent — hidden for Securepoint (direct-only) */}
+      {tab === "agent" && !isSecurepoint && (
         <div>
           <AgentSection instanceId={nid} agentMode={instance?.agent_mode ?? false} />
         </div>

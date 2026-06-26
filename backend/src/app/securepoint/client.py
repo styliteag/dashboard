@@ -26,12 +26,16 @@ import httpx
 
 from app.xsense.schemas import (
     ActionResult,
+    CpuUsage,
+    DiskUsage,
     FirmwareStatus,
     FirmwareUpgradeStatus,
     GatewayStatus,
+    InterfaceStats,
     IPsecChild,
     IPsecServiceStatus,
     IPsecTunnel,
+    MemoryUsage,
     SystemStatus,
 )
 
@@ -289,19 +293,88 @@ class SecurepointClient:
                 info[str(item["attribute"])] = str(item.get("value", ""))
         return info
 
-    async def poll_status(self) -> SystemStatus:
-        """Best-effort snapshot satisfying the ``DeviceClient`` protocol.
+    @staticmethod
+    def _pct(raw: str) -> float:
+        """Parse a Securepoint percentage like '  98%' → 98.0."""
+        try:
+            return float(str(raw).strip().rstrip("%").strip())
+        except ValueError:
+            return 0.0
 
-        PoC fills hostname + product version; the full metrics surface
-        (cpu/mem/disk/interfaces) is left for the integration step.
+    @classmethod
+    def _cpu(cls, info: dict[str, str]) -> CpuUsage:
+        # system info reports per-state CPU %; total busy = 100 - idle.
+        if "Idle" not in info:
+            return CpuUsage()
+        return CpuUsage(total=round(100.0 - cls._pct(info["Idle"]), 1))
+
+    @classmethod
+    def _memory(cls, info: dict[str, str]) -> MemoryUsage:
+        # Mem Total / Mem Avail are in KiB.
+        total_kb = cls._pct(info.get("Mem Total", "0"))
+        avail_kb = cls._pct(info.get("Mem Avail", "0"))
+        if total_kb <= 0:
+            return MemoryUsage()
+        used_kb = max(total_kb - avail_kb, 0.0)
+        return MemoryUsage(
+            used_pct=round(used_kb / total_kb * 100, 1),
+            total_mb=round(total_kb / 1024, 1),
+            used_mb=round(used_kb / 1024, 1),
+        )
+
+    @classmethod
+    def _disks(cls, info: dict[str, str]) -> list[DiskUsage]:
+        # storage / storage free are in bytes (the persistent /data volume).
+        total = cls._pct(info.get("storage", "0"))
+        free = cls._pct(info.get("storage free", "0"))
+        if total <= 0:
+            return []
+        return [
+            DiskUsage(
+                device="/data", mountpoint="/data", used_pct=round((total - free) / total * 100, 1)
+            )
+        ]
+
+    async def _interfaces(self) -> list[InterfaceStats]:
+        """Interfaces with their IP addresses (no byte counters via this API)."""
+        rows = await self._command("interface", ["address", "get"])
+        out: list[InterfaceStats] = []
+        for row in rows if isinstance(rows, list) else []:
+            flags = row.get("flags", []) if isinstance(row.get("flags"), list) else []
+            up = "ONLINE" in flags or "DYNAMIC" in flags
+            addr = row.get("address")
+            out.append(
+                InterfaceStats(
+                    name=str(row.get("device", "")),
+                    status="up" if up else "down",
+                    address=str(addr) if addr else None,
+                )
+            )
+        return out
+
+    async def poll_status(self) -> SystemStatus:
+        """Full snapshot via ``system info`` (CPU/mem/disk/uptime) + interface IPs.
+
+        ``system info`` returns live stats as JSON — User/System/Idle %, Mem
+        Total/Avail (KiB), storage/storage free (bytes), Uptime — so the direct
+        pull path fills the same metrics surface as OPNsense. Interface byte
+        counters aren't exposed by the JSON API (RRD-only) → left at 0.
         """
-        name = ""
-        version: str | None = None
+        info: dict[str, str] = {}
         with contextlib.suppress(SecurepointError):
             info = await self.system_info()
-            name = str(info.get("hostname") or info.get("productname") or "")
-            version = info.get("version") or info.get("productversion") or None
-        return SystemStatus(name=name, version=version)
+        ifaces: list[InterfaceStats] = []
+        with contextlib.suppress(SecurepointError):
+            ifaces = await self._interfaces()
+        return SystemStatus(
+            name=str(info.get("hostname") or info.get("productname") or ""),
+            version=info.get("version") or info.get("productversion") or None,
+            uptime=info.get("Uptime") or None,
+            cpu=self._cpu(info),
+            memory=self._memory(info),
+            disks=self._disks(info),
+            interfaces=ifaces,
+        )
 
     # ----- OPNsense-capability stubs (unsupported, neutral) ---------------
     # The poller and several routes call these on the cached device client.

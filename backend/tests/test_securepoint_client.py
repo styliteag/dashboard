@@ -41,6 +41,21 @@ _APPMGMT_STATUS = [
     {"application": "ipsec", "state": "UP", "flags": ["AUTOSTART"]},
     {"application": "openvpn", "state": "UP", "flags": ["AUTOSTART"]},
 ]
+# Live-captured `system info`: live stats as {attribute, value} rows.
+_SYSTEM_INFO = [
+    {"attribute": "hostname", "value": "bensheim.stylite.de"},
+    {"attribute": "version", "value": "14.1.6"},
+    {"attribute": "Idle", "value": "  98%"},
+    {"attribute": "Mem Total", "value": "3887616"},
+    {"attribute": "Mem Avail", "value": "2930392"},
+    {"attribute": "storage", "value": "61660659712"},
+    {"attribute": "storage free", "value": "57942274048"},
+    {"attribute": "Uptime", "value": "01:19:44"},
+]
+_INTERFACE_ADDRS = [
+    {"id": 3, "flags": ["ONLINE"], "device": "A1", "address": "10.21.0.1/22"},
+    {"id": 0, "flags": ["DYNAMIC"], "device": "wan0", "address": "213.232.100.192/32"},
+]
 
 
 def _ok(content: object, *, sessionid: str | None = None) -> Response:
@@ -70,6 +85,10 @@ def _router(request: Request) -> Response:
         return _ok(_APPMGMT_STATUS)
     if (module, command) == ("ipsec", ["status"]):
         return _ok(_IPSEC_STATUS)
+    if (module, command) == ("system", ["info"]):
+        return _ok(_SYSTEM_INFO)
+    if (module, command) == ("interface", ["address", "get"]):
+        return _ok(_INTERFACE_ADDRS)
     return Response(200, json={"result": {"code": 400, "message": "unknown command"}})
 
 
@@ -91,6 +110,25 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
     assert {(c.local_ts, c.remote_ts, c.state) for c in t.children} == {
         ("10.21.0.0/22", "10.1.1.0/24", "INSTALLED"),
         ("10.21.0.0/22", "10.2.2.0/24", ""),
+    }
+
+
+@pytest.mark.asyncio
+async def test_poll_status_maps_metrics_and_interfaces() -> None:
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_router)
+        async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False) as sp:
+            status = await sp.poll_status()
+
+    assert status.name == "bensheim.stylite.de"
+    assert status.version == "14.1.6"
+    assert status.uptime == "01:19:44"
+    assert status.cpu.total == 2.0  # 100 - 98% idle
+    assert status.memory.used_pct == round((3887616 - 2930392) / 3887616 * 100, 1)
+    assert status.disks and status.disks[0].mountpoint == "/data"
+    assert {(i.name, i.address, i.status) for i in status.interfaces} == {
+        ("A1", "10.21.0.1/22", "up"),
+        ("wan0", "213.232.100.192/32", "up"),
     }
 
 
