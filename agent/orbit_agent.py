@@ -34,7 +34,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "0.9.8"
+__version__ = "0.9.9"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -2226,7 +2226,9 @@ def _persist_token(cfg: Config, token: str) -> None:
         data = json.loads(p.read_text()) if p.exists() else {}
         data["agent_token"] = token
         data.pop("enroll_code", None)
-        p.write_text(json.dumps(data, indent=4))
+        # Config holds agent_token + local_api_secret — write 0600 (no world-readable
+        # window). write_text would create with root's umask (0644).
+        _write_private(p, json.dumps(data, indent=4))
     except (OSError, ValueError) as exc:
         log.warning("enroll: could not persist token to %s: %s", cfg.path, exc)
 
