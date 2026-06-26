@@ -83,6 +83,31 @@ class SystemStatus(BaseModel):
 # --- IPsec ------------------------------------------------------------------
 
 
+class IPsecChild(BaseModel):
+    """One Phase-2 entry (child SA) of a tunnel, plus its optional ping result.
+
+    ``state`` is the live child SA state (INSTALLED / REKEYING / …) or "" when the
+    Phase 2 is configured but down. The ``ping_*`` fields are populated only when a
+    ping monitor is configured for this child (else ``ping_state`` stays "none").
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str = ""  # child SA name (Phase-2 id; UUID on OPNsense)
+    local_ts: str = ""  # local traffic selector, e.g. "10.1.1.0/24"
+    remote_ts: str = ""  # remote traffic selector, e.g. "10.2.2.0/24"
+    state: str = ""  # INSTALLED / REKEYING / … ; "" = configured but down
+    bytes_in: int = 0
+    bytes_out: int = 0
+    # Agent-suggested local source IP (box-owned, inside local_ts) for the monitor.
+    suggested_source: str = ""
+    # Ping monitor result: none (unconfigured) | ok | fail (no reply) | error (misconfig).
+    ping_state: str = "none"
+    ping_rtt_ms: float | None = None
+    ping_loss_pct: float | None = None
+    ping_ts: str | None = None  # ISO timestamp of the last ping check
+
+
 class IPsecTunnel(BaseModel):
     """One IPsec tunnel (Phase 1 + Phase 2 combined)."""
 
@@ -103,6 +128,7 @@ class IPsecTunnel(BaseModel):
     seconds_established: int = 0  # phase-1 uptime in seconds (agent path; 0 if down/unknown)
     phase2_up: int = 0  # installed child (phase-2) SAs
     phase2_total: int = 0  # configured child (phase-2) SAs — the "n" in "x/n up"
+    children: list[IPsecChild] = []  # per-Phase-2 detail (agent path); [] in direct mode
 
 
 class IPsecServiceStatus(BaseModel):

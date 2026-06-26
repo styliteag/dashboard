@@ -136,6 +136,44 @@ def ipsec_checks(ipsec: IPsecServiceStatus) -> list[ServiceCheck]:
                 summary=f"Tunnel {label} {'up' if up else 'down'} ({t.phase1_status})",
             )
         )
+        out += _ipsec_ping_checks(label, t)
+    return out
+
+
+def _ipsec_ping_checks(label: str, tunnel) -> list[ServiceCheck]:  # noqa: ANN001
+    """Per-Phase-2 ping-monitor checks for one tunnel.
+
+    A configured ping that gets no reply is CRIT even when the child SA is
+    INSTALLED — that is the whole point: an installed-but-not-passing tunnel must
+    surface as a problem. A misconfigured probe (bad source / no route) is WARN,
+    not CRIT, so it is not mistaken for a real outage. Unconfigured children are
+    skipped (ping_state "none").
+    """
+    out: list[ServiceCheck] = []
+    for ch in getattr(tunnel, "children", []):
+        ps = (ch.ping_state or "none").strip().lower()
+        if ps == "none":
+            continue
+        selector = ch.remote_ts or ch.name or "?"
+        if ps == "ok":
+            state, word = CheckState.OK, "ping ok"
+        elif ps == "fail":
+            state, word = CheckState.CRIT, "ping FAILED (no reply)"
+        else:  # "error" or anything unexpected → misconfiguration, not an outage
+            state, word = CheckState.WARN, "ping error (check source/destination)"
+        metrics: list[PerfMetric] = []
+        if ch.ping_loss_pct is not None:
+            metrics.append(PerfMetric(name="ping_loss_pct", value=ch.ping_loss_pct, unit="%"))
+        if ch.ping_rtt_ms is not None:
+            metrics.append(PerfMetric(name="ping_rtt_ms", value=ch.ping_rtt_ms, unit="ms"))
+        out.append(
+            ServiceCheck(
+                key=f"ipsec.tunnel_ping:{label}/{selector}",
+                state=int(state),
+                summary=f"Tunnel {label} P2 {selector} {word}",
+                metrics=metrics,
+            )
+        )
     return out
 
 

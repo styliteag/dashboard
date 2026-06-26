@@ -42,6 +42,7 @@ from app.config import get_settings
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import EnrollmentCode, Instance, User
 from app.devices.types import Transport
+from app.ipsec import ping_service
 
 # Agent files are baked into /app/agent/ in the production container.
 # Override via AGENT_DIR env var for local dev.
@@ -138,6 +139,14 @@ async def agent_websocket(ws: WebSocket):
                     "instance_name": instance_name,
                 }
             )
+            # Push the instance's IPsec ping-monitor config so the agent starts
+            # probing immediately on (re)connect. Best-effort: a failure here must
+            # never tear down the agent connection.
+            try:
+                async with get_sessionmaker()() as cfg_session:
+                    await ping_service.push_to_agent(cfg_session, instance_id)
+            except Exception:
+                log.warning("agent.ping_config_push_failed", instance_id=instance_id)
 
         # Main message loop
         async for raw in ws.iter_text():

@@ -25,6 +25,7 @@ from app.xsense.schemas import (
     FirmwareStatus,
     GatewayStatus,
     InterfaceStats,
+    IPsecChild,
     IPsecServiceStatus,
     IPsecTunnel,
     MemoryUsage,
@@ -90,6 +91,22 @@ def gateways_from_agent(data: dict) -> list[GatewayStatus]:
     ]
 
 
+def _child_from_agent(c: dict) -> IPsecChild:
+    return IPsecChild(
+        name=c.get("name", ""),
+        local_ts=c.get("local_ts", ""),
+        remote_ts=c.get("remote_ts", ""),
+        state=c.get("state", ""),
+        bytes_in=int(c.get("bytes_in", 0)),
+        bytes_out=int(c.get("bytes_out", 0)),
+        suggested_source=c.get("suggested_source", ""),
+        ping_state=c.get("ping_state", "none"),
+        ping_rtt_ms=c.get("ping_rtt_ms"),
+        ping_loss_pct=c.get("ping_loss_pct"),
+        ping_ts=c.get("ping_ts"),
+    )
+
+
 def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
     ipsec_data = data.get("ipsec", {})
     return IPsecServiceStatus(
@@ -107,6 +124,7 @@ def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
                 bytes_in=int(t.get("bytes_in", 0)),
                 bytes_out=int(t.get("bytes_out", 0)),
                 unique_id=t.get("unique_id", ""),
+                children=[_child_from_agent(c) for c in t.get("children", [])],
             )
             for t in ipsec_data.get("tunnels", [])
         ],

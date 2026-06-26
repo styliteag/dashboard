@@ -15,6 +15,7 @@ from app.db.base import get_session
 from app.db.models import Instance, User
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
+from app.xsense.schemas import IPsecChild
 
 router = APIRouter(tags=["views"])
 
@@ -41,6 +42,7 @@ class GlobalTunnel(BaseModel):
     seconds_established: int
     bytes_in: int
     bytes_out: int
+    children: list[IPsecChild] = []
 
 
 class GlobalVPNResponse(BaseModel):
@@ -89,6 +91,7 @@ async def global_vpn_overview(
                     seconds_established=t.seconds_established,
                     bytes_in=t.bytes_in,
                     bytes_out=t.bytes_out,
+                    children=t.children,
                 )
                 for t in status.tunnels
             ]
