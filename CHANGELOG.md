@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **IPsec Phase-2 count inflated during a child-SA rekey (e.g. "4/2")** — a make-before-break child-SA rekey briefly lists two SAs for the same traffic-selector pair (old `INSTALLED` + new), and the agent counted each, so `phase2_up` exceeded `phase2_total` and bytes were double-counted (and the Phase-2 detail list showed duplicate rows). The agent now collapses child SAs per selector pair, keeping the `INSTALLED` / higher-traffic one — mirroring the existing IKE-level rekey-dedup. (Agent `__version__` → 1.5.2.)
 - **Edited instance fields only showed after a page reload** — saving the Edit-instance dialog invalidated only the `["instances"]` list query, not the detail page's `["instance", id]` query, so changes like toggling **Auto-login** weren't reflected on the open instance page until a full reload. The dialog now invalidates the detail query too.
 
 ## [1.4.2] - 2026-06-26

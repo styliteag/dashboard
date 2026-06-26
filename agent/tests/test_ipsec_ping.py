@@ -31,6 +31,36 @@ def test_parse_sas_keeps_child_detail() -> None:
     assert (child["bytes_in"], child["bytes_out"]) == (5, 7)
 
 
+def test_parse_sas_dedupes_rekey_child_dups() -> None:
+    # Two child SAs for the SAME selector pair (make-before-break rekey) collapse
+    # to one Phase 2 — fixes the "4/2" double-count. Keeps the higher-traffic one.
+    raw = (
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "child-sas {a-1 {name=a state=INSTALLED bytes-in=10 bytes-out=20 "
+        "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]} "
+        "a-2 {name=a state=INSTALLED bytes-in=1 bytes-out=2 "
+        "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}"
+    )
+    s = agent._parse_swanctl_sas(raw)[0]
+    assert s["phase2_up"] == 1
+    assert s["phase2_total"] == 1
+    assert len(s["children"]) == 1
+    assert (s["bytes_in"], s["bytes_out"]) == (10, 20)  # higher-traffic SA wins
+
+
+def test_parse_sas_keeps_distinct_selectors() -> None:
+    # Two DIFFERENT selector pairs = two real Phase 2 → both kept (2/2).
+    raw = (
+        "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "child-sas {a {name=a state=INSTALLED local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]} "
+        "b {name=b state=INSTALLED local-ts=[10.99.1.0/24] remote-ts=[10.99.2.0/24]}}}"
+    )
+    s = agent._parse_swanctl_sas(raw)[0]
+    assert s["phase2_up"] == 2
+    assert s["phase2_total"] == 2
+    assert len(s["children"]) == 2
+
+
 def test_parse_conns_keeps_child_selectors() -> None:
     child = agent._parse_swanctl_conns(_CONNS)[0]["children"][0]
     assert child["name"] == "y"

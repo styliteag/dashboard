@@ -36,7 +36,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -514,42 +514,67 @@ def _is_shunt_conn(children: object) -> bool:
     return bool(modes) and not any(m in _TUNNEL_CHILD_MODES for m in modes)
 
 
+def _child_rank(c: dict) -> tuple:
+    """Order child SAs sharing a selector pair so the live one wins (INSTALLED, then traffic)."""
+    return (c.get("state") == "INSTALLED", c.get("bytes_in", 0) + c.get("bytes_out", 0))
+
+
+def _dedupe_children(children: list[dict]) -> list[dict]:
+    """Collapse make-before-break child-SA rekey dups: one row per Phase-2.
+
+    A child SA rekey briefly lists two SAs for the SAME traffic-selector pair
+    (old INSTALLED + new), which would otherwise double the phase-2 count and
+    bytes (e.g. "4/2"). Keep the best (INSTALLED, then most traffic) per selector
+    pair. Children with no selectors can't be told apart, so they pass through.
+    """
+    best: dict = {}
+    order: list = []
+    passthrough: list[dict] = []
+    for c in children:
+        sel = (c.get("local_ts"), c.get("remote_ts"))
+        if not (sel[0] or sel[1]):
+            passthrough.append(c)
+            continue
+        if sel not in best:
+            order.append(sel)
+        cur = best.get(sel)
+        if cur is None or _child_rank(c) > _child_rank(cur):
+            best[sel] = c
+    return [best[k] for k in order] + passthrough
+
+
 def _parse_swanctl_sas(out: str) -> list[dict]:
     """Parse `swanctl --list-sas --raw` into one record per active IKE_SA.
 
     Phase-1 state lives at the IKE level; traffic counters and the phase-2 state
-    live in the nested `child-sas` sections (summed here).
+    live in the nested `child-sas` sections (deduped per selector pair, then
+    summed) — see _dedupe_children for the rekey-dup collapse.
     """
     if not out.strip():
         return []
     sas = []
     for name, ike in _iter_sections(_tokenize_vici(out), _IKE_SA_MARKERS):
         children = ike.get("child-sas")
-        bytes_in = bytes_out = 0
-        phase2_up = phase2_total = 0  # one IKE_SA may carry several child (phase-2) SAs
         child_rows: list[dict] = []
         if isinstance(children, dict):
             for ckey, child in children.items():
                 if not isinstance(child, dict):
                     continue
-                phase2_total += 1
-                cbi = _to_int(child.get("bytes-in"))
-                cbo = _to_int(child.get("bytes-out"))
-                bytes_in += cbi
-                bytes_out += cbo
-                state = str(child.get("state", "")).upper()
-                if state == "INSTALLED":
-                    phase2_up += 1
                 child_rows.append({
                     # The child carries its own `name` (bare UUID on OPNsense); the
                     # section key appends a "-N" instance suffix — strip it as fallback.
                     "name": _first(child.get("name")) or re.sub(r"-\d+$", "", ckey),
                     "local_ts": _first(child.get("local-ts")),
                     "remote_ts": _first(child.get("remote-ts")),
-                    "state": state,
-                    "bytes_in": cbi,
-                    "bytes_out": cbo,
+                    "state": str(child.get("state", "")).upper(),
+                    "bytes_in": _to_int(child.get("bytes-in")),
+                    "bytes_out": _to_int(child.get("bytes-out")),
                 })
+        child_rows = _dedupe_children(child_rows)
+        phase2_total = len(child_rows)  # distinct phase-2 (selector pairs)
+        phase2_up = sum(1 for c in child_rows if c["state"] == "INSTALLED")
+        bytes_in = sum(c["bytes_in"] for c in child_rows)
+        bytes_out = sum(c["bytes_out"] for c in child_rows)
         sas.append({
             "name": name,  # the SA's connection name — may be stale after a config reload
             "remote": ike.get("remote-host", ""),
