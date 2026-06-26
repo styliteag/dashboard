@@ -558,3 +558,47 @@ def test_system_info_includes_platform(monkeypatch: pytest.MonkeyPatch) -> None:
     info = agent.collect_system_info()
     assert info["platform"] == "opnsense"
     assert info["agent_version"] == agent.__version__
+
+
+# Real `df -T -h` from an OPNsense ZFS box: one zroot pool spread over many
+# datasets, plus a devfs, an msdosfs EFI partition, and unbound nullfs binds.
+_DF_OPN = """\
+Filesystem                 Type       Size    Used   Avail Capacity  Mounted on
+zroot/ROOT/default         zfs         11G    1.5G    9.6G    14%    /
+devfs                      devfs      1.0K      0B    1.0K     0%    /dev
+/dev/gpt/efiboot0          msdosfs    260M    1.3M    259M     1%    /boot/efi
+zroot/var/log              zfs        9.6G     10G     9.6G    52%    /var/log
+zroot/tmp                  zfs        9.6G    1.4M    9.6G     0%    /tmp
+zroot                      zfs        9.6G     96K    9.6G     0%    /zroot
+/usr/local/lib/python3.13  nullfs      11G    1.5G    9.6G    14%    /var/unbound/usr/local/lib/python3.13
+"""
+
+# Real `df -T -h` from a pfSense UFS box: a ufs root, a tmpfs, and two devfs.
+_DF_PF = """\
+Filesystem                   Type     Size    Used   Avail Capacity  Mounted on
+/dev/ufsid/6a3b8c56991e8004  ufs       14G    2.2G     11G    17%    /
+devfs                        devfs    1.0K      0B    1.0K     0%    /dev
+tmpfs                        tmpfs    4.0M    172K    3.8M     4%    /var/run
+devfs                        devfs    1.0K      0B    1.0K     0%    /var/dhcpd/dev
+"""
+
+
+def test_collect_disk_collapses_zfs_pool_and_drops_pseudo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _DF_OPN)
+    disks = agent.collect_disk()
+    mounts = {d["mountpoint"] for d in disks}
+    # devfs + nullfs gone; the whole zroot pool collapses to its root mount "/".
+    assert mounts == {"/", "/boot/efi"}
+    root = next(d for d in disks if d["mountpoint"] == "/")
+    # Label stays "/", but the value is the pool's WORST dataset (/var/log at 52%),
+    # not the near-empty root dataset (14%) — a filling /var/log must not be hidden.
+    assert root["used_pct"] == 52.0
+    assert all("fstype" not in d for d in disks)
+
+
+def test_collect_disk_keeps_ufs_and_tmpfs_drops_devfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _DF_PF)
+    disks = agent.collect_disk()
+    mounts = {d["mountpoint"] for d in disks}
+    # Both devfs entries dropped; real ufs root and the tmpfs survive.
+    assert mounts == {"/", "/var/run"}

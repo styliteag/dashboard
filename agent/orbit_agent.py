@@ -14,6 +14,7 @@ import base64
 import contextlib
 import hashlib
 import http.client
+import ipaddress
 import json
 import logging
 import os
@@ -24,6 +25,7 @@ import ssl
 import struct
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -34,7 +36,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.4.2"
+__version__ = "1.5.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -57,6 +59,11 @@ log = logging.getLogger("orbit-agent")
 # Active config — set in main(). The HTTP relay (execute_command runs without a
 # cfg arg) reads the local OPNsense API settings from here.
 _CONFIG: Config | None = None
+
+# IPsec Phase-2 ping monitors, pushed by the dashboard via a `config_update` frame
+# (see _listen_loop_inner). Each entry: {tunnel_id, child_name, local_ts, remote_ts,
+# source, destination, enabled, ping_count}. collect_ipsec pings each enabled match.
+_PING_MONITORS: list[dict] = []
 
 
 # =============================================================================
@@ -195,19 +202,64 @@ def collect_memory() -> dict:
     }
 
 
+# Pseudo filesystems report no meaningful capacity (or mirror another mount via
+# nullfs) — they only inflate the metrics row count, so we drop them.
+_PSEUDO_FSTYPES = frozenset({"devfs", "fdescfs", "procfs", "nullfs", "linprocfs", "linsysfs"})
+
+
+def _zfs_pool(device: str) -> str:
+    """Pool name of a ZFS dataset device (``zroot/ROOT/default`` -> ``zroot``)."""
+    return device.split("/", 1)[0]
+
+
+def _disk_pref(row: dict) -> tuple[int, int]:
+    """Representative-pick order within a pool: the ``/`` mount wins, then shortest path."""
+    mp = row["mountpoint"]
+    return (0 if mp == "/" else 1, len(mp))
+
+
+def _collapse_zfs_pools(rows: list[dict]) -> list[dict]:
+    """Collapse each ZFS pool's datasets to one entry. Datasets share the pool's
+    free space, so one row per pool suffices — but each dataset's capacity% is its
+    own usage over that shared free, so they diverge (a filling ``/var/log`` reads
+    high while root reads low). We keep a stable label (the ``/`` mount, else the
+    shortest path) but report the pool's *worst* dataset fill, so a separate
+    dataset filling up is never masked by a near-empty root. Non-ZFS rows pass
+    through unchanged (order preserved; collapsed pools land at the end)."""
+    passthrough = [r for r in rows if r["fstype"] != "zfs"]
+    rep: dict[str, dict] = {}  # pool -> representative row (drives the label)
+    worst: dict[str, float] = {}  # pool -> max used_pct across the pool
+    for row in rows:
+        if row["fstype"] != "zfs":
+            continue
+        pool = _zfs_pool(row["device"])
+        worst[pool] = max(worst.get(pool, 0.0), row["used_pct"])
+        if pool not in rep or _disk_pref(row) < _disk_pref(rep[pool]):
+            rep = {**rep, pool: row}
+    collapsed = [{**rep[pool], "used_pct": worst[pool]} for pool in rep]
+    return passthrough + collapsed
+
+
 def collect_disk() -> list[dict]:
-    """Get disk usage from df."""
-    out = _run(["df", "-h"])
-    disks = []
-    for line in out.splitlines()[1:]:
+    """Disk usage from ``df -T``, minus pseudo filesystems and with each ZFS pool
+    collapsed to a single entry (datasets in a pool share free space)."""
+    rows: list[dict] = []
+    for line in _run(["df", "-T", "-h"]).splitlines()[1:]:
         parts = line.split()
-        if len(parts) >= 6 and parts[4].endswith("%"):
-            disks.append({
-                "device": parts[0],
-                "mountpoint": parts[5],
-                "used_pct": float(parts[4].rstrip("%")),
-            })
-    return disks
+        if len(parts) < 7 or not parts[5].endswith("%"):
+            continue
+        if parts[1] in _PSEUDO_FSTYPES:
+            continue
+        rows.append({
+            "device": parts[0],
+            "fstype": parts[1],
+            "mountpoint": parts[6],
+            "used_pct": float(parts[5].rstrip("%")),
+        })
+    return [
+        {"device": r["device"], "mountpoint": r["mountpoint"], "used_pct": r["used_pct"]}
+        for r in _collapse_zfs_pools(rows)
+    ]
 
 
 def collect_interfaces() -> list[dict]:
@@ -475,14 +527,29 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
         children = ike.get("child-sas")
         bytes_in = bytes_out = 0
         phase2_up = phase2_total = 0  # one IKE_SA may carry several child (phase-2) SAs
+        child_rows: list[dict] = []
         if isinstance(children, dict):
-            for child in children.values():
-                if isinstance(child, dict):
-                    phase2_total += 1
-                    bytes_in += _to_int(child.get("bytes-in"))
-                    bytes_out += _to_int(child.get("bytes-out"))
-                    if str(child.get("state", "")).upper() == "INSTALLED":
-                        phase2_up += 1
+            for ckey, child in children.items():
+                if not isinstance(child, dict):
+                    continue
+                phase2_total += 1
+                cbi = _to_int(child.get("bytes-in"))
+                cbo = _to_int(child.get("bytes-out"))
+                bytes_in += cbi
+                bytes_out += cbo
+                state = str(child.get("state", "")).upper()
+                if state == "INSTALLED":
+                    phase2_up += 1
+                child_rows.append({
+                    # The child carries its own `name` (bare UUID on OPNsense); the
+                    # section key appends a "-N" instance suffix — strip it as fallback.
+                    "name": _first(child.get("name")) or re.sub(r"-\d+$", "", ckey),
+                    "local_ts": _first(child.get("local-ts")),
+                    "remote_ts": _first(child.get("remote-ts")),
+                    "state": state,
+                    "bytes_in": cbi,
+                    "bytes_out": cbo,
+                })
         sas.append({
             "name": name,  # the SA's connection name — may be stale after a config reload
             "remote": ike.get("remote-host", ""),
@@ -494,6 +561,7 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
             "bytes_in": bytes_in,
             "bytes_out": bytes_out,
             "unique_id": str(ike.get("uniqueid", "")),  # stable handle for --terminate --ike-id
+            "children": child_rows,  # per-Phase-2 detail for the dashboard
         })
     return sas
 
@@ -511,12 +579,23 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
         children = conn.get("children")
         if _is_shunt_conn(children):
             continue  # pfSense `bypass` passthrough policy — not a real tunnel
+        child_rows: list[dict] = []
+        if isinstance(children, dict):
+            for ckey, child in children.items():
+                if not isinstance(child, dict):
+                    continue
+                child_rows.append({
+                    "name": ckey,  # configured child key = the Phase-2 id (UUID on OPNsense)
+                    "local_ts": _first(child.get("local-ts")),
+                    "remote_ts": _first(child.get("remote-ts")),
+                })
         conns.append({
             "name": name,
             "local": _first(conn.get("local_addrs")),
             "remote": _first(conn.get("remote_addrs")),
             # configured phase-2 children → the "n" in "x/n up"
             "phase2_total": len(children) if isinstance(children, dict) else 0,
+            "children": child_rows,  # configured Phase-2 selectors (up or down)
         })
     return conns
 
@@ -552,12 +631,52 @@ def _ipsec_descriptions(config_path: str = "/conf/config.xml") -> dict[str, str]
     return descriptions
 
 
+def _child_row(cc: dict | None, sc: dict | None) -> dict:
+    """One merged Phase-2 row: configured selectors annotated with live SA state."""
+    cc = cc or {}
+    sc = sc or {}
+    return {
+        "name": cc.get("name") or sc.get("name") or "",
+        "local_ts": cc.get("local_ts") or sc.get("local_ts") or "",
+        "remote_ts": cc.get("remote_ts") or sc.get("remote_ts") or "",
+        "state": sc.get("state", ""),  # "" = configured but no live child SA (down)
+        "bytes_in": sc.get("bytes_in", 0),
+        "bytes_out": sc.get("bytes_out", 0),
+    }
+
+
+def _merge_children(conn_children: list[dict], sa_children: list[dict]) -> list[dict]:
+    """Overlay live child SAs onto configured Phase-2 entries.
+
+    Match by name first, then by traffic-selector pair (the child name drifts when
+    OPNsense regenerates UUIDs on apply). Live children with no configured match
+    are still surfaced so nothing disappears.
+    """
+    sa_by_name = {c["name"]: c for c in sa_children if c.get("name")}
+    sa_by_sel = {(c.get("local_ts"), c.get("remote_ts")): c for c in sa_children}
+    out: list[dict] = []
+    used: set[int] = set()
+    for cc in conn_children:
+        sc = sa_by_name.get(cc.get("name")) or sa_by_sel.get(
+            (cc.get("local_ts"), cc.get("remote_ts"))
+        )
+        if sc is not None:
+            used.add(id(sc))
+        out.append(_child_row(cc, sc))
+    for sc in sa_children:
+        if id(sc) not in used:
+            out.append(_child_row(None, sc))
+    return out
+
+
 def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[str, str]) -> dict:
     """Build one dashboard tunnel row, preferring live SA data when present."""
     conn = conn or {}
+    children = _merge_children(conn.get("children", []), (sa or {}).get("children", []))
     base = {
         "id": name,  # connection name → `swanctl --initiate --ike <id>`
         "description": descriptions.get(name) or name,  # human name, else the UUID
+        "children": children,  # per-Phase-2 detail (selectors + live state)
     }
     if sa is not None:
         return {
@@ -648,6 +767,109 @@ def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str
     return tunnels
 
 
+def _box_inet_addrs() -> list[str]:
+    """IPv4 addresses this box owns (from ifconfig) — used to suggest a ping source."""
+    return re.findall(r"\binet (\d+\.\d+\.\d+\.\d+)", _run(["ifconfig"]))
+
+
+def _suggest_source(local_ts: str, box_ips: list[str]) -> str:
+    """A box-owned IP inside the Phase-2 local selector, or "" if none.
+
+    ``ping -S`` requires a source the box actually owns *and* that falls in the
+    local selector for the packet to enter the tunnel — surface a valid default.
+    """
+    if not local_ts:
+        return ""
+    try:
+        net = ipaddress.ip_network(local_ts, strict=False)
+    except ValueError:
+        return ""
+    for ip in box_ips:
+        try:
+            if ipaddress.ip_address(ip) in net:
+                return ip
+        except ValueError:
+            continue
+    return ""
+
+
+def _ping_once(source: str, dest: str, count: int) -> dict:
+    """Ping ``dest`` from ``source`` (FreeBSD ping). Classify ok / fail / error.
+
+    fail = no reply (the tunnel-not-passing signal); error = the probe could not
+    run (bad/unassignable source, unresolvable host) — a misconfiguration, not an
+    outage. ``-S`` binds the source; an unowned source fails immediately with no
+    loss summary, which we read as error.
+    """
+    if not dest:
+        return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
+    timeout = max(count + 1, 3)
+    cmd = ["ping", "-n", "-c", str(count), "-t", str(timeout)]
+    if source:
+        cmd += ["-S", source]
+    cmd.append(dest)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
+    except (subprocess.TimeoutExpired, OSError):
+        return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
+    out = (r.stdout or "") + (r.stderr or "")
+    m = re.search(r"([\d.]+)%\s*packet loss", out)
+    if m is None:
+        # No summary line → the probe never ran (e.g. "bind: Can't assign requested
+        # address", "cannot resolve") → misconfiguration.
+        return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
+    loss = float(m.group(1))
+    rtt: float | None = None
+    rm = re.search(r"=\s*[\d.]+/([\d.]+)/", out)  # min/avg/max/stddev → avg
+    if rm:
+        rtt = float(rm.group(1))
+    return {
+        "ping_state": "ok" if loss < 100 else "fail",
+        "ping_loss_pct": loss,
+        "ping_rtt_ms": rtt,
+    }
+
+
+def _match_monitor(tunnel: dict, child: dict, monitors: list[dict]) -> dict | None:
+    """Find an enabled monitor for this child: by name, selector pair, or whole-tunnel."""
+    for m in monitors:
+        if not m.get("enabled", True) or m.get("tunnel_id") != tunnel.get("id"):
+            continue
+        child_name = m.get("child_name") or ""
+        if not child_name:  # "" applies to the whole tunnel
+            return m
+        if child_name == child.get("name"):
+            return m
+        if (
+            m.get("local_ts")
+            and m.get("local_ts") == child.get("local_ts")
+            and m.get("remote_ts") == child.get("remote_ts")
+        ):
+            return m
+    return None
+
+
+def run_ping_checks(tunnels: list[dict], monitors: list[dict], now_iso: str) -> None:
+    """Run each configured Phase-2 ping concurrently; annotate the matching child."""
+    jobs: list[tuple[dict, str, str, int]] = []
+    for t in tunnels:
+        for ch in t.get("children", []):
+            m = _match_monitor(t, ch, monitors)
+            if m is None:
+                continue
+            jobs.append((ch, m.get("source", ""), m.get("destination", ""), int(m.get("ping_count") or 3)))
+    if not jobs:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
+        futures = {pool.submit(_ping_once, src, dst, cnt): ch for ch, src, dst, cnt in jobs}
+        for future, ch in futures.items():
+            try:
+                ch.update(future.result())
+            except Exception:  # noqa: BLE001 — one bad ping must not sink the push
+                ch.update({"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None})
+            ch["ping_ts"] = now_iso
+
+
 def collect_ipsec() -> dict:
     """Get IPsec tunnels: configured connections merged with live SA status."""
     descriptions = _ipsec_descriptions()
@@ -673,6 +895,14 @@ def collect_ipsec() -> dict:
                 "bytes_out": 0,
                 "unique_id": match.group(2),
             })
+
+    # Annotate each Phase-2 with a suggested ping source, then run configured pings.
+    box_ips = _box_inet_addrs()
+    for t in tunnels:
+        for ch in t.get("children", []):
+            ch.setdefault("ping_state", "none")
+            ch["suggested_source"] = _suggest_source(ch.get("local_ts", ""), box_ips)
+    run_ping_checks(tunnels, _PING_MONITORS, datetime.now(UTC).isoformat())
 
     running = bool(_run(["pgrep", "-x", "charon"]).strip())
     return {"running": running, "tunnels": tunnels}
@@ -2220,8 +2450,13 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 }))
 
             elif msg_type == "config_update":
-                # Dashboard can update push interval etc.
-                log.info("received config update: %s", msg)
+                # Dashboard pushes config (currently: IPsec Phase-2 ping monitors).
+                data = msg.get("data", {})
+                monitors = data.get("ipsec_ping_monitors")
+                if monitors is not None:
+                    global _PING_MONITORS
+                    _PING_MONITORS = monitors if isinstance(monitors, list) else []
+                    log.info("applied %d ipsec ping monitor(s)", len(_PING_MONITORS))
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
