@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-06-26
+
 ### Fixed
 
 - **Agent launcher now finds any Python 3 version** — the rc.d service and `run-agent.sh` supervisor resolved the interpreter from a hardcoded list (`python3`, `python3.11`, `python3.10`, `python3.9`), so an older pfSense shipping only `python3.8` (or a newer one with `python3.12`/`3.13`) had no match and the agent never started. They now prefer an unversioned `python3` and otherwise pick the **newest** `python3.N` found in `/usr/local/bin` or `/usr/bin` (version-agnostic glob), so the agent runs regardless of which Python minor the box ships. The agent code itself is Python 3.8+ compatible (stdlib-only, `from __future__ import annotations`). Note: the launcher scripts are install-time files — self-update only swaps `orbit_agent.py`, so already-deployed boxes need the launcher re-fetched (dashboard serves them at `/api/agent/run` and `/api/agent/rc`) or a reinstall.
