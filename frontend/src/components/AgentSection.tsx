@@ -541,7 +541,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ① Token */}
                 <Step number={1} title="Copy your agent token">
                   <p className="text-xs text-slate-500">
-                    This token authenticates the agent with this dashboard. It's
+                    This token authenticates the agent with this dashboard. It&apos;s
                     already pre-filled into the install command in step 4.
                   </p>
                   <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
