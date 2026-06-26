@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Unused `metrics_5m` rollup table** — the 5-minute rollup was write-only: `read_metrics` always buckets from the raw `metrics` table on the fly (every chart range, including 30d), so nothing ever read `metrics_5m`, yet its 365-day retention made it the bulk of the DB footprint. The table (Alembic `008`), the `rollup_5m` scheduler job, and the `DASH_METRICS_5M_RETENTION_DAYS` setting are removed. Raw-metrics retention (`metrics_retention_days`, 30d) is unchanged and still serves all existing charts.
 
+### Fixed
+
+- **Edited instance fields only showed after a page reload** — saving the Edit-instance dialog invalidated only the `["instances"]` list query, not the detail page's `["instance", id]` query, so changes like toggling **Auto-login** weren't reflected on the open instance page until a full reload. The dialog now invalidates the detail query too.
+
 ## [1.4.2] - 2026-06-26
 
 ### Fixed

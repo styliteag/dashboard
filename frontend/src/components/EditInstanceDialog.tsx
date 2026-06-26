@@ -54,6 +54,9 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] });
+      // Detail page reads ["instance", id]; without this the edited fields
+      // (e.g. Auto-login) only show after a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["instance", String(instance.id)] });
       onClose();
     },
     onError: (err) => {
