@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **IPsec tunnel flashing red while up (agent)** — during an IKE rekey (make-before-break) strongSwan briefly lists two SAs for one tunnel: the old `ESTABLISHED` SA still carrying the installed child + traffic, and a new `CONNECTING` SA mid-handshake. The agent indexed SAs last-wins, so a poll landing in that window surfaced the transient `CONNECTING` SA and the dashboard showed a red/connecting tunnel that was actually established and passing bytes (seen on busy/idle tunnels that re-handshake often). The agent now prefers the `ESTABLISHED` SA (then the one with an installed child / traffic) per connection, and no longer leaks the rekey dup as a phantom extra row.
+
 ## [1.4.1] - 2026-06-26
 
 ## [1.4.0] - 2026-06-26

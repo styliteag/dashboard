@@ -404,6 +404,40 @@ def test_merge_ipsec_surfaces_orphan_sa() -> None:
     assert t["status"] == "ESTABLISHED"
 
 
+def test_merge_ipsec_prefers_established_over_rekey_dup() -> None:
+    # Make-before-break: one connection, two live SAs for a few seconds — an old
+    # ESTABLISHED SA carrying the installed child + traffic, and a new CONNECTING
+    # SA mid-handshake. Last-wins would surface CONNECTING (red) even though the
+    # tunnel is up and passing bytes. The established SA must win.
+    conns = [{"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1"}]
+    established = {"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1",
+                  "status": "ESTABLISHED", "phase2_up": 1, "bytes_in": 860,
+                  "bytes_out": 1600, "unique_id": "73"}
+    connecting = {"name": "c1", "local": "9.9.9.9", "remote": "1.1.1.1",
+                  "status": "CONNECTING", "phase2_up": 0, "bytes_in": 0,
+                  "bytes_out": 0, "unique_id": "74"}
+    # CONNECTING listed last (newest SA) — the order that defeated last-wins.
+    tunnels = agent._merge_ipsec(conns, [established, connecting], {})
+    assert len(tunnels) == 1  # the dup is not surfaced as a second row
+    assert tunnels[0]["status"] == "ESTABLISHED"
+    assert tunnels[0]["unique_id"] == "73"  # disconnect targets the live SA
+    assert tunnels[0]["bytes_out"] == 1600
+
+
+def test_merge_ipsec_prefers_established_by_endpoint_dup() -> None:
+    # Same as above but matched by endpoint (SA name drifted from conn name).
+    conns = [{"name": "cfg", "local": "9.9.9.9", "remote": "1.1.1.1"}]
+    connecting = {"name": "sa-new", "local": "9.9.9.9", "remote": "1.1.1.1",
+                  "status": "CONNECTING", "phase2_up": 0, "bytes_in": 0,
+                  "bytes_out": 0, "unique_id": "74"}
+    established = {"name": "sa-old", "local": "9.9.9.9", "remote": "1.1.1.1",
+                  "status": "ESTABLISHED", "phase2_up": 1, "bytes_in": 5,
+                  "bytes_out": 7, "unique_id": "73"}
+    tunnels = agent._merge_ipsec(conns, [connecting, established], {})
+    assert tunnels[0]["status"] == "ESTABLISHED"
+    assert tunnels[0]["unique_id"] == "73"
+
+
 def test_merge_ipsec_uses_description_falls_back_to_uuid() -> None:
     conns = [
         {"name": "uuid-named", "local": "9.9.9.9", "remote": "1.1.1.1"},

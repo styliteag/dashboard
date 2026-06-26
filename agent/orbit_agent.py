@@ -34,7 +34,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -587,6 +587,34 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
     }
 
 
+def _sa_rank(sa: dict) -> tuple:
+    """Order SAs that share a name/endpoint so the live one wins a tie.
+
+    During an IKE rekey (make-before-break) strongSwan briefly lists two SAs for
+    one connection: the old ESTABLISHED SA still holding the INSTALLED child (and
+    its traffic) and a new CONNECTING SA mid-handshake. Indexing last-wins would
+    surface the transient CONNECTING SA — the dashboard then shows a red tunnel
+    that is actually up and passing bytes. Prefer ESTABLISHED, then an installed
+    child, then the one carrying traffic.
+    """
+    return (
+        str(sa.get("status", "")).upper() == "ESTABLISHED",
+        sa.get("phase2_up", 0),
+        sa.get("bytes_in", 0) + sa.get("bytes_out", 0),
+    )
+
+
+def _index_best(sas: list[dict], key) -> dict:
+    """Build a {key: sa} index keeping the highest-ranked SA per key."""
+    best: dict = {}
+    for s in sas:
+        k = key(s)
+        cur = best.get(k)
+        if cur is None or _sa_rank(s) > _sa_rank(cur):
+            best[k] = s
+    return best
+
+
 def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str]) -> list[dict]:
     """Overlay live SA status onto the configured connections.
 
@@ -594,21 +622,29 @@ def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str
     (the SA name can drift from the conn name after an OPNsense config reload).
     Active SAs with no matching conn are still surfaced so nothing disappears.
     """
-    sa_by_name = {s["name"]: s for s in sas}
-    sa_by_ep: dict[tuple[str, str], dict] = {}
-    for s in sas:
-        sa_by_ep.setdefault((s["local"], s["remote"]), s)
+    sa_by_name = _index_best(sas, lambda s: s["name"])
+    sa_by_ep = _index_best(sas, lambda s: (s["local"], s["remote"]))
 
     tunnels = []
-    matched: set[str] = set()
+    used_names: set[str] = set()
+    used_eps: set[tuple[str, str]] = set()
     for c in conns:
         sa = sa_by_name.get(c["name"]) or sa_by_ep.get((c["local"], c["remote"]))
         if sa is not None:
-            matched.add(sa["name"])
+            used_names.add(sa["name"])
+            used_eps.add((sa["local"], sa["remote"]))
         tunnels.append(_tunnel(c["name"], c, sa, descriptions))
+    # Surface orphan SAs (no matching conn) so nothing disappears — but only the
+    # best SA per name/endpoint, and never one already consumed above (a rekey
+    # dup shares the matched SA's endpoint even when its name drifted).
     for s in sas:
-        if s["name"] not in matched:
-            tunnels.append(_tunnel(s["name"], None, s, descriptions))
+        ep = (s["local"], s["remote"])
+        if s["name"] in used_names or ep in used_eps:
+            continue
+        used_names.add(s["name"])
+        used_eps.add(ep)
+        best = sa_by_name.get(s["name"], s)
+        tunnels.append(_tunnel(best["name"], None, best, descriptions))
     return tunnels
 
 
