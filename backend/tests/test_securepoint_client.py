@@ -134,10 +134,42 @@ async def test_login_failure_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_command_before_login_raises() -> None:
-    sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)
-    try:
-        with pytest.raises(SecurepointError, match="not logged in"):
-            await sp.appmgmt_status()
-    finally:
-        await sp.aclose()
+async def test_lazy_login_on_first_command() -> None:
+    """Registry uses the client without `async with`; first command must log in."""
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_router)
+        sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)
+        try:
+            services = await sp.appmgmt_status()  # no prior login()/async-with
+            assert services["ipsec"] == "UP"
+            assert sp._sessionid == _SID
+        finally:
+            await sp.aclose()
+
+
+@pytest.mark.asyncio
+async def test_relogin_once_on_session_expiry() -> None:
+    """An expired session triggers exactly one re-login, then the command retries."""
+    logins = {"count": 0}
+    expired_once = {"done": False}
+
+    def router(request: Request) -> Response:
+        payload = json.loads(request.content)
+        module, command = payload["module"], payload["command"]
+        if (module, command) == ("auth", ["login"]):
+            logins["count"] += 1
+            return _ok(["session opened"], sessionid=_SID)
+        if (module, command) == ("appmgmt", ["status"]) and not expired_once["done"]:
+            expired_once["done"] = True
+            return Response(200, json={"result": {"code": 401, "message": "invalid session"}})
+        return _router(request)
+
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=router)
+        sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)
+        try:
+            services = await sp.appmgmt_status()
+            assert services["ipsec"] == "UP"
+            assert logins["count"] == 2  # initial lazy login + one re-login
+        finally:
+            await sp.aclose()

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import type { Instance } from "../lib/types";
+import { DEVICE_TYPES, type Instance } from "../lib/types";
 import Dialog from "./Dialog";
 
 interface Props {
@@ -13,6 +13,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const [form, setForm] = useState({
     name: "",
     base_url: "https://",
+    device_type: "opnsense",
     agent_mode: false,
     api_key: "",
     api_secret: "",
@@ -24,14 +25,28 @@ export default function AddInstanceDialog({ onClose }: Props) {
   });
   const [error, setError] = useState<string | null>(null);
 
+  const isSecurepoint = form.device_type === "securepoint";
+
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  // Securepoint is direct-only and ships self-signed certs: force agent off + skip SSL verify.
+  const onDeviceTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const device_type = e.target.value;
+    const securepoint = device_type === "securepoint";
+    setForm((f) => ({
+      ...f,
+      device_type,
+      ...(securepoint ? { agent_mode: false, ssl_verify: false } : {}),
+    }));
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         name: form.name,
         base_url: form.base_url,
+        device_type: form.device_type,
         agent_mode: form.agent_mode,
         ...(!form.agent_mode && form.api_key ? { api_key: form.api_key } : {}),
         ...(!form.agent_mode && form.api_secret ? { api_secret: form.api_secret } : {}),
@@ -83,31 +98,61 @@ export default function AddInstanceDialog({ onClose }: Props) {
           label="Base URLs (comma-separated, HTTPS) *"
           value={form.base_url}
           onChange={set("base_url")}
+          placeholder={isSecurepoint ? "https://host:11115" : "https://10.0.0.1:4444"}
           required
         />
 
-        {/* Mode toggle */}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setForm((f) => ({ ...f, agent_mode: false }))}
-            className={`flex-1 rounded-lg py-2 text-sm ${!form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
+        <div className="space-y-1">
+          <label className="text-xs text-slate-400">Device type *</label>
+          <select
+            value={form.device_type}
+            onChange={onDeviceTypeChange}
+            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           >
-            Polling (API key)
-          </button>
-          <button
-            type="button"
-            onClick={() => setForm((f) => ({ ...f, agent_mode: true }))}
-            className={`flex-1 rounded-lg py-2 text-sm ${form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
-          >
-            Agent (no API key)
-          </button>
+            {DEVICE_TYPES.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {/* Mode toggle — Securepoint is direct-only, no agent. */}
+        {!isSecurepoint && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, agent_mode: false }))}
+              className={`flex-1 rounded-lg py-2 text-sm ${!form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
+            >
+              Polling (API key)
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, agent_mode: true }))}
+              className={`flex-1 rounded-lg py-2 text-sm ${form.agent_mode ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400"}`}
+            >
+              Agent (no API key)
+            </button>
+          </div>
+        )}
 
         {!form.agent_mode && (
           <>
-            <Input label="API Key *" value={form.api_key} onChange={set("api_key")} required type="password" />
-            <Input label="API Secret *" value={form.api_secret} onChange={set("api_secret")} required type="password" />
+            <Input
+              label={isSecurepoint ? "Username *" : "API Key *"}
+              value={form.api_key}
+              onChange={set("api_key")}
+              required
+              type={isSecurepoint ? "text" : "password"}
+            />
+            <Input
+              label={isSecurepoint ? "Password *" : "API Secret *"}
+              value={form.api_secret}
+              onChange={set("api_secret")}
+              required
+              type="password"
+            />
           </>
         )}
         {form.agent_mode && (

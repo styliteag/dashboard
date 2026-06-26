@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crypto.secrets import encrypt
 from app.db.models import Instance
-from app.devices.types import Transport
+from app.devices.types import DeviceType, Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
+from app.securepoint.client import SecurepointClient, SecurepointError
 from app.xsense.client import OPNsenseClient, OPNsenseError
 from app.xsense.registry import registry
 
@@ -151,9 +152,38 @@ async def soft_delete_instance(session: AsyncSession, inst: Instance) -> None:
     await registry.invalidate(inst.id)
 
 
-async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
-    """Open a *fresh* client (not the cached one) and call system_information."""
+async def _test_securepoint(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
+    """Probe a Securepoint box: login + system_info on a fresh session client."""
     from app.crypto.secrets import decrypt
+
+    client = SecurepointClient(
+        base_url=inst.primary_base_url,
+        user=decrypt(inst.api_key_enc),
+        password=decrypt(inst.api_secret_enc),
+        ca_bundle_pem=inst.ca_bundle,
+        ssl_verify=inst.ssl_verify,
+        timeout=10.0,
+    )
+    start = time.monotonic()
+    try:
+        await client.login()
+        await client.system_info()
+        return True, 200, int((time.monotonic() - start) * 1000), None
+    except SecurepointError as exc:
+        return False, None, int((time.monotonic() - start) * 1000), str(exc)
+    except Exception as exc:  # noqa: BLE001 — surface anything to the operator
+        return False, None, int((time.monotonic() - start) * 1000), f"{type(exc).__name__}: {exc}"
+    finally:
+        await client.logout()
+        await client.aclose()
+
+
+async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
+    """Open a *fresh* client (not the cached one) and probe reachability."""
+    from app.crypto.secrets import decrypt
+
+    if inst.device_type == DeviceType.SECUREPOINT.value:
+        return await _test_securepoint(inst)
 
     client = OPNsenseClient(
         base_url=inst.primary_base_url,

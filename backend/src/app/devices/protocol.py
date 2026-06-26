@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from app.xsense.schemas import SystemStatus
+from app.xsense.schemas import ActionResult, IPsecServiceStatus, SystemStatus
 
 
 @runtime_checkable
@@ -29,3 +29,21 @@ class DeviceClient(Protocol):
     async def aclose(self) -> None:
         """Release any held resources (HTTP pool, sockets, …)."""
         ...
+
+
+@runtime_checkable
+class SupportsIPsec(Protocol):
+    """Optional capability: a device client that exposes IPsec status + actions.
+
+    Both ``OPNsenseClient`` and ``SecurepointClient`` satisfy this. IPsec routes
+    narrow a ``DeviceClient`` to this via ``isinstance`` and 501 otherwise, so
+    IPsec-less device types (proxmox/truenas) get a clean unsupported path.
+    """
+
+    async def ipsec_status(self) -> IPsecServiceStatus: ...
+
+    async def ipsec_connect(self, tunnel_id: str) -> ActionResult: ...
+
+    async def ipsec_disconnect(self, tunnel_id: str) -> ActionResult: ...
+
+    async def ipsec_restart(self) -> ActionResult: ...

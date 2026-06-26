@@ -10,6 +10,8 @@ export interface Instance {
   ssl_verify: boolean;
   gui_login_enabled: boolean;
   agent_mode: boolean;
+  device_type: string;
+  transport: string;
   agent_last_seen: string | null;
   location: string | null;
   notes: string | null;
@@ -20,6 +22,13 @@ export interface Instance {
   created_at: string;
   updated_at: string;
 }
+
+/** Selectable device types for the add-instance form. */
+export const DEVICE_TYPES = [
+  { value: "opnsense", label: "OPNsense" },
+  { value: "pfsense", label: "pfSense" },
+  { value: "securepoint", label: "Securepoint UTM" },
+] as const;
 
 export interface Overview {
   total: number;

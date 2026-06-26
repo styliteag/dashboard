@@ -9,8 +9,9 @@ from __future__ import annotations
 import pytest
 
 from app.db.models import Instance
-from app.devices.protocol import DeviceClient
+from app.devices.protocol import DeviceClient, SupportsIPsec
 from app.devices.types import DeviceType, Transport
+from app.securepoint.client import SecurepointClient
 from app.xsense.client import OPNsenseClient
 
 
@@ -23,6 +24,7 @@ def test_transport_enum_values() -> None:
 def test_device_type_enum_values() -> None:
     assert DeviceType.OPNSENSE.value == "opnsense"
     assert DeviceType.PFSENSE.value == "pfsense"
+    assert DeviceType.SECUREPOINT.value == "securepoint"
     assert {DeviceType.PROXMOX, DeviceType.TRUENAS, DeviceType.QNAP} <= set(DeviceType)
 
 
@@ -74,5 +76,16 @@ async def test_opnsense_client_satisfies_device_protocol() -> None:
     client = OPNsenseClient(base_url="https://fw.example.test", api_key="k", api_secret="s")
     try:
         assert isinstance(client, DeviceClient)
+        assert isinstance(client, SupportsIPsec)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_securepoint_client_satisfies_protocols() -> None:
+    client = SecurepointClient(base_url="https://sp.example.test:11115", user="u", password="p")
+    try:
+        assert isinstance(client, DeviceClient)
+        assert isinstance(client, SupportsIPsec)
     finally:
         await client.aclose()

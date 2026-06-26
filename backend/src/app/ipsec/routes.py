@@ -15,6 +15,7 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.devices.protocol import SupportsIPsec
 from app.instances import service as inst_service
 from app.ipsec import ping_service
 from app.ipsec.event_store import read_tunnel_events
@@ -25,6 +26,7 @@ from app.ipsec.ping_schemas import (
     PingTestRequest,
     PingTestResult,
 )
+from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, IPsecServiceStatus
@@ -37,6 +39,16 @@ def _client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",", 1)[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _ipsec_client(client: object) -> SupportsIPsec:
+    """Narrow a device client to the IPsec capability or 501 if unsupported."""
+    if not isinstance(client, SupportsIPsec):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="IPsec not supported for this device type",
+        )
+    return client
 
 
 async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
@@ -66,9 +78,9 @@ async def ipsec_status(
         return cached if cached is not None else IPsecServiceStatus()
 
     try:
-        client = await registry.get(inst)
+        client = _ipsec_client(await registry.get(inst))
         return await client.ipsec_status()
-    except OPNsenseError as exc:
+    except (OPNsenseError, SecurepointError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
@@ -145,7 +157,7 @@ async def ipsec_connect(
         )
 
     try:
-        client = await registry.get(inst)
+        client = _ipsec_client(await registry.get(inst))
         result = await client.ipsec_connect(tunnel_id)
     except OPNsenseError as exc:
         await write_audit(
@@ -210,7 +222,7 @@ async def ipsec_disconnect(
         )
 
     try:
-        client = await registry.get(inst)
+        client = _ipsec_client(await registry.get(inst))
         result = await client.ipsec_disconnect(tunnel_id)
     except OPNsenseError as exc:
         await write_audit(
@@ -271,7 +283,7 @@ async def ipsec_restart(
         return ActionResult(success=ok, message=result.get("output", ""))
 
     try:
-        client = await registry.get(inst)
+        client = _ipsec_client(await registry.get(inst))
         result = await client.ipsec_restart()
     except OPNsenseError as exc:
         await write_audit(

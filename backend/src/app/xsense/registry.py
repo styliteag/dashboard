@@ -1,4 +1,4 @@
-"""Per-instance OPNsense client cache.
+"""Per-instance device client cache.
 
 Reusing the underlying ``httpx.AsyncClient`` keeps the TCP/TLS connection pool
 warm. The registry is invalidated when an Instance row is updated or deleted.
@@ -10,28 +10,43 @@ import asyncio
 
 from app.crypto.secrets import decrypt
 from app.db.models import Instance
+from app.devices.protocol import DeviceClient
+from app.devices.types import DeviceType
+from app.securepoint.client import SecurepointClient
 from app.xsense.client import OPNsenseClient
 
 
 class ClientRegistry:
-    # OPNsense is the only direct-API client today, so the producer stays concrete.
-    # The transport-agnostic seam lives at the poller (which only needs DeviceClient).
-    # Re-introduce a DeviceClient return type here once a 2nd direct client (Proxmox) exists.
+    # Producer of direct-API clients. Branches on Instance.device_type; OPNsense
+    # and Securepoint are the two direct clients today. Returns DeviceClient — the
+    # poller only needs poll_status(); ipsec routes narrow via SupportsIPsec.
     def __init__(self) -> None:
-        self._clients: dict[int, OPNsenseClient] = {}
+        self._clients: dict[int, DeviceClient] = {}
         self._lock = asyncio.Lock()
 
-    async def get(self, instance: Instance) -> OPNsenseClient:
+    @staticmethod
+    def _build(instance: Instance) -> DeviceClient:
+        if instance.device_type == DeviceType.SECUREPOINT.value:
+            return SecurepointClient(
+                base_url=instance.primary_base_url,
+                user=decrypt(instance.api_key_enc),
+                password=decrypt(instance.api_secret_enc),
+                ca_bundle_pem=instance.ca_bundle,
+                ssl_verify=instance.ssl_verify,
+            )
+        return OPNsenseClient(
+            base_url=instance.primary_base_url,
+            api_key=decrypt(instance.api_key_enc),
+            api_secret=decrypt(instance.api_secret_enc),
+            ca_bundle_pem=instance.ca_bundle,
+            ssl_verify=instance.ssl_verify,
+        )
+
+    async def get(self, instance: Instance) -> DeviceClient:
         async with self._lock:
             client = self._clients.get(instance.id)
             if client is None:
-                client = OPNsenseClient(
-                    base_url=instance.primary_base_url,
-                    api_key=decrypt(instance.api_key_enc),
-                    api_secret=decrypt(instance.api_secret_enc),
-                    ca_bundle_pem=instance.ca_bundle,
-                    ssl_verify=instance.ssl_verify,
-                )
+                client = self._build(instance)
                 self._clients[instance.id] = client
             return client
 

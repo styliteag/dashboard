@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 
 from app.xsense.schemas import (
+    ActionResult,
     IPsecChild,
     IPsecServiceStatus,
     IPsecTunnel,
@@ -32,6 +33,8 @@ from app.xsense.schemas import (
 )
 
 _SPCGI_PATH = "/spcgi.cgi"
+# Securepoint connector is read-only; state-change IPsec actions are not supported.
+_READ_ONLY = "not supported on Securepoint (read-only)"
 # Securepoint reports per-tunnel/Phase-2 state as this literal.
 _STATE_UP = "UP"
 # Phase-1 status string the rest of Orbit recognises as "up" (see checks/evaluate.py
@@ -43,7 +46,9 @@ _FORBIDDEN_COMMANDS = {("ipsec", "get")}
 
 
 class SecurepointError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class SecurepointClient:
@@ -97,25 +102,15 @@ class SecurepointClient:
         except httpx.HTTPError as exc:
             raise SecurepointError(f"POST {_SPCGI_PATH}: {exc}") from exc
         if resp.status_code >= 400:
-            raise SecurepointError(f"POST {_SPCGI_PATH}: HTTP {resp.status_code}")
+            raise SecurepointError(
+                f"POST {_SPCGI_PATH}: HTTP {resp.status_code}", code=resp.status_code
+            )
         try:
             return resp.json()
         except ValueError as exc:
             raise SecurepointError(f"POST {_SPCGI_PATH}: invalid JSON: {exc}") from exc
 
-    async def _command(
-        self,
-        module: str,
-        command: list[str],
-        arguments: dict[str, Any] | None = None,
-    ) -> Any:
-        """Run a spcgi command and return ``result.content`` (raises on error code)."""
-        if (module, command[0]) in _FORBIDDEN_COMMANDS:
-            raise SecurepointError(
-                f"refusing to call '{module} {' '.join(command)}': leaks secrets"
-            )
-        if self._sessionid is None:
-            raise SecurepointError(f"not logged in (call login() before '{module}')")
+    async def _run(self, module: str, command: list[str], arguments: dict[str, Any] | None) -> Any:
         payload = {
             "module": module,
             "command": command,
@@ -124,13 +119,50 @@ class SecurepointClient:
         }
         return self._unwrap(await self._post(payload), f"{module} {' '.join(command)}")
 
+    async def _command(
+        self,
+        module: str,
+        command: list[str],
+        arguments: dict[str, Any] | None = None,
+    ) -> Any:
+        """Run a spcgi command and return ``result.content``.
+
+        Ensures a live session (lazy login), and re-logs in once if the session
+        has expired — the registry caches this client and calls it without the
+        ``async with`` context manager, so auth must be self-managed.
+        """
+        if (module, command[0]) in _FORBIDDEN_COMMANDS:
+            raise SecurepointError(
+                f"refusing to call '{module} {' '.join(command)}': leaks secrets"
+            )
+        await self._ensure_session()
+        try:
+            return await self._run(module, command, arguments)
+        except SecurepointError as exc:
+            if not self._is_session_expired(exc):
+                raise
+            self._sessionid = None
+            await self.login()
+            return await self._run(module, command, arguments)
+
+    async def _ensure_session(self) -> None:
+        if self._sessionid is None:
+            await self.login()
+
+    @staticmethod
+    def _is_session_expired(exc: SecurepointError) -> bool:
+        if exc.code == 401:
+            return True
+        msg = str(exc).lower()
+        return "invalid session" in msg or "missing sessionid" in msg
+
     @staticmethod
     def _unwrap(data: dict[str, Any], what: str) -> Any:
         result = data.get("result", {})
         code = int(result.get("code", 0))
         if code >= 400:
             msg = result.get("message", result.get("status", "error"))
-            raise SecurepointError(f"{what}: {code} {msg}")
+            raise SecurepointError(f"{what}: {code} {msg}", code=code)
         return result.get("content", [])
 
     # ----- session -------------------------------------------------------
@@ -227,6 +259,17 @@ class SecurepointClient:
             phase2_total=len(group),
             children=children,
         )
+
+    # ----- IPsec actions (read-only no-ops) ------------------------------
+
+    async def ipsec_connect(self, tunnel_id: str) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
+
+    async def ipsec_disconnect(self, tunnel_id: str) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
+
+    async def ipsec_restart(self) -> ActionResult:
+        return ActionResult(success=False, message=_READ_ONLY)
 
     # ----- DeviceClient protocol -----------------------------------------
 

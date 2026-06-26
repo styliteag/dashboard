@@ -25,3 +25,4 @@ class DeviceType(StrEnum):
     PROXMOX = "proxmox"
     TRUENAS = "truenas"
     QNAP = "qnap"
+    SECUREPOINT = "securepoint"
