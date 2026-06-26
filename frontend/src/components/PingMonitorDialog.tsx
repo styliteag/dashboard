@@ -35,7 +35,9 @@ export default function PingMonitorDialog({
 }: Props) {
   const queryClient = useQueryClient();
   const [source, setSource] = useState(existing?.source ?? child.suggested_source ?? "");
-  const [destination, setDestination] = useState(existing?.destination ?? "");
+  // New monitor: prefill the destination with the remote selector CIDR so the
+  // user sees the target network and edits it down to a concrete host to ping.
+  const [destination, setDestination] = useState(existing?.destination ?? child.remote_ts);
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
   const [pingCount, setPingCount] = useState(existing?.ping_count ?? 3);
   const [error, setError] = useState<string | null>(null);
