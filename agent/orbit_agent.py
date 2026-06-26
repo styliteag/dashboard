@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.6"
+__version__ = "1.5.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -494,6 +494,20 @@ def _first(v: object) -> str:
     return ""
 
 
+def _clean_ts(ts: str) -> str:
+    """Normalize a strongSwan traffic selector to just the subnet.
+
+    pfSense's strongSwan appends a protocol/port part ("10.3.3.0/24|/0"); OPNsense
+    omits it ("10.3.3.0/24"). Classic strongSwan uses bracket form
+    ("10.3.3.0/24[tcp/80]"). The dashboard only wants the network — for display,
+    and so ``ipaddress.ip_network`` (suggested ping source) doesn't choke on the
+    suffix. Strip any "|proto/port" or "[proto/port]" tail.
+    """
+    if not ts:
+        return ts
+    return ts.split("|", 1)[0].split("[", 1)[0].strip()
+
+
 # Marker keys unique to each record type — never present on the raw envelope.
 _IKE_SA_MARKERS = frozenset({"uniqueid", "state", "local-host", "remote-host", "child-sas"})
 _CONN_MARKERS = frozenset({"local_addrs", "remote_addrs", "children"})
@@ -568,8 +582,8 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
                     # The child carries its own `name` (bare UUID on OPNsense); the
                     # section key appends a "-N" instance suffix — strip it as fallback.
                     "name": _first(child.get("name")) or re.sub(r"-\d+$", "", ckey),
-                    "local_ts": _first(child.get("local-ts")),
-                    "remote_ts": _first(child.get("remote-ts")),
+                    "local_ts": _clean_ts(_first(child.get("local-ts"))),
+                    "remote_ts": _clean_ts(_first(child.get("remote-ts"))),
                     "state": str(child.get("state", "")).upper(),
                     "bytes_in": _to_int(child.get("bytes-in")),
                     "bytes_out": _to_int(child.get("bytes-out")),
@@ -623,8 +637,8 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
                     continue
                 child_rows.append({
                     "name": ckey,  # configured child key = the Phase-2 id (UUID on OPNsense)
-                    "local_ts": _first(child.get("local-ts")),
-                    "remote_ts": _first(child.get("remote-ts")),
+                    "local_ts": _clean_ts(_first(child.get("local-ts"))),
+                    "remote_ts": _clean_ts(_first(child.get("remote-ts"))),
                 })
         conns.append({
             "name": name,

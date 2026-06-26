@@ -31,6 +31,36 @@ def test_parse_sas_keeps_child_detail() -> None:
     assert (child["bytes_in"], child["bytes_out"]) == (5, 7)
 
 
+def test_parse_sas_strips_pfsense_ts_proto_port_suffix() -> None:
+    # pfSense's strongSwan appends a "|proto/port" part to traffic selectors
+    # ("10.3.3.0/24|/0"); OPNsense omits it. The dashboard wants just the subnet.
+    raw = (
+        "con1 {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "
+        "child-sas {con1-3 {name=con1 state=INSTALLED bytes-in=1 bytes-out=2 "
+        "local-ts=[10.3.3.0/24|/0] remote-ts=[10.1.1.0/24|/0]}}}"
+    )
+    child = agent._parse_swanctl_sas(raw)[0]["children"][0]
+    assert child["local_ts"] == "10.3.3.0/24"
+    assert child["remote_ts"] == "10.1.1.0/24"
+
+
+def test_parse_conns_strips_pfsense_ts_proto_port_suffix() -> None:
+    raw = (
+        "con1 {local_addrs=[9.9.9.9] remote_addrs=[1.1.1.1] version=IKEv2 "
+        "children {con1 {mode=TUNNEL local-ts=[10.3.3.0/24|/0] remote-ts=[10.1.1.0/24|/0]}}}"
+    )
+    child = agent._parse_swanctl_conns(raw)[0]["children"][0]
+    assert child["local_ts"] == "10.3.3.0/24"
+    assert child["remote_ts"] == "10.1.1.0/24"
+
+
+def test_clean_ts_variants() -> None:
+    assert agent._clean_ts("10.3.3.0/24|/0") == "10.3.3.0/24"  # pfSense proto/port
+    assert agent._clean_ts("10.1.1.0/24") == "10.1.1.0/24"  # OPNsense clean
+    assert agent._clean_ts("10.1.1.0/24[tcp/80]") == "10.1.1.0/24"  # classic bracket form
+    assert agent._clean_ts("") == ""
+
+
 def test_parse_sas_dedupes_rekey_child_dups() -> None:
     # Two child SAs for the SAME selector pair (make-before-break rekey) collapse
     # to one Phase 2 — fixes the "4/2" double-count. Keeps the higher-traffic one.
