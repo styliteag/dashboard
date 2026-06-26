@@ -36,7 +36,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.4"
+__version__ = "1.5.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1286,6 +1286,50 @@ def _run_provision_php(php: str) -> tuple[str, str] | None:
         return None
     _cache_credentials(key, secret)
     return key, secret
+
+
+# pfSense (unlike OPNsense / stock FreeBSD) does NOT auto-start rcvar services from
+# /usr/local/etc/rc.d/ at boot — they are started by its PHP boot framework. So the
+# installed rc.d script + ``orbit_agent_enable=YES`` never fires after a reboot and
+# the agent stays down. Register pfSense's native ``afterbootupshellcmd`` boot hook
+# (run at the end of rc.bootup, network up) to start us. Idempotent + non-destructive.
+_PF_BOOT_CMD = "/usr/local/etc/rc.d/orbit_agent onestart"
+_PF_PERSIST_PHP = r"""<?php
+require_once("config.inc");
+$cmd = "__CMD__";
+$cur = (string) config_get_path("system/afterbootupshellcmd", "");
+if (strpos($cur, "orbit_agent") !== false) { echo "unchanged"; exit; }
+$new = ($cur === "") ? $cmd : ($cur . "; " . $cmd);
+config_set_path("system/afterbootupshellcmd", $new);
+write_config("orbit: persist agent autostart across reboot");
+echo "set";
+"""
+
+
+def _ensure_pfsense_boot_persistence() -> None:
+    """Make the agent survive a pfSense reboot (idempotent, pfSense only, best-effort).
+
+    Already-deployed agents self-heal on the next deploy: the self-updated code
+    runs this at startup and registers the boot hook. Skips when already present
+    and appends rather than clobbering any existing afterbootupshellcmd.
+    """
+    if detect_platform() != "pfsense":
+        return
+    tmp = "/tmp/orbit-persist.php"
+    try:
+        Path(tmp).write_text(_PF_PERSIST_PHP.replace("__CMD__", _PF_BOOT_CMD))
+        out = _run(["/usr/local/bin/php", tmp], timeout=30).strip()
+        if out == "set":
+            log.warning("pfsense: registered afterbootupshellcmd for reboot persistence")
+        elif out == "unchanged":
+            log.debug("pfsense: boot persistence already registered")
+        else:
+            log.warning("pfsense: boot persistence php returned unexpected: %r", out[:120])
+    except OSError as exc:
+        log.warning("pfsense: could not set boot persistence: %s", exc)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
 
 
 def _provision_api_credentials() -> tuple[str, str] | None:
@@ -2651,6 +2695,13 @@ def main() -> None:
                 log.info("relay: local API credentials ready (%s)", cfg.local_api_url)
         except Exception as exc:  # noqa: BLE001 — provisioning must never block startup
             log.warning("relay: credential provisioning at startup failed: %s", exc)
+
+    # Self-heal pfSense boot persistence (no-op elsewhere / when already set). Runs
+    # at every startup so already-connected agents fix themselves on the next deploy.
+    try:
+        _ensure_pfsense_boot_persistence()
+    except Exception as exc:  # noqa: BLE001 — must never block startup
+        log.warning("pfsense: boot persistence check failed: %s", exc)
 
     # Graceful shutdown
     loop = asyncio.new_event_loop()
