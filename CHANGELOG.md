@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Optional per-Phase-2 ping check for IPsec tunnels** — each IPsec Phase 2 (child SA) can be given an optional source + destination address that the agent pings every push cycle, so a tunnel that is `INSTALLED` but not actually passing traffic is caught and shown red (state `ok` / `fail` / `error`). Monitors are configured per child SA in the WebUI (with a suggested source from the Phase-2 local selector), stored on the dashboard (Alembic `009`), pushed to the agent, and surfaced as a Checkmk check (`ipsec.tunnel_ping:<tunnel>/<selector>`). The instance VPN view and the global VPN overview now also list each tunnel's Phase 2 entries with their individual status. (Agent `__version__` → 1.5.0.)
+- **"Test now" button for Phase-2 ping checks** — the config dialog can run a one-off ping through the agent (`POST …/ipsec/ping-monitors/test`, agent command `ipsec.ping_test`) with the entered source/destination *before* saving, so a wrong source IP or unreachable destination is caught immediately (green reply / red no-reply / amber misconfig). Agent-mode only. (Agent `__version__` → 1.5.1.)
+- **Optional per-Phase-2 ping check for IPsec tunnels** — each IPsec Phase 2 (child SA) can be given an optional source + destination address that the agent pings every push cycle, so a tunnel that is `INSTALLED` but not actually passing traffic is caught and shown red (state `ok` / `fail` / `error`). Monitors are configured per child SA in the WebUI (with a suggested source from the Phase-2 local selector), stored on the dashboard (Alembic `009`), pushed to the agent, and surfaced as a Checkmk check (`ipsec.tunnel_ping:<tunnel>/<selector>`). The instance VPN view and the global VPN overview now also list each tunnel's Phase 2 entries with their individual status.
 
 ### Changed
 

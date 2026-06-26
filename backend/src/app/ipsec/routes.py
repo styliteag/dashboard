@@ -17,7 +17,13 @@ from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
 from app.ipsec import ping_service
-from app.ipsec.ping_schemas import PingMonitorCreate, PingMonitorRead, PingMonitorUpdate
+from app.ipsec.ping_schemas import (
+    PingMonitorCreate,
+    PingMonitorRead,
+    PingMonitorUpdate,
+    PingTestRequest,
+    PingTestResult,
+)
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, IPsecServiceStatus
@@ -269,6 +275,43 @@ async def list_ping_monitors(
     await _get_instance(instance_id, session)
     monitors = await ping_service.list_monitors(session, instance_id)
     return [PingMonitorRead.model_validate(m) for m in monitors]
+
+
+@router.post("/ping-monitors/test", response_model=PingTestResult)
+async def test_ping_monitor(
+    instance_id: int,
+    body: PingTestRequest,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> PingTestResult:
+    """Run a one-off ping via the agent so the user can validate source/dest before saving.
+
+    Agent-mode only — the probe runs on the firewall (a direct-mode instance has
+    no agent to ping from).
+    """
+    inst = await _get_instance(instance_id, session)
+    if not inst.agent_mode:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ping test requires agent mode",
+        )
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+    result = await agent.send_command(
+        "ipsec.ping_test",
+        {"source": body.source, "destination": body.destination, "ping_count": body.ping_count},
+        timeout=20,
+    )
+    return PingTestResult(
+        ok=bool(result.get("success")),
+        ping_state=result.get("ping_state", "error"),
+        ping_rtt_ms=result.get("ping_rtt_ms"),
+        ping_loss_pct=result.get("ping_loss_pct"),
+        message=result.get("output", ""),
+    )
 
 
 @router.post("/ping-monitors", response_model=PingMonitorRead, status_code=status.HTTP_201_CREATED)

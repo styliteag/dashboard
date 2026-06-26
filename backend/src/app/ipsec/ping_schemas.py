@@ -98,3 +98,34 @@ class PingMonitorRead(PingMonitorBase):
 
     id: int
     instance_id: int
+
+
+class PingTestRequest(BaseModel):
+    """Ad-hoc ping test from the config dialog (not persisted)."""
+
+    source: str = ""
+    destination: str
+    ping_count: int = 3
+
+    @field_validator("source")
+    @classmethod
+    def _v_source(cls, v: str) -> str:
+        return _clean_ip(v, required=False, field="source")
+
+    @field_validator("destination")
+    @classmethod
+    def _v_destination(cls, v: str) -> str:
+        return _clean_ip(v, required=True, field="destination")
+
+    @field_validator("ping_count")
+    @classmethod
+    def _v_count(cls, v: int) -> int:
+        return _clean_count(v)
+
+
+class PingTestResult(BaseModel):
+    ok: bool
+    ping_state: str = "error"  # ok | fail | error
+    ping_rtt_ms: float | None = None
+    ping_loss_pct: float | None = None
+    message: str = ""

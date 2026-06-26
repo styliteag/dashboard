@@ -174,3 +174,41 @@ def test_run_ping_checks_noop_without_monitors() -> None:
 def test_run_ping_checks_handles_empty(monitors) -> None:
     # Should not raise on empty / falsy monitor lists.
     agent.run_ping_checks([{"id": "c", "children": []}], monitors or [], "now")
+
+
+# --- one-off test command (config dialog "Test now") -------------------------
+
+
+def test_ping_test_command_ok(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent, "_ping_once",
+        lambda s, d, c: {"ping_state": "ok", "ping_rtt_ms": 1.2, "ping_loss_pct": 0.0},
+    )
+    r = agent.execute_command(
+        "ipsec.ping_test", {"source": "10.1.1.5", "destination": "10.2.2.1", "ping_count": 3}
+    )
+    assert r["success"] is True
+    assert r["ping_state"] == "ok"
+    assert "reply" in r["output"]
+
+
+def test_ping_test_command_fail(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent, "_ping_once",
+        lambda s, d, c: {"ping_state": "fail", "ping_rtt_ms": None, "ping_loss_pct": 100.0},
+    )
+    r = agent.execute_command("ipsec.ping_test", {"destination": "10.2.2.1"})
+    assert r["success"] is False
+    assert r["ping_state"] == "fail"
+
+
+def test_ping_test_command_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent, "_ping_once",
+        lambda s, d, c: {"ping_state": "error", "ping_rtt_ms": None, "ping_loss_pct": None},
+    )
+    r = agent.execute_command(
+        "ipsec.ping_test", {"source": "9.9.9.9", "destination": "10.2.2.1"}
+    )
+    assert r["success"] is False
+    assert r["ping_state"] == "error"

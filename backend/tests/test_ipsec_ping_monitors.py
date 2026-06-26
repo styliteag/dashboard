@@ -14,7 +14,7 @@ from pydantic import ValidationError
 import app.agent_hub.hub as hub_mod
 from app.db.models import IPsecPingMonitor
 from app.ipsec import ping_service
-from app.ipsec.ping_schemas import PingMonitorCreate, PingMonitorUpdate
+from app.ipsec.ping_schemas import PingMonitorCreate, PingMonitorUpdate, PingTestRequest
 
 # --- schema validation -------------------------------------------------------
 
@@ -64,6 +64,15 @@ def test_update_is_partial_and_validated() -> None:
 def test_ipv6_destination_accepted() -> None:
     m = PingMonitorCreate(tunnel_id="t1", destination="fd00::1")
     assert m.destination == "fd00::1"
+
+
+def test_ping_test_request_validation() -> None:
+    with pytest.raises(ValidationError):
+        PingTestRequest(source="10.1.1.1")  # no destination
+    with pytest.raises(ValidationError):
+        PingTestRequest(destination="nope")
+    ok = PingTestRequest(destination="10.2.2.1")
+    assert ok.source == "" and ok.ping_count == 3
 
 
 # --- payload builder ---------------------------------------------------------

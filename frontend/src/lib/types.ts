@@ -149,6 +149,14 @@ export interface IPsecPingMonitor {
 export type PingMonitorCreate = Omit<IPsecPingMonitor, "id" | "instance_id">;
 export type PingMonitorUpdate = Partial<PingMonitorCreate>;
 
+export interface PingTestResult {
+  ok: boolean;
+  ping_state: PingState | string; // ok | fail | error
+  ping_rtt_ms: number | null;
+  ping_loss_pct: number | null;
+  message: string;
+}
+
 export interface IPsecServiceStatus {
   running: boolean;
   tunnels: IPsecTunnel[];

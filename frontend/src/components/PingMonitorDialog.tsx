@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Activity, Trash2 } from "lucide-react";
 import Dialog from "./Dialog";
 import { api, ApiError } from "../lib/api";
 import type {
@@ -13,6 +13,7 @@ import type {
   IPsecPingMonitor,
   PingMonitorCreate,
   PingMonitorUpdate,
+  PingTestResult,
 } from "../lib/types";
 
 interface Props {
@@ -38,8 +39,29 @@ export default function PingMonitorDialog({
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
   const [pingCount, setPingCount] = useState(existing?.ping_count ?? 3);
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<PingTestResult | null>(null);
 
   const base = `/api/instances/${instanceId}/ipsec/ping-monitors`;
+
+  // A new source/dest/count invalidates a prior test result.
+  const resetTest = () => setTestResult(null);
+
+  const testMut = useMutation({
+    mutationFn: () =>
+      api.post<PingTestResult>(`${base}/test`, {
+        source,
+        destination,
+        ping_count: pingCount,
+      }),
+    onSuccess: (r) => {
+      setTestResult(r);
+      setError(null);
+    },
+    onError: (e) => {
+      setTestResult(null);
+      setError(e instanceof ApiError ? e.message : "Test failed");
+    },
+  });
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["ipsec-ping-monitors", instanceId] });
     queryClient.invalidateQueries({ queryKey: ["ipsec", instanceId] });
@@ -102,7 +124,10 @@ export default function PingMonitorDialog({
           <span className="text-xs text-slate-400">Source IP (local, inside selector)</span>
           <input
             value={source}
-            onChange={(e) => setSource(e.target.value)}
+            onChange={(e) => {
+              setSource(e.target.value);
+              resetTest();
+            }}
             placeholder={child.suggested_source || "auto / default route"}
             className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm focus:border-emerald-600 focus:outline-none"
           />
@@ -121,7 +146,10 @@ export default function PingMonitorDialog({
           <span className="text-xs text-slate-400">Destination IP (remote, behind tunnel)</span>
           <input
             value={destination}
-            onChange={(e) => setDestination(e.target.value)}
+            onChange={(e) => {
+              setDestination(e.target.value);
+              resetTest();
+            }}
             placeholder="e.g. 10.2.2.1"
             className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm focus:border-emerald-600 focus:outline-none"
           />
@@ -144,10 +172,39 @@ export default function PingMonitorDialog({
               min={1}
               max={10}
               value={pingCount}
-              onChange={(e) => setPingCount(Number(e.target.value))}
+              onChange={(e) => {
+                setPingCount(Number(e.target.value));
+                resetTest();
+              }}
               className="w-16 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
             />
           </label>
+        </div>
+
+        {/* Dry-run the ping via the agent before saving. */}
+        <div>
+          <button
+            type="button"
+            onClick={() => testMut.mutate()}
+            disabled={testMut.isPending || !destination.trim()}
+            className="inline-flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+          >
+            <Activity className={`h-4 w-4 ${testMut.isPending ? "animate-pulse" : ""}`} />
+            {testMut.isPending ? "Testing…" : "Test now"}
+          </button>
+          {testResult && (
+            <div
+              className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+                testResult.ping_state === "ok"
+                  ? "bg-emerald-900/40 text-emerald-300"
+                  : testResult.ping_state === "fail"
+                    ? "bg-red-900/40 text-red-300"
+                    : "bg-amber-900/40 text-amber-300"
+              }`}
+            >
+              {testResult.message || testResult.ping_state}
+            </div>
+          )}
         </div>
       </div>
 

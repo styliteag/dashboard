@@ -36,7 +36,7 @@ from xml.etree import ElementTree
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1587,6 +1587,28 @@ def execute_command(action: str, params: dict) -> dict:
         tunnel_id = params.get("tunnel_id", "")
         out = _run(["swanctl", "--terminate", "--ike-id", tunnel_id], timeout=15)
         return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
+
+    elif action == "ipsec.ping_test":
+        # One-shot ping the dashboard runs from the config dialog BEFORE saving a
+        # Phase-2 monitor, so the user can see whether the source/destination work.
+        source = params.get("source", "")
+        dest = params.get("destination", "")
+        count = int(params.get("ping_count", 3) or 3)
+        res = _ping_once(source, dest, count)
+        state = res.get("ping_state")
+        if state == "ok":
+            msg = f"reply from {dest}: {res.get('ping_rtt_ms')} ms avg, {res.get('ping_loss_pct')}% loss"
+        elif state == "fail":
+            msg = f"no reply from {dest} (100% loss) — Phase 2 not passing traffic?"
+        else:
+            msg = "ping could not run — check the source IP (must be owned by this box) and routing"
+        return {
+            "success": state == "ok",
+            "ping_state": state,
+            "ping_rtt_ms": res.get("ping_rtt_ms"),
+            "ping_loss_pct": res.get("ping_loss_pct"),
+            "output": msg,
+        }
 
     elif action == "ipsec.restart":
         # Reload IPsec via each platform's own config layer. NEITHER OPNsense nor
