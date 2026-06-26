@@ -10,6 +10,7 @@ import type {
   TunnelActionResponse,
 } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, PingSummary } from "../components/IPsecPhase2";
+import { worstPing } from "../lib/ipsec-ping";
 import PingMonitorDialog from "../components/PingMonitorDialog";
 
 interface GlobalTunnel {
@@ -26,7 +27,53 @@ interface GlobalTunnel {
   seconds_established: number;
   bytes_in: number;
   bytes_out: number;
+  tags?: string[];
   children: IPsecChild[];
+  ike_init_spi?: string;
+  ike_resp_spi?: string;
+  peer_instance_id?: number | null;
+  peer_instance_name?: string | null;
+  peer_tunnel_id?: string | null;
+}
+
+interface TunnelGroup {
+  members: GlobalTunnel[];
+  paired: boolean;
+}
+
+/** Group the two ends of the same tunnel (peer pairing) so they render together. */
+function buildGroups(tunnels: GlobalTunnel[]): TunnelGroup[] {
+  const byKey = new Map<string, GlobalTunnel>();
+  for (const t of tunnels) byKey.set(`${t.instance_id}-${t.tunnel_id}`, t);
+  const seen = new Set<string>();
+  const groups: TunnelGroup[] = [];
+  for (const t of tunnels) {
+    const k = `${t.instance_id}-${t.tunnel_id}`;
+    if (seen.has(k)) continue;
+    const peerK = t.peer_instance_id != null ? `${t.peer_instance_id}-${t.peer_tunnel_id}` : null;
+    const peer = peerK ? byKey.get(peerK) : undefined;
+    if (peer && peerK && !seen.has(peerK)) {
+      groups.push({ members: [t, peer], paired: true });
+      seen.add(k);
+      seen.add(peerK);
+    } else {
+      groups.push({ members: [t], paired: false });
+      seen.add(k);
+    }
+  }
+  return groups;
+}
+
+/** Combined health of a paired link, for the group header badge. */
+function pairHealth(a: GlobalTunnel, b: GlobalTunnel): { cls: string; label: string } {
+  const aUp = isUp(a.phase1_status);
+  const bUp = isUp(b.phase1_status);
+  if (aUp !== bUp) return { cls: "bg-red-600/20 text-red-400", label: "status mismatch" };
+  const pa = worstPing(a.children ?? []);
+  const pb = worstPing(b.children ?? []);
+  if (pa !== pb) return { cls: "bg-amber-600/20 text-amber-400", label: "ping mismatch" };
+  if (aUp && bUp) return { cls: "bg-emerald-600/20 text-emerald-400", label: "both up" };
+  return { cls: "bg-slate-700 text-slate-300", label: "both down" };
 }
 
 interface DialogTarget {
@@ -75,6 +122,7 @@ function isUp(phase1_status: string): boolean {
 export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "up" | "down">("all");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -103,6 +151,32 @@ export default function VPNOverviewPage() {
       return n;
     });
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
+
+  // Paired-group collapse: healthy ("both up") pairs collapse to just their header
+  // by default (problems stay expanded). Two explicit-override sets let the user
+  // open/close individual groups and the "Expand/Collapse all" button.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  const groupKey = (g: TunnelGroup) => g.members.map(rowKey).join("|");
+  const isGroupOpen = (g: TunnelGroup, key: string, bothUp: boolean): boolean => {
+    if (openGroups.has(key)) return true;
+    if (closedGroups.has(key)) return false;
+    return !(g.paired && bothUp); // default: collapse only healthy pairs
+  };
+  const toggleGroup = (key: string, open: boolean) => {
+    setOpenGroups((s) => {
+      const n = new Set(s);
+      if (open) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+    setClosedGroups((s) => {
+      const n = new Set(s);
+      if (open) n.add(key);
+      else n.delete(key);
+      return n;
+    });
+  };
 
   // Targeted refresh: after an action, refetch only the acted instance's IPsec
   // and patch its rows into the overview cache — avoids a full cross-instance
@@ -179,15 +253,35 @@ export default function VPNOverviewPage() {
     onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
   });
 
+  const allTags = [...new Set((data?.tunnels ?? []).flatMap((t) => t.tags ?? []))].sort();
   const filtered = (data?.tunnels ?? []).filter((t) => {
     const matchSearch =
       t.instance_name.toLowerCase().includes(search.toLowerCase()) ||
       t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.remote.toLowerCase().includes(search.toLowerCase());
+      t.remote.toLowerCase().includes(search.toLowerCase()) ||
+      (t.tags ?? []).some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
     const matchFilter =
       filter === "all" || (filter === "up" && isUp(t.phase1_status)) || (filter === "down" && !isUp(t.phase1_status));
-    return matchSearch && matchFilter;
+    const matchTag = !activeTag || (t.tags ?? []).includes(activeTag);
+    return matchSearch && matchFilter && matchTag;
   });
+
+  const groups = buildGroups(filtered);
+  const groupBothUp = (g: TunnelGroup) =>
+    g.paired && pairHealth(g.members[0], g.members[1]).label === "both up";
+  const anyCollapsed = groups.some(
+    (g) => g.paired && !isGroupOpen(g, groupKey(g), groupBothUp(g)),
+  );
+  const toggleAll = () => {
+    if (anyCollapsed) {
+      setOpenGroups(new Set(groups.map(groupKey)));
+      setClosedGroups(new Set());
+    } else {
+      setClosedGroups(new Set(groups.filter((g) => g.paired).map(groupKey)));
+      setOpenGroups(new Set());
+    }
+  };
+  const hasCollapsiblePairs = groups.some((g) => g.paired);
 
   return (
     <div>
@@ -227,7 +321,48 @@ export default function VPNOverviewPage() {
             {{ all: "All", up: "Connected", down: "Disconnected" }[f]}
           </button>
         ))}
+        {hasCollapsiblePairs && (
+          <button
+            onClick={toggleAll}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+          >
+            {anyCollapsed ? (
+              <>
+                <ChevronDown className="h-3 w-3" /> Expand all
+              </>
+            ) : (
+              <>
+                <ChevronRight className="h-3 w-3" /> Collapse all
+              </>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* Tag filter chips (mirrors the Instances list) */}
+      {allTags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveTag(null)}
+            className={`rounded-full px-3 py-1 text-xs ${
+              !activeTag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            All
+          </button>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+              className={`rounded-full px-3 py-1 text-xs ${
+                activeTag === tag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       {actionMsg && (
         <div
@@ -260,22 +395,64 @@ export default function VPNOverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t, i) => {
-                const up = isUp(t.phase1_status);
-                const k = `${rowKey(t)}-${i}`;
-                const isOpen = expanded.has(k);
-                const hasChildren = (t.children?.length ?? 0) > 0;
+              {groups.map((group, gi) => {
+                const [a, b] = group.members;
+                const h = group.paired ? pairHealth(a, b) : null;
+                const bothUp = !!h && h.label === "both up";
+                const gkey = groupKey(group);
+                const open = isGroupOpen(group, gkey, bothUp);
+                const linkUptime = group.paired
+                  ? Math.max(a.seconds_established, b.seconds_established)
+                  : 0;
                 return (
-                  <Fragment key={k}>
-                    <tr className="border-t border-slate-800">
-                      <td className="px-3 py-2">
-                        <Link
-                          to={`/instances/${t.instance_id}`}
-                          className="text-emerald-400 hover:underline"
-                        >
-                          {t.instance_name}
-                        </Link>
-                      </td>
+                  <Fragment key={`grp-${gi}`}>
+                    {group.paired && h && (
+                      <tr
+                        className="cursor-pointer border-t border-slate-700 bg-slate-900/70 hover:bg-slate-900"
+                        onClick={() => toggleGroup(gkey, open)}
+                      >
+                        <td colSpan={9} className="px-3 py-1.5 text-xs">
+                          <span className="inline-flex flex-wrap items-center gap-2 text-slate-300">
+                            {open ? (
+                              <ChevronDown className="h-3 w-3 text-slate-500" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-slate-500" />
+                            )}
+                            <Link2 className="h-3 w-3 text-slate-500" />
+                            <span className="font-medium">
+                              {a.instance_name} ⇄ {b.instance_name}
+                            </span>
+                            <span className="font-mono text-slate-500">
+                              {a.local || "?"} ↔ {a.remote || "?"}
+                            </span>
+                            <span className={`rounded px-1.5 py-0.5 ${h.cls}`}>{h.label}</span>
+                            {linkUptime > 0 && (
+                              <span className="font-mono text-slate-500">
+                                up {fmtDuration(linkUptime)}
+                              </span>
+                            )}
+                            {!open && <span className="text-slate-600">· expand to view ends</span>}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    {open &&
+                      group.members.map((t) => {
+                    const up = isUp(t.phase1_status);
+                    const k = rowKey(t);
+                    const isOpen = expanded.has(k);
+                    const hasChildren = (t.children?.length ?? 0) > 0;
+                    return (
+                      <Fragment key={k}>
+                        <tr className="border-t border-slate-800">
+                          <td className="px-3 py-2">
+                            <Link
+                              to={`/instances/${t.instance_id}`}
+                              className={`hover:underline ${group.paired ? "pl-3 text-emerald-400" : "text-emerald-400"}`}
+                            >
+                              {t.instance_name}
+                            </Link>
+                          </td>
                       <td className="px-3 py-2">
                         <button
                           onClick={() => toggleExpand(k)}
@@ -354,7 +531,10 @@ export default function VPNOverviewPage() {
                         </td>
                       </tr>
                     )}
-                  </Fragment>
+                      </Fragment>
+                    );
+                  })}
+                </Fragment>
                 );
               })}
             </tbody>

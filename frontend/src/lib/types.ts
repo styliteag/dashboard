@@ -109,6 +109,8 @@ export interface IPsecChild {
   state: string; // INSTALLED / REKEYING / "" (configured but down)
   bytes_in: number;
   bytes_out: number;
+  spi_in?: string; // ESP SPIs (shared across ends) — for tunnel pairing
+  spi_out?: string;
   suggested_source: string; // agent-suggested local source IP for the ping
   ping_state: PingState | string; // none | ok | fail | error
   ping_rtt_ms: number | null;
