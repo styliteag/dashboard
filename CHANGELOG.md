@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-26
+
 ### Added
 
 - **Instances list: status links to detail + box links in the action row** — the Online/Degraded/Offline badge (table and card views) now links to the instance detail page, same as clicking the name. The action row gains two direct box links between **Test** and **Edit**: the **primary web-UI URL** and, for agent/NAT'd boxes, the **tunneled WebUI** via the GUI-proxy handoff (same "Open GUI" flow as the detail page). The redundant **Details** button is removed. No backend change.
