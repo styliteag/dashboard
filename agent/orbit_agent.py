@@ -26,17 +26,21 @@ import struct
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from xml.etree import ElementTree
 
+# datetime.UTC landed in Python 3.11; alias timezone.utc so the agent also runs on
+# the older Pythons FreeBSD/pfSense may ship (3.8+). Same object on 3.11+.
+UTC = timezone.utc
+
 # No external dependencies — the WebSocket client below is pure stdlib (see DR-4
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.5"
+__version__ = "1.5.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
