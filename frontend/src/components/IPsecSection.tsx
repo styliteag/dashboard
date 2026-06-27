@@ -3,7 +3,7 @@
  */
 import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Unlink, RotateCw, Shield, ChevronRight, ChevronDown } from "lucide-react";
+import { Unlink, RotateCw, Shield, ChevronRight, ChevronDown, Stethoscope } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type {
   IPsecServiceStatus,
@@ -14,11 +14,14 @@ import type {
 } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, PingSummary } from "./IPsecPhase2";
 import PingMonitorDialog from "./PingMonitorDialog";
+import DiagnoseDialog from "./DiagnoseDialog";
 
 interface Props {
   instanceId: number;
   // Ping monitors run on the firewall via the agent — agent mode only.
   pingSupported?: boolean;
+  // Tunnel diagnostics (swanctl + log + ping over SSH) — Securepoint/SSH only.
+  diagnoseSupported?: boolean;
 }
 
 interface DialogTarget {
@@ -28,7 +31,11 @@ interface DialogTarget {
   existing: IPsecPingMonitor | null;
 }
 
-export default function IPsecSection({ instanceId, pingSupported = true }: Props) {
+export default function IPsecSection({
+  instanceId,
+  pingSupported = true,
+  diagnoseSupported = false,
+}: Props) {
   const queryClient = useQueryClient();
   const qk = ["ipsec", instanceId];
 
@@ -53,6 +60,7 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
       return n;
     });
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
+  const [diagnose, setDiagnose] = useState<{ id: string; name: string } | null>(null);
 
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const clearMsg = () => setTimeout(() => setActionMsg(null), 5000);
@@ -278,6 +286,14 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
                             />{" "}
                             Reconnect
                           </button>
+                          {diagnoseSupported && (
+                            <button
+                              onClick={() => setDiagnose({ id: t.id, name: t.description || t.id })}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+                            >
+                              <Stethoscope className="h-3 w-3" /> Diagnose
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -321,6 +337,15 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
           child={dialog.child}
           existing={dialog.existing}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {diagnose && (
+        <DiagnoseDialog
+          instanceId={instanceId}
+          tunnelId={diagnose.id}
+          tunnelName={diagnose.name}
+          onClose={() => setDiagnose(null)}
         />
       )}
     </section>

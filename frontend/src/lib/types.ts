@@ -180,6 +180,16 @@ export interface IPsecServiceStatus {
   tunnels: IPsecTunnel[];
 }
 
+export interface DiagnosisSection {
+  title: string;
+  content: string;
+}
+
+export interface IPsecDiagnosis {
+  tunnel_id: string;
+  sections: DiagnosisSection[];
+}
+
 // Recorded tunnel state transition (history popup). event_type is one of
 // phase1_up | phase1_down | phase1_changed | phase2_changed | ping_ok | ping_fail.
 export interface IPsecTunnelEvent {

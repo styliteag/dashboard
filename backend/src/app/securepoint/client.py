@@ -25,16 +25,23 @@ from typing import Any
 import httpx
 import structlog
 
-from app.securepoint.ssh import SecurepointSSHError, SSHConfig, fetch_ipsec_status
+from app.securepoint.ssh import (
+    SecurepointSSHError,
+    SSHConfig,
+    fetch_diagnosis,
+    fetch_ipsec_status,
+)
 from app.xsense.schemas import (
     ActionResult,
     CpuUsage,
+    DiagnosisSection,
     DiskUsage,
     FirmwareStatus,
     FirmwareUpgradeStatus,
     GatewayStatus,
     InterfaceStats,
     IPsecChild,
+    IPsecDiagnosis,
     IPsecServiceStatus,
     IPsecTunnel,
     MemoryUsage,
@@ -295,6 +302,37 @@ class SecurepointClient:
 
     async def ipsec_restart(self) -> ActionResult:
         return ActionResult(success=False, message=_READ_ONLY)
+
+    async def ipsec_diagnose(self, tunnel_id: str) -> IPsecDiagnosis:
+        """Readable diagnostic bundle for one tunnel (config + SAs + log + ping).
+
+        Needs SSH (the spcgi API exposes no logs); returns an explanatory section
+        when SSH isn't configured or the gather fails, so the UI always renders."""
+        if self._ssh is None:
+            return IPsecDiagnosis(
+                tunnel_id=tunnel_id,
+                sections=[
+                    DiagnosisSection(
+                        title="SSH required",
+                        content=(
+                            "Tunnel diagnostics read swanctl + the IPsec log over SSH. "
+                            "Enable SSH enrichment on this instance to use Diagnose."
+                        ),
+                    )
+                ],
+            )
+        try:
+            sections = await fetch_diagnosis(
+                self._ssh.host,
+                self._ssh.port,
+                self._ssh.user,
+                self._ssh.private_key,
+                self._ssh.host_key,
+                tunnel_id,
+            )
+        except SecurepointSSHError as exc:
+            sections = [DiagnosisSection(title="Diagnostics unavailable", content=str(exc))]
+        return IPsecDiagnosis(tunnel_id=tunnel_id, sections=sections)
 
     # ----- DeviceClient protocol -----------------------------------------
 

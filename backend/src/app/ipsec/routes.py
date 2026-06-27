@@ -15,7 +15,7 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
-from app.devices.protocol import SupportsIPsec
+from app.devices.protocol import SupportsDiagnose, SupportsIPsec
 from app.instances import service as inst_service
 from app.ipsec import ping_service
 from app.ipsec.event_store import read_tunnel_events
@@ -29,7 +29,7 @@ from app.ipsec.ping_schemas import (
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, IPsecServiceStatus
+from app.xsense.schemas import ActionResult, IPsecDiagnosis, IPsecServiceStatus
 
 router = APIRouter(prefix="/instances/{instance_id}/ipsec", tags=["ipsec"])
 
@@ -80,6 +80,27 @@ async def ipsec_status(
     try:
         client = _ipsec_client(await registry.get(inst))
         return await client.ipsec_status()
+    except (OPNsenseError, SecurepointError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/{tunnel_id}/diagnose", response_model=IPsecDiagnosis)
+async def ipsec_diagnose(
+    instance_id: int,
+    tunnel_id: str,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> IPsecDiagnosis:
+    """Readable diagnostic bundle for one tunnel (config, SAs, IPsec log, peer ping)."""
+    inst = await _get_instance(instance_id, session)
+    client = await registry.get(inst)
+    if not isinstance(client, SupportsDiagnose):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="diagnostics not available for this device type",
+        )
+    try:
+        return await client.ipsec_diagnose(tunnel_id)
     except (OPNsenseError, SecurepointError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

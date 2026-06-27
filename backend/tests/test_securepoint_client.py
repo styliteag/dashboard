@@ -117,6 +117,38 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ipsec_diagnose_without_ssh_returns_hint() -> None:
+    sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)  # no ssh=
+    try:
+        diag = await sp.ipsec_diagnose("bonis-test")
+    finally:
+        await sp.aclose()
+    assert diag.tunnel_id == "bonis-test"
+    assert len(diag.sections) == 1
+    assert "SSH" in diag.sections[0].title
+
+
+@pytest.mark.asyncio
+async def test_ipsec_diagnose_with_ssh_returns_sections(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.securepoint import client as client_mod
+    from app.securepoint.ssh import SSHConfig
+    from app.xsense.schemas import DiagnosisSection
+
+    async def fake_diag(host, port, user, key, host_key, tunnel_id):  # noqa: ANN001
+        assert tunnel_id == "bonis-test"
+        return [DiagnosisSection(title="Connection config", content="bonis-test: IKEv2")]
+
+    monkeypatch.setattr(client_mod, "fetch_diagnosis", fake_diag)
+    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh)
+    try:
+        diag = await sp.ipsec_diagnose("bonis-test")
+    finally:
+        await sp.aclose()
+    assert [s.title for s in diag.sections] == ["Connection config"]
+
+
+@pytest.mark.asyncio
 async def test_ipsec_status_uses_ssh_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.securepoint import client as client_mod
     from app.securepoint.ssh import SSHConfig

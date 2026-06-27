@@ -142,6 +142,21 @@ class IPsecServiceStatus(BaseModel):
     tunnels: list[IPsecTunnel] = []
 
 
+class DiagnosisSection(BaseModel):
+    """One titled block of readable diagnostic text (config, SA state, log, …)."""
+
+    title: str
+    content: str
+
+
+class IPsecDiagnosis(BaseModel):
+    """Readable diagnostic bundle for one tunnel — for the human and for pasting
+    into an LLM. Raw text per section, deliberately not over-parsed."""
+
+    tunnel_id: str
+    sections: list[DiagnosisSection] = []
+
+
 class ActionResult(BaseModel):
     """Generic result for start/stop/update actions."""
 

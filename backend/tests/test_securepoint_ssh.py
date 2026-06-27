@@ -6,7 +6,7 @@ down the pure host-key identity-extraction used for fail-closed pinning.
 
 from __future__ import annotations
 
-from app.securepoint.ssh import SSHConfig, _key_blob
+from app.securepoint.ssh import SSHConfig, _key_blob, _parse_sections
 
 
 def test_key_blob_extracts_identity_ignoring_comment() -> None:
@@ -31,3 +31,24 @@ def test_key_blob_handles_malformed_line() -> None:
 def test_ssh_config_defaults() -> None:
     cfg = SSHConfig(host="h", port=9922, user="root", private_key="KEY")
     assert cfg.host_key is None  # unpinned by default
+
+
+def test_parse_sections_splits_on_markers() -> None:
+    out = (
+        "@@SEC@@Connection config\nbonis-test: IKEv2\n  local: %any\n"
+        "@@SEC@@Recent IPsec log (charon)\nline1\nline2\n"
+        "@@SEC@@Peer reachability\nping 1.2.3.4:\n"
+    )
+    secs = _parse_sections(out)
+    assert [s.title for s in secs] == [
+        "Connection config",
+        "Recent IPsec log (charon)",
+        "Peer reachability",
+    ]
+    assert secs[0].content == "bonis-test: IKEv2\n  local: %any"
+    assert secs[1].content == "line1\nline2"
+
+
+def test_parse_sections_empty() -> None:
+    assert _parse_sections("") == []
+    assert _parse_sections("no markers here\njust text") == []

@@ -199,7 +199,11 @@ export default function InstanceDetailPage() {
       {/* VPN: IPsec tunnels */}
       {tab === "security" && (
         <div>
-          <IPsecSection instanceId={nid} pingSupported={instance?.agent_mode ?? false} />
+          <IPsecSection
+            instanceId={nid}
+            pingSupported={instance?.agent_mode ?? false}
+            diagnoseSupported={instance?.device_type === "securepoint"}
+          />
         </div>
       )}
 

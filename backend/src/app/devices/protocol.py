@@ -15,7 +15,12 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from app.xsense.schemas import ActionResult, IPsecServiceStatus, SystemStatus
+from app.xsense.schemas import (
+    ActionResult,
+    IPsecDiagnosis,
+    IPsecServiceStatus,
+    SystemStatus,
+)
 
 
 @runtime_checkable
@@ -47,3 +52,13 @@ class SupportsIPsec(Protocol):
     async def ipsec_disconnect(self, tunnel_id: str) -> ActionResult: ...
 
     async def ipsec_restart(self) -> ActionResult: ...
+
+
+@runtime_checkable
+class SupportsDiagnose(Protocol):
+    """Optional capability: gather a readable per-tunnel diagnostic bundle.
+
+    Securepoint implements this over SSH (swanctl + IPsec log + peer ping). The
+    IPsec route narrows to it via ``isinstance`` and 501s otherwise."""
+
+    async def ipsec_diagnose(self, tunnel_id: str) -> IPsecDiagnosis: ...

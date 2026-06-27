@@ -12,12 +12,20 @@ fail-closed before any command runs; ``probe_host_key`` captures it for storage.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 
 import asyncssh
 
 from app.securepoint.swanctl import ipsec_status_from_swanctl
-from app.xsense.schemas import IPsecServiceStatus
+from app.xsense.schemas import DiagnosisSection, IPsecServiceStatus
+
+# Diagnose runs several commands + a ping + a syslog dump; it's a user-triggered
+# one-off (no wait_for around it), so a generous timeout is fine.
+_DIAG_TIMEOUT = 25.0
+_SEC = "@@SEC@@"
+# Connection names are safe shell tokens; reject anything else before interpolating.
+_SAFE_NAME = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 # Budget: the global VPN overview wraps ipsec_status() in a wait_for(_FETCH_TIMEOUT)
 # (views/routes.py, 8s) and silently drops the instance on timeout. Keep the whole
@@ -118,3 +126,72 @@ async def fetch_ipsec_status(
     return ipsec_status_from_swanctl(
         str(sas.stdout or ""), str(conns.stdout or ""), running=running
     )
+
+
+def _diag_script(name: str) -> str:
+    """Shell run over one SSH session that emits ``@@SEC@@<title>``-delimited blocks.
+
+    Gathers as much as the box exposes: the connection config, live SAs, installed
+    policies, the recent charon log (vici-poll noise stripped — failure lines like
+    NO_PROPOSAL_CHOSEN / AUTHENTICATION_FAILED / 'giving up' live here regardless of
+    whether they carry the conn name), and a one-shot peer-reachability ping.
+    """
+    return (
+        f"N='{name}'\n"
+        f"echo '{_SEC}Connection config (swanctl --list-conns)'\n"
+        "swanctl --list-conns 2>&1\n"
+        f"echo '{_SEC}Live IKE / CHILD SAs (swanctl --list-sas)'\n"
+        'swanctl --list-sas --ike "$N" 2>&1\n'
+        f"echo '{_SEC}Recent IPsec log (charon)'\n"
+        # syslog is a padded `msgid|date|app|pid|msg` table — match the app field
+        # (col 3) robustly, drop our own vici-poll noise, cap the tail.
+        "(echo 'syslog get' | spcli 2>/dev/null) "
+        "| awk -F'|' 'NR>2 && $3 ~ /charon/ && $0 !~ /\\[CFG\\] vici client/' "
+        "| tail -n 300\n"
+        f"echo '{_SEC}Peer reachability'\n"
+        "REMOTE=$(swanctl --list-conns --raw 2>/dev/null | grep -oE 'remote_addrs=\\[[^]]*' "
+        "| grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' | head -n1)\n"
+        '[ -z "$REMOTE" ] && REMOTE=$(swanctl --list-sas --ike "$N" --raw 2>/dev/null '
+        "| grep -oE 'remote-host=[0-9.]+' | head -n1 | cut -d= -f2)\n"
+        '[ -n "$REMOTE" ] && { echo "ping $REMOTE:"; ping -c 2 -w 4 "$REMOTE" 2>&1; } '
+        '|| echo "no concrete peer IP (remote=%any / responder-only) — nothing to ping"\n'
+    )
+
+
+def _parse_sections(out: str) -> list[DiagnosisSection]:
+    sections: list[DiagnosisSection] = []
+    title: str | None = None
+    buf: list[str] = []
+    for line in out.splitlines():
+        if line.startswith(_SEC):
+            if title is not None:
+                sections.append(DiagnosisSection(title=title, content="\n".join(buf).strip()))
+            title = line[len(_SEC) :].strip()
+            buf = []
+        elif title is not None:
+            buf.append(line)
+    if title is not None:
+        sections.append(DiagnosisSection(title=title, content="\n".join(buf).strip()))
+    return sections
+
+
+async def fetch_diagnosis(
+    host: str,
+    port: int,
+    user: str,
+    private_key_pem: str,
+    host_key: str | None,
+    tunnel_id: str,
+) -> list[DiagnosisSection]:
+    """Gather a readable per-tunnel diagnostic bundle over one SSH session."""
+    if not _SAFE_NAME.fullmatch(tunnel_id):
+        raise SecurepointSSHError(f"unsafe tunnel id: {tunnel_id!r}")
+    conn, _ = await _connect(host, port, user, private_key_pem, host_key)
+    try:
+        res = await asyncio.wait_for(conn.run(_diag_script(tunnel_id)), timeout=_DIAG_TIMEOUT)
+    except (TimeoutError, asyncssh.Error) as exc:
+        raise SecurepointSSHError(f"diagnose over SSH failed: {exc}") from exc
+    finally:
+        conn.close()
+        await conn.wait_closed()
+    return _parse_sections(str(res.stdout or ""))
