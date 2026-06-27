@@ -24,12 +24,12 @@ port) — it is *not* an agent and does not run anything persistent on the box.
 - On each poll the dashboard SSHes in (default `root@<host>:9922`), runs the two
   `swanctl` commands, and parses them. If SSH fails, it falls back to the plain
   spcgi IPsec view automatically.
-- The box's SSH host key is pinned trust-on-first-use — but only if SSH is already
-  reachable when you save the instance, so **install the public key on the box
-  (step 2) before enabling SSH in the dashboard (step 3)**. If the box isn't
-  reachable at save time it stays unpinned (defense-in-depth only — pubkey auth
-  means the private key can't be stolen); re-save once reachable to pin it. A later
-  host-key mismatch is always refused.
+- The SSH host key is **not** auto-pinned (saving an instance must not block on the
+  network). When `ssh_host_key` is set, a mismatch is refused fail-closed; when it
+  is empty the connection runs unpinned. Host-key pinning is defense-in-depth only:
+  public-key auth means the private key is never sent to the box, so it can't be
+  stolen — an unpinned connection only risks an impostor feeding false swanctl data.
+  Restrict TCP 9922 to the dashboard's source IP to close that gap.
 
 ## 1. Generate the keypair (dashboard side)
 

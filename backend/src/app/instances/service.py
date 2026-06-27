@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import time
 from datetime import UTC, datetime
 
@@ -15,7 +14,6 @@ from app.devices.types import DeviceType, Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
 from app.securepoint.client import SecurepointClient, SecurepointError
-from app.securepoint.ssh import SecurepointSSHError, probe_host_key
 from app.xsense.client import OPNsenseClient, OPNsenseError
 from app.xsense.registry import registry
 
@@ -116,21 +114,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
     )
     session.add(inst)
     await session.flush()
-    await _maybe_pin_host_key(inst)
     return inst
-
-
-async def _maybe_pin_host_key(inst: Instance) -> None:
-    """Best-effort TOFU capture of the box's SSH host key (skip if already pinned
-    or SSH is unreachable at config time — it stays unpinned, pinned on next save)."""
-    if not (inst.ssh_enabled and inst.ssh_key_enc) or inst.ssh_host_key:
-        return
-    from app.crypto.secrets import decrypt
-
-    with contextlib.suppress(SecurepointSSHError):
-        inst.ssh_host_key = await probe_host_key(
-            inst.ssh_host, inst.ssh_port, inst.ssh_user, decrypt(inst.ssh_key_enc)
-        )
 
 
 async def update_instance(
@@ -177,7 +161,6 @@ async def update_instance(
     if payload.tags is not None:
         inst.tags = payload.tags or None
     await session.flush()
-    await _maybe_pin_host_key(inst)
     # Drop the cached client so the next call rebuilds with new credentials/URL.
     await registry.invalidate(inst.id)
     return inst
