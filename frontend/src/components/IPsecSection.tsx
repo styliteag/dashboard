@@ -229,7 +229,7 @@ export default function IPsecSection({
                         <button
                           onClick={() => toggleExpand(t.id)}
                           disabled={!hasChildren}
-                          className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
+                          className="inline-flex items-center gap-1 text-left hover:text-emerald-400 disabled:opacity-40"
                         >
                           {hasChildren ? (
                             isOpen ? (

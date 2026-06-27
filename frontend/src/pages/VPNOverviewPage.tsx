@@ -337,7 +337,7 @@ export default function VPNOverviewPage() {
             <button
               onClick={() => toggleExpand(k)}
               disabled={!hasChildren}
-              className="inline-flex items-center gap-1 hover:text-emerald-400 disabled:opacity-40"
+              className="inline-flex items-center gap-1 text-left hover:text-emerald-400 disabled:opacity-40"
             >
               {hasChildren ? (
                 isOpen ? (
