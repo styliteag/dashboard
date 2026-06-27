@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.2"
+__version__ = "1.6.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -2189,6 +2189,39 @@ def _verify_update_code(code: bytes, expected_sha256: str) -> bool:
     return True
 
 
+_CODE_VERSION_RE = re.compile(rb"""__version__\s*=\s*["']([0-9][0-9.]*)["']""")
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    """Numeric SemVer-ish tuple; leading digits of each dotted part (rest ignored)."""
+    out: list[int] = []
+    for part in version.split("."):
+        m = re.match(r"\d+", part)
+        out.append(int(m.group()) if m else 0)
+    return tuple(out)
+
+
+def _code_version(code: bytes) -> str | None:
+    """The ``__version__`` embedded in pushed agent source — the version that will
+    actually run after the swap. The signature covers ``code``, so reading the
+    version from it binds the anti-rollback check to authenticated content; the
+    unsigned ``version`` push param could otherwise be forged over old signed code."""
+    m = _CODE_VERSION_RE.search(code)
+    return m.group(1).decode() if m else None
+
+
+def _is_forward_update(code: bytes) -> bool:
+    """True only if the pushed code's embedded version is strictly newer than ours.
+
+    Anti-rollback: every prior release is validly signed, so signature checks alone
+    don't stop a compromised dashboard from replaying an old (vulnerable) build as an
+    "update". Refuse anything not strictly forward, and refuse code with no version."""
+    pushed = _code_version(code)
+    if pushed is None:
+        return False
+    return _version_tuple(pushed) > _version_tuple(__version__)
+
+
 def _apply_update(code: bytes, version: str) -> None:
     """Back up the running agent, atomically swap in new code, set the marker.
 
@@ -2243,13 +2276,22 @@ async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> N
     if not _skip_sig_check() and not _signature_ok(code, params.get("signature", "")):
         await _send_update_result(ws, request_id, False, "signature verification failed")
         return
+    # Anti-rollback: gate on the version embedded in the (signature-covered) code,
+    # not the unsigned `version` param — refuse a replay of an older signed build.
+    if not _is_forward_update(code):
+        pushed = _code_version(code) or "unknown"
+        await _send_update_result(
+            ws, request_id, False, f"downgrade refused: pushed {pushed} not newer than {__version__}"
+        )
+        return
+    staged = _code_version(code)  # validated forward above
     try:
-        await asyncio.get_event_loop().run_in_executor(None, _apply_update, code, version)
+        await asyncio.get_event_loop().run_in_executor(None, _apply_update, code, staged)
     except OSError as exc:
         await _send_update_result(ws, request_id, False, f"apply failed: {exc}")
         return
-    await _send_update_result(ws, request_id, True, f"update staged to {version}, restarting")
-    log.info("self-update: staged %s, exiting for supervisor respawn", version)
+    await _send_update_result(ws, request_id, True, f"update staged to {staged}, restarting")
+    log.info("self-update: staged %s, exiting for supervisor respawn", staged)
     await ws.close()
     os._exit(_UPDATE_RESTART_CODE)
 

@@ -134,3 +134,35 @@ def test_rollback_without_backup_returns_false(
     target.write_bytes(b"X\n")
     monkeypatch.setenv("AGENT_SELF_PATH", str(target))
     assert agent._rollback() is False
+
+
+# --- anti-rollback: gate on the version embedded in the signed code -----------
+
+
+def test_code_version_extracts_embedded_version() -> None:
+    assert agent._code_version(b'#!/usr/bin/env python3\n__version__ = "1.6.4"\nx=1\n') == "1.6.4"
+    assert agent._code_version(b"__version__ = '0.3.0'\n") == "0.3.0"
+    assert agent._code_version(b"x = 1\n# no version here\n") is None
+
+
+def test_version_tuple_orders_numerically() -> None:
+    assert agent._version_tuple("1.6.10") > agent._version_tuple("1.6.9")
+    assert agent._version_tuple("1.6.3") == agent._version_tuple("1.6.3")
+    assert agent._version_tuple("2.0.0") > agent._version_tuple("1.99.99")
+
+
+def test_is_forward_update_accepts_strictly_newer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "__version__", "1.6.3")
+    assert agent._is_forward_update(b'__version__ = "1.6.4"\nx=1\n') is True
+    assert agent._is_forward_update(b'__version__ = "2.0.0"\n') is True
+
+
+def test_is_forward_update_refuses_downgrade_and_same(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "__version__", "1.6.3")
+    assert agent._is_forward_update(b'__version__ = "1.5.0"\n') is False  # older = replay
+    assert agent._is_forward_update(b'__version__ = "1.6.3"\n') is False  # same
+
+
+def test_is_forward_update_refuses_unversioned_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "__version__", "1.6.3")
+    assert agent._is_forward_update(b"x = 1\n") is False  # no embedded version → refuse
