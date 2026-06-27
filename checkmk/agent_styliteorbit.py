@@ -7,7 +7,9 @@ evaluated OK/WARN/CRIT service checks + perfdata.
 
 Install: drop this in the Checkmk site's local special-agent path and wire a
 datasource program rule:  agent_styliteorbit '$HOSTADDRESS$'  (or via env).
-Config via env: ORBIT_URL, ORBIT_USER, ORBIT_PASSWORD.
+Config via env: ORBIT_URL, ORBIT_API_KEY (or ORBIT_USER/ORBIT_PASSWORD),
+ORBIT_PIGGYBACK (default on; set 0 for a single flat host instead of one
+piggyback host per firewall).
 
 Auth note: uses the dev bearer token from /api/auth/login (works when the
 dashboard runs with DASH_ENV=dev). A dedicated read-only API key for service
@@ -56,25 +58,43 @@ def _perfdata(metrics: list) -> str:
     return "|".join(parts)
 
 
-def _local_line(check: dict) -> str:
+def _local_line(check: dict, host_prefix: str = "") -> str:
     state = check.get("state", 3)
     if state not in _VALID_STATES:
         state = 3
     text = (check.get("summary") or "-").replace("\n", " ").replace("|", "/").strip() or "-"
     item = _item(check.get("key", "unknown"))
+    if host_prefix:
+        # Flat (non-piggyback) mode: every service lives on the one agent host, so
+        # the firewall name disambiguates the item (host/key) and prefixes the text.
+        item = f"{host_prefix}/{item}"
+        text = f"[{host_prefix}] {text}"
     perf = _perfdata(check.get("metrics") or [])
     return f"{state} {item} {perf} {text}"
 
 
-def render_checkmk(export: dict) -> str:
-    """Transform the export JSON into Checkmk agent output (piggyback + local checks)."""
+def render_checkmk(export: dict, piggyback: bool = True) -> str:
+    """Transform the export JSON into Checkmk agent output.
+
+    piggyback=True (default): one piggyback host per firewall (``<<<<host>>>>``),
+    each with its own ``<<<local>>>`` section.
+    piggyback=False: a single ``<<<local>>>`` section attached to the host that
+    runs the agent, with every service item prefixed by the firewall name
+    (``host/key``) so they don't collide — use when you don't want per-firewall
+    piggyback hosts and just want all services on the configured source host.
+    """
     out: list[str] = []
-    for inst in export.get("instances", []):
-        out.append(f"<<<<{_host(inst.get('host') or inst.get('name') or 'unknown')}>>>>")
+    if not piggyback:
         out.append("<<<local>>>")
+    for inst in export.get("instances", []):
+        host = _host(inst.get("host") or inst.get("name") or "unknown")
+        if piggyback:
+            out.append(f"<<<<{host}>>>>")
+            out.append("<<<local>>>")
         for check in inst.get("checks", []):
-            out.append(_local_line(check))
-        out.append("<<<<>>>>")
+            out.append(_local_line(check, host_prefix="" if piggyback else host))
+        if piggyback:
+            out.append("<<<<>>>>")
     return "\n".join(out) + "\n"
 
 
@@ -119,7 +139,15 @@ def main() -> None:
         username=os.environ.get("ORBIT_USER", "admin"),
         password=os.environ.get("ORBIT_PASSWORD", ""),
     )
-    sys.stdout.write(render_checkmk(export))
+    # Piggyback on by default (one Checkmk host per firewall). Set ORBIT_PIGGYBACK=0
+    # to emit a single flat <<<local>>> on the agent host instead.
+    piggyback = os.environ.get("ORBIT_PIGGYBACK", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+    sys.stdout.write(render_checkmk(export, piggyback=piggyback))
 
 
 if __name__ == "__main__":

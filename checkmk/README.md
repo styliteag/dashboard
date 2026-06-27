@@ -29,6 +29,10 @@ ORBIT_URL=http://dashboard.example.com ORBIT_API_KEY=orbit_xxxxx ./agent_stylite
 ORBIT_URL=http://dashboard.example.com ORBIT_USER=admin ORBIT_PASSWORD=secret ./agent_styliteorbit
 ```
 
+`ORBIT_PIGGYBACK=0` switches off piggyback: instead of one host per firewall, all
+checks land on the agent's own host with each item prefixed by the firewall name
+(`host/key`). Default is piggyback on.
+
 Mint a key (no admin bearer token in prod — auth is the `dash_session` login
 cookie; log in into a cookie jar first):
 

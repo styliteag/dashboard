@@ -160,6 +160,7 @@ cat > ~/local/share/check_mk/agents/special/agent_styliteorbit_run <<'EOF'
 #!/bin/sh
 export ORBIT_URL=https://dashboard.example.com
 export ORBIT_API_KEY=orbit_………
+export ORBIT_PIGGYBACK=1
 exec ~/local/share/check_mk/agents/special/agent_styliteorbit
 EOF
 chmod +x ~/local/share/check_mk/agents/special/agent_styliteorbit_run
@@ -187,11 +188,19 @@ name. The block name is the **instance name**, sanitized to `[A-Za-z0-9.-_]`
 > Name mismatch is the #1 reason services don't appear. Keep instance names
 > clean, or mirror the sanitized form exactly.
 
+> **No piggyback?** Set `ORBIT_PIGGYBACK=0` in the wrapper to skip per-firewall
+> hosts entirely — every check is then emitted on the **source host** that runs
+> the agent, with each service item prefixed by the firewall name (e.g.
+> `opnsense-fw01/memory`, summary `[opnsense-fw01] …`). You then run discovery on
+> just that one host and skip step 5. Trade-off: all firewalls share one host's
+> service list instead of each being its own host.
+
 ### 6. Service discovery
 
-Run discovery on each firewall host (or bulk discovery), accept the services,
-and activate changes. The `memory` / `cpu` / `disk:*` / `gateway:*` /
-`ipsec.*` / `firmware` checks appear as **Local checks**.
+Run discovery on each firewall host (or, in `ORBIT_PIGGYBACK=0` mode, on the
+single source host), accept the services, and activate changes. The
+`memory` / `cpu` / `disk:*` / `gateway:*` / `ipsec.*` / `firmware` checks appear
+as **Local checks**.
 
 ---
 
