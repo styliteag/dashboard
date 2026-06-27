@@ -29,6 +29,45 @@ from app.net import client_ip
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
+# Fields safe to record verbatim in the audit trail. An allowlist (not a denylist)
+# so a newly-added secret field can never leak into the permanent audit log by
+# default — which is exactly how ssh_key slipped past the old {"api_key",
+# "api_secret"} denylist.
+_SAFE_AUDIT_FIELDS = {
+    "name",
+    "slug",
+    "base_url",
+    "ssl_verify",
+    "gui_login_enabled",
+    "poll_interval_seconds",
+    "push_interval_seconds",
+    "ssh_enabled",
+    "ssh_port",
+    "ssh_user",
+    "location",
+    "notes",
+    "tags",
+}
+# Secret-bearing fields: never logged by value, only recorded by name when rotated.
+# (ca_bundle is a public cert but is kept out of the detail to stay small/uniform.)
+_SECRET_AUDIT_FIELDS = {"api_key", "api_secret", "ssh_key", "ca_bundle"}
+
+
+def _safe_audit_detail(payload: InstanceUpdate) -> dict:
+    """Build an audit ``detail`` that can never carry a secret value.
+
+    Only allowlisted fields are emitted verbatim; rotated secrets are recorded by
+    name only (``secrets_rotated``), gated on a truthy value so a ``""`` ("keep
+    existing") is not falsely logged as a rotation.
+    """
+    detail = payload.model_dump(mode="json", exclude_none=True, include=_SAFE_AUDIT_FIELDS)
+    rotated = sorted(
+        name for name in _SECRET_AUDIT_FIELDS & payload.model_fields_set if getattr(payload, name)
+    )
+    if rotated:
+        detail["secrets_rotated"] = rotated
+    return detail
+
 
 @router.get("", response_model=list[InstanceResponse])
 async def list_all(
@@ -126,9 +165,7 @@ async def update(
         target_type="instance",
         target_id=inst.id,
         source_ip=client_ip(request),
-        detail=payload.model_dump(
-            mode="json", exclude_none=True, exclude={"api_key", "api_secret"}
-        ),
+        detail=_safe_audit_detail(payload),
     )
     await session.commit()
     await session.refresh(inst)

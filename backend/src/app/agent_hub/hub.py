@@ -269,10 +269,21 @@ class AgentHub:
         log.info("agent.connected", instance=instance_name, instance_id=instance_id)
         return agent
 
-    def unregister(self, instance_id: int) -> None:
-        agent = self._agents.pop(instance_id, None)
-        if agent:
-            log.info("agent.disconnected", instance=agent.instance_name)
+    def unregister(self, instance_id: int, agent: ConnectedAgent | None = None) -> None:
+        # Identity-aware teardown: when ``agent`` is given (the normal WS finally
+        # path), only remove it if it is still the registered connection. Otherwise
+        # an overlapping reconnect race lets a dying OLD connection's teardown evict
+        # the freshly-registered NEW connection — the box keeps pushing metrics (so
+        # it still looks online) but hub.get() is None, so every command/relay/
+        # tunnel/update/GUI/uninstall returns 503 until a clean reconnect.
+        # ``agent=None`` force-drops whatever is registered (admin disable/uninstall).
+        current = self._agents.get(instance_id)
+        if current is None:
+            return
+        if agent is not None and current is not agent:
+            return
+        self._agents.pop(instance_id, None)
+        log.info("agent.disconnected", instance=current.instance_name)
 
     def get_last_status(self, instance_id: int) -> SystemStatus | None:
         return self._last_status.get(instance_id)

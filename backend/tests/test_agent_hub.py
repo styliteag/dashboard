@@ -7,12 +7,26 @@ drift on either side is caught. DB-free: the converters are pure.
 
 from __future__ import annotations
 
+import pytest
+
 from app.agent_hub.hub import (
+    AgentHub,
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
     status_from_agent,
 )
+
+
+class _FakeWS:
+    """Minimal stand-in for a Starlette WebSocket: register() only awaits close()."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self, code: int = 1000) -> None:
+        self.closed = True
+
 
 # A realistic push matching the agent's collect_all() output shape.
 AGENT_PUSH = {
@@ -130,3 +144,34 @@ def test_firmware_from_agent_derives_updates_count() -> None:
     fw2 = firmware_from_agent(upgradable, "x")
     assert fw2.upgrade_available is True
     assert fw2.updates_available == 1
+
+
+# --- registry identity semantics (overlapping reconnect race) -----------------
+
+
+@pytest.mark.asyncio
+async def test_unregister_is_identity_aware_on_overlapping_reconnect() -> None:
+    """A stale OLD connection's teardown must not evict the freshly-registered NEW one."""
+    h = AgentHub()
+    old = await h.register(_FakeWS(), 5, "fw5")
+    new = await h.register(_FakeWS(), 5, "fw5")  # reconnect: NEW replaces OLD
+    assert h.get(5) is new
+    assert old.ws.closed is True  # register() closed the superseded connection
+
+    # OLD's finally-block fires after NEW registered — must be a no-op.
+    h.unregister(5, old)
+    assert h.get(5) is new
+    assert h.is_connected(5) is True
+
+    # NEW's own teardown removes it.
+    h.unregister(5, new)
+    assert h.get(5) is None
+
+
+@pytest.mark.asyncio
+async def test_unregister_without_agent_force_drops() -> None:
+    """Admin disable/uninstall (no agent arg) drops whatever is registered."""
+    h = AgentHub()
+    await h.register(_FakeWS(), 7, "fw7")
+    h.unregister(7)
+    assert h.get(7) is None

@@ -188,7 +188,9 @@ async def agent_websocket(ws: WebSocket):
     except Exception:
         log.exception("agent.ws_error", instance_id=instance_id)
     finally:
-        hub.unregister(instance_id)
+        # Identity-aware: only this connection unregisters itself, so a stale old
+        # connection's teardown cannot evict a freshly-registered reconnect.
+        hub.unregister(instance_id, agent)
 
 
 # --- GUI proxy: raw TCP tunnel over the agent WS (see §18) -------------------

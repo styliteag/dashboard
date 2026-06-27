@@ -10,6 +10,7 @@ never raised.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -65,19 +66,51 @@ async def _send_telegram(s, title: str, message: str, level: str) -> ChannelResu
         return ChannelResult("telegram", "failed", str(exc))
 
 
+def _split_ntfy_url(url: str) -> tuple[str, str]:
+    """Split an ntfy topic URL into ``(server_base, topic)``.
+
+    ntfy's JSON publishing API must be POSTed to the server *root* with the topic in
+    the body — POSTing JSON to the topic URL would publish the literal JSON as the
+    message text (and still return 200). Returns ``("", "")`` when there is no topic
+    segment, so the caller can fail instead of dumping JSON to the root.
+    """
+    parsed = urlparse(url)
+    segments = [seg for seg in parsed.path.split("/") if seg]
+    if not parsed.scheme or not parsed.netloc or not segments:
+        return "", ""
+    topic = segments[-1]
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    base_path = "/".join(segments[:-1])
+    if base_path:
+        base = f"{base}/{base_path}"
+    return base, topic
+
+
+# ntfy JSON priority is numeric 1-5; matches the old high/default/low header values.
+_NTFY_PRIORITY = {"error": 4, "warning": 3}
+
+
 async def _send_ntfy(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
     url = getattr(s, "notify_ntfy_url", "") or ""
     if not url:
         return ChannelResult("ntfy", "skipped")
+    base, topic = _split_ntfy_url(url)
+    if not topic:
+        log.warning("notify.ntfy.failed", error="no topic in URL")
+        return ChannelResult("ntfy", "failed", "ntfy URL has no topic")
+    # JSON publishing carries the title in the UTF-8 body. The previous header form
+    # ("Title") is latin-1 only, so every emoji-prefixed alert title (🔴/✅) raised
+    # UnicodeEncodeError and the channel silently failed on every real alert.
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             resp = await c.post(
-                url,
-                content=message,
-                headers={
-                    "Title": title,
-                    "Priority": {"error": "high", "warning": "default"}.get(level, "low"),
-                    "Tags": "shield",
+                base,
+                json={
+                    "topic": topic,
+                    "title": title,
+                    "message": message,
+                    "priority": _NTFY_PRIORITY.get(level, 2),
+                    "tags": ["shield"],
                 },
             )
         return _result("ntfy", resp)
@@ -116,8 +149,10 @@ async def send_notification(title: str, message: str, level: str = "info") -> No
 
 async def send_test_notification() -> list[ChannelResult]:
     """Send a test message and report per-channel status (for the Settings UI)."""
+    # Emoji-prefixed like real alert titles, so the Test button exercises the same
+    # Unicode-encoding path a production alert takes (it previously did not).
     return await _dispatch(
-        "Orbit test notification",
+        "✅ Orbit test notification",
         "If you can read this, Orbit notifications are working.",
         "info",
     )

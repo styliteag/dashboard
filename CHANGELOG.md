@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **SSH private key no longer leaks into the audit log** — editing an instance's SSH key (`PATCH /instances/{id}`) previously serialized the ed25519 **private key** in cleartext into the permanent audit trail (and it was readable back via `GET /audit`), because the audit redaction only excluded `api_key`/`api_secret`. The audit `detail` is now built from an **allowlist** of safe fields; secrets (api_key/api_secret/ssh_key/ca_bundle) are never recorded by value — only the fact that one was rotated is logged, by name.
+
+### Fixed
+
+- **Agent reconnect race made firewalls appear stuck-offline for commands** — on an overlapping reconnect (self-update restart, network blip, supervisor respawn) the dying old WebSocket's teardown could unregister the freshly-reconnected agent. The box kept pushing metrics (showed online) but every command/relay/tunnel/update/GUI/uninstall returned `503 agent not connected` until a clean reconnect. Agent unregistration is now identity-aware, so only a connection can remove itself.
+- **ntfy notifications silently failed on every real alert** — alert titles are emoji-prefixed (🔴/✅), but ntfy received the title via an HTTP header (latin-1 only), so each send raised `UnicodeEncodeError` and was swallowed as `failed` — while the **Test** button (plain-ASCII title) reported `sent`, hiding the breakage. ntfy now uses JSON publishing (title carried in the UTF-8 body), and the test notification uses an emoji title so it exercises the same path a real alert takes.
+
 ## [1.6.4] - 2026-06-27
 
 ### Added
