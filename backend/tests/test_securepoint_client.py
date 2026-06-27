@@ -51,6 +51,9 @@ _SYSTEM_INFO = [
     {"attribute": "storage", "value": "61660659712"},
     {"attribute": "storage free", "value": "57942274048"},
     {"attribute": "Uptime", "value": "01:19:44"},
+    {"attribute": "productname", "value": "RC100-G5"},
+    {"attribute": "cur", "value": "14.1.6"},
+    {"attribute": "new", "value": "none"},
 ]
 _INTERFACE_ADDRS = [
     {"id": 3, "flags": ["ONLINE"], "device": "A1", "address": "10.21.0.1/22"},
@@ -155,6 +158,40 @@ async def test_ipsec_status_falls_back_to_spcgi_when_ssh_fails(
     # spcgi fallback: simple view, no IKE cookie
     assert status.tunnels[0].id == "bonis-test"
     assert status.tunnels[0].ike_init_spi == ""
+
+
+@pytest.mark.asyncio
+async def test_firmware_status_reports_version_up_to_date() -> None:
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_router)
+        async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False) as sp:
+            fw = await sp.firmware_status()
+    assert fw.product_version == "14.1.6"
+    assert fw.product_name == "RC100-G5"
+    assert fw.upgrade_available is False  # new == "none"
+    assert fw.updates_available == 0
+
+
+@pytest.mark.asyncio
+async def test_firmware_status_reports_available_upgrade() -> None:
+    sysinfo = [x for x in _SYSTEM_INFO if x["attribute"] != "new"] + [
+        {"attribute": "new", "value": "14.2.0"}
+    ]
+
+    def router(request: Request) -> Response:
+        payload = json.loads(request.content)
+        if (payload["module"], payload["command"]) == ("system", ["info"]):
+            return _ok(sysinfo)
+        return _router(request)
+
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=router)
+        async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False) as sp:
+            fw = await sp.firmware_status()
+    assert fw.product_version == "14.1.6"
+    assert fw.product_latest == "14.2.0"
+    assert fw.upgrade_available is True
+    assert fw.updates_available == 1
 
 
 @pytest.mark.asyncio

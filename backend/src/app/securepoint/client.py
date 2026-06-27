@@ -401,7 +401,24 @@ class SecurepointClient:
     # rather than 500ing. These are why a Securepoint instance renders cleanly.
 
     async def firmware_status(self) -> FirmwareStatus:
-        return FirmwareStatus(status_msg=_READ_ONLY)
+        """Firmware version + available update from ``system info``.
+
+        ``version``/``cur`` = installed; ``new`` = the available upgrade ("none"
+        when up to date). Best-effort — never raises, so the firmware route can't
+        500 on a transient spcgi error (it only catches OPNsenseError)."""
+        info: dict[str, str] = {}
+        with contextlib.suppress(SecurepointError):
+            info = await self.system_info()
+        cur = info.get("version") or info.get("cur") or ""
+        new = info.get("new", "")
+        has_update = bool(new) and new.lower() not in ("none", "-") and new != cur
+        return FirmwareStatus(
+            product_name=info.get("productname") or "Securepoint UTM",
+            product_version=cur,
+            product_latest=new if has_update else cur,
+            upgrade_available=has_update,
+            updates_available=1 if has_update else 0,
+        )
 
     async def firmware_check(self) -> ActionResult:
         return ActionResult(success=False, message=_READ_ONLY)
