@@ -100,26 +100,40 @@ secrets** — no API key/secret, no IPsec PSK, no raw config. It is the same
 
 ### 1. Mint a read-only API key
 
-There is no UI for keys yet — create one via the API with an admin session/token:
+There is no UI for keys yet, and **there is no standalone admin bearer token in
+production**. The create/list/revoke endpoints authenticate with the **login
+session cookie** (`dash_session`), not a token. So log in into a cookie jar
+first, then call the key endpoint with that cookie.
+
+Log in as the bootstrapped `admin` user (created on first start from
+`DASH_ADMIN_PASSWORD` in `.env`):
 
 ```sh
-curl -X POST https://dashboard.example.com/api/apikeys \
-  -H "Authorization: Bearer <admin-token>" \
+# 1. Log in → store the dash_session cookie
+curl -c cookies.txt -X POST https://dashboard.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<DASH_ADMIN_PASSWORD>"}'
+
+# 2. Mint the key with that session
+curl -b cookies.txt -X POST https://dashboard.example.com/api/apikeys \
   -H "Content-Type: application/json" \
   -d '{"name":"checkmk"}'
 # → {"id":1,"name":"checkmk","prefix":"orbit_xxxx","key":"orbit_………"}
 ```
 
 The full `key` (prefix `orbit_`) is **shown once** — store it now. It is stored
-hashed, accepted only as a `Bearer` token, **rejected on any non-GET request**,
-and revocable later:
+hashed, accepted only as a `Bearer` token on read endpoints, **rejected on any
+non-GET request**, and revocable later (same session cookie):
 
 ```sh
-curl https://dashboard.example.com/api/apikeys \
-  -H "Authorization: Bearer <admin-token>"                 # list (id, name, prefix)
-curl -X DELETE https://dashboard.example.com/api/apikeys/1 \
-  -H "Authorization: Bearer <admin-token>"                 # revoke
+curl -b cookies.txt https://dashboard.example.com/api/apikeys              # list (id, name, prefix)
+curl -b cookies.txt -X DELETE https://dashboard.example.com/api/apikeys/1  # revoke
 ```
+
+> **Dev shortcut (`DASH_ENV=dev` only):** the login response includes a
+> `session_token`; you can pass it as `Authorization: Bearer <session_token>`
+> instead of the cookie jar. That dev bearer token does **not** exist in
+> production (`session_token` is `null` there) — use the cookie.
 
 ### 2. Install the special agent on the Checkmk site
 

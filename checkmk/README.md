@@ -29,11 +29,15 @@ ORBIT_URL=http://dashboard.example.com ORBIT_API_KEY=orbit_xxxxx ./agent_stylite
 ORBIT_URL=http://dashboard.example.com ORBIT_USER=admin ORBIT_PASSWORD=secret ./agent_styliteorbit
 ```
 
-Mint a key (admin):
+Mint a key (no admin bearer token in prod — auth is the `dash_session` login
+cookie; log in into a cookie jar first):
 
 ```sh
-curl -X POST http://dashboard.example.com/api/apikeys \
-  -H "Authorization: Bearer <admin-token>" -H "Content-Type: application/json" \
+curl -c cookies.txt -X POST http://dashboard.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<DASH_ADMIN_PASSWORD>"}'
+curl -b cookies.txt -X POST http://dashboard.example.com/api/apikeys \
+  -H "Content-Type: application/json" \
   -d '{"name":"checkmk"}'      # returns {"key":"orbit_..."} — shown once
 ```
 
