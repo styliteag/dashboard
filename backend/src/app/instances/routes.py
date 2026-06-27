@@ -15,6 +15,7 @@ from app.agent_hub import gui_caddy
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
+from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service
@@ -123,6 +124,14 @@ async def update(
     )
     await session.commit()
     await session.refresh(inst)
+    # Live-apply a changed push cadence to a connected agent; otherwise it only
+    # picks the new value up from the welcome frame on the next reconnect.
+    if "push_interval_seconds" in payload.model_fields_set and inst.agent_mode:
+        agent = hub.get(inst.id)
+        if agent is not None:
+            await agent.send_config(
+                push_interval=inst.push_interval_seconds or get_settings().push_interval_seconds
+            )
     await gui_caddy.reconcile(session)  # reflect a possible slug change
     return inst
 

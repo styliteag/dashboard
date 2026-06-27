@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.7"
+__version__ = "1.5.8"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -2416,6 +2416,25 @@ async def _keepalive_loop(ws: WebSocket) -> None:
         await ws.ping()
 
 
+def _apply_push_interval(value: object) -> None:
+    """Apply a dashboard-pinned push cadence to the live config.
+
+    The push loop reads ``cfg.push_interval`` each cycle, so mutating the shared
+    ``_CONFIG`` takes effect on the next push. Ignores junk and guards against a
+    0/negative value that would turn the push loop into a hot loop.
+    """
+    if value is None or _CONFIG is None:
+        return
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        return
+    if seconds < 1 or seconds == _CONFIG.push_interval:
+        return
+    _CONFIG.push_interval = seconds
+    log.info("push interval set to %ds (dashboard)", seconds)
+
+
 async def _push_loop(ws: WebSocket, cfg: Config) -> None:
     """Push metrics snapshot every N seconds."""
     while True:
@@ -2544,6 +2563,9 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 continue
 
             if msg_type == "welcome":
+                # Dashboard may pin our push cadence (per-instance override or the
+                # global default); the push loop reads cfg each cycle, so it sticks.
+                _apply_push_interval(msg.get("push_interval"))
                 # Dashboard accepted us. If we just self-updated, probation passes.
                 if os.path.exists(_marker_path()):
                     _clear_probation()
@@ -2578,13 +2600,14 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 }))
 
             elif msg_type == "config_update":
-                # Dashboard pushes config (currently: IPsec Phase-2 ping monitors).
+                # Dashboard pushes config: IPsec Phase-2 ping monitors + push cadence.
                 data = msg.get("data", {})
                 monitors = data.get("ipsec_ping_monitors")
                 if monitors is not None:
                     global _PING_MONITORS
                     _PING_MONITORS = monitors if isinstance(monitors, list) else []
                     log.info("applied %d ipsec ping monitor(s)", len(_PING_MONITORS))
+                _apply_push_interval(data.get("push_interval"))
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))

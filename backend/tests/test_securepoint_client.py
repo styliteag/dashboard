@@ -114,6 +114,50 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ipsec_status_uses_ssh_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.securepoint import client as client_mod
+    from app.securepoint.ssh import SSHConfig
+    from app.xsense.schemas import IPsecServiceStatus, IPsecTunnel
+
+    rich = IPsecServiceStatus(
+        running=True, tunnels=[IPsecTunnel(id="bonis-test", ike_init_spi="0731875234fa6144")]
+    )
+
+    async def fake_fetch(host, port, user, key, host_key, *, running):  # noqa: ANN001
+        assert (host, port, user) == ("sp.test", 9922, "root")
+        return rich
+
+    monkeypatch.setattr(client_mod, "fetch_ipsec_status", fake_fetch)
+    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_router)  # serves appmgmt for the running flag
+        async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh) as sp:
+            status = await sp.ipsec_status()
+    assert status.tunnels[0].ike_init_spi == "0731875234fa6144"  # SSH (rich) path used
+
+
+@pytest.mark.asyncio
+async def test_ipsec_status_falls_back_to_spcgi_when_ssh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.securepoint import client as client_mod
+    from app.securepoint.ssh import SecurepointSSHError, SSHConfig
+
+    async def boom(*a, **k):  # noqa: ANN001, ANN002, ANN003
+        raise SecurepointSSHError("connect refused")
+
+    monkeypatch.setattr(client_mod, "fetch_ipsec_status", boom)
+    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_router)
+        async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh) as sp:
+            status = await sp.ipsec_status()
+    # spcgi fallback: simple view, no IKE cookie
+    assert status.tunnels[0].id == "bonis-test"
+    assert status.tunnels[0].ike_init_spi == ""
+
+
+@pytest.mark.asyncio
 async def test_poll_status_maps_metrics_and_interfaces() -> None:
     with respx.mock(base_url=_BASE) as mock:
         mock.post("/spcgi.cgi").mock(side_effect=_router)

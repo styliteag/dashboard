@@ -73,6 +73,11 @@ class Instance(Base):
         default=DeviceType.OPNSENSE.value,
         server_default=text("'opnsense'"),
     )
+    # Per-instance poll/push cadence override (seconds). NULL = inherit the global
+    # default (DASH_POLL_INTERVAL_SECONDS / DASH_PUSH_INTERVAL_SECONDS). poll applies
+    # to direct-API devices; push is mirrored to the agent (push mode).
+    poll_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    push_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     agent_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Opt-in: when True, "Open GUI" replays a WebUI login through the agent so the
@@ -81,6 +86,18 @@ class Instance(Base):
     gui_login_enabled: Mapped[bool] = mapped_column(
         default=False, nullable=False, server_default="false"
     )
+    # Securepoint SSH enrichment (opt-in): when enabled, IPsec status is fetched via
+    # `swanctl --raw` over SSH (rich SPIs/cookies/bytes the spcgi API lacks). The
+    # admin supplies a per-instance ed25519 private key (Fernet-encrypted at rest,
+    # like the API secret); its public half is installed on the box.
+    ssh_enabled: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    ssh_port: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("9922"))
+    ssh_user: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'root'"))
+    # Per-instance SSH private key (OpenSSH ed25519 PEM), Fernet-encrypted. NULL = none.
+    ssh_key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # Pinned host public key ("ssh-ed25519 AAAA…"), captured TOFU; NULL = not yet pinned.
+    ssh_host_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
@@ -121,6 +138,22 @@ class Instance(Base):
         canonical API endpoint for direct/relay polling.
         """
         return self.base_url.split(",", 1)[0].strip()
+
+    @property
+    def ssh_host(self) -> str:
+        """Hostname for SSH — the host part of the primary base URL (no scheme/port)."""
+        from urllib.parse import urlsplit
+
+        return urlsplit(self.primary_base_url).hostname or ""
+
+    @property
+    def ssh_key_set(self) -> bool:
+        """True when an SSH private key is stored (the key itself is never exposed)."""
+        return self.ssh_key_enc is not None
+
+    @property
+    def ssh_host_key_pinned(self) -> bool:
+        return self.ssh_host_key is not None
 
 
 class AuditLog(Base):

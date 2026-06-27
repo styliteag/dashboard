@@ -22,7 +22,7 @@ def _set_master_key(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-def _instance(device_type: str) -> Instance:
+def _instance(device_type: str, **kw: object) -> Instance:
     from app.crypto.secrets import encrypt
 
     return Instance(
@@ -32,7 +32,38 @@ def _instance(device_type: str) -> Instance:
         ssl_verify=False,
         api_key_enc=encrypt("admin"),
         api_secret_enc=encrypt("pw"),
+        **kw,
     )
+
+
+def test_ssh_config_none_when_disabled_or_keyless() -> None:
+    from app.crypto.secrets import encrypt
+
+    assert ClientRegistry._ssh_config(_instance("securepoint")) is None  # no key, not enabled
+    # enabled but no key → still None
+    assert ClientRegistry._ssh_config(_instance("securepoint", ssh_enabled=True)) is None
+    # key present but disabled → None
+    inst = _instance("securepoint", ssh_enabled=False, ssh_key_enc=encrypt("KEY"))
+    assert ClientRegistry._ssh_config(inst) is None
+
+
+def test_ssh_config_built_when_enabled_with_key() -> None:
+    from app.crypto.secrets import encrypt
+
+    inst = _instance(
+        "securepoint",
+        ssh_enabled=True,
+        ssh_port=9922,
+        ssh_user="root",
+        ssh_key_enc=encrypt("PRIVATE-KEY-PEM"),
+        ssh_host_key="ssh-ed25519 AAAAhostkey",
+    )
+    cfg = ClientRegistry._ssh_config(inst)
+    assert cfg is not None
+    assert cfg.host == "fw.example.test"  # derived from base_url
+    assert (cfg.port, cfg.user) == (9922, "root")
+    assert cfg.private_key == "PRIVATE-KEY-PEM"  # decrypted
+    assert cfg.host_key == "ssh-ed25519 AAAAhostkey"
 
 
 @pytest.mark.asyncio

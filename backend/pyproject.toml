@@ -19,6 +19,7 @@ dependencies = [
     "apscheduler>=3.10",
     "itsdangerous>=2.2",
     "websockets>=13.0",
+    "asyncssh>=2.18",
 ]
 
 [project.optional-dependencies]

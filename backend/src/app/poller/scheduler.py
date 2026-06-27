@@ -1,14 +1,16 @@
 """APScheduler-based poller that runs inside the FastAPI process.
 
-Every ``DASH_POLL_INTERVAL_SECONDS`` (default 30s) it fetches all active
-instances and polls them in parallel with a concurrency limit of
-``DASH_POLL_CONCURRENCY`` (default 20).
+It ticks every ``DASH_POLL_TICK_SECONDS`` (default 10s) and, on each tick, polls
+the active direct-API instances whose own effective interval has elapsed — the
+per-instance ``poll_interval_seconds`` override or the global default
+``DASH_POLL_INTERVAL_SECONDS`` (default 30s). Polls run in parallel with a
+concurrency limit of ``DASH_POLL_CONCURRENCY`` (default 20). See ``poller.gate``.
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -21,6 +23,7 @@ from app.devices.types import Transport
 from app.maintenance.jobs import prune_ipsec_events, prune_metrics
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
+from app.poller.gate import effective_interval, is_due, is_stale, stale_threshold
 from app.xsense.registry import registry
 
 log = structlog.get_logger("app.poller")
@@ -88,21 +91,43 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
 
 
 async def _poll_all() -> None:
-    """Run one poll cycle across all active instances."""
+    """Poll every direct instance whose own interval has elapsed (tick-and-gate).
+
+    The job fires every ``poll_tick_seconds``; each instance is polled only once its
+    effective interval (per-instance override or the global default) has elapsed
+    since the last attempt — so a box can run faster *or* slower than the default.
+    """
     settings = get_settings()
     sessionmaker = get_sessionmaker()
+    now = datetime.now(UTC)
 
     async with sessionmaker() as session:
         rows = (
             await session.execute(
-                select(Instance.id, Instance.name).where(
+                select(
+                    Instance.id,
+                    Instance.name,
+                    Instance.poll_interval_seconds,
+                    Instance.last_success_at,
+                    Instance.last_error_at,
+                ).where(
                     Instance.deleted_at.is_(None),
                     Instance.transport == Transport.DIRECT.value,  # only poll direct-API devices
                 )
             )
         ).all()
 
-    if not rows:
+    due = [
+        r
+        for r in rows
+        if is_due(
+            now,
+            r.last_success_at,
+            r.last_error_at,
+            effective_interval(r.poll_interval_seconds, settings.poll_interval_seconds),
+        )
+    ]
+    if not due:
         return
 
     semaphore = asyncio.Semaphore(settings.poll_concurrency)
@@ -111,9 +136,9 @@ async def _poll_all() -> None:
         async with semaphore:
             await _poll_instance(instance_id, name)
 
-    log.info("poll.cycle_start", count=len(rows))
-    await asyncio.gather(*(bounded(r.id, r.name) for r in rows))
-    log.info("poll.cycle_end", count=len(rows))
+    log.info("poll.cycle_start", count=len(due))
+    await asyncio.gather(*(bounded(r.id, r.name) for r in due))
+    log.info("poll.cycle_end", count=len(due))
 
 
 async def _check_stale_agents() -> None:
@@ -121,13 +146,14 @@ async def _check_stale_agents() -> None:
 
     Direct-poll instances get offline detection from the poller; push instances
     would otherwise stay green forever after their agent dies, because nothing
-    polls them. A push older than ``agent_stale_seconds`` is treated as offline
-    (the threshold tolerates the brief reconnect during a self-update restart).
+    polls them. The silence threshold scales with each instance's effective push
+    interval (~4 missed pushes), floored at ``agent_stale_seconds`` — so a
+    deliberately slow agent is not flagged offline at the global floor, while the
+    floor still tolerates the brief reconnect during a self-update restart.
     """
     settings = get_settings()
     sessionmaker = get_sessionmaker()
     now = datetime.now(UTC)
-    cutoff = now - timedelta(seconds=settings.agent_stale_seconds)
 
     async with sessionmaker() as session:
         rows = (
@@ -137,7 +163,6 @@ async def _check_stale_agents() -> None:
                         Instance.deleted_at.is_(None),
                         Instance.transport == Transport.PUSH.value,
                         Instance.agent_last_seen.is_not(None),
-                        Instance.agent_last_seen < cutoff,
                     )
                 )
             )
@@ -146,16 +171,23 @@ async def _check_stale_agents() -> None:
         )
 
         for inst in rows:
+            threshold = stale_threshold(
+                inst.push_interval_seconds,
+                settings.push_interval_seconds,
+                settings.agent_stale_seconds,
+            )
+            if not is_stale(now, inst.agent_last_seen, threshold):
+                continue
             # Only the online→offline transition fires a notification (idempotent).
             if not is_online(inst.last_success_at, inst.last_error_at):
                 continue
             inst.last_error_at = now
-            inst.last_error_message = f"agent silent for >{settings.agent_stale_seconds}s"
+            inst.last_error_message = f"agent silent for >{threshold}s"
             await session.commit()
             log.warning("agent.stale", instance=inst.name, instance_id=inst.id)
             await send_notification(
                 f"🔴 {inst.name} agent offline",
-                f"No metrics push from {inst.name} for over {settings.agent_stale_seconds}s.",
+                f"No metrics push from {inst.name} for over {threshold}s.",
                 level="error",
             )
 
@@ -167,7 +199,7 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         _poll_all,
         "interval",
-        seconds=settings.poll_interval_seconds,
+        seconds=settings.poll_tick_seconds,  # scheduler granularity; per-instance gated
         id="poll_all",
         max_instances=1,
         next_run_time=datetime.now(UTC),  # run immediately on startup
@@ -175,7 +207,7 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         _check_stale_agents,
         "interval",
-        seconds=settings.poll_interval_seconds,
+        seconds=settings.poll_tick_seconds,
         id="check_stale_agents",
         max_instances=1,
     )
@@ -186,7 +218,11 @@ def start_scheduler() -> None:
         prune_ipsec_events, "interval", hours=24, id="ipsec_events_prune", max_instances=1
     )
     _scheduler.start()
-    log.info("scheduler.started", interval_s=settings.poll_interval_seconds)
+    log.info(
+        "scheduler.started",
+        tick_s=settings.poll_tick_seconds,
+        default_interval_s=settings.poll_interval_seconds,
+    )
 
 
 async def stop_scheduler() -> None:

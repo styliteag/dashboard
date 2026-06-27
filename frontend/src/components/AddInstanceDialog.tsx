@@ -19,6 +19,11 @@ export default function AddInstanceDialog({ onClose }: Props) {
     api_secret: "",
     ca_bundle: "",
     ssl_verify: true,
+    ssh_enabled: false,
+    ssh_port: "9922",
+    ssh_user: "root",
+    ssh_key: "",
+    interval: "", // push (agent) or poll (direct) cadence; empty = global default
     location: "",
     notes: "",
     tags: "",
@@ -52,6 +57,20 @@ export default function AddInstanceDialog({ onClose }: Props) {
         ...(!form.agent_mode && form.api_secret ? { api_secret: form.api_secret } : {}),
         ca_bundle: form.ca_bundle || null,
         ssl_verify: form.ssl_verify,
+        ...(isSecurepoint
+          ? {
+              ssh_enabled: form.ssh_enabled,
+              ssh_port: Number(form.ssh_port) || 9922,
+              ssh_user: form.ssh_user || "root",
+              ...(form.ssh_key ? { ssh_key: form.ssh_key } : {}),
+            }
+          : {}),
+        ...(form.interval.trim() !== ""
+          ? {
+              [form.agent_mode ? "push_interval_seconds" : "poll_interval_seconds"]:
+                Number(form.interval),
+            }
+          : {}),
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
@@ -161,8 +180,50 @@ export default function AddInstanceDialog({ onClose }: Props) {
             agent token to install on the firewall.
           </p>
         )}
+        {isSecurepoint && (
+          <div className="space-y-2 rounded-lg border border-slate-700 p-3">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={form.ssh_enabled}
+                onChange={(e) => setForm((f) => ({ ...f, ssh_enabled: e.target.checked }))}
+                className="rounded border-slate-600"
+              />
+              SSH enrichment (rich IPsec via swanctl — SPIs, cookies, byte counters)
+            </label>
+            {form.ssh_enabled && (
+              <>
+                <div className="flex gap-2">
+                  <Input label="SSH port" value={form.ssh_port} onChange={set("ssh_port")} />
+                  <Input label="SSH user" value={form.ssh_user} onChange={set("ssh_user")} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">
+                    SSH private key (ed25519 PEM — generate with <code>just gen-ssh-key</code>,
+                    install the public half on the box)
+                  </label>
+                  <textarea
+                    value={form.ssh_key}
+                    onChange={set("ssh_key")}
+                    rows={4}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <Input label="Location" value={form.location} onChange={set("location")} />
         <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
+        <Input
+          label={`${form.agent_mode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}
+          value={form.interval}
+          onChange={set("interval")}
+          type="number"
+          min={5}
+          placeholder="global default"
+        />
         <div className="space-y-1">
           <label className="text-xs text-slate-400">CA bundle (PEM)</label>
           <textarea

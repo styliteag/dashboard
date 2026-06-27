@@ -12,6 +12,13 @@ export interface Instance {
   agent_mode: boolean;
   device_type: string;
   transport: string;
+  poll_interval_seconds: number | null;
+  push_interval_seconds: number | null;
+  ssh_enabled: boolean;
+  ssh_port: number;
+  ssh_user: string;
+  ssh_key_set: boolean;
+  ssh_host_key_pinned: boolean;
   agent_last_seen: string | null;
   location: string | null;
   notes: string | null;

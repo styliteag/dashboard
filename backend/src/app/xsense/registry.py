@@ -13,6 +13,7 @@ from app.db.models import Instance
 from app.devices.protocol import DeviceClient
 from app.devices.types import DeviceType
 from app.securepoint.client import SecurepointClient
+from app.securepoint.ssh import SSHConfig
 from app.xsense.client import OPNsenseClient
 
 
@@ -25,7 +26,20 @@ class ClientRegistry:
         self._lock = asyncio.Lock()
 
     @staticmethod
-    def _build(instance: Instance) -> DeviceClient:
+    def _ssh_config(instance: Instance) -> SSHConfig | None:
+        """Build SSH enrichment config from the instance, or None when not usable."""
+        if not (instance.ssh_enabled and instance.ssh_key_enc):
+            return None
+        return SSHConfig(
+            host=instance.ssh_host,
+            port=instance.ssh_port,
+            user=instance.ssh_user,
+            private_key=decrypt(instance.ssh_key_enc),
+            host_key=instance.ssh_host_key,
+        )
+
+    @classmethod
+    def _build(cls, instance: Instance) -> DeviceClient:
         if instance.device_type == DeviceType.SECUREPOINT.value:
             return SecurepointClient(
                 base_url=instance.primary_base_url,
@@ -33,6 +47,7 @@ class ClientRegistry:
                 password=decrypt(instance.api_secret_enc),
                 ca_bundle_pem=instance.ca_bundle,
                 ssl_verify=instance.ssl_verify,
+                ssh=cls._ssh_config(instance),
             )
         return OPNsenseClient(
             base_url=instance.primary_base_url,

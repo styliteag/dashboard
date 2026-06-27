@@ -59,6 +59,15 @@ class InstanceCreate(BaseModel):
     agent_mode: bool = False
     ca_bundle: str | None = None
     ssl_verify: bool = True
+    # Per-instance poll/push cadence override (seconds). Omit/null = inherit the
+    # global default. poll applies to direct-API devices, push to agent (push) mode.
+    poll_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
+    push_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
+    # Securepoint SSH enrichment (opt-in): rich IPsec via `swanctl --raw`.
+    ssh_enabled: bool = False
+    ssh_port: int = 9922
+    ssh_user: str = "root"
+    ssh_key: str | None = None  # ed25519 private key (PEM); encrypted at rest
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
@@ -85,6 +94,15 @@ class InstanceUpdate(BaseModel):
     ca_bundle: str | None = None
     ssl_verify: bool | None = None
     gui_login_enabled: bool | None = None
+    # Send null to clear an override back to the global default; a number sets it;
+    # omit to leave unchanged (the service distinguishes these via model_fields_set).
+    poll_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
+    push_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
+    # Securepoint SSH enrichment. ssh_key empty/omitted means "keep existing".
+    ssh_enabled: bool | None = None
+    ssh_port: int | None = None
+    ssh_user: str | None = None
+    ssh_key: str | None = None
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
@@ -112,6 +130,14 @@ class InstanceResponse(BaseModel):
     transport: str
     device_type: str
     agent_mode: bool
+    # Raw nullable overrides (null = inherit global) so the UI can show inherit vs set.
+    poll_interval_seconds: int | None = None
+    push_interval_seconds: int | None = None
+    ssh_enabled: bool
+    ssh_port: int
+    ssh_user: str
+    ssh_key_set: bool  # whether a private key is stored (never returns the key itself)
+    ssh_host_key_pinned: bool
     agent_last_seen: datetime | None
     location: str | None
     notes: str | None

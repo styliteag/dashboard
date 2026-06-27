@@ -122,6 +122,10 @@ async def agent_websocket(ws: WebSocket):
 
     instance_id = inst.id
     instance_name = inst.name
+    # Effective push cadence to mirror to the agent (per-instance override or default).
+    push_interval = (
+        getattr(inst, "push_interval_seconds", None) or get_settings().push_interval_seconds
+    )
 
     agent = await hub.register(ws, instance_id, instance_name)
 
@@ -137,6 +141,7 @@ async def agent_websocket(ws: WebSocket):
                     "type": "welcome",
                     "instance_id": instance_id,
                     "instance_name": instance_name,
+                    "push_interval": push_interval,
                 }
             )
             # Push the instance's IPsec ping-monitor config so the agent starts

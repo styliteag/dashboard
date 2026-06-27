@@ -196,6 +196,16 @@ class ConnectedAgent:
         if future and not future.done():
             future.set_result(result)
 
+    async def send_config(self, **fields: object) -> None:
+        """Fire-and-forget a live config update (e.g. push_interval) to the agent.
+
+        Uses the agent's existing ``config_update`` channel (``data`` payload).
+        Best-effort: a send failure must never bubble into the request that
+        triggered it — the value is re-sent in the welcome frame on (re)connect.
+        """
+        with contextlib.suppress(Exception):
+            await self.ws.send_json({"type": "config_update", "data": dict(fields)})
+
 
 class AgentHub:
     """Singleton registry of connected agents."""

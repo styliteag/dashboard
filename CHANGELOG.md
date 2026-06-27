@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Securepoint SSH enrichment for IPsec pairing** — opt-in per Securepoint instance: the dashboard runs `swanctl --list-sas/--list-conns --raw` over SSH (read-only) to get the IKE cookies, ESP SPIs and per-tunnel byte counters the spcgi API doesn't expose, so a Securepoint tunnel pairs with its peer firewall in the VPN overview even across NAT (cookie-based pairing). Per-instance ed25519 private key, Fernet-encrypted at rest (the public half is installed on the box; host key pinned trust-on-first-use); SSH failures fall back to the plain spcgi view. New `just gen-ssh-key`; setup guide in `docs/securepoint-ssh.md`. Still a pull model — no agent on the box.
+
 - **Securepoint UTM as a direct-poll device type (read-only)** — pick "Securepoint UTM" in the Add-instance form (username/password instead of API key/secret; self-signed certs allowed by default; no agent — the Agent tab is hidden for Securepoint). The dashboard polls the appliance's `/spcgi.cgi` JSON API (session auth) and surfaces its IPsec service + tunnel status in the VPN view (one row per Phase-2 selector grouped into a tunnel) plus host metrics — CPU %, memory, disk, uptime and per-interface IP addresses — mapped onto the same shape as OPNsense/pfSense. Read-only: tunnel connect/disconnect and IPsec restart report "not supported (read-only)". The credential read path never calls `ipsec get` (which would expose the PSK).
+
+- **Per-instance poll/push interval** — set how often each device is polled (direct mode) or how often its agent pushes (push mode) in the Add/Edit-instance form, overriding the global defaults (empty = inherit, minimum 5s). The poller now ticks every `DASH_POLL_TICK_SECONDS` (default 10) and polls each instance on its own effective interval, so a box can run faster *or* slower than the `DASH_POLL_INTERVAL_SECONDS` default (30). A changed agent push cadence is mirrored to a connected agent live (applied on its next push) and re-sent on reconnect; the agent-offline threshold now scales with the per-instance push interval (~4 missed pushes) so a deliberately slow agent isn't falsely flagged offline. New global default `DASH_PUSH_INTERVAL_SECONDS` (30). (Agent `__version__` → 1.5.8.)
 
 ## [1.5.4] - 2026-06-26
 

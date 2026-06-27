@@ -23,7 +23,9 @@ import ssl
 from typing import Any
 
 import httpx
+import structlog
 
+from app.securepoint.ssh import SecurepointSSHError, SSHConfig, fetch_ipsec_status
 from app.xsense.schemas import (
     ActionResult,
     CpuUsage,
@@ -51,6 +53,8 @@ _PHASE1_DOWN = "down"
 # Forbidden in the read path — leaks the PSK. Guard against accidental use.
 _FORBIDDEN_COMMANDS = {("ipsec", "get")}
 
+log = structlog.get_logger(__name__)
+
 
 class SecurepointError(RuntimeError):
     def __init__(self, message: str, *, code: int | None = None) -> None:
@@ -67,10 +71,12 @@ class SecurepointClient:
         ca_bundle_pem: str | None = None,
         ssl_verify: bool = True,
         timeout: float = 10.0,
+        ssh: SSHConfig | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._user = user
         self._password = password
+        self._ssh = ssh
         self._sessionid: str | None = None
 
         verify: ssl.SSLContext | bool
@@ -222,14 +228,26 @@ class SecurepointClient:
     async def ipsec_status(self) -> IPsecServiceStatus:
         """IPsec service state + tunnel list mapped onto the shared Orbit DTOs.
 
-        Securepoint ``ipsec status`` returns one row per Phase-2 selector
-        (``subnet_id``) — verified live against a 2-selector tunnel. Rows are
-        grouped by connection ``name`` into a single ``IPsecTunnel`` carrying one
-        ``IPsecChild`` per row. ``bytes_in/out`` and ``seconds_established`` are
-        not exposed by this endpoint → left at 0.
+        When SSH enrichment is configured, the rich ``swanctl --raw`` view is used
+        (IKE cookies + ESP SPIs + byte counters → cross-instance pairing). Otherwise
+        the spcgi ``ipsec status`` view (one row per Phase-2 selector, grouped by
+        connection name; no SPIs/bytes) is returned. SSH failures fall back to spcgi.
         """
         services = await self.appmgmt_status()
         running = services.get("ipsec", "").upper() == _STATE_UP
+
+        if self._ssh is not None:
+            try:
+                return await fetch_ipsec_status(
+                    self._ssh.host,
+                    self._ssh.port,
+                    self._ssh.user,
+                    self._ssh.private_key,
+                    self._ssh.host_key,
+                    running=running,
+                )
+            except SecurepointSSHError as exc:
+                log.warning("securepoint.ssh_ipsec_failed", host=self._ssh.host, error=str(exc))
 
         rows = await self._command("ipsec", ["status"])
         grouped: dict[str, list[dict[str, Any]]] = {}

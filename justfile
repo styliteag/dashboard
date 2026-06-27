@@ -104,3 +104,8 @@ release type="patch":
 # Generate a Fernet master key for DASH_MASTER_KEY
 gen-key:
     cd backend && uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+
+# Generate an ed25519 keypair for Securepoint SSH enrichment (private key → paste
+# into the instance form; public key → install on the box, see docs/securepoint-ssh.md)
+gen-ssh-key:
+    cd backend && uv run python -c 'import asyncssh; k=asyncssh.generate_private_key("ssh-ed25519"); print(k.export_private_key().decode()); print(k.export_public_key().decode().strip())'

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from datetime import UTC, datetime
 
@@ -14,6 +15,7 @@ from app.devices.types import DeviceType, Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
 from app.securepoint.client import SecurepointClient, SecurepointError
+from app.securepoint.ssh import SecurepointSSHError, probe_host_key
 from app.xsense.client import OPNsenseClient, OPNsenseError
 from app.xsense.registry import registry
 
@@ -100,15 +102,35 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
         api_secret_enc=placeholder_secret,
         ca_bundle=payload.ca_bundle,
         ssl_verify=payload.ssl_verify,
+        poll_interval_seconds=payload.poll_interval_seconds,
+        push_interval_seconds=payload.push_interval_seconds,
         transport=transport.value,
         device_type=payload.device_type.value,
+        ssh_enabled=payload.ssh_enabled,
+        ssh_port=payload.ssh_port,
+        ssh_user=payload.ssh_user,
+        ssh_key_enc=encrypt(payload.ssh_key) if payload.ssh_key else None,
         location=payload.location,
         notes=payload.notes,
         tags=payload.tags,
     )
     session.add(inst)
     await session.flush()
+    await _maybe_pin_host_key(inst)
     return inst
+
+
+async def _maybe_pin_host_key(inst: Instance) -> None:
+    """Best-effort TOFU capture of the box's SSH host key (skip if already pinned
+    or SSH is unreachable at config time — it stays unpinned, pinned on next save)."""
+    if not (inst.ssh_enabled and inst.ssh_key_enc) or inst.ssh_host_key:
+        return
+    from app.crypto.secrets import decrypt
+
+    with contextlib.suppress(SecurepointSSHError):
+        inst.ssh_host_key = await probe_host_key(
+            inst.ssh_host, inst.ssh_port, inst.ssh_user, decrypt(inst.ssh_key_enc)
+        )
 
 
 async def update_instance(
@@ -132,6 +154,22 @@ async def update_instance(
         inst.ssl_verify = payload.ssl_verify
     if payload.gui_login_enabled is not None:
         inst.gui_login_enabled = payload.gui_login_enabled
+    # Interval overrides: presence in model_fields_set (not None-ness) drives intent
+    # — an explicit null clears the override back to the global default.
+    fields_set = payload.model_fields_set
+    if "poll_interval_seconds" in fields_set:
+        inst.poll_interval_seconds = payload.poll_interval_seconds
+    if "push_interval_seconds" in fields_set:
+        inst.push_interval_seconds = payload.push_interval_seconds
+    if payload.ssh_enabled is not None:
+        inst.ssh_enabled = payload.ssh_enabled
+    if payload.ssh_port is not None:
+        inst.ssh_port = payload.ssh_port
+    if payload.ssh_user is not None:
+        inst.ssh_user = payload.ssh_user
+    if payload.ssh_key:
+        inst.ssh_key_enc = encrypt(payload.ssh_key)
+        inst.ssh_host_key = None  # re-pin against the new key/identity
     if payload.location is not None:
         inst.location = payload.location or None
     if payload.notes is not None:
@@ -139,6 +177,7 @@ async def update_instance(
     if payload.tags is not None:
         inst.tags = payload.tags or None
     await session.flush()
+    await _maybe_pin_host_key(inst)
     # Drop the cached client so the next call rebuilds with new credentials/URL.
     await registry.invalidate(inst.id)
     return inst

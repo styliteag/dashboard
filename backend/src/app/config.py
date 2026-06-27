@@ -28,13 +28,24 @@ class Settings(BaseSettings):
     # Initial admin password (used only on first start when no admin exists yet)
     admin_password: str = Field(default="", description="Initial admin password")
 
-    # Polling
+    # Polling. ``poll_interval_seconds`` is the *default* per-instance poll cadence
+    # for direct-API devices; an instance may override it (instances.poll_interval_
+    # seconds). The scheduler ticks every ``poll_tick_seconds`` and polls only the
+    # instances whose own interval has elapsed — so a box can run faster *or* slower
+    # than the default. The tick is the finest achievable resolution (floor).
     poll_interval_seconds: int = 30
+    poll_tick_seconds: int = 10
     poll_concurrency: int = 20
 
-    # Agent push staleness: mark a push-mode instance offline if no metrics push
-    # arrives within this many seconds (~4 missed 30s pushes). Generous enough to
-    # tolerate the brief reconnect during a self-update restart.
+    # Default per-instance agent push cadence, mirrored to the agent in the welcome
+    # message (instances.push_interval_seconds overrides it). The agent applies it
+    # live; on (re)connect it is re-sent.
+    push_interval_seconds: int = 30
+
+    # Agent push staleness floor: mark a push-mode instance offline if no metrics
+    # push arrives for this long. The real per-instance threshold scales up with a
+    # slower push interval (~4 missed pushes), so this is just the floor — generous
+    # enough to tolerate the brief reconnect during a self-update restart.
     agent_stale_seconds: int = 120
 
     # Metrics maintenance (replaces TimescaleDB retention).
