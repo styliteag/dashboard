@@ -324,11 +324,11 @@ export default function VPNOverviewPage() {
     const hasChildren = (t.children?.length ?? 0) > 0;
     return (
       <Fragment key={k}>
-        <tr className="border-t border-slate-800">
-          <td className="px-3 py-2">
+        <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
+          <td className={`px-3 py-2 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
             <Link
               to={`/instances/${t.instance_id}`}
-              className={`hover:underline ${inGroup ? "pl-3 text-emerald-400" : "text-emerald-400"}`}
+              className={`hover:underline ${inGroup ? "pl-4 text-emerald-400" : "text-emerald-400"}`}
             >
               {t.instance_name}
             </Link>
@@ -360,7 +360,7 @@ export default function VPNOverviewPage() {
               {t.phase1_status}
             </span>
           </td>
-          <td className="px-3 py-2">
+          <td className="whitespace-nowrap px-3 py-2">
             <div className="flex items-center gap-2">
               <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
               <PingSummary entries={t.children ?? []} />
@@ -401,8 +401,13 @@ export default function VPNOverviewPage() {
           </td>
         </tr>
         {isOpen && (
-          <tr className="border-t border-slate-800/50 bg-slate-900/40">
-            <td colSpan={9} className="px-3 py-1">
+          <tr
+            className={`border-t border-slate-800/50 ${inGroup ? "bg-emerald-500/10" : "bg-slate-900/40"}`}
+          >
+            <td
+              colSpan={9}
+              className={`px-3 py-1 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}
+            >
               <ExpandedPhase2
                 tunnel={t}
                 onConfigure={(tn, child, existing) =>
@@ -532,7 +537,7 @@ export default function VPNOverviewPage() {
         <p className="mt-6 text-slate-500">No tunnels found.</p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
                 {grouped ? (
@@ -598,7 +603,10 @@ export default function VPNOverviewPage() {
                             className="cursor-pointer border-t border-slate-700 bg-slate-900/70 hover:bg-slate-900"
                             onClick={() => toggleGroup(gkey, open)}
                           >
-                            <td colSpan={9} className="px-3 py-1.5 text-xs">
+                            <td
+                              colSpan={9}
+                              className={`px-3 py-1.5 text-xs ${open ? "border-l-4 border-emerald-500" : ""}`}
+                            >
                               <span className="inline-flex flex-wrap items-center gap-2 text-slate-300">
                                 {open ? (
                                   <ChevronDown className="h-3 w-3 text-slate-500" />
@@ -625,7 +633,7 @@ export default function VPNOverviewPage() {
                             </td>
                           </tr>
                         )}
-                        {open && group.members.map((t) => renderRow(t, true))}
+                        {open && group.members.map((t) => renderRow(t, group.paired))}
                       </Fragment>
                     );
                   })

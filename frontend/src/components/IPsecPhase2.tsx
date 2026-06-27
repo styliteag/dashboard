@@ -24,7 +24,7 @@ export function PingSummary({ entries }: { entries: IPsecChild[] }) {
   return (
     <span
       title="Worst Phase-2 ping result on this tunnel — expand for per-selector detail"
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${m.cls}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${m.cls}`}
     >
       <Activity className="h-3 w-3" />
       {m.label}
@@ -81,7 +81,7 @@ export function PingBadge({ child }: { child: IPsecChild }) {
   return (
     <span
       title={`Ping ${ps}${lossPart}${tsPart}`}
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${m.cls}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${m.cls}`}
     >
       <Activity className="h-3 w-3" />
       {m.label}
