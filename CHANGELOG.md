@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Stale-agent watchdog no longer fires a false "offline" alert for an agent that recovers mid-pass** — the watchdog decided offline from a snapshot read once at the top of the pass and held the DB session open across the (slow) notification send, so an agent that reconnected during the pass could be clobbered off the stale snapshot. The offline flip is now a guarded conditional UPDATE (only if no fresher push arrived since the snapshot), the clock is read per-instance, and notifications are sent after the session is released.
+- **Interface throughput rates no longer flatline on low-traffic links** — `metrics.value` was a single-precision FLOAT (24-bit mantissa), so raw cumulative byte counters above ~16.7 M were quantized; subtracting two consecutive samples to derive a per-second rate then rounded small deltas to 0 (or a staircase). The column is now DOUBLE (migration `015`). Already-stored values keep their existing precision; new samples are exact.
 
 ## [1.6.5] - 2026-06-27
 

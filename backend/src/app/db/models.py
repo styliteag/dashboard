@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     DateTime,
+    Double,
     ForeignKey,
     Index,
     Integer,
@@ -189,7 +190,10 @@ class Metric(Base):
     )
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     metric: Mapped[str] = mapped_column(String(128), primary_key=True)
-    value: Mapped[float] = mapped_column(nullable=False)
+    # Double (53-bit mantissa): single-precision FLOAT lost precision on raw
+    # cumulative byte counters >2^24, flatlining/staircasing low-traffic throughput
+    # rates derived by subtracting consecutive stored values.
+    value: Mapped[float] = mapped_column(Double, nullable=False)
 
 
 class ApiKey(Base):
