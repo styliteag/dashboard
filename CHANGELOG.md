@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **Hardened DASH_TRUSTED_PROXY_HOPS validation** — the setting that controls how many X-Forwarded-For entries are trusted for login/enroll rate-limiting and audit source IP is now validated at startup. Negative values are rejected by Pydantic. In non-dev environments, values > 3 cause an immediate hard failure with a clear message (the previous default behaviour silently allowed configurations that let clients spoof IPs and completely bypass brute-force protection). The bundled compose and .env.example comments were tightened. (See also `trusted_proxy_hops` in config + `_validate_security`.)
+- **Login no longer leaks which usernames exist via response timing** — the credential check short-circuited, running the (~50 ms) Argon2 verify only when the username existed, so a missing username returned noticeably faster. The login path now always spends one Argon2 verify (against a dummy hash when the account is absent), removing the enumeration oracle.
+- **Notification webhook URLs are screened against SSRF to dangerous targets** — user-configured webhook/ntfy/Mattermost URLs (which the backend POSTs to) are now resolved and rejected when they point at loopback, link-local (incl. the `169.254.169.254` cloud-metadata IP), reserved, multicast or unspecified addresses. **Private RFC1918 ranges are intentionally allowed** — self-hosted notification servers on an internal network are a legitimate target, and an admin can already reach them via instance config, so blocking them would add no protection while breaking real setups. (`follow_redirects` stays off; DNS-rebinding at connect time is out of scope for this LOW, admin-only path.)
+
+### Fixed
+
+- **Stale-agent watchdog no longer fires a false "offline" alert for an agent that recovers mid-pass** — the watchdog decided offline from a snapshot read once at the top of the pass and held the DB session open across the (slow) notification send, so an agent that reconnected during the pass could be clobbered off the stale snapshot. The offline flip is now a guarded conditional UPDATE (only if no fresher push arrived since the snapshot), the clock is read per-instance, and notifications are sent after the session is released.
 
 ## [1.6.5] - 2026-06-27
 
