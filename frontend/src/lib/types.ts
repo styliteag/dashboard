@@ -297,6 +297,27 @@ export interface CheckmkPreview {
   instances: CheckmkPreviewInstance[];
 }
 
+// ----- Alerts / Service Checks (global) ------------------------------------
+
+export interface PerfMetric {
+  name: string;
+  value: number;
+  warn: number | null;
+  crit: number | null;
+  unit: string;
+}
+
+export interface ServiceAlert {
+  instance_id: number;
+  instance_name: string;
+  key: string;
+  state: number; // 0 OK, 1 WARN, 2 CRIT, 3 UNKNOWN
+  summary: string;
+  metrics: PerfMetric[];
+  excluded: boolean;
+  excluded_by: "category" | "specific" | null;
+}
+
 // --- Settings: editable application settings ---------------------------------
 
 export interface AppSettingItem {
