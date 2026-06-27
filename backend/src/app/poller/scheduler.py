@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
@@ -153,8 +153,11 @@ async def _check_stale_agents() -> None:
     """
     settings = effective_settings()
     sessionmaker = get_sessionmaker()
-    now = datetime.now(UTC)
 
+    # Collect instances we actually flipped offline, notify AFTER the session is
+    # closed — send_notification can block ~10s/channel, and holding the session
+    # open while it does widens the staleness race window (and ties up a DB conn).
+    flagged: list[tuple[str, int]] = []
     async with sessionmaker() as session:
         rows = (
             (
@@ -171,6 +174,7 @@ async def _check_stale_agents() -> None:
         )
 
         for inst in rows:
+            now = datetime.now(UTC)  # per-iteration; the loop must not reuse a stale clock
             threshold = stale_threshold(
                 inst.push_interval_seconds,
                 settings.push_interval_seconds,
@@ -181,15 +185,32 @@ async def _check_stale_agents() -> None:
             # Only the online→offline transition fires a notification (idempotent).
             if not is_online(inst.last_success_at, inst.last_error_at):
                 continue
-            inst.last_error_at = now
-            inst.last_error_message = f"agent silent for >{threshold}s"
-            await session.commit()
-            log.warning("agent.stale", instance=inst.name, instance_id=inst.id)
-            await send_notification(
-                f"🔴 {inst.name} agent offline",
-                f"No metrics push from {inst.name} for over {threshold}s.",
-                level="error",
+            # Guarded flip: mark offline only if no fresher push landed since our
+            # snapshot (agent_last_seen unchanged — only handle_metrics writes it).
+            # Without this, an agent that reconnects mid-pass gets clobbered off a
+            # stale snapshot and a false offline alert fires.
+            result = await session.execute(
+                update(Instance)
+                .where(
+                    Instance.id == inst.id,
+                    Instance.agent_last_seen == inst.agent_last_seen,
+                )
+                .values(
+                    last_error_at=now,
+                    last_error_message=f"agent silent for >{threshold}s",
+                )
             )
+            await session.commit()
+            if result.rowcount:
+                log.warning("agent.stale", instance=inst.name, instance_id=inst.id)
+                flagged.append((inst.name, threshold))
+
+    for name, threshold in flagged:
+        await send_notification(
+            f"🔴 {name} agent offline",
+            f"No metrics push from {name} for over {threshold}s.",
+            level="error",
+        )
 
 
 def start_scheduler() -> None:

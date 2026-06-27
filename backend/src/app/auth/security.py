@@ -6,6 +6,7 @@ The login limiter is intentionally a simple in-memory dict keyed by source IP.
 This is fine for a single backend container managing one admin. If we ever
 scale to multiple replicas, swap for a Redis-backed limiter.
 """
+
 from __future__ import annotations
 
 import time
@@ -35,6 +36,24 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
     except Exception:  # noqa: BLE001 — never leak hash internals to caller
         return False
+
+
+# Precomputed hash so a login for a nonexistent username still pays one Argon2
+# verify — otherwise the short-circuit (verify only when the user exists) makes
+# response latency a username-enumeration oracle.
+_DUMMY_HASH = _hasher.hash("orbit-nonexistent-account")
+
+
+def verify_password_constant_time(password: str, password_hash: str | None) -> bool:
+    """Verify, always spending one Argon2 verify even when there is no such user.
+
+    Pass ``None`` for a nonexistent account: a dummy verify runs (result ignored)
+    and False is returned, so the response time no longer reveals which usernames
+    exist."""
+    if password_hash is None:
+        verify_password(password, _DUMMY_HASH)
+        return False
+    return verify_password(password, password_hash)
 
 
 def needs_rehash(password_hash: str) -> bool:

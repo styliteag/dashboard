@@ -18,6 +18,12 @@ _EMPTY = SimpleNamespace(
 )
 
 
+async def _resolve_public(_host: str) -> list[str]:
+    """Stub for notifier._resolve: a public IP, so the SSRF guard allows the host
+    without hitting real DNS."""
+    return ["8.8.8.8"]
+
+
 @pytest.mark.asyncio
 async def test_dispatch_covers_all_channels_and_skips_unconfigured(monkeypatch) -> None:
     monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
@@ -54,6 +60,9 @@ async def test_mattermost_attempts_when_configured(monkeypatch) -> None:
 
     monkeypatch.setattr(notifier, "effective_settings", lambda: cfg)
     monkeypatch.setattr(notifier.httpx, "AsyncClient", _Client)
+    # Isolate from real DNS: pretend the host resolves to a public IP (the SSRF
+    # guard resolves hostnames, and mm.example.com does not resolve in CI).
+    monkeypatch.setattr(notifier, "_resolve", _resolve_public)
 
     results = {r.channel: r for r in await notifier.send_test_notification()}
     assert results["mattermost"].status == "sent"
@@ -174,6 +183,57 @@ async def test_telegram_sends_plaintext_without_markdown(monkeypatch) -> None:
     assert "parse_mode" not in posted["json"]  # plaintext: no parser to choke on
     assert "*" not in posted["json"]["text"]  # no Markdown emphasis wrapping
     assert posted["json"]["text"].startswith("✅ Orbit test notification")
+
+
+@pytest.mark.asyncio
+async def test_ssrf_guard_blocks_metadata_loopback_and_bad_scheme() -> None:
+    # IP literals → no DNS, deterministic. 169.254.169.254 is link-local (metadata).
+    assert await notifier._ssrf_block_reason("http://169.254.169.254/latest/meta-data/")
+    assert await notifier._ssrf_block_reason("http://127.0.0.1:8080/hook")
+    assert await notifier._ssrf_block_reason("https://[::1]/hook")
+    assert await notifier._ssrf_block_reason("file:///etc/passwd")
+    assert await notifier._ssrf_block_reason("ftp://example.com/x")
+
+
+@pytest.mark.asyncio
+async def test_ssrf_guard_allows_private_and_public() -> None:
+    # Internal notification servers (self-hosted Mattermost/ntfy) are legitimate.
+    assert await notifier._ssrf_block_reason("http://10.20.1.198:4444/hook") is None
+    assert await notifier._ssrf_block_reason("https://192.168.1.5/hook") is None
+    assert await notifier._ssrf_block_reason("https://8.8.8.8/hook") is None
+
+
+@pytest.mark.asyncio
+async def test_mattermost_blocked_url_is_not_posted(monkeypatch) -> None:
+    cfg = SimpleNamespace(
+        notify_webhook_url="",
+        notify_telegram_token="",
+        notify_telegram_chat_id="",
+        notify_ntfy_url="",
+        notify_mattermost_url="http://169.254.169.254/hooks/abc",
+    )
+    posted = {"called": False}
+
+    class _Client:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            return None
+
+        async def post(self, *a, **k):
+            posted["called"] = True
+            return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: cfg)
+    monkeypatch.setattr(notifier.httpx, "AsyncClient", _Client)
+
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["mattermost"].status == "failed"
+    assert posted["called"] is False  # never POSTed to the blocked target
 
 
 def test_split_ntfy_url_handles_subpath_and_trailing_slash() -> None:

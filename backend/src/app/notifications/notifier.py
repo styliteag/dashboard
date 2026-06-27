@@ -9,6 +9,8 @@ never raised.
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -18,6 +20,50 @@ import structlog
 from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.notifications")
+
+
+async def _ssrf_block_reason(url: str) -> str | None:
+    """Reject a user-configured webhook URL that would let the backend reach a
+    dangerous-but-never-legitimate target. Returns a reason string, or None if OK.
+
+    Blocks loopback, link-local (incl. the 169.254.169.254 cloud-metadata IP),
+    reserved, multicast and unspecified addresses. RFC1918 **private** ranges are
+    intentionally allowed: self-hosted Mattermost/ntfy/webhooks on an internal
+    network are a legitimate (and common) target, and an admin can already reach
+    those via instance config — so blocking them adds no protection.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return "URL must be http(s) with a host"
+    host = parsed.hostname
+    try:
+        addrs = [host] if _is_ip_literal(host) else await _resolve(host)
+    except OSError:
+        return "host does not resolve"
+    for addr in addrs:
+        ip = ipaddress.ip_address(addr)
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return f"blocked address {addr}"
+    return None
+
+
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+async def _resolve(host: str) -> list[str]:
+    infos = await asyncio.get_event_loop().getaddrinfo(host, None)
+    return [info[4][0] for info in infos]
 
 
 @dataclass(frozen=True)
@@ -40,6 +86,10 @@ async def _send_webhook(s, title: str, message: str, level: str) -> ChannelResul
     url = getattr(s, "notify_webhook_url", "") or ""
     if not url:
         return ChannelResult("webhook", "skipped")
+    reason = await _ssrf_block_reason(url)
+    if reason:
+        log.warning("notify.webhook.blocked", reason=reason)
+        return ChannelResult("webhook", "failed", reason)
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             resp = await c.post(url, json={"title": title, "message": message, "level": level})
@@ -100,6 +150,10 @@ async def _send_ntfy(s, title: str, message: str, level: str) -> ChannelResult: 
     url = getattr(s, "notify_ntfy_url", "") or ""
     if not url:
         return ChannelResult("ntfy", "skipped")
+    reason = await _ssrf_block_reason(url)
+    if reason:
+        log.warning("notify.ntfy.blocked", reason=reason)
+        return ChannelResult("ntfy", "failed", reason)
     base, topic = _split_ntfy_url(url)
     if not topic:
         log.warning("notify.ntfy.failed", error="no topic in URL")
@@ -129,6 +183,10 @@ async def _send_mattermost(s, title: str, message: str, level: str) -> ChannelRe
     url = getattr(s, "notify_mattermost_url", "") or ""
     if not url:
         return ChannelResult("mattermost", "skipped")
+    reason = await _ssrf_block_reason(url)
+    if reason:
+        log.warning("notify.mattermost.blocked", reason=reason)
+        return ChannelResult("mattermost", "failed", reason)
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             resp = await c.post(url, json={"text": f"**{title}**\n{message}"})
