@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, Server, Shield, KeyRound, FileText, Package, Settings } from "lucide-react";
+import { LogOut, Server, Shield, KeyRound, FileText, Package, Settings, AlertTriangle } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
 
@@ -35,6 +35,12 @@ export default function Layout() {
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
           >
             <Package className="h-4 w-4" /> Firmware
+          </Link>
+          <Link
+            to="/alerts"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <AlertTriangle className="h-4 w-4" /> Alerts
           </Link>
           <Link
             to="/audit"

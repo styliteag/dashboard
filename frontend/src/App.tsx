@@ -9,6 +9,7 @@ import FirmwareCompliancePage from "./pages/FirmwareCompliancePage";
 import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
 import SettingsPage from "./pages/SettingsPage";
+import AlertsPage from "./pages/AlertsPage";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="instances/:id" element={<InstanceDetailPage />} />
           <Route path="vpn" element={<VPNOverviewPage />} />
           <Route path="firmware" element={<FirmwareCompliancePage />} />
+          <Route path="alerts" element={<AlertsPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="password" element={<PasswordPage />} />
           <Route path="settings" element={<SettingsPage />} />

@@ -7,6 +7,6 @@ making them configurable (global + per-instance) is a follow-up.
 """
 
 from app.checks.evaluate import evaluate_checks
-from app.checks.models import CheckState, PerfMetric, ServiceCheck
+from app.checks.models import CheckState, PerfMetric, ServiceAlert, ServiceCheck
 
-__all__ = ["CheckState", "PerfMetric", "ServiceCheck", "evaluate_checks"]
+__all__ = ["CheckState", "PerfMetric", "ServiceAlert", "ServiceCheck", "evaluate_checks"]

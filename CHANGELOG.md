@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Alerts page** — new top-level **Alerts** view (`/alerts`) that lists every service check (memory, CPU, disks, gateways, IPsec, firmware, ping monitors) across all instances — the exact data Checkmk receives via the export. Filters: "Problems only", search, and Checkmk visibility ("All" / "Exported" / "Excluded"). Each row links back to the instance and shows exclusion reason (category vs specific rule). The list is sorted worst-state first and refreshes every 30 s. Exclusions still affect only the Checkmk export; the dashboard and this page always show the complete set.
+
 ### Security
 
 - **SSH private key no longer leaks into the audit log** — editing an instance's SSH key (`PATCH /instances/{id}`) previously serialized the ed25519 **private key** in cleartext into the permanent audit trail (and it was readable back via `GET /audit`), because the audit redaction only excluded `api_key`/`api_secret`. The audit `detail` is now built from an **allowlist** of safe fields; secrets (api_key/api_secret/ssh_key/ca_bundle) are never recorded by value — only the fact that one was rotated is logged, by name.

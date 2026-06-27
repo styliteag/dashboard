@@ -108,3 +108,28 @@ def test_evaluate_aggregates_and_skips_missing() -> None:
     )
     keys = {c.key for c in full}
     assert {"memory", "cpu", "gateway:WAN", "ipsec.service", "firmware"} <= keys
+
+
+def test_service_alert_model_and_severity() -> None:
+    """ServiceAlert carries instance info + exclusion metadata (used by /checks)."""
+    from app.checks import ServiceAlert
+
+    a = ServiceAlert(
+        instance_id=7,
+        instance_name="fw-01",
+        key="gateway:WAN",
+        state=2,
+        summary="Gateway WAN down",
+        excluded=True,
+        excluded_by="specific",
+    )
+    assert a.instance_id == 7
+    assert a.excluded is True
+    assert a.excluded_by == "specific"
+    assert a.state == 2
+
+    # Replicate the sort key used in the route
+    def _sev(s: int) -> int:
+        return 3 if s == 2 else 2 if s == 1 else 1 if s == 3 else 0
+
+    assert _sev(2) > _sev(1) > _sev(3) > _sev(0)

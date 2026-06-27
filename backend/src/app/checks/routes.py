@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.auth.deps import read_principal
-from app.checkmk.exclusions import is_excluded
-from app.checks import ServiceCheck, evaluate_checks
+from app.checkmk.exclusions import excluded_reason, is_excluded
+from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
 from app.db.base import get_session
 from app.db.models import CheckmkExportExclusion, Instance
 from app.xsense.registry import registry
@@ -108,3 +108,55 @@ async def export_checkmk(
             }
         )
     return {"version": 1, "instances": instances}
+
+
+def _sev(s: int) -> int:
+    """Severity for sorting (worst first): CRIT=3, WARN=2, UNKNOWN=1, OK=0."""
+    return 3 if s == 2 else 2 if s == 1 else 1 if s == 3 else 0
+
+
+@router.get("/checks", response_model=list[ServiceAlert])
+async def all_checks(
+    session: AsyncSession = Depends(get_session),
+    _principal=Depends(read_principal),
+) -> list[ServiceAlert]:
+    """All evaluated service checks across instances (the data Checkmk receives).
+
+    Each entry is annotated with whether it is currently excluded from the
+    Checkmk export (by category or specific rule). The Alerts page consumes this.
+    Direct-poll instances are polled live here (same as the export and preview).
+    """
+    rule_rows = (await session.execute(select(CheckmkExportExclusion))).scalars().all()
+    rules = [(r.instance_id, r.target) for r in rule_rows]
+
+    rows = (
+        (
+            await session.execute(
+                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    alerts: list[ServiceAlert] = []
+    for inst in rows:
+        sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
+        for c in evaluate_checks(sys_status, gateways, ipsec, firmware):
+            reason = excluded_reason(c.key, inst.id, rules)
+            alerts.append(
+                ServiceAlert(
+                    instance_id=inst.id,
+                    instance_name=inst.name,
+                    key=c.key,
+                    state=c.state,
+                    summary=c.summary,
+                    metrics=c.metrics,
+                    excluded=reason is not None,
+                    excluded_by=reason,
+                )
+            )
+
+    # Sort: worst states first, then by instance name, then key (stable)
+    alerts.sort(key=lambda a: (-_sev(a.state), a.instance_name.lower(), a.key))
+    return alerts

@@ -32,3 +32,16 @@ class ServiceCheck(BaseModel):
     state: int  # CheckState value (0|1|2|3)
     summary: str
     metrics: list[PerfMetric] = []
+
+
+class ServiceAlert(ServiceCheck):
+    """A ServiceCheck with its instance and Checkmk export exclusion status.
+
+    Used by the /checks aggregate (Alerts page) so consumers see exactly the
+    same checks Checkmk receives plus which ones are filtered out of the export.
+    """
+
+    instance_id: int
+    instance_name: str
+    excluded: bool = False
+    excluded_by: str | None = None  # "category" | "specific" | None
