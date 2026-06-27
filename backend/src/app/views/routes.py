@@ -43,6 +43,7 @@ class GlobalTunnel(BaseModel):
     bytes_in: int
     bytes_out: int
     tags: list[str] = []  # the owning instance's tags — for filtering the overview
+    agent_mode: bool = False  # ping monitors are agent-only; UI hides the affordance otherwise
     children: list[IPsecChild] = []
     ike_init_spi: str = ""
     ike_resp_spi: str = ""
@@ -137,6 +138,7 @@ async def global_vpn_overview(
                     bytes_in=t.bytes_in,
                     bytes_out=t.bytes_out,
                     tags=inst.tags or [],
+                    agent_mode=inst.agent_mode,
                     children=t.children,
                     ike_init_spi=t.ike_init_spi,
                     ike_resp_spi=t.ike_resp_spi,

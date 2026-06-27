@@ -40,6 +40,7 @@ interface GlobalTunnel {
   bytes_in: number;
   bytes_out: number;
   tags?: string[];
+  agent_mode?: boolean;
   children: IPsecChild[];
   ike_init_spi?: string;
   ike_resp_spi?: string;
@@ -108,12 +109,14 @@ function ExpandedPhase2({
     queryKey: ["ipsec-ping-monitors", tunnel.instance_id],
     queryFn: () =>
       api.get<IPsecPingMonitor[]>(`/api/instances/${tunnel.instance_id}/ipsec/ping-monitors`),
+    enabled: tunnel.agent_mode ?? false, // ping monitors are agent-only
   });
   return (
     <Phase2ChildList
       tunnelId={tunnel.tunnel_id}
       entries={tunnel.children ?? []}
       monitors={monitors}
+      pingSupported={tunnel.agent_mode ?? false}
       onConfigure={(child, existing) => onConfigure(tunnel, child, existing)}
     />
   );

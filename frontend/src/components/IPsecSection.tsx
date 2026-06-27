@@ -17,6 +17,8 @@ import PingMonitorDialog from "./PingMonitorDialog";
 
 interface Props {
   instanceId: number;
+  // Ping monitors run on the firewall via the agent — agent mode only.
+  pingSupported?: boolean;
 }
 
 interface DialogTarget {
@@ -26,7 +28,7 @@ interface DialogTarget {
   existing: IPsecPingMonitor | null;
 }
 
-export default function IPsecSection({ instanceId }: Props) {
+export default function IPsecSection({ instanceId, pingSupported = true }: Props) {
   const queryClient = useQueryClient();
   const qk = ["ipsec", instanceId];
 
@@ -271,6 +273,7 @@ export default function IPsecSection({ instanceId }: Props) {
                             tunnelId={t.id}
                             entries={t.children ?? []}
                             monitors={monitors}
+                            pingSupported={pingSupported}
                             onConfigure={(child, existing) =>
                               setDialog({
                                 tunnelId: t.id,

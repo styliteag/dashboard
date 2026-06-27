@@ -88,10 +88,19 @@ interface ChildListProps {
   entries: IPsecChild[];
   monitors: IPsecPingMonitor[];
   onConfigure: (child: IPsecChild, existing: IPsecPingMonitor | null) => void;
+  // Ping monitors run a ping on the firewall — only devices we reach via an agent
+  // (or a writable path) support it. Securepoint (read-only SSH) does not.
+  pingSupported?: boolean;
 }
 
 /** The per-Phase-2 detail list shown when a tunnel row is expanded. */
-export function Phase2ChildList({ tunnelId, entries, monitors, onConfigure }: ChildListProps) {
+export function Phase2ChildList({
+  tunnelId,
+  entries,
+  monitors,
+  onConfigure,
+  pingSupported = true,
+}: ChildListProps) {
   if (entries.length === 0) {
     return <p className="px-3 py-2 text-xs text-slate-500">No Phase 2 entries reported.</p>;
   }
@@ -108,22 +117,24 @@ export function Phase2ChildList({ tunnelId, entries, monitors, onConfigure }: Ch
           >
             <span className="font-mono text-slate-300">{selector}</span>
             <StateBadge state={ch.state} />
-            <PingBadge child={ch} />
-            <div className="ml-auto flex items-center gap-2">
-              {monitor ? (
-                <span className="font-mono text-slate-500">
-                  {monitor.source || "auto"} → {monitor.destination}
-                  {!monitor.enabled && " (off)"}
-                </span>
-              ) : null}
-              <button
-                onClick={() => onConfigure(ch, monitor)}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-slate-400 hover:bg-slate-800"
-              >
-                <Settings2 className="h-3 w-3" />
-                {monitor ? "Edit ping" : "Add ping"}
-              </button>
-            </div>
+            {pingSupported && <PingBadge child={ch} />}
+            {pingSupported && (
+              <div className="ml-auto flex items-center gap-2">
+                {monitor ? (
+                  <span className="font-mono text-slate-500">
+                    {monitor.source || "auto"} → {monitor.destination}
+                    {!monitor.enabled && " (off)"}
+                  </span>
+                ) : null}
+                <button
+                  onClick={() => onConfigure(ch, monitor)}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-slate-400 hover:bg-slate-800"
+                >
+                  <Settings2 className="h-3 w-3" />
+                  {monitor ? "Edit ping" : "Add ping"}
+                </button>
+              </div>
+            )}
           </li>
         );
       })}
