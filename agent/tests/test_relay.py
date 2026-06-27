@@ -73,8 +73,8 @@ def test_provision_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_relay_injects_auth_and_builds_url(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 
-    def fake_request(url, method, headers, body, timeout):
-        captured.update(url=url, method=method, headers=headers, body=body)
+    def fake_request(url, method, headers, body, timeout, *, verify=True):
+        captured.update(url=url, method=method, headers=headers, body=body, verify=verify)
         return 200, [("Content-Type", "application/json")], b'{"ok":1}'
 
     monkeypatch.setattr(agent, "_load_cached_credentials", lambda: ("K", "S"))
@@ -84,6 +84,7 @@ def test_relay_injects_auth_and_builds_url(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert captured["url"] == "https://127.0.0.1:4444/api/core/firmware/status"
     assert captured["method"] == "GET"
+    assert captured["verify"] is False  # local self-signed API → verification skipped
     assert _decode_basic(captured["headers"]["Authorization"]) == ("K", "S")
     assert result["success"] is True
     assert result["status"] == 200
@@ -94,7 +95,7 @@ def test_relay_injects_auth_and_builds_url(monkeypatch: pytest.MonkeyPatch) -> N
 def test_relay_forwards_request_body(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 
-    def fake_request(url, method, headers, body, timeout):
+    def fake_request(url, method, headers, body, timeout, *, verify=True):
         captured["body"] = body
         captured["content_length"] = headers.get("Content-Length")
         return 200, [], b""
@@ -114,7 +115,7 @@ def test_relay_forwards_request_body(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_relay_drops_hop_by_hop_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 
-    def fake_request(url, method, headers, body, timeout):
+    def fake_request(url, method, headers, body, timeout, *, verify=True):
         captured["headers"] = headers
         # Response carries hop-by-hop + a dashboard cookie that must not leak back.
         return 200, [("Connection", "close"), ("Set-Cookie", "x=1"), ("X-Ok", "1")], b""

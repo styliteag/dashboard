@@ -104,7 +104,7 @@ def _fake_http(get_resp, post_resp):
     """Build an _http_request stub: first GET -> get_resp, POST -> post_resp."""
     calls: list[tuple] = []
 
-    def fake(url, method, headers, body, timeout):
+    def fake(url, method, headers, body, timeout, *, verify=True):
         calls.append((url, method, headers, body))
         return get_resp if method == "GET" else post_resp
 

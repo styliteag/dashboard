@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1411,9 +1411,21 @@ def _ensure_api_credentials(cfg: Config) -> tuple[str, str] | None:
 
 
 def _http_request(
-    url: str, method: str, headers: dict, body: bytes | None, timeout: int
+    url: str,
+    method: str,
+    headers: dict,
+    body: bytes | None,
+    timeout: int,
+    *,
+    verify: bool = True,
 ) -> tuple[int, list[tuple[str, str]], bytes]:
-    """One HTTP(S) request. HTTPS uses an unverified context (self-signed local API)."""
+    """One HTTP(S) request.
+
+    HTTPS verifies the server certificate by default. ``verify=False`` is ONLY for
+    the box's own self-signed loopback API (127.0.0.1) where there is no CA to check
+    against — never for a remote endpoint, whose secrets would then be exposed to an
+    on-path attacker (cf. the verified WebSocket in ``ws_connect``).
+    """
     parts = urlsplit(url)
     host = parts.hostname or "127.0.0.1"
     if parts.scheme == "http":
@@ -1422,8 +1434,9 @@ def _http_request(
         )
     else:
         ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        if not verify:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
         conn = http.client.HTTPSConnection(host, parts.port or 443, timeout=timeout, context=ctx)
     try:
         path = parts.path + (f"?{parts.query}" if parts.query else "")
@@ -1469,8 +1482,8 @@ def _relay_http(params: dict, cfg: Config | None) -> dict:
 
     try:
         status, resp_headers, data = _http_request(
-            url, method, headers, body or None, timeout=25
-        )
+            url, method, headers, body or None, timeout=25, verify=False
+        )  # local self-signed API
     except (OSError, http.client.HTTPException) as exc:
         return {"success": False, "status": 0, "output": f"relay request failed: {exc}"}
 
@@ -1640,7 +1653,9 @@ def _gui_login(cfg: Config | None) -> dict:
 
     # 1. GET the login page → pre-session cookie + CSRF hidden fields.
     try:
-        _, headers, body = _http_request(f"{base}/", "GET", {"User-Agent": _GUI_UA}, None, 15)
+        _, headers, body = _http_request(
+            f"{base}/", "GET", {"User-Agent": _GUI_UA}, None, 15, verify=False
+        )  # local self-signed GUI
     except (OSError, http.client.HTTPException) as exc:
         return {"success": False, "output": f"gui login GET failed: {exc}"}
     pre_jar = _parse_set_cookies(headers)
@@ -1660,7 +1675,9 @@ def _gui_login(cfg: Config | None) -> dict:
     }
     login_url = f"{base}/{(action or '').lstrip('/')}"
     try:
-        status, headers, _ = _http_request(login_url, "POST", post_headers, post_body, 15)
+        status, headers, _ = _http_request(
+            login_url, "POST", post_headers, post_body, 15, verify=False
+        )  # local self-signed GUI
     except (OSError, http.client.HTTPException) as exc:
         return {"success": False, "output": f"gui login POST failed: {exc}"}
 
@@ -2163,7 +2180,9 @@ def _skip_sig_check() -> bool:
     prod use is obvious. Never returns True on its own — both channels are opt-in.
     """
     env_on = os.environ.get("AGENT_INSECURE_SKIP_SIG") == "1"
-    cfg_on = bool(getattr(globals().get("cfg"), "insecure_skip_sig", False))
+    # Read the active config global (_CONFIG). The old globals().get("cfg") always
+    # returned None (no module-level `cfg`), so the config flag was dead.
+    cfg_on = bool(getattr(_CONFIG, "insecure_skip_sig", False))
     if env_on or cfg_on:
         log.warning(
             "INSECURE: self-update signature verification DISABLED "
@@ -2591,13 +2610,18 @@ class _TunnelManager:
         if not stream:
             return
         if op == "open":
-            await self._open(stream, msg.get("host") or self._host, int(msg.get("port") or self._port))
+            # Pin the destination to the configured local GUI target; ignore any
+            # server-supplied host/port so a malicious dashboard cannot turn the
+            # agent (root) into a TCP pivot into the box's networks. Mirrors how
+            # _relay_http pins its target to cfg.local_api_url.
+            await self._open(stream)
         elif op == "data":
             await self._data(stream, msg.get("data", ""))
         elif op == "close":
             self._close(stream)
 
-    async def _open(self, stream: str, host: str, port: int) -> None:
+    async def _open(self, stream: str) -> None:
+        host, port = self._host, self._port
         try:
             reader, writer = await asyncio.open_connection(host, port)
         except OSError as exc:
@@ -2785,8 +2809,10 @@ def _enroll(cfg: Config) -> bool:
         return False
     body = json.dumps({"code": cfg.enroll_code}).encode()
     try:
+        # Remote dashboard: MUST verify TLS — this exchanges the one-time enroll
+        # code (bootstrap secret) for the long-lived agent token.
         status, _, data = _http_request(
-            url, "POST", {"Content-Type": "application/json"}, body, timeout=15
+            url, "POST", {"Content-Type": "application/json"}, body, timeout=15, verify=True
         )
     except (OSError, http.client.HTTPException) as exc:
         log.error("enroll: request to %s failed: %s", url, exc)

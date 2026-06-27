@@ -108,15 +108,17 @@ def test_enroll_success_sets_and_persists_token(tmp_path, monkeypatch) -> None:
     body = json.dumps({"agent_token": "NEWTOKEN", "instance_id": 7}).encode()
     captured: dict = {}
 
-    def fake_req(url, method, headers, payload, timeout):
+    def fake_req(url, method, headers, payload, timeout, *, verify=True):
         captured["url"] = url
         captured["payload"] = payload
+        captured["verify"] = verify
         return 200, [], body
 
     monkeypatch.setattr(agent, "_http_request", fake_req)
     cfg = _cfg(tmp_path, enroll_code="THECODE")
     assert agent._enroll(cfg) is True
     assert cfg.agent_token == "NEWTOKEN"
+    assert captured["verify"] is True  # enroll always requests TLS verification
     assert captured["url"] == "http://10.20.0.24:8000/api/agent/enroll"
     assert json.loads(captured["payload"]) == {"code": "THECODE"}
     # Persisted so a restart reuses the token, not the now-spent code.
