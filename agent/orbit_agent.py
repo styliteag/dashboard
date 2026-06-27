@@ -24,6 +24,7 @@ import signal
 import ssl
 import struct
 import subprocess
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -40,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.4"
+__version__ = "1.6.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1212,6 +1213,25 @@ def _write_private(path: Path, data: str) -> None:
         os.close(fd)
 
 
+def _write_root_script(content: str, suffix: str) -> str:
+    """Write a root-executed helper script to a fresh, unpredictable /tmp file.
+
+    Returns the path. ``mkstemp`` creates with O_CREAT|O_EXCL and a random name
+    (mode 0600), so a local unprivileged user cannot pre-plant a symlink at a
+    predictable path and redirect the root write/exec — FreeBSD has no
+    ``fs.protected_symlinks`` equivalent, so a fixed /tmp name would be vulnerable.
+    """
+    fd, path = tempfile.mkstemp(prefix="orbit-", suffix=suffix, dir="/tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+        raise
+    return path
+
+
 def _load_cached_credentials() -> tuple[str, str] | None:
     """Return the (key, secret) the agent provisioned earlier, or None."""
     try:
@@ -1338,9 +1358,12 @@ def _ensure_pfsense_boot_persistence() -> None:
     """
     if detect_platform() != "pfsense":
         return
-    tmp = "/tmp/orbit-persist.php"
     try:
-        Path(tmp).write_text(_PF_PERSIST_PHP.replace("__CMD__", _PF_BOOT_CMD))
+        tmp = _write_root_script(_PF_PERSIST_PHP.replace("__CMD__", _PF_BOOT_CMD), ".php")
+    except OSError as exc:
+        log.warning("pfsense: could not write boot persistence script: %s", exc)
+        return
+    try:
         out = _run(["/usr/local/bin/php", tmp], timeout=30).strip()
         if out == "set":
             log.warning("pfsense: registered afterbootupshellcmd for reboot persistence")
@@ -2426,16 +2449,15 @@ async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> Non
     else:
         deprovision_php, extra_cleanup = _DEPROVISION_PHP, ""
 
-    php_path = "/tmp/orbit-deprovision.php"
     try:
-        Path(php_path).write_text(deprovision_php)
+        php_path = _write_root_script(deprovision_php, ".php")
     except OSError:
         php_path = ""
 
-    sh_path = "/tmp/orbit-uninstall.sh"
     try:
-        Path(sh_path).write_text(
-            _build_uninstall_script(install_dir, rc_script, php_path, deprovision, extra_cleanup)
+        sh_path = _write_root_script(
+            _build_uninstall_script(install_dir, rc_script, php_path, deprovision, extra_cleanup),
+            ".sh",
         )
         subprocess.Popen(
             ["/bin/sh", sh_path],
