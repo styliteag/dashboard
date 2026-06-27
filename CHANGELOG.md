@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-06-27
+
 ### Added
 
 - **Alerts page** — new top-level **Alerts** view (`/alerts`) that lists every service check (memory, CPU, disks, gateways, IPsec, firmware, ping monitors) across all instances — the exact data Checkmk receives via the export. Filters: "Problems only", search, and Checkmk visibility ("All" / "Exported" / "Excluded"). Each row links back to the instance and shows exclusion reason (category vs specific rule). The list is sorted worst-state first and refreshes every 30 s. Exclusions still affect only the Checkmk export; the dashboard and this page always show the complete set.
