@@ -210,6 +210,39 @@ class ApiKey(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When True, the full token is also kept Fernet-encrypted in ``key_enc`` so the
+    # Settings UI can re-display it (e.g. the Checkmk key). NULL/False = show-once.
+    revealable: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default=text("false")
+    )
+    key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+
+class CheckmkExportExclusion(Base):
+    """A rule that hides service checks from the Checkmk export.
+
+    Affects **only** the export (`/api/export/checkmk`) — the dashboard's
+    green/red layer and `/instances/{id}/checks` still show everything.
+
+    ``target`` is either a *category* token (the part before the first ``:`` in a
+    check key — ``cpu``, ``gateway``, ``ipsec.tunnel_ping`` …) or a *full* check
+    key (``gateway:WAN``). ``instance_id`` NULL applies the rule to every
+    instance. A check is excluded when a rule matches its instance (or is global)
+    AND matches its full key OR its category.
+    """
+
+    __tablename__ = "checkmk_export_exclusions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    target: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("instance_id", "target", name="uq_checkmk_exclusion"),)
 
 
 class IPsecPingMonitor(Base):

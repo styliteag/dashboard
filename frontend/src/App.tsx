@@ -8,6 +8,7 @@ import VPNOverviewPage from "./pages/VPNOverviewPage";
 import FirmwareCompliancePage from "./pages/FirmwareCompliancePage";
 import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
+import SettingsPage from "./pages/SettingsPage";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="firmware" element={<FirmwareCompliancePage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="password" element={<PasswordPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
 

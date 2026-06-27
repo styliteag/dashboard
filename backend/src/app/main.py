@@ -19,6 +19,7 @@ from app.audit.routes import router as audit_router
 from app.auth.bootstrap import ensure_admin
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
+from app.checkmk.routes import router as checkmk_router
 from app.checks.routes import router as checks_router
 from app.config import Settings, get_settings
 from app.db.base import dispose_engine, get_sessionmaker
@@ -162,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(bulk_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
     app.include_router(checks_router, prefix="/api")
+    app.include_router(checkmk_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     return app
 

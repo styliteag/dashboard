@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, Server, Shield, KeyRound, FileText, Package } from "lucide-react";
+import { LogOut, Server, Shield, KeyRound, FileText, Package, Settings } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
 
@@ -48,6 +48,14 @@ export default function Layout() {
           >
             <KeyRound className="h-4 w-4" /> Password
           </Link>
+          {user?.is_admin && (
+            <Link
+              to="/settings"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <Settings className="h-4 w-4" /> Settings
+            </Link>
+          )}
           <span className="text-slate-600">|</span>
           <span className="text-slate-500">{user?.username}</span>
           <button

@@ -234,3 +234,65 @@ export interface FirmwareUpgradeStatus {
   status: string;
   log: string[];
 }
+
+// --- Settings: API keys -----------------------------------------------------
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  prefix: string;
+  revealable: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreated {
+  id: number;
+  name: string;
+  prefix: string;
+  key: string; // full token — shown once
+}
+
+export interface ApiKeyRevealed {
+  id: number;
+  key: string;
+}
+
+// --- Settings: Checkmk export config ----------------------------------------
+
+export interface CheckmkCategoryState {
+  key: string;
+  excluded: boolean;
+}
+
+export interface CheckmkExclusionRule {
+  id: number;
+  instance_id: number | null;
+  target: string;
+}
+
+export interface CheckmkConfig {
+  categories: CheckmkCategoryState[];
+  rules: CheckmkExclusionRule[];
+}
+
+export interface CheckmkPreviewCheck {
+  key: string;
+  category: string;
+  state: number;
+  summary: string;
+  excluded: boolean;
+  excluded_by: "category" | "specific" | null;
+}
+
+export interface CheckmkPreviewInstance {
+  instance_id: number;
+  name: string;
+  device_type: string;
+  checks: CheckmkPreviewCheck[];
+}
+
+export interface CheckmkPreview {
+  instances: CheckmkPreviewInstance[];
+}

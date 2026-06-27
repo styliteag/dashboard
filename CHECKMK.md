@@ -48,7 +48,10 @@ Checkmk site                              Dashboard
 ## What gets exposed
 
 One `<<<local>>>` service per row below, per firewall host. Source of truth:
-`backend/src/app/checks/evaluate.py`.
+`backend/src/app/checks/evaluate.py`. **All of these are exported by default**;
+under **Settings → Checkmk** an admin can switch off a whole category globally or
+exclude a single service on one instance (export-only — the dashboard still shows
+everything).
 
 | Service key | When | State logic | Perfdata |
 |---|---|---|---|
@@ -92,48 +95,25 @@ secrets** — no API key/secret, no IPsec PSK, no raw config. It is the same
 
 - A reachable dashboard URL (the Checkmk site must be able to HTTP(S) to it).
 - A Checkmk site (`~` = the site user's home, e.g. `/omd/sites/<site>`).
-- Admin access to the dashboard to mint an API key.
+- Admin access to the dashboard (to open **Settings → Checkmk**).
 
 ---
 
 ## Setup
 
-### 1. Mint a read-only API key
+### 1. Create the API key (Settings → Checkmk)
 
-There is no UI for keys yet, and **there is no standalone admin bearer token in
-production**. The create/list/revoke endpoints authenticate with the **login
-session cookie** (`dash_session`), not a token. So log in into a cookie jar
-first, then call the key endpoint with that cookie.
+In the dashboard, open **Settings → Checkmk** (admin only) and click **Create
+key**. Copy the shown `ORBIT_URL` / `ORBIT_API_KEY` snippet — you'll paste it
+into the Checkmk wrapper below. The key is **re-viewable** later from the same
+page (*Reveal*) and revocable there.
 
-Log in as the bootstrapped `admin` user (created on first start from
-`DASH_ADMIN_PASSWORD` in `.env`):
+The key is **read-only** (`orbit_…` Bearer, rejected on any non-GET request), so
+it's safe to drop into the Checkmk datasource config.
 
-```sh
-# 1. Log in → store the dash_session cookie
-curl -c cookies.txt -X POST https://dashboard.example.com/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"<DASH_ADMIN_PASSWORD>"}'
-
-# 2. Mint the key with that session
-curl -b cookies.txt -X POST https://dashboard.example.com/api/apikeys \
-  -H "Content-Type: application/json" \
-  -d '{"name":"checkmk"}'
-# → {"id":1,"name":"checkmk","prefix":"orbit_xxxx","key":"orbit_………"}
-```
-
-The full `key` (prefix `orbit_`) is **shown once** — store it now. It is stored
-hashed, accepted only as a `Bearer` token on read endpoints, **rejected on any
-non-GET request**, and revocable later (same session cookie):
-
-```sh
-curl -b cookies.txt https://dashboard.example.com/api/apikeys              # list (id, name, prefix)
-curl -b cookies.txt -X DELETE https://dashboard.example.com/api/apikeys/1  # revoke
-```
-
-> **Dev shortcut (`DASH_ENV=dev` only):** the login response includes a
-> `session_token`; you can pass it as `Authorization: Bearer <session_token>`
-> instead of the cookie jar. That dev bearer token does **not** exist in
-> production (`session_token` is `null` there) — use the cookie.
+On the same page you also choose **what gets exported**: everything is on by
+default — switch off a whole category globally, or exclude a single service on
+one instance (export-only; the dashboard keeps showing all checks).
 
 ### 2. Install the special agent on the Checkmk site
 
@@ -217,13 +197,11 @@ and activate changes. The `memory` / `cpu` / `disk:*` / `gateway:*` /
 
 ## Authentication & security
 
-- **Read-only API key** (`orbit_…`), passed as `Authorization: Bearer …`. Stored
-  hashed; accepted only on `GET`/`HEAD`/`OPTIONS`; `403` on anything else; `401`
-  if unknown/revoked. Revoke any time via `DELETE /api/apikeys/{id}`. This keeps
-  the admin password out of WATO.
-- **Dev-only fallback:** `ORBIT_USER` / `ORBIT_PASSWORD` log in via
-  `/api/auth/login`. This only works when the dashboard runs `DASH_ENV=dev`
-  (dev bearer token) — **do not** rely on it in production; use an API key.
+- The key is **read-only** — `Authorization: Bearer orbit_…`, accepted only on
+  `GET`/`HEAD`/`OPTIONS`, `401` if unknown/revoked. Stored hashed; the
+  re-viewable copy (for the Settings *Reveal*) is encrypted at rest and dropped
+  on revoke. Keeps the admin password out of WATO.
+- Manage keys under **Settings → Checkmk** (create / reveal / revoke).
 - Prefer **HTTPS** for `ORBIT_URL` so the key isn't sent in clear text. The agent
   uses the system trust store for `https://` URLs.
 
@@ -234,10 +212,9 @@ and activate changes. The `memory` / `cpu` / `disk:*` / `gateway:*` /
 | Symptom | Likely cause / fix |
 |---|---|
 | Source host works, firewall host has no services | Piggyback host-name mismatch — Checkmk host name must equal the sanitized instance name. Check `~/tmp/check_mk/piggyback/` for the emitted host names. |
-| `401 invalid API key` | Wrong/typo'd or revoked key. Re-mint. |
+| `401 invalid API key` | Wrong/typo'd or revoked key. Reveal it again (or create a new one) under Settings → Checkmk. |
 | `403 API key is read-only` | Something issued a non-GET with the key. The export is GET-only; check the wiring. |
 | Empty output from the CLI test | `ORBIT_URL` wrong/unreachable, or no instances exist. |
-| Login fails with user/password | Only works on `DASH_ENV=dev`. Use an API key in prod. |
 | Export is slow / times out | Direct-poll instances are polled **live** on export (the agent's HTTP timeout is 30s). Many direct instances = slow; caching direct status is a follow-up. Push instances are served cheaply from cache. |
 | Expected ping service missing | The Phase-2 child has no ping monitor, or the instance is direct-poll (ping is agent-only). Add a monitor, then re-discover. |
 

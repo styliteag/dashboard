@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.auth.deps import read_principal
+from app.checkmk.exclusions import is_excluded
 from app.checks import ServiceCheck, evaluate_checks
 from app.db.base import get_session
-from app.db.models import Instance
+from app.db.models import CheckmkExportExclusion, Instance
 from app.xsense.registry import registry
 from app.xsense.schemas import (
     FirmwareStatus,
@@ -86,10 +87,17 @@ async def export_checkmk(
         .all()
     )
 
+    rule_rows = (await session.execute(select(CheckmkExportExclusion))).scalars().all()
+    rules = [(r.instance_id, r.target) for r in rule_rows]
+
     instances = []
     for inst in rows:
         sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
-        checks = evaluate_checks(sys_status, gateways, ipsec, firmware)
+        checks = [
+            c
+            for c in evaluate_checks(sys_status, gateways, ipsec, firmware)
+            if not is_excluded(c.key, inst.id, rules)
+        ]
         instances.append(
             {
                 "instance_id": inst.id,

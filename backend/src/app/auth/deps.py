@@ -41,6 +41,20 @@ async def current_user(
     return user
 
 
+async def require_admin(
+    user: Annotated[User, Depends(current_user)],
+) -> User:
+    """Like ``current_user`` but also requires the ``is_admin`` flag.
+
+    Guards admin-only surfaces (Settings: API keys, Checkmk export config). Today
+    the only seeded user is admin; this keeps the door shut for future non-admin
+    accounts.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin only")
+    return user
+
+
 async def read_principal(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
