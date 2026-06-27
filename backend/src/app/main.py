@@ -118,13 +118,14 @@ async def lifespan(app: FastAPI):
 
 
 def _validate_security(settings: Settings) -> None:
-    """Fail closed outside dev: refuse to boot without a valid master key.
+    """Fail closed outside dev for critical security settings.
 
-    The session cookie and the GUI-proxy HMAC are derived from ``master_key``; an
-    empty key falls back to a public constant, which would let anyone forge a
-    ``dash_session`` cookie. In dev the insecure fallback is allowed but logged
-    loudly so it can never be mistaken for a hardened deployment.
+    - master_key: session cookies and GUI HMAC are derived from it.
+    - trusted_proxy_hops: controls how much of X-Forwarded-For we trust for
+      login/enroll rate limiting and audit source_ip. Too high = spoofing risk
+      that disables the brute-force limiter.
     """
+    # --- master key ---------------------------------------------------------
     if settings.env != "dev":
         try:
             Fernet((settings.master_key or "").encode("utf-8"))
@@ -138,6 +139,26 @@ def _validate_security(settings: Settings) -> None:
         structlog.get_logger("app.security").warning(
             "master_key.unset_dev",
             hint="running with an insecure default session key — dev only, never in prod",
+        )
+
+    # --- trusted proxy hops (XFF trust for rate limits + audit) -------------
+    hops = getattr(settings, "trusted_proxy_hops", 0)
+    if hops > 3 and settings.env != "dev":
+        raise RuntimeError(
+            f"DASH_TRUSTED_PROXY_HOPS={hops} is too high for a non-dev environment. "
+            "This value determines how many rightmost X-Forwarded-For entries are "
+            "treated as trustworthy. Setting it higher than the actual number of "
+            "proxies you control allows clients to spoof their source IP by "
+            "prepending entries, bypassing the login and enrollment rate limiters "
+            "entirely. Use the exact hop count (1 for the bundled nginx image; "
+            "typically 2 when Traefik is also in front). Refusing to start."
+        )
+    if hops > 0:
+        structlog.get_logger("app.security").info(
+            "trusted_proxy_hops",
+            hops=hops,
+            env=settings.env,
+            note="X-Forwarded-For: trusting the last N entries for rate-limiting and audit IP",
         )
 
 

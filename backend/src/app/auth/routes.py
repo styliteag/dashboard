@@ -2,6 +2,7 @@
 
 Closes US-1.1, US-1.2, US-1.3, US-1.4.
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.auth.dev_token import issue_dev_token
-from app.auth.security import hash_password, limiter, verify_password
+from app.auth.security import hash_password, limiter, verify_password, verify_password_constant_time
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import User
@@ -66,7 +67,9 @@ async def login(
         await session.execute(select(User).where(User.username == payload.username))
     ).scalar_one_or_none()
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    # Always pay one Argon2 verify (dummy hash when the user is absent) so login
+    # latency can't be used to enumerate valid usernames.
+    if not verify_password_constant_time(payload.password, user.password_hash if user else None):
         triggered_lock = limiter.record_failure(ip)
         await write_audit(
             session,
@@ -80,9 +83,7 @@ async def login(
             source_ip=ip,
         )
         await session.commit()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
     limiter.record_success(ip)
     request.session.clear()

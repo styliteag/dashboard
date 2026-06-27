@@ -45,8 +45,9 @@ services:
     environment:
       DASH_ENV: ${DASH_ENV:-prod}
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-info}
-      # Trust the X-Forwarded-For added by this image's own nginx (1 hop). Raise to
-      # match extra front proxies (e.g. Traefik in front -> 2); see .env.example.
+      # Trust exactly this many rightmost X-Forwarded-For entries (nginx in the image).
+      # Too high = clients can spoof IPs for login rate limits and audit.
+      # See .env.example. The app refuses to boot in non-dev if > 3.
       DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-1}
       DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}

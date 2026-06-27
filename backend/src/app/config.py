@@ -18,10 +18,19 @@ class Settings(BaseSettings):
     # Reverse-proxy hops in front of the app. The client IP used for login/enroll
     # rate-limiting and audit is taken as the Nth-from-last entry of
     # X-Forwarded-For (each appended by a proxy we control); 0 = trust none and
-    # use the direct peer. Set to EXACTLY the number of trusted proxies — too high
-    # lets a client spoof its IP by prepending fake entries. Combined image = 1
-    # (the bundled nginx); add 1 per extra front proxy (e.g. Traefik in front → 2).
-    trusted_proxy_hops: int = 0
+    # use the direct peer.
+    #
+    # CRITICAL SECURITY SETTING (F2):
+    #   Set to EXACTLY the number of trusted reverse proxies *you* operate.
+    #   Too high lets an attacker prepend fake entries and spoof their IP,
+    #   completely bypassing the login + enrollment brute-force rate limiter.
+    #   Default (0) is the safe choice when there is no front proxy.
+    #   Bundled compose sets 1 (its nginx). Add 1 for each additional proxy you control.
+    trusted_proxy_hops: int = Field(
+        default=0,
+        ge=0,
+        description="Exact number of trusted X-Forwarded-For hops (login rate limit + audit IP).",
+    )
 
     # Database (async DSN, e.g. mysql+aiomysql://user:pass@host:3306/db)
     database_url: str = Field(
