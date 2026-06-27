@@ -49,3 +49,6 @@ async def test_health_degraded_when_db_fails() -> None:
     body = resp.json()
     assert body["db"] == "error"
     assert "version" in body
+    # Security F4: the raw exception detail must never reach an anonymous caller.
+    assert "detail" not in body
+    assert "db down" not in resp.text

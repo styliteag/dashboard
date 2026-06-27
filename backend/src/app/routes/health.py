@@ -6,10 +6,13 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+import structlog
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
 from app.db.base import get_engine
+
+log = structlog.get_logger("app.health")
 
 router = APIRouter(tags=["health"])
 
@@ -38,11 +41,13 @@ async def health(response: Response) -> dict[str, str | None]:
             db_revision = row[0] if row else None
         return {"status": "ok", "db": "ok", "version": version, "db_revision": db_revision}
     except Exception as exc:  # noqa: BLE001 — health endpoint should report any failure
+        # Log the detail server-side; never disclose the raw exception to an
+        # anonymous caller (driver/host/internal error text). See security F4.
+        log.warning("health.db_check_failed", error=str(exc))
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "degraded",
             "db": "error",
-            "detail": str(exc),
             "version": version,
             "db_revision": None,
         }
