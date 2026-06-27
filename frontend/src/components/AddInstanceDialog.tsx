@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { DEVICE_TYPES, type Instance } from "../lib/types";
 import Dialog from "./Dialog";
@@ -31,6 +31,20 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const isSecurepoint = form.device_type === "securepoint";
+  // Global interval defaults — shown as the placeholder so "empty = inherit" is concrete.
+  const { data: defaults } = useQuery({
+    queryKey: ["instance-defaults"],
+    queryFn: () =>
+      api.get<{ poll_interval_seconds: number; push_interval_seconds: number }>(
+        "/api/instances/defaults",
+      ),
+    staleTime: Infinity,
+  });
+  const defaultInterval = defaults
+    ? form.agent_mode
+      ? defaults.push_interval_seconds
+      : defaults.poll_interval_seconds
+    : null;
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -222,7 +236,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
           onChange={set("interval")}
           type="number"
           min={5}
-          placeholder="global default"
+          placeholder={defaultInterval ? `global default: ${defaultInterval}s` : "global default"}
         />
         <div className="space-y-1">
           <label className="text-xs text-slate-400">CA bundle (PEM)</label>

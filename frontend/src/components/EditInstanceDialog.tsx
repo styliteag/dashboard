@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { Instance } from "../lib/types";
 import Dialog from "./Dialog";
@@ -16,6 +16,20 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
   // Auto-Login does. Mirror AddInstanceDialog's per-mode field set.
   const agentMode = instance.agent_mode;
   const isSecurepoint = instance.device_type === "securepoint";
+  // Global interval defaults — shown as the placeholder so "empty = inherit" is concrete.
+  const { data: defaults } = useQuery({
+    queryKey: ["instance-defaults"],
+    queryFn: () =>
+      api.get<{ poll_interval_seconds: number; push_interval_seconds: number }>(
+        "/api/instances/defaults",
+      ),
+    staleTime: Infinity,
+  });
+  const defaultInterval = defaults
+    ? agentMode
+      ? defaults.push_interval_seconds
+      : defaults.poll_interval_seconds
+    : null;
   const [form, setForm] = useState({
     name: instance.name,
     base_url: instance.base_url,
@@ -129,7 +143,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
           onChange={set("interval")}
           type="number"
           min={5}
-          placeholder="global default"
+          placeholder={defaultInterval ? `global default: ${defaultInterval}s` : "global default"}
         />
         {!agentMode && (
           <label className="flex items-center gap-2 text-sm text-slate-400">

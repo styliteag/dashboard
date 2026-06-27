@@ -77,6 +77,20 @@ async def create(
     return inst
 
 
+@router.get("/defaults")
+async def interval_defaults(_user: User = Depends(current_user)) -> dict:
+    """Global interval defaults so the UI can show what an empty override inherits.
+
+    Declared before ``/{instance_id}`` so the literal path wins the match.
+    """
+    s = get_settings()
+    return {
+        "poll_interval_seconds": s.poll_interval_seconds,
+        "push_interval_seconds": s.push_interval_seconds,
+        "poll_tick_seconds": s.poll_tick_seconds,
+    }
+
+
 @router.get("/{instance_id}", response_model=InstanceResponse)
 async def get(
     instance_id: int,
