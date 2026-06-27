@@ -1,8 +1,27 @@
 # STYLiTE Orbit Dashboard
 
-Central dashboard for monitoring and managing a fleet of **OPNsense and pfSense**
-firewalls from one place — including sites behind NAT, reached through an outbound
-push agent.
+Central dashboard for monitoring and managing a fleet of **OPNsense, pfSense, and
+Securepoint UTM** firewalls from one place — OPNsense/pfSense including sites behind
+NAT (reached through an outbound push agent), Securepoint polled directly over its API.
+
+## TL;DR
+
+- **What:** one dashboard for a fleet of OPNsense, pfSense, and **Securepoint UTM**
+  firewalls — live status, IPsec/VPN, gateways, firmware compliance, service checks,
+  audit log, notifications.
+- **How boxes connect:** `direct` (dashboard → box API) or `push` (box → outbound
+  `wss://`, a stdlib-only FreeBSD agent). Push works behind NAT with no inbound access
+  and no stored API key; the agent also tunnels the box's REST API (**relay**) and its
+  web GUI (**GUI proxy**). **Securepoint** is direct-poll/agentless (its `spcgi.cgi`
+  JSON API, with optional SSH enrichment for richer IPsec data).
+- **Agent lifecycle:** dashboard-triggered, signature-verified (Ed25519) **self-update**
+  with two-layer rollback, one-time **enrollment**, **uninstall**. Config (e.g. IPsec
+  ping monitors) is pushed on every (re)connect — the agent persists nothing, the DB is
+  the source of truth.
+- **Stack:** FastAPI + async SQLAlchemy on **MariaDB**, React 18 + Vite frontend, pure-
+  stdlib agent. Ships as a single combined Docker image; TLS is operator-side.
+- **Run it:** `cp .env.example .env`, set the secrets, `just up` (or `docker compose up`).
+  Dev: `just dev-up`. See [Quickstart](#quickstart-production).
 
 ## What it does
 
@@ -27,7 +46,7 @@ Transport and device type are decoupled. Two paths are in use today:
 
 | Transport | Who initiates | Use |
 |---|---|---|
-| `direct` | Dashboard → firewall REST API | Firewall directly reachable from the dashboard |
+| `direct` | Dashboard → firewall API | Firewall directly reachable from the dashboard (OPNsense/pfSense REST API, or **Securepoint** `spcgi.cgi`) |
 | `push` | Firewall → outbound `wss://…/api/ws/agent` | **Primary for OPNsense/pfSense behind NAT** |
 
 In **push** mode a small stdlib-only Python agent runs on the firewall (FreeBSD),
@@ -37,6 +56,14 @@ own REST API through the agent connection, so the dashboard needs no inbound acc
 and no stored API key. The agent supports dashboard-triggered **self-update**,
 one-time **enrollment** (trade a code for a token), and **uninstall**. See
 [`docs/agent-architecture.md`](docs/agent-architecture.md) for the full design.
+
+**Securepoint UTM** boxes are **direct-poll only** — no on-box agent. The dashboard
+maps the appliance's `spcgi.cgi` JSON API (session-auth) onto the same `DeviceClient`
+contract as the others, so VPN/IPsec and service status surface in the same views.
+Optionally, enabling **SSH enrichment** lets the dashboard pull IPsec via
+`swanctl --raw` for richer detail (SPIs, cookies, byte counters) the `spcgi.cgi` API
+doesn't expose. Agent-only features (relay, GUI proxy, on-box ping monitors,
+self-update) don't apply to Securepoint.
 
 ## Stack
 
@@ -270,5 +297,6 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
 ## Further docs
 
 - [`docs/agent-architecture.md`](docs/agent-architecture.md) — agent & connectivity design (transports, self-update, pfSense port, relay, Checkmk).
+- [`CHECKMK.md`](CHECKMK.md) — full Checkmk integration guide (what's exposed, API key, datasource program, piggyback hosts, troubleshooting).
 - [`checkmk/README.md`](checkmk/README.md) — Checkmk special-agent install and auth.
 - [`CLAUDE.md`](CLAUDE.md) — repository conventions and done-criteria.

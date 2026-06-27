@@ -742,3 +742,97 @@ Slug → 409-Konflikt; abgeleiteter → auto-suffix `-2/-3`).
 - **Config:** `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.<domain>` (`{slug}` bevorzugt, `{id}`
   back-compat), `DASH_GUI_CADDY_ADMIN_URL` (compose default `http://gui-proxy:2019/load`).
   Tests: slug-helper (10), gui_caddy-builder (3), slug-service/schema (9). Backend grün.
+
+## 19. IPsec Phase-2 Ping-Monitore (Doku des Ist-Zustands, 2026-06-27)
+
+End-to-End-Ping-Pipeline: das Dashboard lässt den Agent **auf der Firewall** ICMP gegen das
+Remote-Ende eines IPsec-Phase-2-Tunnels schicken, um zu prüfen, dass die SA nicht nur *installiert*
+ist, sondern auch *durchleitet* (eine installierte SA ohne durchgehenden Traffic ist ein häufiger
+Stiller-Fehler). Nur **Agent-Modus** — direkt-gepollte Instanzen (Securepoint, direkt-API OPNsense)
+können nicht pingen (kein On-Box-Prozess), die UI blendet die Option dort aus.
+
+**Source of Truth = DB, nicht der Agent.** Monitore liegen in `ipsec_ping_monitors` (Alembic `009`,
+Model `db/models.py:IPsecPingMonitor`). Felder: `tunnel_id`, `child_name`, `local_ts`/`remote_ts`
+(Traffic-Selektoren — gecacht, überleben OPNsense-UUID-Regen), `source` (optional, sonst Default-
+Route der Box), `destination` (Pflicht-Host), `enabled`, `ping_count` (1–10, default 3). Unique auf
+`(instance_id, tunnel_id, child_name)`. Schemas/Validierung: `ipsec/ping_schemas.py` (IP-Parse,
+count-Clamp).
+
+**Runter zum Agent — `config_update`-Frame.** `ipsec/ping_service.py:push_to_agent` schickt die
+**komplette** Monitor-Liste der Instanz (`monitors_payload`, kein Delta):
+
+```json
+{"type": "config_update", "data": {"ipsec_ping_monitors": [
+  {"tunnel_id","child_name","local_ts","remote_ts","source","destination","enabled","ping_count"}, …]}}
+```
+
+Zwei Auslöser: (1) **CRUD** — Create/Update/Delete pusht sofort nach Commit (`ipsec/routes.py:440/471/501`),
+No-op wenn Agent offline. (2) **Reconnect** — nach `hello`/`welcome` pusht das Backend die Config
+direkt nach (`agent_hub/routes.py:148-155`). Agent-seitig überschreibt der Handler die globale Liste
+(`orbit_agent.py:2676`, `_PING_MONITORS` ist **In-Memory**, `:70`):
+
+```python
+elif msg_type == "config_update":
+    _PING_MONITORS = monitors if isinstance(monitors, list) else []
+```
+
+**Konsequenz:** ein Prozess-Restart (Self-Update, Reboot, Crash) leert `_PING_MONITORS` — der
+Reconnect-Push (1) ist genau der Mechanismus, der die Monitore wieder einspielt. Der Agent persistiert
+nie, holt die Liste bei jedem Connect frisch aus der DB.
+
+**Ausführung — kein eigener Timer, hängt am Push-Loop.** `collect_ipsec()` (`:940`) ruft am Ende jedes
+Push-Zyklus `run_ping_checks(tunnels, _PING_MONITORS, now)` (`:919`). Heißt: **alle aktiven Monitore
+werden jeden `push_interval` (default 30s, §20) gepingt**, die frischen Ergebnisse reisen huckepack im
+selben `metrics`-Push hoch. Matching `_match_monitor` (`:900`): Monitor→Child per Child-Name, sonst
+Selektor-Paar (`local_ts`+`remote_ts`), sonst `child_name==""` = ganzer Tunnel. Jobs laufen parallel
+(`ThreadPoolExecutor(max_workers=min(8, len(jobs)))`, `:930`).
+
+Der Probe selbst (`_ping_once`, `:858`), FreeBSD-`ping` (root → Sub-Sekunden-Intervall):
+
+```python
+cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(max(count, 2))]
+if source: cmd += ["-S", source]   # bindet Quell-IP an eine Box-Adresse
+# subprocess timeout = max(count,2)+3
+```
+
+Klassifikation aus der Summary-Zeile: `ok` (loss < 100), `fail` (loss == 100 → Tunnel leitet nicht
+durch), `error` (keine Summary-Zeile → Probe lief nie: unassignbare `-S`-Source, unauflösbarer Host →
+**Fehlkonfig, kein Outage**). Annotiert je Child: `ping_state`, `ping_loss_pct`, `ping_rtt_ms` (avg),
+`ping_ts`.
+
+**Hoch + Anzeige.** Ergebnisse sind Teil des normalen `metrics`-Push (kein eigener Kanal), Backend
+cached im Hub, Frontend liest via `GET /instances/{id}/ipsec`. Badge/Rollup: `IPsecPhase2.tsx`
+(`PingBadge`/`PingSummary`), VPN-Overview-Paarung flaggt `ping mismatch`. Jede Push-Diff schreibt
+zusätzlich `ok`/`fail`-Übergänge in den Tunnel-Event-Log (`ipsec_tunnel_events`, Alembic `010`).
+
+**Offline = keine Pings.** `run_ping_checks` hängt in `collect_all`, das nur im `_push_loop` (nur bei
+lebender WS) läuft. Während einer Outage pingt niemand und es wird **nichts gepuffert** — beim
+Reconnect resumed der Push, Config kommt aus der DB. **On-Demand-Test:** Command `ipsec.ping_test`
+(`:1771`, „Test now" im Dialog) ist ein Einmal-Ping über `_ping_once`, ungeplant, unabhängig vom Loop
+(Dashboard-Timeout 20s).
+
+## 20. Connectivity- & Timeout-Referenz (Doku des Ist-Zustands, 2026-06-27)
+
+Der Agent hält **keine** persistente Verbindung über eine Library — `agent_loop` (`orbit_agent.py:2425`)
+ist eine `while True`-Reconnect-Schleife um den stdlib-WS-Client. Pro Connect laufen drei Tasks
+parallel (`_push_loop`, `_listen_loop`, `_keepalive_loop`) unter `asyncio.wait(FIRST_COMPLETED)` —
+**der erste, der stirbt, reißt die Verbindung ab**, der Rest wird gecancelt, dann Reconnect mit Backoff.
+
+| Parameter | Konstante / Ort | Wert | Bedeutung |
+|---|---|---|---|
+| Push-Intervall | `Config.push_interval` (`:83`), backend-pinbar | **30s** default | Metrik-Push **und** Ping-Takt (§19); via `welcome`/`config_update` überschreibbar (`_apply_push_interval`, ≥1s) |
+| Reconnect-Start | `reconnect_delay` (`:2433`) | **5s** | erster Backoff nach Verbindungsverlust |
+| Reconnect-Backoff | `:2476` | `min(delay*2, 120)` | exponentiell **5→10→20→40→80→120**, Cap **2min**; Reset auf 5s bei erfolgreichem Connect |
+| Keepalive-Intervall | `_PING_INTERVAL` (`:1880`) | **20s** | WS-Ping (NAT-Keepalive) + Stale-Check, **nicht** der IPsec-Ping |
+| Dead-Peer-Timeout | `_RECV_TIMEOUT` (`:1881`) | **60s** | nichts vom Server empfangen (kein Pong, keine Daten) → `WSError` → Teardown → Reconnect. Fängt Half-Open-TCP (Backend-Restart, stiller Socket, der kein RST schickt) |
+| Connect-Timeout | `ws_connect` (`:1994`), `asyncio.open_connection` | **kein expliziter** | refused → sofort; gedroppter SYN → OS-TCP-Default (FreeBSD ~75s SYN-Retransmit) bis Fehler, **dann** erst Backoff. Kein `wait_for`-Wrapper |
+| Probation (nach Self-Update) | `_PROBATION_SECS` (`:2053`) | **60s** | frisch upgedateter Agent muss in 60s gesund `welcome`-en, sonst `.bak`-Rollback (§5.2) |
+
+**Dead-Peer-Mechanik** (`_keepalive_loop`, `:2479`): alle 20s `if ws.stale_seconds() > 60: raise`,
+sonst `ws.ping()`. `_last_recv` (`:1941`) wird bei jedem empfangenen Frame neu gesetzt. Ohne diese
+Regel hinge der Agent unbegrenzt an einem toten Socket (historischer Bug, gefixt v0.3.4, siehe §14).
+
+**Backend-seitig (separat, nicht verwechseln):** `DASH_AGENT_STALE_SECONDS` (default **120s**) ist die
+Staleness-Schwelle, ab der das Dashboard eine Box als *offline* markiert (`agent_last_seen` zu alt) —
+**nicht** der Agent-Reconnect-Cap (zufällig auch 120). Backend-Restart → Agents reconnecten dank
+Dead-Peer-Fix binnen ~60s (§14).

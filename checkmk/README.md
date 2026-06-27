@@ -1,5 +1,9 @@
 # STYLiTE Orbit — Checkmk special agent
 
+> Full operator guide (what's exposed, API key, datasource program, piggyback
+> hosts, troubleshooting): [`../CHECKMK.md`](../CHECKMK.md). This file is the
+> short plugin note.
+
 `agent_styliteorbit.py` pulls `/api/export/checkmk` from the dashboard and emits
 Checkmk agent output: **one piggyback host per firewall**, each with a
 `<<<local>>>` section of evaluated OK/WARN/CRIT service checks + perfdata

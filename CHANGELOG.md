@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`CHECKMK.md` — full Checkmk integration guide** — a single operator doc covering the pull architecture, the complete list of exposed services (memory/cpu/disk/gateway/`ipsec.service`/`ipsec.tunnel`/`ipsec.tunnel_ping`/firmware) with their state thresholds and perfdata, the IPsec ping-monitor conditions (agent-mode + configured monitor only), read-only API-key auth, the datasource-program wiring with a wrapper, piggyback host-name matching, and troubleshooting. Linked from `README.md` and `checkmk/README.md`.
+
 ## [1.6.2] - 2026-06-27
 
 ### Changed
