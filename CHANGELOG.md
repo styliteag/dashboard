@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-06-27
+
 ### Security
 
 - **Fail-closed startup when the master key is missing/invalid outside dev (F1)** — the session cookie and GUI-proxy HMAC derive from `DASH_MASTER_KEY`; an empty key silently fell back to a public constant, allowing forged `dash_session` cookies. The app now refuses to start when `DASH_ENV` is not `dev` unless `DASH_MASTER_KEY` is a valid Fernet key; dev still allows the insecure fallback but logs a loud warning.
