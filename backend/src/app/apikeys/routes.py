@@ -14,6 +14,7 @@ from app.auth.apikey import generate_key
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import ApiKey, User
+from app.net import client_ip
 
 router = APIRouter(prefix="/apikeys", tags=["apikeys"])
 
@@ -40,13 +41,6 @@ class ApiKeyResponse(BaseModel):
     revoked_at: datetime | None
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 @router.post("", response_model=ApiKeyCreated)
 async def create_apikey(
     payload: ApiKeyCreate,
@@ -65,7 +59,7 @@ async def create_apikey(
         user_id=user.id,
         target_type="apikey",
         target_id=str(key.id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"name": payload.name},
     )
     await session.commit()
@@ -102,7 +96,7 @@ async def revoke_apikey(
         user_id=user.id,
         target_type="apikey",
         target_id=str(key_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return {"ok": True}

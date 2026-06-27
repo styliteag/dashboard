@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **`/api/health` no longer leaks the raw DB exception to anonymous callers** — on a DB failure the endpoint returned `detail: str(exc)` (driver/host/internal error text) to an unauthenticated caller. The detail is now logged server-side (`app.health` warning) and the response carries only `status`/`db`/`version`/`db_revision`. (Security review finding F4.)
+- **Fail-closed startup when the master key is missing/invalid outside dev (F1)** — the session cookie and GUI-proxy HMAC derive from `DASH_MASTER_KEY`; an empty key silently fell back to a public constant, allowing forged `dash_session` cookies. The app now refuses to start when `DASH_ENV` is not `dev` unless `DASH_MASTER_KEY` is a valid Fernet key; dev still allows the insecure fallback but logs a loud warning.
+- **`X-Forwarded-For` is no longer trusted blindly (F2)** — the client IP used for login/enroll rate-limiting and audit `source_ip` was read from the leftmost `X-Forwarded-For` value, which any client can spoof (bypassing the brute-force lockout, forging audit attribution). It now honours a new `DASH_TRUSTED_PROXY_HOPS` setting (default 0; compose sets 1 for the bundled nginx) and takes the Nth-from-last entry, falling back to the direct peer. Centralised into `app/net.py` (replaces the per-router `_client_ip` copies).
+- **GUI tunnel WebSocket now does full session validation (F5)** — `/ws/tunnel/{id}` only checked for a `user_id` in the session; it now also verifies the user still exists and the `password_version` matches, so a cookie invalidated by a password change can't open a tunnel within its remaining lifetime.
+- **`/api/health` no longer leaks the raw DB exception to anonymous callers (F4)** — on a DB failure the endpoint returned `detail: str(exc)` (driver/host/internal error text) to an unauthenticated caller. The detail is now logged server-side (`app.health` warning) and the response carries only `status`/`db`/`version`/`db_revision`.
 
 ### Changed
 

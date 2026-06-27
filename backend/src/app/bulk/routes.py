@@ -16,17 +16,11 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.net import client_ip
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 
 router = APIRouter(tags=["bulk"])
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 # --- Bulk Actions -----------------------------------------------------------
@@ -103,7 +97,7 @@ async def bulk_action(
             user_id=user.id,
             target_type="instance",
             target_id=str(r.instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"message": r.message},
         )
     await session.commit()

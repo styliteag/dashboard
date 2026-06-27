@@ -26,6 +26,7 @@ from app.ipsec.ping_schemas import (
     PingTestRequest,
     PingTestResult,
 )
+from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
@@ -37,13 +38,6 @@ from app.xsense.schemas import (
 )
 
 router = APIRouter(prefix="/instances/{instance_id}/ipsec", tags=["ipsec"])
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _ipsec_client(client: object) -> SupportsIPsec:
@@ -196,7 +190,7 @@ async def ipsec_connect(
             user_id=user.id,
             target_type="ipsec_tunnel",
             target_id=tunnel_id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"instance_id": instance_id},
         )
         await session.commit()
@@ -215,7 +209,7 @@ async def ipsec_connect(
             user_id=user.id,
             target_type="ipsec_tunnel",
             target_id=tunnel_id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"instance_id": instance_id, "error": str(exc)},
         )
         await session.commit()
@@ -228,7 +222,7 @@ async def ipsec_connect(
         user_id=user.id,
         target_type="ipsec_tunnel",
         target_id=tunnel_id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"instance_id": instance_id, "message": result.message},
     )
     await session.commit()
@@ -261,7 +255,7 @@ async def ipsec_disconnect(
             user_id=user.id,
             target_type="ipsec_tunnel",
             target_id=tunnel_id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"instance_id": instance_id},
         )
         await session.commit()
@@ -280,7 +274,7 @@ async def ipsec_disconnect(
             user_id=user.id,
             target_type="ipsec_tunnel",
             target_id=tunnel_id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"instance_id": instance_id, "error": str(exc)},
         )
         await session.commit()
@@ -293,7 +287,7 @@ async def ipsec_disconnect(
         user_id=user.id,
         target_type="ipsec_tunnel",
         target_id=tunnel_id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"instance_id": instance_id, "message": result.message},
     )
     await session.commit()
@@ -325,7 +319,7 @@ async def ipsec_restart(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
         )
         await session.commit()
         return ActionResult(success=ok, message=result.get("output", ""))
@@ -341,7 +335,7 @@ async def ipsec_restart(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"error": str(exc)},
         )
         await session.commit()
@@ -354,7 +348,7 @@ async def ipsec_restart(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"message": result.message},
     )
     await session.commit()
@@ -438,7 +432,7 @@ async def create_ping_monitor(
         user_id=user.id,
         target_type="ipsec_tunnel",
         target_id=monitor.tunnel_id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"instance_id": instance_id, "child_name": monitor.child_name},
     )
     await session.commit()
@@ -469,7 +463,7 @@ async def update_ping_monitor(
         user_id=user.id,
         target_type="ipsec_tunnel",
         target_id=monitor.tunnel_id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"instance_id": instance_id, "monitor_id": monitor_id},
     )
     await session.commit()
@@ -500,7 +494,7 @@ async def delete_ping_monitor(
         user_id=user.id,
         target_type="ipsec_tunnel",
         target_id=tunnel_id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"instance_id": instance_id, "monitor_id": monitor_id},
     )
     await session.commit()

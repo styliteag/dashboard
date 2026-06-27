@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import structlog
+from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -19,7 +20,7 @@ from app.auth.bootstrap import ensure_admin
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
 from app.checks.routes import router as checks_router
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
@@ -100,8 +101,33 @@ async def lifespan(app: FastAPI):
         await dispose_engine()
 
 
+def _validate_security(settings: Settings) -> None:
+    """Fail closed outside dev: refuse to boot without a valid master key.
+
+    The session cookie and the GUI-proxy HMAC are derived from ``master_key``; an
+    empty key falls back to a public constant, which would let anyone forge a
+    ``dash_session`` cookie. In dev the insecure fallback is allowed but logged
+    loudly so it can never be mistaken for a hardened deployment.
+    """
+    if settings.env != "dev":
+        try:
+            Fernet((settings.master_key or "").encode("utf-8"))
+        except (ValueError, TypeError) as exc:
+            raise RuntimeError(
+                "DASH_MASTER_KEY must be a valid Fernet key when DASH_ENV is not 'dev' "
+                "(generate one with `just gen-key`). Refusing to start with an "
+                "insecure session key."
+            ) from exc
+    elif not settings.master_key:
+        structlog.get_logger("app.security").warning(
+            "master_key.unset_dev",
+            hint="running with an insecure default session key — dev only, never in prod",
+        )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
+    _validate_security(settings)
     _configure_logging(settings.log_level)
 
     app = FastAPI(

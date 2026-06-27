@@ -43,6 +43,7 @@ from app.db.base import get_session, get_sessionmaker
 from app.db.models import EnrollmentCode, Instance, User
 from app.devices.types import Transport
 from app.ipsec import ping_service
+from app.net import client_ip
 
 # Agent files are baked into /app/agent/ in the production container.
 # Override via AGENT_DIR env var for local dev.
@@ -225,7 +226,19 @@ async def tunnel_websocket(ws: WebSocket, instance_id: int):
     speaks TLS end-to-end with the firewall, so no HTML rewriting is needed.
     """
     await ws.accept()
-    if not ws.session.get("user_id"):  # admin session required
+    # Full session validation (not just presence of user_id): the user must still
+    # exist and the password_version must match, so a cookie invalidated by a
+    # password change can't open a tunnel within its remaining lifetime. F5.
+    user_id = ws.session.get("user_id")
+    pwv = ws.session.get("password_version")
+    if not user_id or pwv is None:
+        await ws.close(code=4401)
+        return
+    async with get_sessionmaker()() as session:
+        user = await session.get(User, user_id)
+    if user is None or user.password_version != pwv:
+        # Unlike current_user we don't clear the session here (no Response on a WS);
+        # the stale cookie simply fails this check again on the next attempt.
         await ws.close(code=4401)
         return
     agent = hub.get(instance_id)
@@ -283,13 +296,6 @@ class AgentStatusResponse(BaseModel):
     last_update_version: str | None = None
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 @router.post("/instances/{instance_id}/agent/enable", response_model=AgentTokenResponse)
 async def enable_agent(
     instance_id: int,
@@ -313,7 +319,7 @@ async def enable_agent(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return AgentTokenResponse(instance_id=instance_id, agent_token=token, agent_mode=True)
@@ -344,7 +350,7 @@ async def disable_agent(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return {"ok": True}
@@ -450,7 +456,7 @@ async def send_agent_command(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"action": action, "result": _redact_audit(result)},
     )
     await session.commit()
@@ -504,7 +510,7 @@ async def update_agent(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"version": params["version"], "result": result},
     )
     await session.commit()
@@ -573,7 +579,7 @@ async def update_all_agents(
         action="agent.update_all",
         result="ok",
         user_id=user.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"served_version": served, "count": len(results)},
     )
     await session.commit()
@@ -645,7 +651,7 @@ async def enable_relay(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"result": result},
     )
     await session.commit()
@@ -813,7 +819,7 @@ async def gui_open(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return GuiOpenResponse(url=f"{_gui_base_url(inst)}/__orbit/auth?t={token}")
@@ -908,7 +914,7 @@ async def uninstall_agent(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"result": result},
     )
     await session.commit()
@@ -966,7 +972,7 @@ async def create_enroll_code(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return EnrollCodeResponse(code=code, instance_id=instance_id, expires_at=expires_at.isoformat())
@@ -983,7 +989,7 @@ async def enroll_agent(
     Unauthenticated attack surface → rate-limited per IP with the login limiter.
     The code must be unused and unexpired; it is consumed on success.
     """
-    ip = _client_ip(request)
+    ip = client_ip(request)
     if limiter.is_locked(ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

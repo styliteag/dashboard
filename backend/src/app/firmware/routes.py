@@ -15,18 +15,12 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
+from app.net import client_ip
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, FirmwareStatus, FirmwareUpgradeStatus
 
 router = APIRouter(prefix="/instances/{instance_id}/firmware", tags=["firmware"])
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
@@ -103,7 +97,7 @@ async def firmware_check(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
         )
         await session.commit()
         return ActionResult(success=True, message=output[:200] or "check complete")
@@ -121,7 +115,7 @@ async def firmware_check(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return result
@@ -151,7 +145,7 @@ async def firmware_update(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
         )
         await session.commit()
         return ActionResult(
@@ -169,7 +163,7 @@ async def firmware_update(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"error": str(exc)},
         )
         await session.commit()
@@ -182,7 +176,7 @@ async def firmware_update(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"message": result.message},
     )
     await session.commit()

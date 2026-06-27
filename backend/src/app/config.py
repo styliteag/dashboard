@@ -15,6 +15,14 @@ class Settings(BaseSettings):
     env: str = "dev"
     log_level: str = "info"
 
+    # Reverse-proxy hops in front of the app. The client IP used for login/enroll
+    # rate-limiting and audit is taken as the Nth-from-last entry of
+    # X-Forwarded-For (each appended by a proxy we control); 0 = trust none and
+    # use the direct peer. Set to EXACTLY the number of trusted proxies — too high
+    # lets a client spoof its IP by prepending fake entries. Combined image = 1
+    # (the bundled nginx); add 1 per extra front proxy (e.g. Traefik in front → 2).
+    trusted_proxy_hops: int = 0
+
     # Database (async DSN, e.g. mysql+aiomysql://user:pass@host:3306/db)
     database_url: str = Field(
         default="mysql+aiomysql://dash:dash@db:3306/dash",

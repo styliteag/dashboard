@@ -25,15 +25,9 @@ from app.instances.schemas import (
     InstanceUpdate,
     TestConnectionResponse,
 )
+from app.net import client_ip
 
 router = APIRouter(prefix="/instances", tags=["instances"])
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 @router.get("", response_model=list[InstanceResponse])
@@ -68,7 +62,7 @@ async def create(
         user_id=user.id,
         target_type="instance",
         target_id=inst.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"name": inst.name},
     )
     await session.commit()
@@ -131,7 +125,7 @@ async def update(
         user_id=user.id,
         target_type="instance",
         target_id=inst.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail=payload.model_dump(
             mode="json", exclude_none=True, exclude={"api_key", "api_secret"}
         ),
@@ -168,7 +162,7 @@ async def delete(
         user_id=user.id,
         target_type="instance",
         target_id=inst.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"name": inst.name},
     )
     await session.commit()
@@ -203,7 +197,7 @@ async def test(
             user_id=user.id,
             target_type="instance",
             target_id=inst.id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"latency_ms": latency_ms, "error": error, "mode": "agent"},
         )
         await session.commit()
@@ -219,7 +213,7 @@ async def test(
         user_id=user.id,
         target_type="instance",
         target_id=inst.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
         detail={"latency_ms": latency_ms, "error": error},
     )
     await session.commit()

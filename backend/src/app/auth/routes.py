@@ -18,6 +18,7 @@ from app.auth.security import hash_password, limiter, verify_password
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import User
+from app.net import client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -39,20 +40,13 @@ class UserResponse(BaseModel):
     session_token: str | None = None
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 @router.post("/login", response_model=UserResponse)
 async def login(
     payload: LoginRequest,
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserResponse:
-    ip = _client_ip(request)
+    ip = client_ip(request)
 
     if limiter.is_locked(ip):
         await write_audit(
@@ -117,7 +111,7 @@ async def logout(
 ) -> None:
     request.session.clear()
     await write_audit(
-        session, action="auth.logout", result="ok", user_id=user.id, source_ip=_client_ip(request)
+        session, action="auth.logout", result="ok", user_id=user.id, source_ip=client_ip(request)
     )
     await session.commit()
 
@@ -140,7 +134,7 @@ async def change_password(
             action="auth.password_change",
             result="error",
             user_id=user.id,
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"reason": "bad_old_password"},
         )
         await session.commit()
@@ -159,7 +153,7 @@ async def change_password(
         action="auth.password_change",
         result="ok",
         user_id=user.id,
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return UserResponse(id=user.id, username=user.username, is_admin=user.is_admin)

@@ -12,19 +12,13 @@ from app.auth.deps import current_user
 from app.db.base import get_session
 from app.db.models import User
 from app.instances import service as inst_service
+from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import ActionResult, GatewayStatus
 
 router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 @router.get("/gateways", response_model=list[GatewayStatus])
@@ -79,7 +73,7 @@ async def config_backup(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
         )
         await session.commit()
         return PlainTextResponse(
@@ -101,7 +95,7 @@ async def config_backup(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return PlainTextResponse(
@@ -136,7 +130,7 @@ async def reboot(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
         )
         await session.commit()
         return ActionResult(success=result.get("success", False), message=result.get("output", ""))
@@ -152,7 +146,7 @@ async def reboot(
             user_id=user.id,
             target_type="instance",
             target_id=str(instance_id),
-            source_ip=_client_ip(request),
+            source_ip=client_ip(request),
             detail={"error": str(exc)},
         )
         await session.commit()
@@ -165,7 +159,7 @@ async def reboot(
         user_id=user.id,
         target_type="instance",
         target_id=str(instance_id),
-        source_ip=_client_ip(request),
+        source_ip=client_ip(request),
     )
     await session.commit()
     return result
