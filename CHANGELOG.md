@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-06-27
+
 ### Changed
 
 - **VPN overview readability tweaks** — the Phase-2 ping rollup ("ping ok" / "ping fail" …) no longer wraps onto two lines, the table keeps a `1080px` minimum width (so columns stop squeezing on narrower windows and scroll instead) while still stretching to fill wider browsers, and an expanded tunnel **join** now draws a continuous bright-emerald left rail plus a faint tint down its member rows so they read as belonging to that pairing. Unpaired single tunnels (no peer) render flat — without the rail/tint — so they no longer look attached to the join above them.
