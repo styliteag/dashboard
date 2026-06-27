@@ -296,3 +296,21 @@ export interface CheckmkPreviewInstance {
 export interface CheckmkPreview {
   instances: CheckmkPreviewInstance[];
 }
+
+// --- Settings: editable application settings ---------------------------------
+
+export interface AppSettingItem {
+  key: string;
+  label: string;
+  group: string;
+  type: "int" | "str" | "bool";
+  help: string;
+  value: string;
+  default: string;
+  source: "db" | "env";
+  restart_required: boolean;
+  is_secret: boolean;
+  options: string[] | null;
+  min: number | null;
+  max: number | null;
+}

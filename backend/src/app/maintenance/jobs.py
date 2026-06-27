@@ -14,15 +14,15 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from sqlalchemy import text
 
-from app.config import get_settings
 from app.db.base import get_sessionmaker
+from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.maintenance")
 
 
 async def prune_metrics() -> int:
     """Delete raw metrics older than the retention window. Returns rows deleted."""
-    settings = get_settings()
+    settings = effective_settings()
     cutoff = datetime.now(UTC) - timedelta(days=settings.metrics_retention_days)
 
     sessionmaker = get_sessionmaker()
@@ -37,7 +37,7 @@ async def prune_metrics() -> int:
 
 async def prune_ipsec_events() -> int:
     """Delete IPsec tunnel events older than the retention window. Returns rows deleted."""
-    settings = get_settings()
+    settings = effective_settings()
     cutoff = datetime.now(UTC) - timedelta(days=settings.ipsec_event_retention_days)
 
     sessionmaker = get_sessionmaker()

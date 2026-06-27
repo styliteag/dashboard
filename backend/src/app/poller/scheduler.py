@@ -16,7 +16,6 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
@@ -24,6 +23,7 @@ from app.maintenance.jobs import prune_ipsec_events, prune_metrics
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.poller.gate import effective_interval, is_due, is_stale, stale_threshold
+from app.settings.store import effective_settings
 from app.xsense.registry import registry
 
 log = structlog.get_logger("app.poller")
@@ -97,7 +97,7 @@ async def _poll_all() -> None:
     effective interval (per-instance override or the global default) has elapsed
     since the last attempt — so a box can run faster *or* slower than the default.
     """
-    settings = get_settings()
+    settings = effective_settings()
     sessionmaker = get_sessionmaker()
     now = datetime.now(UTC)
 
@@ -151,7 +151,7 @@ async def _check_stale_agents() -> None:
     deliberately slow agent is not flagged offline at the global floor, while the
     floor still tolerates the brief reconnect during a self-update restart.
     """
-    settings = get_settings()
+    settings = effective_settings()
     sessionmaker = get_sessionmaker()
     now = datetime.now(UTC)
 
@@ -194,7 +194,7 @@ async def _check_stale_agents() -> None:
 
 def start_scheduler() -> None:
     global _scheduler
-    settings = get_settings()
+    settings = effective_settings()
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(
         _poll_all,

@@ -18,7 +18,7 @@ export class ApiError extends Error {
 
 export const unauthorizedEvent = "dash:unauthorized";
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 let authToken = localStorage.getItem("dash_session_token");
 
@@ -72,6 +72,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   del: <T = void>(path: string) => request<T>("DELETE", path),
 };

@@ -1,4 +1,5 @@
 import { Settings as SettingsIcon } from "lucide-react";
+import GeneralSettings from "../components/settings/GeneralSettings";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
 import CheckmkExport from "../components/settings/CheckmkExport";
 
@@ -15,6 +16,16 @@ export default function SettingsPage() {
       </h1>
 
       <section className="mt-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">General</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Operational defaults you can change at runtime instead of editing <code>.env</code>.
+        </p>
+        <div className="mt-4">
+          <GeneralSettings />
+        </div>
+      </section>
+
+      <section className="mt-8">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Checkmk</h2>
         <p className="mt-1 text-sm text-slate-400">
           Connect Checkmk to the dashboard and choose which service checks are exported. See{" "}

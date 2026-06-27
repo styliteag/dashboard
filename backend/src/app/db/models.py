@@ -344,3 +344,28 @@ class EnrollmentCode(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AppSetting(Base):
+    """One overridden application setting (sparse — only changed keys are stored).
+
+    The effective value of an editable setting is this DB override if present,
+    else the env/`.env` default from ``app.config.Settings``. Edited live via the
+    admin Settings page; ``app/settings/registry.py`` is the whitelist of editable
+    keys. Secret values are Fernet-encrypted in ``value`` (``is_secret``);
+    non-secret values are stored verbatim as strings.
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    is_secret: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default=text("false")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

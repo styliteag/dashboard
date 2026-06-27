@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **General settings editable in the UI (Settings → General)** — operational defaults that previously only came from `.env` can now be overridden at runtime, admin-only: default poll interval, scheduler tick, poll concurrency, default agent push interval, agent-offline floor, metrics retention, IPsec-event retention, GUI-proxy idle close, and log level. Each shows its env default, a *custom/default* source chip, and a *needs restart* badge where applicable; reset reverts to the env value. Overrides live in a new sparse `app_settings` table (migration `014`) and are layered over the env defaults — the poller and maintenance jobs read them **live**, while `poll_tick_seconds` / `gui_idle_minutes` / `log_level` apply on the next restart. Infra/security settings (database URL, master key, env, proxy hops, admin password) stay environment-only and cannot be set here. (Single-worker deployment assumed for the override cache.)
+
 ## [1.6.3] - 2026-06-27
 
 ### Added
