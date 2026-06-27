@@ -103,10 +103,19 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
 
       {fw && (
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <p className="text-xs text-slate-500">Installed</p>
               <p className="font-mono text-sm">{fw.product_version || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Branch / Train</p>
+              <p className="font-mono text-sm text-slate-300">{fw.branch || "—"}</p>
+              {fw.known_branches && fw.known_branches.length > 1 && (
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  other: {fw.known_branches.filter((b) => b !== fw.branch).slice(0, 3).join(", ")}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-xs text-slate-500">Latest</p>

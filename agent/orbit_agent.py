@@ -170,6 +170,75 @@ def _read_pfsense_version() -> str:
         return ""
 
 
+def _read_pfsense_branch() -> str:
+    """Read the active pfSense update branch / software train.
+
+    This is the key piece for knowing *which train* the box is on.
+    `pfSense-upgrade -c` only ever reports updates *within the current train*.
+    To see a newer major train you generally have to switch the branch first
+    (in the GUI or by editing the repo config).
+
+    Preference order:
+    1. <pkg_repo_conf_path> value from /cf/conf/config.xml (authoritative).
+    2. Target of the /usr/local/etc/pkg/repos/pfSense.conf symlink.
+    Returns a normalized short name (e.g. "26.03", "26_03_1") or raw value.
+    Empty on failure.
+    """
+    # 1. config.xml via robust text search (full XML parse can be noisy on pfSense config)
+    config_path = "/cf/conf/config.xml"
+    try:
+        if os.path.exists(config_path):
+            raw = Path(config_path).read_text(errors="replace")
+            m = re.search(r"<pkg_repo_conf_path>([^<]+)</pkg_repo_conf_path>", raw)
+            if m:
+                val = m.group(1).strip()
+                if "/" in val:
+                    val = val.rsplit("/", 1)[-1]
+                val = re.sub(r"^pfSense-repo-", "", val)
+                val = re.sub(r"\.conf$", "", val, flags=re.I)
+                val = val.replace("_rel", "")
+                if val:
+                    return val
+    except Exception:
+        pass
+
+    # 2. symlink fallback (very reliable)
+    try:
+        target = os.readlink("/usr/local/etc/pkg/repos/pfSense.conf")
+        m = re.search(r"pfSense-repo-([A-Za-z0-9_.-]+)", target)
+        if m:
+            val = m.group(1).replace("_rel", "").replace(".conf", "")
+            return val
+    except (OSError, AttributeError):
+        pass
+
+    return ""
+
+
+def _list_pfsense_branches() -> list[str]:
+    """Best-effort list of branch identifiers discovered from local repo definitions.
+
+    This can surface other trains that have been seen/ cached on the box
+    (e.g. after a GUI visit to Update Settings). Not guaranteed to list
+    brand new remote trains.
+    """
+    try:
+        repo_dir = Path("/usr/local/etc/pfSense/pkg/repos")
+        if not repo_dir.exists():
+            return []
+        names: list[str] = []
+        for p in list(repo_dir.glob("*")):
+            if p.is_file():
+                m = re.search(r"pfSense-repo-([0-9A-Za-z_.-]+)", p.name)
+                if m:
+                    n = m.group(1).replace("_rel", "").replace(".conf", "").replace(".descr", "")
+                    if n and n not in names:
+                        names.append(n)
+        return sorted(set(names))[:12]
+    except Exception:
+        return []
+
+
 def collect_cpu() -> dict:
     """Get CPU usage from sysctl kern.cp_time."""
     out = _run(["sysctl", "-n", "kern.cp_time"])
@@ -1036,10 +1105,12 @@ def collect_firmware() -> dict:
     global _last_fw_check_ts
     pfsense = detect_platform() == "pfsense"
     version = _read_pfsense_version() if pfsense else _read_opnsense_version()
+    branch = _read_pfsense_branch() if pfsense else ""
+    known_branches = _list_pfsense_branches() if pfsense else []
 
     now = time.monotonic()
     if now - _last_fw_check_ts < 600:  # 0 on first call → always runs immediately
-        return {"product_version": version}
+        return {"product_version": version, "branch": branch, "known_branches": known_branches}
     _last_fw_check_ts = now
 
     if pfsense:
@@ -1052,6 +1123,8 @@ def collect_firmware() -> dict:
 
     return {
         "product_version": version,
+        "branch": branch,
+        "known_branches": known_branches,
         "upgrade_available": upgrade_available,
         "update_check_output": out.strip()[:500],
     }
@@ -1850,13 +1923,24 @@ def execute_command(action: str, params: dict) -> dict:
         return {"success": True, "output": "ipsec reload started in background"}
 
     elif action == "firmware.check":
-        if detect_platform() == "pfsense":
+        plat = detect_platform()
+        if plat == "pfsense":
             out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
             version = _read_pfsense_version()
+            branch = _read_pfsense_branch()
+            known = _list_pfsense_branches()
         else:
             out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=60)
             version = _read_opnsense_version()
-        return {"success": True, "output": out.strip()[:500], "product_version": version}
+            branch = ""
+            known = []
+        return {
+            "success": True,
+            "output": out.strip()[:500],
+            "product_version": version,
+            "branch": branch,
+            "known_branches": known,
+        }
 
     elif action == "firmware.update":
         # Non-blocking: start in background. -R keeps pfSense-upgrade from

@@ -77,12 +77,24 @@ async def firmware_check(
             if hub.get_last_firmware(instance_id)
             else ""
         )
+        branch = result_raw.get("branch") or (
+            hub.get_last_firmware(instance_id).branch
+            if hub.get_last_firmware(instance_id)
+            else ""
+        )
+        known = result_raw.get("known_branches") or (
+            hub.get_last_firmware(instance_id).known_branches
+            if hub.get_last_firmware(instance_id)
+            else []
+        )
         import datetime as _dt
 
         hub.set_firmware(
             instance_id,
             FirmwareStatus(
                 product_version=product_version,
+                branch=branch,
+                known_branches=known,
                 product_latest=product_version,
                 upgrade_available=upgrade_available,
                 updates_available=1 if upgrade_available else 0,

@@ -221,6 +221,8 @@ export interface FirmwarePackage {
 
 export interface FirmwareStatus {
   product_version: string;
+  branch?: string; // pfSense update branch / software train (e.g. "26.03")
+  known_branches?: string[];
   product_latest: string;
   upgrade_available: boolean;
   updates_available: number;

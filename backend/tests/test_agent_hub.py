@@ -78,6 +78,8 @@ AGENT_PUSH = {
     },
     "firmware": {
         "product_version": "26.03-RELEASE",
+        "branch": "26.03",
+        "known_branches": ["26.03"],
         "upgrade_available": False,
         "update_check_output": "Your system is up to date",
     },
@@ -136,6 +138,8 @@ def test_ipsec_from_agent_maps_status_to_phase1() -> None:
 def test_firmware_from_agent_derives_updates_count() -> None:
     fw = firmware_from_agent(AGENT_PUSH, "2026-06-23T10:00:00+00:00")
     assert fw.product_version == "26.03-RELEASE"
+    assert fw.branch == "26.03"
+    assert fw.known_branches == ["26.03"]
     assert fw.upgrade_available is False
     assert fw.updates_available == 0
     assert fw.last_check == "2026-06-23T10:00:00+00:00"
@@ -144,6 +148,8 @@ def test_firmware_from_agent_derives_updates_count() -> None:
     fw2 = firmware_from_agent(upgradable, "x")
     assert fw2.upgrade_available is True
     assert fw2.updates_available == 1
+    assert fw2.branch == ""  # not provided in override
+    assert fw2.known_branches == []
 
 
 # --- registry identity semantics (overlapping reconnect race) -----------------

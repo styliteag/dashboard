@@ -80,9 +80,13 @@ def test_firmware_check_pfsense_uses_pfsense_upgrade(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
     monkeypatch.setattr(agent, "_run", fake_run)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26.03")
+    monkeypatch.setattr(agent, "_list_pfsense_branches", lambda: ["26.03", "dev"])
     result = agent.execute_command("firmware.check", {})
     assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-c"]
     assert result["product_version"] == "2.8.1-RELEASE"
+    assert result["branch"] == "26.03"
+    assert "dev" in (result.get("known_branches") or [])
 
 
 def test_firmware_check_opnsense_uses_opnsense_update(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,9 +99,13 @@ def test_firmware_check_opnsense_uses_opnsense_update(monkeypatch: pytest.Monkey
     monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
     monkeypatch.setattr(agent, "_run", fake_run)
     monkeypatch.setattr(agent, "_read_opnsense_version", lambda: "25.7.11_9")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "")  # not called but safe
+    monkeypatch.setattr(agent, "_list_pfsense_branches", lambda: [])
     result = agent.execute_command("firmware.check", {})
     assert captured["cmd"] == ["/usr/local/sbin/opnsense-update", "-c"]
     assert result["product_version"] == "25.7.11_9"
+    assert result.get("branch") == ""
+    assert result.get("known_branches") == []
 
 
 def _capture_popen(monkeypatch: pytest.MonkeyPatch) -> dict:

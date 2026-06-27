@@ -93,7 +93,8 @@ def test_collect_firmware_pfsense_reads_version(
     # Pretend a check ran recently so the version-only path is taken (no subprocess).
     monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic())
     fake_fs["/etc/version"] = "26.03-RELEASE\n"
-    assert agent.collect_firmware() == {"product_version": "26.03-RELEASE"}
+    # branch not present in this minimal fs -> empty + []
+    assert agent.collect_firmware() == {"product_version": "26.03-RELEASE", "branch": "", "known_branches": []}
 
 
 def test_pfsense_update_detection() -> None:

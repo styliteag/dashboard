@@ -169,6 +169,7 @@ class FirmwareEntry(BaseModel):
     instance_name: str
     location: str | None
     product_version: str
+    branch: str = ""  # pfSense update branch / software train
     product_latest: str
     upgrade_available: bool
     updates_available: int
@@ -214,6 +215,7 @@ async def firmware_compliance(
                 instance_name=inst.name,
                 location=inst.location,
                 product_version=fw.product_version,
+                branch=getattr(fw, "branch", "") or "",
                 product_latest=fw.product_latest,
                 upgrade_available=fw.upgrade_available,
                 updates_available=fw.updates_available,
@@ -227,6 +229,7 @@ async def firmware_compliance(
                 instance_name=inst.name,
                 location=inst.location,
                 product_version="?",
+                branch="",
                 product_latest="?",
                 upgrade_available=False,
                 updates_available=0,

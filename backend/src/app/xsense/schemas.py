@@ -174,6 +174,8 @@ class FirmwareStatus(BaseModel):
 
     product_name: str = ""
     product_version: str = ""
+    branch: str = ""  # pfSense update branch / software train (e.g. "26.03", "Latest stable version")
+    known_branches: list[str] = []  # other locally known trains (best-effort)
     product_latest: str = ""
     needs_reboot: bool = False
     upgrade_available: bool = False

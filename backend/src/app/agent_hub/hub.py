@@ -149,6 +149,8 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
     upgrade_available = bool(fw_data.get("upgrade_available", False))
     return FirmwareStatus(
         product_version=fw_data.get("product_version", ""),
+        branch=fw_data.get("branch", ""),
+        known_branches=fw_data.get("known_branches", []) or [],
         product_latest=fw_data.get("product_version", ""),  # agent doesn't know latest
         upgrade_available=upgrade_available,
         updates_available=1 if upgrade_available else 0,

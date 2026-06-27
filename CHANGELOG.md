@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **pfSense software train/branch is now visible in firmware status** — the agent reports the active update branch (from `<pkg_repo_conf_path>` in `config.xml` or the `pfSense.conf` symlink, e.g. "26.03", "26_03_1") plus best-effort `known_branches`. The Firmware tab and compliance view now display "Branch / Train". This makes it obvious which train a box is on; `pfSense-upgrade -c` (and therefore firmware checks) only ever reports updates inside the current train — newer major trains require an explicit branch switch first.
+
 ## [1.6.6] - 2026-06-27
 
 ### Security
