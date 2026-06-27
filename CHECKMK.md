@@ -117,7 +117,12 @@ one instance (export-only; the dashboard keeps showing all checks).
 
 ### 2. Install the special agent on the Checkmk site
 
+Copy it into the persistent **`local/`** overlay (survives `omd update` — the
+plain `~/share/…` version tree does not). Create the directory first; it may not
+exist on a fresh site:
+
 ```sh
+mkdir -p ~/local/share/check_mk/agents/special
 cp checkmk/agent_styliteorbit.py \
    ~/local/share/check_mk/agents/special/agent_styliteorbit
 chmod +x ~/local/share/check_mk/agents/special/agent_styliteorbit
@@ -155,7 +160,15 @@ The special agent reads its config from **environment variables**, not from
 simplest robust wiring is a tiny wrapper that exports the env and execs the
 agent:
 
+Install under **`~/local/…`**, never `~/share/…`. The `local/` tree is the
+persistent user overlay that survives `omd update`; the plain `~/share/…`
+version tree is replaced on every update (that's why files put there
+"disappear"). `mkdir -p` first — a fresh site may not have the `special/`
+directory yet, and `cat >` into a missing parent silently fails, leaving no
+wrapper (→ later `exit code 127`).
+
 ```sh
+mkdir -p ~/local/share/check_mk/agents/special
 cat > ~/local/share/check_mk/agents/special/agent_styliteorbit_run <<'EOF'
 #!/bin/sh
 export ORBIT_URL=https://dashboard.example.com
@@ -166,11 +179,25 @@ EOF
 chmod +x ~/local/share/check_mk/agents/special/agent_styliteorbit_run
 ```
 
-In WATO, create **one "source" host** (e.g. `orbit-export`, IP can be
-`127.0.0.1`) and give it:
+This is two steps in Checkmk — create the host, then attach a **datasource
+program rule** that points at the wrapper:
 
-> **Setup → Hosts → Datasource programs → "Individual program call instead of
-> agent access"** → command = the wrapper above.
+1. **Create the source host.** *Setup → Hosts → Add host* → name e.g.
+   `orbit-export`, IP `127.0.0.1`. Leave it as is for now.
+2. **Add the datasource rule.** Open the ruleset *Setup → Agents → Datasource
+   programs → "Individual program call instead of agent access"* (fastest: type
+   *Individual program call* into the Setup search box). *Add rule* → set
+   **Command line** to the wrapper path, then under **Conditions → Explicit
+   hosts** scope it to `orbit-export` so only that host runs it.
+
+   ```
+   ~/local/share/check_mk/agents/special/agent_styliteorbit_run
+   or
+   $OMD_ROOT/local/share/check_mk/agents/special/agent_styliteorbit_run
+   ```
+
+It's a *rule*, not a field on the host — the host page has no "datasource"
+input. Without the condition the rule would fire on every host.
 
 That source host carries no services of its own — its agent output is entirely
 piggyback for the firewall hosts.
