@@ -114,6 +114,15 @@ _DEFS: tuple[SettingDef, ...] = (
         options=("debug", "info", "warning", "error"),
         restart_required=True,
     ),
+    SettingDef(
+        "notify_mattermost_url",
+        "str",
+        "Mattermost webhook URL",
+        "Notifications",
+        help="Incoming-webhook URL of a Mattermost channel. Alerts (instance "
+        "up/down) are posted here. Stored encrypted.",
+        is_secret=True,
+    ),
 )
 
 EDITABLE: dict[str, SettingDef] = {d.key: d for d in _DEFS}

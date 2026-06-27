@@ -314,3 +314,9 @@ export interface AppSettingItem {
   min: number | null;
   max: number | null;
 }
+
+export interface NotificationTestResult {
+  channel: string;
+  status: "sent" | "skipped" | "failed";
+  detail: string;
+}

@@ -62,6 +62,7 @@ services:
       DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
       DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
       DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
+      DASH_NOTIFY_MATTERMOST_URL: ${DASH_NOTIFY_MATTERMOST_URL:-}
       # Firewall GUI proxy (OPTIONAL — off by default). Needs the `gui-proxy`
       # service below + an external reverse proxy (e.g. Traefik) routing the
       # wildcard. See README "Firewall GUI proxy".

@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     notify_telegram_token: str = ""
     notify_telegram_chat_id: str = ""
     notify_ntfy_url: str = ""
+    # Mattermost incoming-webhook URL (contains a secret token). Editable in the
+    # Settings UI as a secret; env default here for first-boot/ops parity.
+    notify_mattermost_url: str = ""
 
 
 @lru_cache(maxsize=1)
