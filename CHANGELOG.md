@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-06-27
+
 ### Added
 
 - **Settings page (admin-only) with Checkmk configuration** — a new `/settings` page (gear in the nav, visible to admins only). First section is Checkmk: **manage API keys in the UI** (create a re-viewable key whose token is kept Fernet-encrypted so it can be revealed/copied again later, with a ready-to-paste `ORBIT_URL` / `ORBIT_API_KEY` snippet; revoke drops the recoverable copy), and **choose what gets exported** — every check is exported by default, but you can switch off a whole category globally (memory/cpu/disk/gateway/`ipsec.service`/`ipsec.tunnel`/`ipsec.tunnel_ping`/firmware) or exclude a single service on one instance, with a live per-instance preview of the current checks and their states. Exclusions affect **only** the Checkmk export; the dashboard's own views still show everything. New `require_admin` dependency guards the settings/API-key endpoints. (Backend: `checkmk_export_exclusions` table + revealable API keys, migration `013`.)
