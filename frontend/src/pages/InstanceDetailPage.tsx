@@ -202,7 +202,9 @@ export default function InstanceDetailPage() {
           <IPsecSection
             instanceId={nid}
             pingSupported={instance?.agent_mode ?? false}
-            diagnoseSupported={instance?.device_type === "securepoint"}
+            diagnoseSupported={
+              (instance?.agent_mode ?? false) || instance?.device_type === "securepoint"
+            }
           />
         </div>
       )}

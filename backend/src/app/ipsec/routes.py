@@ -29,7 +29,12 @@ from app.ipsec.ping_schemas import (
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, IPsecDiagnosis, IPsecServiceStatus
+from app.xsense.schemas import (
+    ActionResult,
+    DiagnosisSection,
+    IPsecDiagnosis,
+    IPsecServiceStatus,
+)
 
 router = APIRouter(prefix="/instances/{instance_id}/ipsec", tags=["ipsec"])
 
@@ -91,8 +96,30 @@ async def ipsec_diagnose(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> IPsecDiagnosis:
-    """Readable diagnostic bundle for one tunnel (config, SAs, IPsec log, peer ping)."""
+    """Readable diagnostic bundle for one tunnel (config, SAs, IPsec log, peer ping).
+
+    Agent mode: the agent gathers on-box (swanctl + strongSwan log + ping) and
+    pushes the result over its WebSocket. Direct mode: Securepoint gathers via SSH.
+    """
     inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        agent = hub.get(instance_id)
+        if agent is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
+        result = await agent.send_command("ipsec.diagnose", {"tunnel_id": tunnel_id})
+        rows = result.get("sections") or []
+        return IPsecDiagnosis(
+            tunnel_id=tunnel_id,
+            sections=[
+                DiagnosisSection(title=str(r.get("title", "")), content=str(r.get("content", "")))
+                for r in rows
+                if isinstance(r, dict)
+            ],
+        )
+
     client = await registry.get(inst)
     if not isinstance(client, SupportsDiagnose):
         raise HTTPException(

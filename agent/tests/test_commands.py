@@ -36,6 +36,40 @@ def test_ipsec_connect_failure_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["success"] is False
 
 
+def test_ipsec_diagnose_gathers_sections(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: p == "/var/log/ipsec/latest.log")
+
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:2] == ["swanctl", "--list-conns"] and "--raw" in cmd:
+            return (
+                "list-conn event {tun-x {local_addrs=[10.0.0.1] remote_addrs=[1.2.3.4] "
+                "children {c {mode=TUNNEL local-ts=[10.1.0.0/24] remote-ts=[10.2.0.0/24]}}}}"
+            )
+        if cmd[:2] == ["swanctl", "--list-conns"]:
+            return "tun-x: IKEv2\n  remote: 1.2.3.4"
+        if cmd[:2] == ["swanctl", "--list-sas"]:
+            return "tun-x: #1 ESTABLISHED"
+        if cmd[0] == "tail":
+            return "noise\n<tun-x|3> AUTHENTICATION_FAILED, peer rejected\nmore noise"
+        if cmd[0] == "ping":
+            return "2 packets transmitted, 2 packets received, 0.0% packet loss"
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    res = agent.execute_command("ipsec.diagnose", {"tunnel_id": "tun-x"})
+
+    assert res["success"] is True
+    by_title = {s["title"]: s["content"] for s in res["sections"]}
+    assert any("config" in t.lower() for t in by_title)
+    # The conn-tagged failure line is surfaced in the log section.
+    log = next(c for t, c in by_title.items() if "log" in t.lower())
+    assert "AUTHENTICATION_FAILED" in log
+    # A concrete remote → ping ran.
+    ping = next(c for t, c in by_title.items() if "reachability" in t.lower())
+    assert "2 packets received" in ping
+
+
 def test_firmware_check_pfsense_uses_pfsense_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 

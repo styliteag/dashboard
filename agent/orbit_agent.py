@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.9"
+__version__ = "1.6.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1683,6 +1683,64 @@ def _gui_login(cfg: Config | None) -> dict:
 # Command executor
 # =============================================================================
 
+
+def _ipsec_log_raw(lines: int = 3000) -> str:
+    """Recent strongSwan log text. OPNsense = plain dated files (latest.log
+    symlink); pfSense = a clog circular log."""
+    if detect_platform() == "pfsense":
+        return _run(["clog", "/var/log/ipsec.log"], timeout=10)
+    for path in ("/var/log/ipsec/latest.log", "/var/log/ipsec.log"):
+        if os.path.exists(path):
+            return _run(["tail", "-n", str(lines), path], timeout=10)
+    return ""
+
+
+def _diagnose_ipsec(name: str) -> list[dict]:
+    """Readable per-tunnel diagnostic sections gathered on-box (matches the
+    Securepoint SSH bundle): config, live SAs, recent log, peer ping."""
+    sections = [
+        {
+            "title": "Connection config (swanctl --list-conns)",
+            "content": _run(["swanctl", "--list-conns"], timeout=10).strip(),
+        },
+        {
+            "title": "Live IKE / CHILD SAs (swanctl --list-sas)",
+            "content": _run(["swanctl", "--list-sas", "--ike", name], timeout=10).strip(),
+        },
+    ]
+    # Prefer log lines tagged with this connection; fall back to a recent tail so
+    # failures logged before the conn match (by peer IP / IKE-SA id) still show.
+    raw_lines = _ipsec_log_raw().splitlines()
+    tagged = [ln for ln in raw_lines if f"<{name}|" in ln]
+    log_lines = tagged[-300:] if tagged else raw_lines[-200:]
+    sections.append({"title": "Recent IPsec log (charon)", "content": "\n".join(log_lines).strip()})
+
+    remote = ""
+    try:
+        conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
+        remote = next(
+            (c["remote"] for c in conns if c.get("name") == name and "%" not in c.get("remote", "%")),
+            "",
+        )
+    except Exception:  # best-effort — ping is a bonus, never fail the bundle
+        remote = ""
+    if remote:
+        sections.append(
+            {
+                "title": "Peer reachability",
+                "content": _run(["ping", "-c", "2", "-t", "4", remote], timeout=8).strip(),
+            }
+        )
+    else:
+        sections.append(
+            {
+                "title": "Peer reachability",
+                "content": "no concrete peer IP (remote=%any / responder-only) — nothing to ping",
+            }
+        )
+    return sections
+
+
 def execute_command(action: str, params: dict) -> dict:
     """Execute a command received from the dashboard."""
     log.info("executing command: %s", action)
@@ -1698,6 +1756,9 @@ def execute_command(action: str, params: dict) -> dict:
         tunnel_id = params.get("tunnel_id", "")
         out = _run(["swanctl", "--terminate", "--ike-id", tunnel_id], timeout=15)
         return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
+
+    elif action == "ipsec.diagnose":
+        return {"success": True, "sections": _diagnose_ipsec(params.get("tunnel_id", ""))}
 
     elif action == "ipsec.ping_test":
         # One-shot ping the dashboard runs from the config dialog BEFORE saving a
