@@ -139,6 +139,43 @@ async def test_ntfy_without_topic_fails_without_posting(monkeypatch) -> None:
     assert called["posted"] is False  # never POST JSON to a topic-less root
 
 
+@pytest.mark.asyncio
+async def test_telegram_sends_plaintext_without_markdown(monkeypatch) -> None:
+    """No parse_mode → a metacharacter in the content can never trigger a 400 drop."""
+    cfg = SimpleNamespace(
+        notify_webhook_url="",
+        notify_telegram_token="TOK",
+        notify_telegram_chat_id="CHAT",
+        notify_ntfy_url="",
+        notify_mattermost_url="",
+    )
+    posted: dict[str, object] = {}
+
+    class _Client:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            return None
+
+        async def post(self, url, json=None, **k):
+            posted["url"] = url
+            posted["json"] = json
+            return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: cfg)
+    monkeypatch.setattr(notifier.httpx, "AsyncClient", _Client)
+
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["telegram"].status == "sent"
+    assert "parse_mode" not in posted["json"]  # plaintext: no parser to choke on
+    assert "*" not in posted["json"]["text"]  # no Markdown emphasis wrapping
+    assert posted["json"]["text"].startswith("✅ Orbit test notification")
+
+
 def test_split_ntfy_url_handles_subpath_and_trailing_slash() -> None:
     assert notifier._split_ntfy_url("https://ntfy.sh/mytopic") == ("https://ntfy.sh", "mytopic")
     assert notifier._split_ntfy_url("https://ntfy.sh/mytopic/") == ("https://ntfy.sh", "mytopic")

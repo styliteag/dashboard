@@ -36,6 +36,13 @@ from app.xsense.schemas import (
 
 log = structlog.get_logger("app.agent_hub")
 
+# Max buffered frames per GUI-proxy/relay tunnel stream. The producer
+# (deliver_tunnel, driven by the agent's WS loop) must never grow this without
+# bound: a compromised/buggy firewall agent — or a fast firewall + slow local
+# client — would otherwise exhaust backend memory. On overflow the stream is torn
+# down instead of buffered.
+_TUNNEL_QUEUE_MAX = 1000
+
 
 # --- Agent → domain conversion (pure; testable without a DB) ------------------
 # These map the agent's push payload (see agent/orbit_agent.py collect_all)
@@ -224,7 +231,7 @@ class AgentHub:
 
     def open_tunnel(self, stream_id: str) -> asyncio.Queue:
         """Register a tunnel stream; returns the queue agent frames are delivered to."""
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=_TUNNEL_QUEUE_MAX)
         self._tunnels[stream_id] = queue
         return queue
 
@@ -232,10 +239,26 @@ class AgentHub:
         self._tunnels.pop(stream_id, None)
 
     def deliver_tunnel(self, stream_id: str, frame: dict) -> None:
-        """Route a `tunnel` frame from the agent to its client handler's queue."""
+        """Route a `tunnel` frame from the agent to its client handler's queue.
+
+        Bounded: if the client can't keep up and the buffer is full, stop buffering
+        and tear the stream down (apply backpressure / fail the slow stream) rather
+        than grow unboundedly. We unregister the stream, free one slot, and enqueue a
+        close sentinel so the consumer ends cleanly (its finally then closes the WS
+        and tells the agent to close too).
+        """
         queue = self._tunnels.get(stream_id)
-        if queue is not None:
+        if queue is None:
+            return
+        try:
             queue.put_nowait(frame)
+        except asyncio.QueueFull:
+            self._tunnels.pop(stream_id, None)
+            with contextlib.suppress(asyncio.QueueEmpty):
+                queue.get_nowait()  # make room for the close sentinel
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait({"op": "close"})
+            log.warning("tunnel.overflow_closed", stream=stream_id, maxsize=_TUNNEL_QUEUE_MAX)
 
     def get(self, instance_id: int) -> ConnectedAgent | None:
         return self._agents.get(instance_id)

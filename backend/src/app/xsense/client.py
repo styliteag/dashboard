@@ -13,6 +13,7 @@ import ssl
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 
 from app.xsense.schemas import (
     ActionResult,
@@ -82,7 +83,13 @@ class OPNsenseClient:
             raise OPNsenseError(f"GET {path}: {exc}") from exc
         if resp.status_code >= 400:
             raise OPNsenseError(f"GET {path}: HTTP {resp.status_code}")
-        return resp.json()
+        # A 200 with a non-JSON body (HTML captive portal, WAF, missing endpoint
+        # privilege) raises JSONDecodeError (a ValueError) — wrap it so callers
+        # guarding on OPNsenseError stay resilient instead of leaking it.
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise OPNsenseError(f"GET {path}: invalid JSON response") from exc
 
     async def _post(self, path: str, body: dict | None = None) -> Any:
         try:
@@ -91,7 +98,10 @@ class OPNsenseClient:
             raise OPNsenseError(f"POST {path}: {exc}") from exc
         if resp.status_code >= 400:
             raise OPNsenseError(f"POST {path}: HTTP {resp.status_code}")
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise OPNsenseError(f"POST {path}: invalid JSON response") from exc
 
     # ----- diagnostics ----------------------------------------------------
 
@@ -287,7 +297,10 @@ class OPNsenseClient:
         ifaces: list[InterfaceStats] = []
         uptime: str | None = None
 
-        with contextlib.suppress(OPNsenseError):
+        # system_information() also runs model_validate(), which raises
+        # ValidationError (not OPNsenseError) on field drift — swallow it too so a
+        # single malformed field still yields a partial SystemStatus.
+        with contextlib.suppress(OPNsenseError, ValidationError):
             info = await self.system_information()
 
         with contextlib.suppress(OPNsenseError):
@@ -330,19 +343,22 @@ class OPNsenseClient:
             ph1 = await self._get("/api/ipsec/sessions/searchPhase1")
             rows = ph1.get("rows", []) if isinstance(ph1, dict) else []
             for row in rows:
-                tunnels.append(
-                    IPsecTunnel(
-                        id=str(row.get("id", row.get("ikeid", ""))),
-                        description=row.get("description", row.get("phase1desc", "")),
-                        phase1_status=row.get("connected", row.get("status", "unknown")),
-                        phase2_status="",
-                        remote=row.get("remote-host", row.get("remote_host", "")),
-                        local=row.get("local-host", row.get("local_host", "")),
-                        bytes_in=int(row.get("bytes-in", row.get("bytes_in", 0))),
-                        bytes_out=int(row.get("bytes-out", row.get("bytes_out", 0))),
-                        established=row.get("established"),
+                # A non-numeric byte counter raises ValueError in int() — skip just
+                # that row (keep the rest) instead of dropping the whole tunnel list.
+                with contextlib.suppress(ValueError, TypeError):
+                    tunnels.append(
+                        IPsecTunnel(
+                            id=str(row.get("id", row.get("ikeid", ""))),
+                            description=row.get("description", row.get("phase1desc", "")),
+                            phase1_status=row.get("connected", row.get("status", "unknown")),
+                            phase2_status="",
+                            remote=row.get("remote-host", row.get("remote_host", "")),
+                            local=row.get("local-host", row.get("local_host", "")),
+                            bytes_in=int(row.get("bytes-in", row.get("bytes_in", 0))),
+                            bytes_out=int(row.get("bytes-out", row.get("bytes_out", 0))),
+                            established=row.get("established"),
+                        )
                     )
-                )
         except OPNsenseError:
             pass
 

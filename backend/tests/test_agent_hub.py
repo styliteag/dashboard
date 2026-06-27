@@ -175,3 +175,32 @@ async def test_unregister_without_agent_force_drops() -> None:
     await h.register(_FakeWS(), 7, "fw7")
     h.unregister(7)
     assert h.get(7) is None
+
+
+# --- bounded tunnel queue (no unbounded buffering / OOM) ----------------------
+
+
+def test_tunnel_queue_overflow_tears_down_stream() -> None:
+    """A full tunnel buffer must stop buffering and close the stream, not grow."""
+    from app.agent_hub.hub import _TUNNEL_QUEUE_MAX
+
+    h = AgentHub()
+    q = h.open_tunnel("s1")
+    for i in range(_TUNNEL_QUEUE_MAX):
+        h.deliver_tunnel("s1", {"op": "data", "data": str(i)})
+    assert q.full()
+
+    # One more frame overflows: the stream is unregistered and a close sentinel is
+    # enqueued so the consumer ends cleanly (it then closes the WS + tells the agent).
+    h.deliver_tunnel("s1", {"op": "data", "data": "overflow"})
+    assert "s1" not in h._tunnels  # unregistered → no further buffering
+    assert q.qsize() == _TUNNEL_QUEUE_MAX  # bounded: never grew past max
+
+    drained = []
+    while not q.empty():
+        drained.append(q.get_nowait())
+    assert drained[-1] == {"op": "close"}
+
+    # Delivering to the now-closed stream is a no-op (no exception, no growth).
+    h.deliver_tunnel("s1", {"op": "data", "data": "late"})
+    assert q.empty()

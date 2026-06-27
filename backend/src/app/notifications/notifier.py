@@ -56,9 +56,15 @@ async def _send_telegram(s, title: str, message: str, level: str) -> ChannelResu
         return ChannelResult("telegram", "skipped")
     try:
         async with httpx.AsyncClient(timeout=10) as c:
+            # Plain text, no parse_mode: with Markdown an unbalanced metacharacter in
+            # the title/message (e.g. a lone `*`/backtick from an error string, or a
+            # truncation cutting through an entity) made Telegram reject the whole
+            # message with HTTP 400 — silently dropping the alert that matters most
+            # (the offline alert embeds an arbitrary error string). Reliability of
+            # delivery beats a bold title.
             resp = await c.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat, "text": f"*{title}*\n{message}", "parse_mode": "Markdown"},
+                json={"chat_id": chat, "text": f"{title}\n{message}"},
             )
         return _result("telegram", resp)
     except Exception as exc:  # noqa: BLE001
