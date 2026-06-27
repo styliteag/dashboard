@@ -209,6 +209,51 @@ def test_parse_swanctl_sas_uptime_and_phase2_count() -> None:
     assert s["phase2_total"] == 1
 
 
+# Two `list-sa event` envelopes share the SAME connection name: the live
+# ESTABLISHED SA and a passive `%any`/CREATED half-open responder SA. Merging
+# repeated section keys (the old behavior) collapsed them and let the half-open
+# clobber the established record's host + IKE cookie → a Frankenstein tunnel
+# showing CREATED/%any with a zeroed responder SPI.
+_SWANCTL_SAS_HALFOPEN = (
+    "list-sa event {tun-a {uniqueid=3 version=2 state=ESTABLISHED "
+    "local-host=10.0.0.1 local-port=4500 remote-host=10.0.0.2 remote-port=4500 "
+    "initiator=yes initiator-spi=aaaa1111bbbb2222 responder-spi=cccc3333dddd4444 "
+    "established=100 child-sas {tun-a-1 {name=tun-a uniqueid=5 state=INSTALLED "
+    "mode=TUNNEL protocol=ESP spi-in=11112222 spi-out=33334444 bytes-in=10 "
+    "bytes-out=20 local-ts=[10.1.0.0/24] remote-ts=[10.2.0.0/24]}}}}\n"
+    "list-sa event {tun-a {uniqueid=1 version=2 state=CREATED local-host=%any "
+    "remote-host=%any initiator=yes initiator-spi=ffff0000ffff0000 "
+    "responder-spi=0000000000000000 child-sas {}}}\n"
+    "list-sas reply {}"
+)
+
+
+def test_parse_swanctl_sas_halfopen_does_not_clobber_established() -> None:
+    # Regression: the established record must keep its real host + IKE cookie,
+    # not be overwritten by the same-named %any half-open.
+    by_name: dict = {s["name"]: s for s in agent._parse_swanctl_sas(_SWANCTL_SAS_HALFOPEN)}
+    # Both records survive as separate entries (no merge); pick the established one.
+    est = next(
+        s for s in agent._parse_swanctl_sas(_SWANCTL_SAS_HALFOPEN) if s["status"] == "ESTABLISHED"
+    )
+    assert est["local"] == "10.0.0.1"  # NOT %any
+    assert est["ike_init_spi"] == "aaaa1111bbbb2222"
+    assert est["ike_resp_spi"] == "cccc3333dddd4444"
+    assert est["children"][0]["spi_in"] == "11112222"
+    assert "tun-a" in by_name
+
+
+def test_merge_ipsec_drops_halfopen_keeps_established() -> None:
+    # The agent's rank/merge surfaces ONE up tunnel for the connection, not the
+    # transient %any half-open.
+    sas = agent._parse_swanctl_sas(_SWANCTL_SAS_HALFOPEN)
+    tuns = agent._merge_ipsec([], sas, {})
+    up = [t for t in tuns if t["status"] == "ESTABLISHED"]
+    assert len(up) == 1
+    assert up[0]["local"] == "10.0.0.1"
+    assert up[0]["ike_init_spi"] == "aaaa1111bbbb2222"
+
+
 def test_parse_swanctl_sas_counts_multiple_children() -> None:
     # Two children, one down → "1/2 up".
     raw = (

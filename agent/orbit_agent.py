@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.5.8"
+__version__ = "1.5.9"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -422,16 +422,20 @@ def _vici_parse(tokens: list[str]) -> dict:
             child: object
             if isinstance(cont, dict):
                 # swanctl --raw emits one `… event { <record> }` envelope per
-                # record, every one keyed `event` at the same level. Merge a
-                # repeated section into the existing dict instead of clobbering
-                # it, so every record survives — otherwise only the last tunnel
-                # is parsed and a box with N tunnels shows just one.
-                existing = cont.get(key)
-                if tok == "{" and isinstance(existing, dict):
-                    child = existing
-                else:
-                    child = {} if tok == "{" else []
-                    cont[key] = child
+                # record, every one keyed `event` at the same level — and a
+                # connection name can even repeat (a passive `%any` half-open
+                # responder SA alongside the established one). Disambiguate a
+                # colliding section key (`key\x00N`) instead of merging, so every
+                # record survives as its own section; merging collapsed the two
+                # same-named SAs and let the `%any`/CREATED half-open overwrite the
+                # live ESTABLISHED record's host + IKE-cookie fields.
+                if key in cont:
+                    n = 1
+                    while f"{key}\x00{n}" in cont:
+                        n += 1
+                    key = f"{key}\x00{n}"
+                child = {} if tok == "{" else []
+                cont[key] = child
             else:
                 child = {} if tok == "{" else []
                 cont.append(child)  # type: ignore[union-attr]
@@ -480,7 +484,8 @@ def _iter_sections(node: object, markers: frozenset[str]):
         if not isinstance(val, dict):
             continue
         if markers.intersection(val):
-            yield name, val
+            # strip the \x00N disambiguation suffix (see _vici_parse) from the name
+            yield name.split("\x00", 1)[0], val
         else:
             yield from _iter_sections(val, markers)
 
