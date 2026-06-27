@@ -40,7 +40,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.1"
+__version__ = "1.6.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1708,13 +1708,7 @@ def _diagnose_ipsec(name: str) -> list[dict]:
             "content": _run(["swanctl", "--list-sas", "--ike", name], timeout=10).strip(),
         },
     ]
-    # Prefer log lines tagged with this connection; fall back to a recent tail so
-    # failures logged before the conn match (by peer IP / IKE-SA id) still show.
-    raw_lines = _ipsec_log_raw().splitlines()
-    tagged = [ln for ln in raw_lines if f"<{name}|" in ln]
-    log_lines = tagged[-300:] if tagged else raw_lines[-200:]
-    sections.append({"title": "Recent IPsec log (charon)", "content": "\n".join(log_lines).strip()})
-
+    # Resolve the peer IP from the conn config (reused for log-filtering + ping).
     remote = ""
     try:
         conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
@@ -1722,8 +1716,22 @@ def _diagnose_ipsec(name: str) -> list[dict]:
             (c["remote"] for c in conns if c.get("name") == name and "%" not in c.get("remote", "%")),
             "",
         )
-    except Exception:  # best-effort — ping is a bonus, never fail the bundle
+    except Exception:  # best-effort — never fail the bundle on a parse error
         remote = ""
+
+    # Match this tunnel's log lines by conn name OR peer IP (a never-negotiating
+    # tunnel may carry neither, and the failure of a *retrying* one is often tagged
+    # by peer IP, not conn name). Fall back to a recent tail with a clear note so
+    # the reader isn't misled by another tunnel's chatter.
+    raw_lines = _ipsec_log_raw().splitlines()
+    terms = [f"<{name}|"] + ([remote] if remote else [])
+    tagged = [ln for ln in raw_lines if any(t in ln for t in terms)]
+    if tagged:
+        log_content = "\n".join(tagged[-300:]).strip()
+    else:
+        note = "(no recent charon lines reference this tunnel — last general charon lines:)"
+        log_content = note + "\n" + "\n".join(raw_lines[-120:]).strip()
+    sections.append({"title": "Recent IPsec log (charon)", "content": log_content})
     if remote:
         sections.append(
             {
