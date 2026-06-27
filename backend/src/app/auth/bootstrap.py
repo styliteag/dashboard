@@ -4,6 +4,7 @@ If no user exists in the database and ``DASH_ADMIN_PASSWORD`` is set, create
 the initial admin. Once an admin exists, the env var is ignored on subsequent
 starts — passwords can only be rotated through the API.
 """
+
 from __future__ import annotations
 
 import structlog

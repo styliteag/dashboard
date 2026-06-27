@@ -1,4 +1,5 @@
 """Bulk actions + CSV export across multiple instances."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,6 +25,7 @@ router = APIRouter(tags=["bulk"])
 
 
 # --- Bulk Actions -----------------------------------------------------------
+
 
 class BulkActionRequest(BaseModel):
     instance_ids: list[int]
@@ -53,13 +55,17 @@ async def bulk_action(
 ) -> BulkActionResponse:
     """Run an action on multiple instances in parallel."""
     instances = (
-        await session.execute(
-            select(Instance).where(
-                Instance.id.in_(payload.instance_ids),
-                Instance.deleted_at.is_(None),
+        (
+            await session.execute(
+                select(Instance).where(
+                    Instance.id.in_(payload.instance_ids),
+                    Instance.deleted_at.is_(None),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     async def run_one(inst: Instance) -> BulkResult:
         try:
@@ -72,17 +78,23 @@ async def bulk_action(
                 result = await client.reboot()
             else:
                 return BulkResult(
-                    instance_id=inst.id, instance_name=inst.name,
-                    success=False, message=f"unknown action: {payload.action}",
+                    instance_id=inst.id,
+                    instance_name=inst.name,
+                    success=False,
+                    message=f"unknown action: {payload.action}",
                 )
             return BulkResult(
-                instance_id=inst.id, instance_name=inst.name,
-                success=result.success, message=result.message,
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=result.success,
+                message=result.message,
             )
         except (OPNsenseError, Exception) as exc:
             return BulkResult(
-                instance_id=inst.id, instance_name=inst.name,
-                success=False, message=str(exc),
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=False,
+                message=str(exc),
             )
 
     results = await asyncio.gather(*(run_one(i) for i in instances))
@@ -104,12 +116,15 @@ async def bulk_action(
 
     succeeded = sum(1 for r in results if r.success)
     return BulkActionResponse(
-        results=results, total=len(results),
-        succeeded=succeeded, failed=len(results) - succeeded,
+        results=results,
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
     )
 
 
 # --- Export -----------------------------------------------------------------
+
 
 @router.get("/export/instances.csv")
 async def export_instances_csv(
@@ -118,31 +133,50 @@ async def export_instances_csv(
 ) -> StreamingResponse:
     """Export all instances as CSV."""
     instances = (
-        await session.execute(
-            select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+        (
+            await session.execute(
+                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "Name", "URL", "Location", "Tags", "Status",
-        "Last Success", "Last Error", "Error Message",
-    ])
+    writer.writerow(
+        [
+            "Name",
+            "URL",
+            "Location",
+            "Tags",
+            "Status",
+            "Last Success",
+            "Last Error",
+            "Error Message",
+        ]
+    )
     for inst in instances:
-        status = "online" if inst.last_success_at and (
-            not inst.last_error_at or inst.last_success_at > inst.last_error_at
-        ) else "offline" if inst.last_error_at else "unknown"
-        writer.writerow([
-            inst.name,
-            inst.base_url,
-            inst.location or "",
-            ", ".join(inst.tags) if inst.tags else "",
-            status,
-            inst.last_success_at.isoformat() if inst.last_success_at else "",
-            inst.last_error_at.isoformat() if inst.last_error_at else "",
-            inst.last_error_message or "",
-        ])
+        status = (
+            "online"
+            if inst.last_success_at
+            and (not inst.last_error_at or inst.last_success_at > inst.last_error_at)
+            else "offline"
+            if inst.last_error_at
+            else "unknown"
+        )
+        writer.writerow(
+            [
+                inst.name,
+                inst.base_url,
+                inst.location or "",
+                ", ".join(inst.tags) if inst.tags else "",
+                status,
+                inst.last_success_at.isoformat() if inst.last_success_at else "",
+                inst.last_error_at.isoformat() if inst.last_error_at else "",
+                inst.last_error_message or "",
+            ]
+        )
 
     buf.seek(0)
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M")

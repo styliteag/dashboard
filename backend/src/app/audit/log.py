@@ -4,6 +4,7 @@ Every state-changing action — auth events, instance CRUD, IPsec actions,
 firmware updates — must call ``write_audit`` so we have a tamper-evident trail
 (US-6.1). Read-only operations are not audited.
 """
+
 from __future__ import annotations
 
 import uuid

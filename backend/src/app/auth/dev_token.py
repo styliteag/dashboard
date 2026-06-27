@@ -1,4 +1,5 @@
 """Dev-only bearer token fallback for browsers that mishandle localhost cookies."""
+
 from __future__ import annotations
 
 import base64

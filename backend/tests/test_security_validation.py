@@ -39,6 +39,7 @@ def test_dev_empty_key_allowed():
 
 # --- trusted_proxy_hops validation (IP spoofing protection for rate limits) ---
 
+
 def test_non_dev_too_high_trusted_proxy_hops_raises():
     """High hops in prod allows clients to spoof XFF and bypass login/enroll limiter."""
     with pytest.raises(RuntimeError, match="TRUSTED_PROXY_HOPS"):

@@ -44,7 +44,9 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
   return (
     <Dialog title={`Diagnose tunnel: ${tunnelName}`} onClose={onClose} wide>
       {isLoading && (
-        <p className="text-sm text-slate-400">Gathering diagnostics over SSH (config, SAs, log, ping)…</p>
+        <p className="text-sm text-slate-400">
+          Gathering diagnostics over SSH (config, SAs, log, ping)…
+        </p>
       )}
       {isError && <p className="text-sm text-red-400">Could not gather diagnostics.</p>}
       {data && (

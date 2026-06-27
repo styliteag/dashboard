@@ -72,18 +72,14 @@ export default function AlertsPage() {
       {/* Summary */}
       <div className="mt-4 flex flex-wrap gap-2 text-sm">
         {totalCrit > 0 && (
-          <span className="rounded bg-red-900/30 px-2 py-0.5 text-red-400">
-            {totalCrit} CRIT
-          </span>
+          <span className="rounded bg-red-900/30 px-2 py-0.5 text-red-400">{totalCrit} CRIT</span>
         )}
         {totalWarn > 0 && (
           <span className="rounded bg-amber-900/30 px-2 py-0.5 text-amber-400">
             {totalWarn} WARN
           </span>
         )}
-        <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-400">
-          {totalOk} OK
-        </span>
+        <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-400">{totalOk} OK</span>
         {totalExcluded > 0 && (
           <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-400">
             {totalExcluded} excluded from Checkmk
@@ -127,7 +123,9 @@ export default function AlertsPage() {
               key={opt.v}
               onClick={() => setCmkFilter(opt.v)}
               className={`rounded px-2 py-1 text-xs ${
-                cmkFilter === opt.v ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-slate-800"
+                cmkFilter === opt.v
+                  ? "bg-emerald-600 text-white"
+                  : "text-slate-300 hover:bg-slate-800"
               }`}
             >
               {opt.label}
