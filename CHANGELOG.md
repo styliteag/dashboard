@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **SSH private key no longer leaks into the audit log** — editing an instance's SSH key (`PATCH /instances/{id}`) previously serialized the ed25519 **private key** in cleartext into the permanent audit trail (and it was readable back via `GET /audit`), because the audit redaction only excluded `api_key`/`api_secret`. The audit `detail` is now built from an **allowlist** of safe fields; secrets (api_key/api_secret/ssh_key/ca_bundle) are never recorded by value — only the fact that one was rotated is logged, by name.
+- **Securepoint SSH enrichment now verifies the box's host key (fail-closed)** — `swanctl`/diagnose connections previously ran with host-key verification effectively disabled (the pin was never captured or stored), so an on-path attacker could impersonate the firewall's SSH server and feed the dashboard fabricated IPsec state. Command-running connections now refuse to proceed unless the host key is pinned, and the key is captured trust-on-first-use when SSH enrichment is enabled/saved. **Action required:** existing SSH-enabled instances have no pinned key yet — until you re-save each instance (or it is re-saved) to capture the key, IPsec enrichment falls back to the spcgi API (no SPIs/byte counters). Pinning assumes the path is clean at capture time (TOFU).
 
 ### Fixed
 

@@ -5,17 +5,40 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.crypto.secrets import encrypt
+from app.crypto.secrets import decrypt, encrypt
 from app.db.models import Instance
 from app.devices.types import DeviceType, Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
 from app.securepoint.client import SecurepointClient, SecurepointError
+from app.securepoint.ssh import probe_host_key
 from app.xsense.client import OPNsenseClient, OPNsenseError
 from app.xsense.registry import registry
+
+log = structlog.get_logger("app.instances")
+
+
+async def _maybe_pin_host_key(inst: Instance) -> None:
+    """Best-effort trust-on-first-use capture of the box's SSH host key.
+
+    Runs only when SSH enrichment is enabled with a key but nothing is pinned yet.
+    On any failure (box unreachable, bad key) the key stays unpinned — enrichment
+    then fails closed and falls back to the spcgi API, and a later save retries.
+    TOFU caveat: pinning while an active MITM is on the path pins the attacker's key.
+    """
+    if not (inst.ssh_enabled and inst.ssh_key_enc and inst.ssh_host_key is None):
+        return
+    try:
+        inst.ssh_host_key = await probe_host_key(
+            inst.ssh_host, inst.ssh_port, inst.ssh_user, decrypt(inst.ssh_key_enc)
+        )
+        log.info("instance.ssh_host_key_pinned", instance_id=inst.id, host=inst.ssh_host)
+    except Exception as exc:  # noqa: BLE001 — best-effort; unpinned → spcgi fallback
+        log.warning("instance.ssh_host_key_pin_failed", instance_id=inst.id, error=str(exc))
 
 
 class SlugConflictError(ValueError):
@@ -114,6 +137,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
     )
     session.add(inst)
     await session.flush()
+    await _maybe_pin_host_key(inst)
     return inst
 
 
@@ -160,6 +184,9 @@ async def update_instance(
         inst.notes = payload.notes or None
     if payload.tags is not None:
         inst.tags = payload.tags or None
+    # Capture the box's SSH host key (TOFU) when enrichment is on but unpinned —
+    # e.g. right after a new key was uploaded above (which reset ssh_host_key).
+    await _maybe_pin_host_key(inst)
     await session.flush()
     # Drop the cached client so the next call rebuilds with new credentials/URL.
     await registry.invalidate(inst.id)

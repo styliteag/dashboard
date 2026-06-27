@@ -6,7 +6,16 @@ down the pure host-key identity-extraction used for fail-closed pinning.
 
 from __future__ import annotations
 
-from app.securepoint.ssh import SSHConfig, _key_blob, _parse_sections
+import pytest
+
+from app.securepoint.ssh import (
+    SecurepointSSHError,
+    SSHConfig,
+    _connect,
+    _key_blob,
+    _parse_sections,
+    fetch_ipsec_status,
+)
 
 
 def test_key_blob_extracts_identity_ignoring_comment() -> None:
@@ -52,3 +61,29 @@ def test_parse_sections_splits_on_markers() -> None:
 def test_parse_sections_empty() -> None:
     assert _parse_sections("") == []
     assert _parse_sections("no markers here\njust text") == []
+
+
+# --- fail-closed host-key handling (no network: the guard raises first) -------
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_unpinned_host_key() -> None:
+    # A command-running connection must refuse to proceed without a pinned key,
+    # before any socket is opened.
+    with pytest.raises(SecurepointSSHError, match="not pinned"):
+        await _connect("h", 9922, "root", "PRIVATE_KEY", host_key=None)
+
+
+@pytest.mark.asyncio
+async def test_fetch_ipsec_status_fails_closed_when_unpinned() -> None:
+    # The caller (SecurepointClient.ipsec_status) catches this and falls back to spcgi.
+    with pytest.raises(SecurepointSSHError):
+        await fetch_ipsec_status("h", 9922, "root", "PRIVATE_KEY", None, running=True)
+
+
+@pytest.mark.asyncio
+async def test_connect_unpinned_allowed_on_probe_path() -> None:
+    # require_host_key=False (the probe/TOFU path) bypasses the pin guard; an empty
+    # private key makes it fail on the NEXT check, proving it got past the guard.
+    with pytest.raises(SecurepointSSHError, match="no SSH private key"):
+        await _connect("h", 9922, "root", "  ", host_key=None, require_host_key=False)

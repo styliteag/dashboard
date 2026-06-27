@@ -5,8 +5,10 @@ its public half is installed on each box (see docs/securepoint-ssh.md). This is
 what gives the pull path the IKE cookies + ESP SPIs + byte counters that the
 spcgi API never exposes — i.e. the data needed to pair tunnel ends across NAT.
 
-Host-key handling is trust-on-first-use: a configured ``host_key`` is verified
-fail-closed before any command runs; ``probe_host_key`` captures it for storage.
+Host-key handling is trust-on-first-use, fail-closed: command-running connections
+refuse to proceed unless a pinned ``host_key`` is present and matches the server;
+``probe_host_key`` is the only path that connects unpinned, to capture it for
+storage. Until a key is pinned, callers fall back to the spcgi API.
 """
 
 from __future__ import annotations
@@ -61,9 +63,23 @@ async def _connect(
     user: str,
     private_key_pem: str,
     host_key: str | None,
+    *,
+    require_host_key: bool = True,
 ) -> tuple[asyncssh.SSHClientConnection, str]:
-    """Open a connection; return (conn, server_host_key_openssh). Verifies the
-    pinned host key fail-closed when one is given."""
+    """Open a connection; return (conn, server_host_key_openssh).
+
+    Fail-closed on the host key: a command-running connection (``require_host_key``,
+    the default) refuses to proceed unless a pinned ``host_key`` is supplied and
+    matches the server. Only ``probe_host_key`` connects unpinned (TOFU capture), by
+    passing ``require_host_key=False``. Without this, ``known_hosts=None`` would
+    accept any host key, letting an on-path attacker impersonate the box and feed
+    fabricated swanctl/diagnostic output.
+    """
+    if require_host_key and not host_key:
+        raise SecurepointSSHError(
+            "SSH host key not pinned — refusing to connect unverified "
+            "(enrichment falls back to the spcgi API until the key is captured)"
+        )
     if not private_key_pem.strip():
         raise SecurepointSSHError("no SSH private key configured (DASH_SSH_PRIVATE_KEY)")
     try:
@@ -98,7 +114,9 @@ async def _connect(
 
 async def probe_host_key(host: str, port: int, user: str, private_key_pem: str) -> str:
     """Connect once (unpinned) and return the box's host key for storage (TOFU)."""
-    conn, server_line = await _connect(host, port, user, private_key_pem, host_key=None)
+    conn, server_line = await _connect(
+        host, port, user, private_key_pem, host_key=None, require_host_key=False
+    )
     conn.close()
     await conn.wait_closed()
     return server_line
