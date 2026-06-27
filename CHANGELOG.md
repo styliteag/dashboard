@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-06-27
+
 ### Added
 
 - **Checkmk export: optional non-piggyback (flat) mode** — set `ORBIT_PIGGYBACK=0` on the special agent to stop creating one Checkmk host per firewall. Instead every check is emitted on the single host that runs the agent, with each service item prefixed by the firewall name (`opnsense-fw01/memory`, summary `[opnsense-fw01] …`) so they don't collide. Default stays piggyback (one host per firewall) — no change unless you opt in. Documented in `CHECKMK.md` / `checkmk/README.md`.
