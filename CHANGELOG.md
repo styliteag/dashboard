@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`DASH_POLL_TICK_SECONDS` and `DASH_PUSH_INTERVAL_SECONDS` are now surfaced in `.env.example` and both compose files** — the two global interval knobs added in 1.6.0 worked off their built-in defaults (10s / 30s) but weren't exposed for ops to override. They are now forwarded by `compose.yml` / `compose-dev.yml` and documented in `.env.example` alongside `DASH_POLL_INTERVAL_SECONDS`. No behaviour change — defaults are unchanged.
+
 ## [1.6.0] - 2026-06-27
 
 ### Added
