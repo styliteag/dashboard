@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-06-27
+
 ### Security
 
 - **Hardened DASH_TRUSTED_PROXY_HOPS validation** — the setting that controls how many X-Forwarded-For entries are trusted for login/enroll rate-limiting and audit source IP is now validated at startup. Negative values are rejected by Pydantic. In non-dev environments, values > 3 cause an immediate hard failure with a clear message (the previous default behaviour silently allowed configurations that let clients spoof IPs and completely bypass brute-force protection). The bundled compose and .env.example comments were tightened. (See also `trusted_proxy_hops` in config + `_validate_security`.)
