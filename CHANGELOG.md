@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **VPN tunnel history as a colour-coded timeline** — the per-tunnel History dialog now leads with a scatter chart that plots each recorded event by time, grouped into lanes (Ping / Phase / Tunnel down / Tunnel up) and coloured per event type (green up/ping-ok, red down/ping-fail, amber Phase 2), with a hover tooltip showing the child, old→new value and full timestamp. A 24h / 7d / 30d / All window toggle keeps the chart readable as history grows (defaults to the narrowest window that still has events); the dialog now pulls up to 500 events. The detailed newest-first text list stays below.
+
 - **Securepoint SSH enrichment for IPsec pairing** — opt-in per Securepoint instance: the dashboard runs `swanctl --list-sas/--list-conns --raw` over SSH (read-only) to get the IKE cookies, ESP SPIs and per-tunnel byte counters the spcgi API doesn't expose, so a Securepoint tunnel pairs with its peer firewall in the VPN overview even across NAT (cookie-based pairing). Per-instance ed25519 private key, Fernet-encrypted at rest (the public half is installed on the box; optional host-key pinning, fail-closed on mismatch when set); SSH failures fall back to the plain spcgi view. New `just gen-ssh-key`; setup guide in `docs/securepoint-ssh.md`. Still a pull model — no agent on the box.
 
 - **Securepoint UTM as a direct-poll device type (read-only)** — pick "Securepoint UTM" in the Add-instance form (username/password instead of API key/secret; self-signed certs allowed by default; no agent — the Agent tab is hidden for Securepoint). The dashboard polls the appliance's `/spcgi.cgi` JSON API (session auth) and surfaces its IPsec service + tunnel status in the VPN view (one row per Phase-2 selector grouped into a tunnel) plus host metrics — CPU %, memory, disk, uptime, per-interface IP addresses and firmware version (with available-update detection from `system info`) — mapped onto the same shape as OPNsense/pfSense. Read-only: tunnel connect/disconnect and IPsec restart report "not supported (read-only)". The credential read path never calls `ipsec get` (which would expose the PSK).
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **IPsec tunnel could show as down/`%any` when a passive half-open SA shared its connection name** — strongSwan's `swanctl --list-sas --raw` can emit two records under one connection name (the live ESTABLISHED SA plus a `%any`/CREATED half-open responder). The vici parser merged repeated section keys, so the half-open overwrote the established record's host and IKE cookie — a tunnel that was up read as CREATED/`%any` with a zeroed responder SPI (breaking status and cross-instance pairing). The parser now disambiguates colliding section keys so both survive and the established SA wins. Affects both the new Securepoint SSH path and the OPNsense/pfSense agent. (Agent `__version__` → 1.5.9.)
+
+- **IPsec ping-monitor option hidden where it can't run** — the per-Phase-2 "Add/Edit ping" affordance (per-instance IPsec view and the global VPN overview) is now shown only for agent-mode instances. Ping checks execute on the firewall through the agent, so the option never worked on direct-poll instances (Securepoint, direct OPNsense); it no longer appears there, and the overview skips the per-instance ping-monitor fetch for them.
 
 ## [1.5.4] - 2026-06-26
 
