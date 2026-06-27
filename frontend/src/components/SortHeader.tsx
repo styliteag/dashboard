@@ -11,7 +11,14 @@ interface Props {
   className?: string;
 }
 
-export default function SortHeader({ label, colKey, sort, toggle, align = "left", className = "" }: Props) {
+export default function SortHeader({
+  label,
+  colKey,
+  sort,
+  toggle,
+  align = "left",
+  className = "",
+}: Props) {
   const active = sort?.key === colKey;
   const Icon = !active ? ChevronsUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
   return (

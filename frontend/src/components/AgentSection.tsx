@@ -124,9 +124,7 @@ function Step({
     <div className="flex gap-4">
       <div
         className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-          done
-            ? "bg-emerald-700 text-emerald-100"
-            : "bg-slate-800 text-slate-300"
+          done ? "bg-emerald-700 text-emerald-100" : "bg-slate-800 text-slate-300"
         }`}
       >
         {done ? <Check className="h-3.5 w-3.5" /> : number}
@@ -165,8 +163,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   // Retrieve persisted token from DB (so the guide works after a page reload)
   const { data: tokenData } = useQuery({
     queryKey: ["agent-token", instanceId],
-    queryFn: () =>
-      api.get<{ agent_token: string }>(`/api/instances/${instanceId}/agent/token`),
+    queryFn: () => api.get<{ agent_token: string }>(`/api/instances/${instanceId}/agent/token`),
     enabled: agentMode && localToken === null,
     retry: false,
   });
@@ -175,8 +172,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   const connected = status?.agent_connected ?? false;
 
   const enableMut = useMutation({
-    mutationFn: () =>
-      api.post<AgentTokenResponse>(`/api/instances/${instanceId}/agent/enable`),
+    mutationFn: () => api.post<AgentTokenResponse>(`/api/instances/${instanceId}/agent/enable`),
     onSuccess: (data) => {
       setLocalToken(data.agent_token);
       setConfirmRegen(false);
@@ -199,8 +195,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   });
 
   const updateMut = useMutation({
-    mutationFn: () =>
-      api.post<AgentUpdateResponse>(`/api/instances/${instanceId}/agent/update`),
+    mutationFn: () => api.post<AgentUpdateResponse>(`/api/instances/${instanceId}/agent/update`),
     onSuccess: (data) => {
       setMsg({
         ok: data.result.success,
@@ -216,9 +211,12 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
 
   const testApiMut = useMutation({
     mutationFn: () =>
-      api.post<{ ok: boolean; status_code: number | null; latency_ms: number | null; error: string | null }>(
-        `/api/instances/${instanceId}/relay/test`,
-      ),
+      api.post<{
+        ok: boolean;
+        status_code: number | null;
+        latency_ms: number | null;
+        error: string | null;
+      }>(`/api/instances/${instanceId}/relay/test`),
     onSuccess: (r) =>
       setMsg({
         ok: r.ok,
@@ -226,8 +224,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
           ? `Local API OK — HTTP ${r.status_code} in ${r.latency_ms} ms`
           : `Local API call failed: ${r.error ?? "no response"}`,
       }),
-    onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Test failed" }),
+    onError: (e) => setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Test failed" }),
   });
 
   const guiMut = useMutation({
@@ -241,8 +238,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
   });
 
   const uninstallMut = useMutation({
-    mutationFn: () =>
-      api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/uninstall`),
+    mutationFn: () => api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/uninstall`),
     onSuccess: (data) => {
       setConfirmUninstall(false);
       setLocalToken(null);
@@ -331,9 +327,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       {msg && (
         <div
           className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-            msg.ok
-              ? "bg-emerald-900/40 text-emerald-300"
-              : "bg-red-900/40 text-red-300"
+            msg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
           }`}
         >
           {msg.text}
@@ -350,16 +344,16 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
               <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
                 <p className="font-medium text-slate-300">Polling Mode (active)</p>
                 <p className="mt-1 text-slate-500">
-                  The dashboard calls the OPNsense REST API every 30 s. The API
-                  endpoint must be reachable from the dashboard host.
+                  The dashboard calls the OPNsense REST API every 30 s. The API endpoint must be
+                  reachable from the dashboard host.
                 </p>
               </div>
               <div className="rounded-lg border border-emerald-800/40 bg-emerald-900/10 p-3">
                 <p className="font-medium text-emerald-300">Agent Mode</p>
                 <p className="mt-1 text-slate-500">
-                  A lightweight daemon on the firewall connects outbound to this
-                  dashboard and pushes metrics every 30 s. No inbound port
-                  needed — works behind NAT or strict firewall policies.
+                  A lightweight daemon on the firewall connects outbound to this dashboard and
+                  pushes metrics every 30 s. No inbound port needed — works behind NAT or strict
+                  firewall policies.
                 </p>
               </div>
             </div>
@@ -437,9 +431,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                     disabled={updateMut.isPending}
                     className="rounded-lg border border-amber-700/50 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-900/20 disabled:opacity-50"
                   >
-                    {updateMut.isPending
-                      ? "Updating…"
-                      : `Update agent → ${status.served_version}`}
+                    {updateMut.isPending ? "Updating…" : `Update agent → ${status.served_version}`}
                   </button>
                 )}
                 <button
@@ -460,8 +452,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   <div className="flex flex-col items-end gap-1 rounded-lg border border-red-800/50 bg-red-900/10 p-2 text-xs text-red-300">
                     <span>Remove the agent from the firewall?</span>
                     <span className="text-[11px] text-slate-400">
-                      Stops + deletes the agent, its config, and the provisioned
-                      relay credentials (and the REST API package on pfSense).
+                      Stops + deletes the agent, its config, and the provisioned relay credentials
+                      (and the REST API package on pfSense).
                     </span>
                     <div className="mt-1 flex items-center gap-2">
                       <button
@@ -489,11 +481,10 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-300">Firewall GUI</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Reach this firewall through the agent tunnel — no inbound access or
-                    VPN needed. <span className="text-slate-400">Open GUI</span> logs into
-                    the web interface on a per-firewall origin;{" "}
-                    <span className="text-slate-400">Test Local API</span> probes the
-                    firewall&apos;s REST API through the relay.
+                    Reach this firewall through the agent tunnel — no inbound access or VPN needed.{" "}
+                    <span className="text-slate-400">Open GUI</span> logs into the web interface on
+                    a per-firewall origin; <span className="text-slate-400">Test Local API</span>{" "}
+                    probes the firewall&apos;s REST API through the relay.
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -541,14 +532,12 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ① Token */}
                 <Step number={1} title="Copy your agent token">
                   <p className="text-xs text-slate-500">
-                    This token authenticates the agent with this dashboard. It&apos;s
-                    already pre-filled into the install command in step 4.
+                    This token authenticates the agent with this dashboard. It&apos;s already
+                    pre-filled into the install command in step 4.
                   </p>
                   <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
                     <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">
-                      {token ?? (
-                        <span className="italic text-slate-600">loading…</span>
-                      )}
+                      {token ?? <span className="italic text-slate-600">loading…</span>}
                     </code>
                     {token && <CopyButton text={token} />}
                   </div>
@@ -563,8 +552,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                       </button>
                     ) : (
                       <span className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
-                        This will disconnect the current agent and require a
-                        config update on OPNsense.
+                        This will disconnect the current agent and require a config update on
+                        OPNsense.
                         <button
                           onClick={() => enableMut.mutate()}
                           disabled={enableMut.isPending}
@@ -583,9 +572,9 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                   </div>
                   <div className="mt-3 border-t border-slate-800 pt-3">
                     <p className="text-xs text-slate-500">
-                      Or skip pasting the token: generate a one-time enrollment
-                      code. The agent trades it for the token on first start (the
-                      config below switches to <code>enroll_code</code>).
+                      Or skip pasting the token: generate a one-time enrollment code. The agent
+                      trades it for the token on first start (the config below switches to{" "}
+                      <code>enroll_code</code>).
                     </p>
                     {enrollCode ? (
                       <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
@@ -609,8 +598,8 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ② SSH */}
                 <Step number={2} title="SSH into the OPNsense shell">
                   <p className="text-xs text-slate-500">
-                    On OPNsense: System → Settings → Administration → enable
-                    Secure Shell. Then connect from a terminal:
+                    On OPNsense: System → Settings → Administration → enable Secure Shell. Then
+                    connect from a terminal:
                   </p>
                   <CodeBlock code="ssh root@<opnsense-ip-or-hostname>" />
                 </Step>
@@ -618,22 +607,18 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 {/* ③ Dependencies */}
                 <Step number={3} title="Check Python">
                   <p className="text-xs text-slate-500">
-                    Python 3 ships with OPNsense/pfSense. The agent is
-                    stdlib-only — no pip packages required.
+                    Python 3 ships with OPNsense/pfSense. The agent is stdlib-only — no pip packages
+                    required.
                   </p>
                   <CodeBlock code={steps.prereq} />
                 </Step>
 
                 {/* ④ Install + configure + start — one copy-paste */}
-                <Step
-                  number={4}
-                  title="Install, configure & start the agent"
-                >
+                <Step number={4} title="Install, configure & start the agent">
                   <p className="text-xs text-slate-500">
-                    One copy-paste does it all: downloads the agent, supervisor
-                    and rc.d service from this dashboard (no GitHub access
-                    needed), writes the config file (dashboard URL and token
-                    pre-filled), then enables and starts the service.
+                    One copy-paste does it all: downloads the agent, supervisor and rc.d service
+                    from this dashboard (no GitHub access needed), writes the config file (dashboard
+                    URL and token pre-filled), then enables and starts the service.
                     {!token && (
                       <span className="ml-1 text-amber-400">
                         Token will appear once agent mode is enabled.

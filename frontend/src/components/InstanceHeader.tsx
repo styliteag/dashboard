@@ -25,7 +25,8 @@ function statusPill(inst: Instance | undefined) {
     return { label: "Offline", dot: "bg-red-500", text: "text-red-400" };
   if (inst.last_error_at && inst.last_success_at && inst.last_error_at > inst.last_success_at)
     return { label: "Degraded", dot: "bg-amber-500", text: "text-amber-400" };
-  if (inst.last_success_at) return { label: "Online", dot: "bg-emerald-500", text: "text-emerald-400" };
+  if (inst.last_success_at)
+    return { label: "Online", dot: "bg-emerald-500", text: "text-emerald-400" };
   return { label: "Unknown", dot: "bg-slate-500", text: "text-slate-400" };
 }
 
@@ -51,7 +52,8 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const guiMut = useMutation({
     mutationFn: () => api.post<{ url: string }>(`/api/instances/${id}/gui/open`),
     onSuccess: (data) => window.open(data.url, "_blank", "noopener,noreferrer"),
-    onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
+    onError: (e) =>
+      flash({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
   });
 
   const pill = statusPill(instance);
@@ -94,7 +96,9 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
               {url}
             </a>
           ))}
-        {instance?.location && <span className="text-xs text-slate-500">· {instance.location}</span>}
+        {instance?.location && (
+          <span className="text-xs text-slate-500">· {instance.location}</span>
+        )}
         {instance?.tags?.map((t) => (
           <span key={t} className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
             {t}
@@ -117,7 +121,10 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
         <button onClick={onRefresh} className={btn}>
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
-        <button onClick={() => window.open(`/api/instances/${id}/config-backup`, "_blank")} className={btn}>
+        <button
+          onClick={() => window.open(`/api/instances/${id}/config-backup`, "_blank")}
+          className={btn}
+        >
           <Download className="h-3.5 w-3.5" /> Config Backup
         </button>
         <button onClick={onEdit} className={btn}>
@@ -166,7 +173,8 @@ function RebootDialog({
 }) {
   const [confirmName, setConfirmName] = useState("");
   const rebootMut = useMutation({
-    mutationFn: () => api.post<{ success: boolean; message: string }>(`/api/instances/${instanceId}/reboot`),
+    mutationFn: () =>
+      api.post<{ success: boolean; message: string }>(`/api/instances/${instanceId}/reboot`),
     onSuccess: () => {
       onResult({ ok: true, text: "Reboot triggered." });
       onClose();
@@ -201,7 +209,10 @@ function RebootDialog({
           className="mt-3 w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-red-600 focus:outline-none"
         />
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
+          >
             Cancel
           </button>
           <button

@@ -229,7 +229,10 @@ export default function PingMonitorDialog({
           <span />
         )}
         <div className="flex gap-2">
-          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800">
+          <button
+            onClick={onClose}
+            className="rounded px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800"
+          >
             Cancel
           </button>
           <button

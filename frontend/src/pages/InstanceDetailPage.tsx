@@ -46,7 +46,9 @@ export default function InstanceDetailPage() {
   const nid = Number(id);
   const [range, setRange] = useState<Range>("24h");
   const [editOpen, setEditOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem("instance.tab") as Tab) || "overview");
+  const [tab, setTab] = useState<Tab>(
+    () => (localStorage.getItem("instance.tab") as Tab) || "overview",
+  );
   const selectTab = (t: Tab) => {
     localStorage.setItem("instance.tab", t);
     setTab(t);
@@ -157,7 +159,9 @@ export default function InstanceDetailPage() {
                     key={r}
                     onClick={() => setRange(r)}
                     className={`rounded-md px-2 py-1 text-xs ${
-                      range === r ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
+                      range === r
+                        ? "bg-emerald-600 text-white"
+                        : "text-slate-400 hover:bg-slate-800"
                     }`}
                   >
                     {r}

@@ -294,7 +294,9 @@ export default function VPNOverviewPage() {
       t.remote.toLowerCase().includes(search.toLowerCase()) ||
       (t.tags ?? []).some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
     const matchFilter =
-      filter === "all" || (filter === "up" && isUp(t.phase1_status)) || (filter === "down" && !isUp(t.phase1_status));
+      filter === "all" ||
+      (filter === "up" && isUp(t.phase1_status)) ||
+      (filter === "down" && !isUp(t.phase1_status));
     const matchTag = !activeTag || (t.tags ?? []).includes(activeTag);
     return matchSearch && matchFilter && matchTag;
   });
@@ -303,9 +305,7 @@ export default function VPNOverviewPage() {
   const groups = buildGroups(filtered);
   const groupBothUp = (g: TunnelGroup) =>
     g.paired && pairHealth(g.members[0], g.members[1]).label === "both up";
-  const anyCollapsed = groups.some(
-    (g) => g.paired && !isGroupOpen(g, groupKey(g), groupBothUp(g)),
-  );
+  const anyCollapsed = groups.some((g) => g.paired && !isGroupOpen(g, groupKey(g), groupBothUp(g)));
   const toggleAll = () => {
     if (anyCollapsed) {
       setOpenGroups(new Set(groups.map(groupKey)));
@@ -353,7 +353,9 @@ export default function VPNOverviewPage() {
           </td>
           <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
           <td className="px-3 py-2">
-            <span className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}>
+            <span
+              className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}
+            >
               {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
               {t.phase1_status}
             </span>
@@ -392,7 +394,8 @@ export default function VPNOverviewPage() {
                 disabled={pending.has(rowKey(t))}
                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
               >
-                <RotateCw className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`} /> Reconnect
+                <RotateCw className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`} />{" "}
+                Reconnect
               </button>
             </div>
           </td>
@@ -490,7 +493,9 @@ export default function VPNOverviewPage() {
           <button
             onClick={() => setActiveTag(null)}
             className={`rounded-full px-3 py-1 text-xs ${
-              !activeTag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              !activeTag
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
             }`}
           >
             All
@@ -500,7 +505,9 @@ export default function VPNOverviewPage() {
               key={tag}
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
               className={`rounded-full px-3 py-1 text-xs ${
-                activeTag === tag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                activeTag === tag
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
               {tag}
@@ -541,14 +548,33 @@ export default function VPNOverviewPage() {
                   </>
                 ) : (
                   <>
-                    <SortHeader label="Instance" colKey="instance" sort={sort} toggle={sortToggle} />
+                    <SortHeader
+                      label="Instance"
+                      colKey="instance"
+                      sort={sort}
+                      toggle={sortToggle}
+                    />
                     <SortHeader label="Tunnel" colKey="tunnel" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Remote" colKey="remote" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Status" colKey="status" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Phase 2" colKey="phase2" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Uptime" colKey="uptime" sort={sort} toggle={sortToggle} />
-                    <SortHeader label="IN" colKey="in" sort={sort} toggle={sortToggle} align="right" className="text-right" />
-                    <SortHeader label="OUT" colKey="out" sort={sort} toggle={sortToggle} align="right" className="text-right" />
+                    <SortHeader
+                      label="IN"
+                      colKey="in"
+                      sort={sort}
+                      toggle={sortToggle}
+                      align="right"
+                      className="text-right"
+                    />
+                    <SortHeader
+                      label="OUT"
+                      colKey="out"
+                      sort={sort}
+                      toggle={sortToggle}
+                      align="right"
+                      className="text-right"
+                    />
                   </>
                 )}
                 <th className="px-3 py-2 text-right">Action</th>
@@ -557,47 +583,49 @@ export default function VPNOverviewPage() {
             <tbody>
               {grouped
                 ? groups.map((group, gi) => {
-                const [a, b] = group.members;
-                const h = group.paired ? pairHealth(a, b) : null;
-                const bothUp = !!h && h.label === "both up";
-                const gkey = groupKey(group);
-                const open = isGroupOpen(group, gkey, bothUp);
-                const linkUptime = group.paired
-                  ? Math.max(a.seconds_established, b.seconds_established)
-                  : 0;
-                return (
-                  <Fragment key={`grp-${gi}`}>
-                    {group.paired && h && (
-                      <tr
-                        className="cursor-pointer border-t border-slate-700 bg-slate-900/70 hover:bg-slate-900"
-                        onClick={() => toggleGroup(gkey, open)}
-                      >
-                        <td colSpan={9} className="px-3 py-1.5 text-xs">
-                          <span className="inline-flex flex-wrap items-center gap-2 text-slate-300">
-                            {open ? (
-                              <ChevronDown className="h-3 w-3 text-slate-500" />
-                            ) : (
-                              <ChevronRight className="h-3 w-3 text-slate-500" />
-                            )}
-                            <Link2 className="h-3 w-3 text-slate-500" />
-                            <span className="font-medium">
-                              {a.instance_name} ⇄ {b.instance_name}
-                            </span>
-                            <span className="font-mono text-slate-500">
-                              {a.local || "?"} ↔ {a.remote || "?"}
-                            </span>
-                            <span className={`rounded px-1.5 py-0.5 ${h.cls}`}>{h.label}</span>
-                            {linkUptime > 0 && (
-                              <span className="font-mono text-slate-500">
-                                up {fmtDuration(linkUptime)}
+                    const [a, b] = group.members;
+                    const h = group.paired ? pairHealth(a, b) : null;
+                    const bothUp = !!h && h.label === "both up";
+                    const gkey = groupKey(group);
+                    const open = isGroupOpen(group, gkey, bothUp);
+                    const linkUptime = group.paired
+                      ? Math.max(a.seconds_established, b.seconds_established)
+                      : 0;
+                    return (
+                      <Fragment key={`grp-${gi}`}>
+                        {group.paired && h && (
+                          <tr
+                            className="cursor-pointer border-t border-slate-700 bg-slate-900/70 hover:bg-slate-900"
+                            onClick={() => toggleGroup(gkey, open)}
+                          >
+                            <td colSpan={9} className="px-3 py-1.5 text-xs">
+                              <span className="inline-flex flex-wrap items-center gap-2 text-slate-300">
+                                {open ? (
+                                  <ChevronDown className="h-3 w-3 text-slate-500" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3 text-slate-500" />
+                                )}
+                                <Link2 className="h-3 w-3 text-slate-500" />
+                                <span className="font-medium">
+                                  {a.instance_name} ⇄ {b.instance_name}
+                                </span>
+                                <span className="font-mono text-slate-500">
+                                  {a.local || "?"} ↔ {a.remote || "?"}
+                                </span>
+                                <span className={`rounded px-1.5 py-0.5 ${h.cls}`}>{h.label}</span>
+                                {linkUptime > 0 && (
+                                  <span className="font-mono text-slate-500">
+                                    up {fmtDuration(linkUptime)}
+                                  </span>
+                                )}
+                                {!open && (
+                                  <span className="text-slate-600">· expand to view ends</span>
+                                )}
                               </span>
-                            )}
-                            {!open && <span className="text-slate-600">· expand to view ends</span>}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
-                    {open && group.members.map((t) => renderRow(t, true))}
+                            </td>
+                          </tr>
+                        )}
+                        {open && group.members.map((t) => renderRow(t, true))}
                       </Fragment>
                     );
                   })

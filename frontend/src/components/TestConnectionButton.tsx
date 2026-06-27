@@ -14,9 +14,7 @@ export default function TestConnectionButton({ instanceId }: Props) {
   const handleClick = async () => {
     setState("loading");
     try {
-      const res = await api.post<TestConnectionResult>(
-        `/api/instances/${instanceId}/test`,
-      );
+      const res = await api.post<TestConnectionResult>(`/api/instances/${instanceId}/test`);
       setResult(res);
       setState(res.ok ? "ok" : "error");
     } catch {

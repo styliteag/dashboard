@@ -24,7 +24,7 @@ export default function LoginPage() {
         setError(
           err.status === 429
             ? "Too many failed attempts. Please wait."
-            : "Login failed. Check your credentials."
+            : "Login failed. Check your credentials.",
         );
       } else {
         setError("Cannot connect to the backend.");
@@ -46,9 +46,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="rounded-lg bg-red-900/40 px-4 py-2 text-sm text-red-300">
-            {error}
-          </div>
+          <div className="rounded-lg bg-red-900/40 px-4 py-2 text-sm text-red-300">{error}</div>
         )}
 
         <div className="space-y-1">

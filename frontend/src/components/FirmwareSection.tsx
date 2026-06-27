@@ -17,7 +17,11 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
   const queryClient = useQueryClient();
   const qk = ["firmware", instanceId];
 
-  const { data: fw, isLoading, isError } = useQuery({
+  const {
+    data: fw,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: qk,
     queryFn: () => api.get<FirmwareStatus>(`/api/instances/${instanceId}/firmware`),
     // Agent mode: refetch every 60s so the first push appears quickly.
@@ -64,7 +68,8 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
   // Poll upgrade status while upgrading
   const { data: upgradeStatus } = useQuery({
     queryKey: ["upgrade-status", instanceId],
-    queryFn: () => api.get<FirmwareUpgradeStatus>(`/api/instances/${instanceId}/firmware/upgradestatus`),
+    queryFn: () =>
+      api.get<FirmwareUpgradeStatus>(`/api/instances/${instanceId}/firmware/upgradestatus`),
     enabled: upgrading,
     refetchInterval: 5_000,
   });
@@ -84,9 +89,11 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
       </h2>
 
       {msg && (
-        <div className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-          msg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
-        }`}>
+        <div
+          className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+            msg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
+          }`}
+        >
           {msg.text}
         </div>
       )}
@@ -120,15 +127,11 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
             </div>
           </div>
 
-          {fw.status_msg && (
-            <p className="mt-3 text-sm text-slate-300">{fw.status_msg}</p>
-          )}
+          {fw.status_msg && <p className="mt-3 text-sm text-slate-300">{fw.status_msg}</p>}
           {fw.last_check && (
             <p className="mt-1 text-xs text-slate-500">Last check: {fw.last_check}</p>
           )}
-          {fw.needs_reboot && (
-            <p className="mt-2 text-sm text-amber-400">Reboot required.</p>
-          )}
+          {fw.needs_reboot && <p className="mt-2 text-sm text-amber-400">Reboot required.</p>}
 
           {/* Package/set list */}
           {fw.packages.length > 0 && (
@@ -178,8 +181,8 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
           {confirmUpdate && (
             <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
               <p className="text-sm text-red-300">
-                Firmware update starts the updater and may trigger a reboot.
-                Type the instance name to confirm:
+                Firmware update starts the updater and may trigger a reboot. Type the instance name
+                to confirm:
               </p>
               {fw.packages.length > 0 && (
                 <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
@@ -205,7 +208,10 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
                   Start update
                 </button>
                 <button
-                  onClick={() => { setConfirmUpdate(false); setConfirmName(""); }}
+                  onClick={() => {
+                    setConfirmUpdate(false);
+                    setConfirmName("");
+                  }}
                   className="text-sm text-slate-400"
                 >
                   Cancel

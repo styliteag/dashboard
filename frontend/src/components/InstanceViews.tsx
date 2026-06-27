@@ -16,7 +16,11 @@ export interface InstanceViewProps {
 }
 
 /** base_url may hold several comma-separated web-UI URLs; split + trim them. */
-const splitUrls = (s: string): string[] => s.split(",").map((u) => u.trim()).filter(Boolean);
+const splitUrls = (s: string): string[] =>
+  s
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
 
 interface StatusMeta {
   icon: ReactNode;
@@ -27,7 +31,11 @@ interface StatusMeta {
 /** Derive a connection status from the instance's last poll/error timestamps. */
 function statusMeta(inst: Instance): StatusMeta {
   if (inst.last_error_at && !inst.last_success_at) {
-    return { icon: <WifiOff className="h-4 w-4 text-red-400" />, label: "Offline", color: "text-red-400" };
+    return {
+      icon: <WifiOff className="h-4 w-4 text-red-400" />,
+      label: "Offline",
+      color: "text-red-400",
+    };
   }
   if (inst.last_error_at && inst.last_success_at && inst.last_error_at > inst.last_success_at) {
     return {
@@ -37,9 +45,17 @@ function statusMeta(inst: Instance): StatusMeta {
     };
   }
   if (inst.last_success_at) {
-    return { icon: <Wifi className="h-4 w-4 text-emerald-400" />, label: "Online", color: "text-emerald-400" };
+    return {
+      icon: <Wifi className="h-4 w-4 text-emerald-400" />,
+      label: "Online",
+      color: "text-emerald-400",
+    };
   }
-  return { icon: <WifiOff className="h-4 w-4 text-slate-500" />, label: "Unknown", color: "text-slate-500" };
+  return {
+    icon: <WifiOff className="h-4 w-4 text-slate-500" />,
+    label: "Unknown",
+    color: "text-slate-500",
+  };
 }
 
 function fmtTime(iso: string | null): string {
@@ -86,7 +102,11 @@ function AgentBadge({ inst, agent }: { inst: Instance; agent?: ConnectedAgent })
     return <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400">API</span>;
   }
   if (!agent) {
-    return <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-500">Agent · offline</span>;
+    return (
+      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-500">
+        Agent · offline
+      </span>
+    );
   }
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -129,7 +149,11 @@ function Tags({ tags }: { tags: string[] | null }) {
  *  WebUI), then Edit/Delete. The status badge and name already link to Details,
  *  so a separate Details button is redundant. The tunneled WebUI shows only for
  *  agent/NAT'd boxes (reached via the GUI proxy). */
-function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceViewProps, "selected" | "onToggleSelect" | "agent">) {
+function InstanceActions({
+  instance: inst,
+  onEdit,
+  onDelete,
+}: Omit<InstanceViewProps, "selected" | "onToggleSelect" | "agent">) {
   const linkCls =
     "flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200";
   const primary = splitUrls(inst.base_url)[0];
@@ -137,7 +161,13 @@ function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceView
     <div className="flex items-center gap-1.5">
       <TestConnectionButton instanceId={inst.id} />
       {primary && (
-        <a href={primary} target="_blank" rel="noreferrer" title={`Open ${primary}`} className={linkCls}>
+        <a
+          href={primary}
+          target="_blank"
+          rel="noreferrer"
+          title={`Open ${primary}`}
+          className={linkCls}
+        >
           <ExternalLink className="h-3 w-3" /> URL
         </a>
       )}
@@ -155,7 +185,14 @@ function InstanceActions({ instance: inst, onEdit, onDelete }: Omit<InstanceView
   );
 }
 
-export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, onEdit, onDelete }: InstanceViewProps) {
+export function InstanceCard({
+  instance: inst,
+  agent,
+  selected,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: InstanceViewProps) {
   return (
     <div
       className={`rounded-xl border p-4 shadow ${
@@ -164,7 +201,12 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <input type="checkbox" checked={selected} onChange={onToggleSelect} className="rounded border-slate-600" />
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="rounded border-slate-600"
+          />
           <StatusBadge inst={inst} compact />
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
@@ -192,7 +234,9 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
       </div>
       {inst.location && <p className="text-xs text-slate-500">{inst.location}</p>}
 
-      {inst.last_error_message && <p className="mt-2 truncate text-xs text-red-400">{inst.last_error_message}</p>}
+      {inst.last_error_message && (
+        <p className="mt-2 truncate text-xs text-red-400">{inst.last_error_message}</p>
+      )}
 
       <p className="mt-1 text-xs text-slate-600">Last poll: {fmtTime(inst.last_success_at)}</p>
 
@@ -203,17 +247,32 @@ export function InstanceCard({ instance: inst, agent, selected, onToggleSelect, 
   );
 }
 
-export function InstanceRow({ instance: inst, agent, selected, onToggleSelect, onEdit, onDelete }: InstanceViewProps) {
+export function InstanceRow({
+  instance: inst,
+  agent,
+  selected,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: InstanceViewProps) {
   return (
     <tr className={`border-t border-slate-800 ${selected ? "bg-emerald-900/10" : ""}`}>
       <td className="px-3 py-2">
-        <input type="checkbox" checked={selected} onChange={onToggleSelect} className="rounded border-slate-600" />
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="rounded border-slate-600"
+        />
       </td>
       <td className="px-3 py-2">
         <StatusBadge inst={inst} />
       </td>
       <td className="px-3 py-2">
-        <Link to={`/instances/${inst.id}`} className="font-medium text-slate-100 hover:text-emerald-400">
+        <Link
+          to={`/instances/${inst.id}`}
+          className="font-medium text-slate-100 hover:text-emerald-400"
+        >
           {inst.name}
         </Link>
         {inst.last_error_message && (

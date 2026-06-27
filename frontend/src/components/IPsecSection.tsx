@@ -40,8 +40,7 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
 
   const { data: monitors = [] } = useQuery({
     queryKey: ["ipsec-ping-monitors", instanceId],
-    queryFn: () =>
-      api.get<IPsecPingMonitor[]>(`/api/instances/${instanceId}/ipsec/ping-monitors`),
+    queryFn: () => api.get<IPsecPingMonitor[]>(`/api/instances/${instanceId}/ipsec/ping-monitors`),
   });
 
   // Expanded tunnels (showing Phase-2 detail) + the open ping-config dialog.
@@ -168,7 +167,10 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
               Confirm
             </button>
             <button
-              onClick={() => { setConfirmRestart(false); setRestartInput(""); }}
+              onClick={() => {
+                setConfirmRestart(false);
+                setRestartInput("");
+              }}
               className="text-sm text-slate-400"
             >
               Cancel
@@ -179,9 +181,11 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
 
       {/* Action feedback */}
       {actionMsg && (
-        <div className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-          actionMsg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
-        }`}>
+        <div
+          className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+            actionMsg.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
+          }`}
+        >
           {actionMsg.text}
         </div>
       )}
@@ -205,8 +209,9 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
             </thead>
             <tbody>
               {data.tunnels.map((t) => {
-                const up = t.phase1_status.toLowerCase().includes("established") ||
-                           t.phase1_status.toLowerCase().includes("connected");
+                const up =
+                  t.phase1_status.toLowerCase().includes("established") ||
+                  t.phase1_status.toLowerCase().includes("connected");
                 const isOpen = expanded.has(t.id);
                 const hasChildren = (t.children?.length ?? 0) > 0;
                 return (
@@ -242,13 +247,19 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
                           <PingSummary entries={t.children ?? []} />
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">
+                        {fmtBytes(t.bytes_in)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">
+                        {fmtBytes(t.bytes_out)}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
                           {up && (
                             <button
-                              onClick={() => disconnectMut.mutate({ id: t.id, unique_id: t.unique_id })}
+                              onClick={() =>
+                                disconnectMut.mutate({ id: t.id, unique_id: t.unique_id })
+                              }
                               disabled={pending.has(t.id)}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
                             >
@@ -256,11 +267,15 @@ export default function IPsecSection({ instanceId, pingSupported = true }: Props
                             </button>
                           )}
                           <button
-                            onClick={() => reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })}
+                            onClick={() =>
+                              reconnectMut.mutate({ id: t.id, unique_id: t.unique_id, up })
+                            }
                             disabled={pending.has(t.id)}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
                           >
-                            <RotateCw className={`h-3 w-3 ${pending.has(t.id) ? "animate-spin" : ""}`} />{" "}
+                            <RotateCw
+                              className={`h-3 w-3 ${pending.has(t.id) ? "animate-spin" : ""}`}
+                            />{" "}
                             Reconnect
                           </button>
                         </div>

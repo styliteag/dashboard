@@ -49,7 +49,13 @@ const LANE_LABELS = ["Ping", "Phase", "Tunnel down", "Tunnel up"];
 function metaFor(ev: IPsecTunnelEvent): EventMeta {
   switch (ev.event_type) {
     case "phase1_up":
-      return { icon: Link2, cls: "text-emerald-400", color: "#34d399", label: "Tunnel up", lane: 3 };
+      return {
+        icon: Link2,
+        cls: "text-emerald-400",
+        color: "#34d399",
+        label: "Tunnel up",
+        lane: 3,
+      };
     case "phase1_down":
       return { icon: Unlink, cls: "text-red-400", color: "#f87171", label: "Tunnel down", lane: 2 };
     case "phase1_changed":
@@ -69,11 +75,23 @@ function metaFor(ev: IPsecTunnelEvent): EventMeta {
         lane: 1,
       };
     case "ping_ok":
-      return { icon: Activity, cls: "text-emerald-400", color: "#34d399", label: "Ping ok", lane: 0 };
+      return {
+        icon: Activity,
+        cls: "text-emerald-400",
+        color: "#34d399",
+        label: "Ping ok",
+        lane: 0,
+      };
     case "ping_fail":
       return { icon: Activity, cls: "text-red-400", color: "#f87171", label: "Ping fail", lane: 0 };
     default:
-      return { icon: Activity, cls: "text-slate-400", color: "#94a3b8", label: ev.event_type, lane: 1 };
+      return {
+        icon: Activity,
+        cls: "text-slate-400",
+        color: "#94a3b8",
+        label: ev.event_type,
+        lane: 1,
+      };
   }
 }
 
@@ -166,7 +184,13 @@ function autoWindowKey(events: IPsecTunnelEvent[], nowMs: number): string {
   return "all";
 }
 
-function EventTooltip({ active, payload }: { active?: boolean; payload?: { payload: ChartPoint }[] }) {
+function EventTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: ChartPoint }[];
+}) {
   if (!active || !payload || payload.length === 0) return null;
   const p = payload[0].payload;
   return (
@@ -216,8 +240,8 @@ export default function TunnelHistoryDialog({
         <p className="text-sm text-red-400">Failed to load history.</p>
       ) : !data || data.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No recorded state changes yet. History is collected from agent pushes
-          and grows as the tunnel changes state.
+          No recorded state changes yet. History is collected from agent pushes and grows as the
+          tunnel changes state.
         </p>
       ) : (
         <>
@@ -247,36 +271,36 @@ export default function TunnelHistoryDialog({
               ) : (
                 <ResponsiveContainer width="100%" height={190}>
                   <ScatterChart margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-                  <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    type="number"
-                    dataKey="x"
-                    domain={["dataMin", "dataMax"]}
-                    tickFormatter={fmtAxisTime}
-                    tick={{ fontSize: 10, fill: "#64748b" }}
-                    stroke="#334155"
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="y"
-                    domain={[-0.5, 3.5]}
-                    ticks={[0, 1, 2, 3]}
-                    tickFormatter={(v: number) => LANE_LABELS[v] ?? ""}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    width={84}
-                    stroke="#334155"
-                  />
-                  <Tooltip content={<EventTooltip />} cursor={{ stroke: "#334155" }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {series.map((s) => (
-                    <Scatter
-                      key={s.type}
-                      name={s.label}
-                      data={s.points}
-                      fill={s.color}
-                      shape="circle"
+                    <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      type="number"
+                      dataKey="x"
+                      domain={["dataMin", "dataMax"]}
+                      tickFormatter={fmtAxisTime}
+                      tick={{ fontSize: 10, fill: "#64748b" }}
+                      stroke="#334155"
                     />
-                  ))}
+                    <YAxis
+                      type="number"
+                      dataKey="y"
+                      domain={[-0.5, 3.5]}
+                      ticks={[0, 1, 2, 3]}
+                      tickFormatter={(v: number) => LANE_LABELS[v] ?? ""}
+                      tick={{ fontSize: 10, fill: "#94a3b8" }}
+                      width={84}
+                      stroke="#334155"
+                    />
+                    <Tooltip content={<EventTooltip />} cursor={{ stroke: "#334155" }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {series.map((s) => (
+                      <Scatter
+                        key={s.type}
+                        name={s.label}
+                        data={s.points}
+                        fill={s.color}
+                        shape="circle"
+                      />
+                    ))}
                   </ScatterChart>
                 </ResponsiveContainer>
               )}

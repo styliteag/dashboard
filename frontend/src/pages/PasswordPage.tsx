@@ -49,9 +49,7 @@ export default function PasswordPage() {
         {message && (
           <div
             className={`rounded-lg px-4 py-2 text-sm ${
-              message.ok
-                ? "bg-emerald-900/40 text-emerald-300"
-                : "bg-red-900/40 text-red-300"
+              message.ok ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/40 text-red-300"
             }`}
           >
             {message.text}

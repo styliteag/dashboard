@@ -87,8 +87,12 @@ export default function InterfacesSection({ instanceId }: { instanceId: number }
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">{i.address || "—"}</td>
-                  <td className="px-3 py-2 font-mono text-xs">↓ {fmtRate(rate(i.name, "bytes_received"))}</td>
-                  <td className="px-3 py-2 font-mono text-xs">↑ {fmtRate(rate(i.name, "bytes_transmitted"))}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    ↓ {fmtRate(rate(i.name, "bytes_received"))}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    ↑ {fmtRate(rate(i.name, "bytes_transmitted"))}
+                  </td>
                 </tr>
               );
             })}

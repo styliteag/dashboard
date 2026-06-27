@@ -42,9 +42,7 @@ export default function DeleteInstanceDialog({ instance, onClose }: Props) {
           Really delete instance <strong className="text-slate-200">{instance.name}</strong>?
           Historical metrics will be retained.
         </p>
-        <p className="text-sm text-slate-400">
-          Type the name to confirm:
-        </p>
+        <p className="text-sm text-slate-400">Type the name to confirm:</p>
 
         {error && (
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>

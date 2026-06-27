@@ -31,7 +31,9 @@ export function useSort<T>(rows: T[], accessors: Accessors<T>, initial: SortStat
   }, [rows, sort, accessors]);
 
   const toggle = (key: string) =>
-    setSort((s) => (s && s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+    setSort((s) =>
+      s && s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" },
+    );
 
   return { sorted, sort, toggle };
 }

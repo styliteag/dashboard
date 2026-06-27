@@ -41,7 +41,11 @@ export function Phase2Badge({ up, total }: { up: number; total: number }) {
       : up < total
         ? "bg-amber-600/20 text-amber-400"
         : "bg-emerald-600/20 text-emerald-400";
-  return <span className={`rounded px-1.5 py-0.5 font-mono text-xs ${cls}`}>{up}/{total}</span>;
+  return (
+    <span className={`rounded px-1.5 py-0.5 font-mono text-xs ${cls}`}>
+      {up}/{total}
+    </span>
+  );
 }
 
 function StateBadge({ state }: { state: string }) {
@@ -53,7 +57,9 @@ function StateBadge({ state }: { state: string }) {
       ? "bg-red-600/20 text-red-400"
       : "bg-amber-600/20 text-amber-400";
   return (
-    <span className={`rounded px-1.5 py-0.5 text-xs ${cls}`}>{up ? "up" : s === "" ? "down" : s}</span>
+    <span className={`rounded px-1.5 py-0.5 text-xs ${cls}`}>
+      {up ? "up" : s === "" ? "down" : s}
+    </span>
   );
 }
 

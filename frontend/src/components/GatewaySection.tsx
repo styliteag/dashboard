@@ -41,7 +41,10 @@ export default function GatewaySection({ instanceId }: { instanceId: number }) {
           </thead>
           <tbody>
             {data.map((gw) => {
-              const isUp = !gw.status || gw.status.toLowerCase() === "none" || gw.status.toLowerCase().includes("online");
+              const isUp =
+                !gw.status ||
+                gw.status.toLowerCase() === "none" ||
+                gw.status.toLowerCase().includes("online");
               return (
                 <tr key={gw.name} className="border-t border-slate-800">
                   <td className="px-3 py-2 font-medium">{gw.name}</td>

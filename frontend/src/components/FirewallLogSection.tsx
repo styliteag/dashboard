@@ -8,7 +8,8 @@ export default function FirewallLogSection({ instanceId }: { instanceId: number 
 
   const { data, isLoading } = useQuery({
     queryKey: ["firewall-log", instanceId],
-    queryFn: () => api.get<Record<string, string>[]>(`/api/instances/${instanceId}/firewall-log?limit=30`),
+    queryFn: () =>
+      api.get<Record<string, string>[]>(`/api/instances/${instanceId}/firewall-log?limit=30`),
     refetchInterval: 30_000,
     enabled: expanded,
   });
@@ -48,21 +49,30 @@ export default function FirewallLogSection({ instanceId }: { instanceId: number 
                       {entry.__timestamp__ || entry.timestamp || ""}
                     </td>
                     <td className="px-2 py-1">
-                      <span className={
-                        entry.action === "pass" ? "text-emerald-400" :
-                        entry.action === "block" ? "text-red-400" : "text-slate-400"
-                      }>
+                      <span
+                        className={
+                          entry.action === "pass"
+                            ? "text-emerald-400"
+                            : entry.action === "block"
+                              ? "text-red-400"
+                              : "text-slate-400"
+                        }
+                      >
                         {entry.action || ""}
                       </span>
                     </td>
                     <td className="px-2 py-1 text-slate-400">{entry.interface || ""}</td>
                     <td className="px-2 py-1 font-mono">
-                      {entry.src || entry.srcip || ""}{entry.srcport ? `:${entry.srcport}` : ""}
+                      {entry.src || entry.srcip || ""}
+                      {entry.srcport ? `:${entry.srcport}` : ""}
                     </td>
                     <td className="px-2 py-1 font-mono">
-                      {entry.dst || entry.dstip || ""}{entry.dstport ? `:${entry.dstport}` : ""}
+                      {entry.dst || entry.dstip || ""}
+                      {entry.dstport ? `:${entry.dstport}` : ""}
                     </td>
-                    <td className="px-2 py-1 text-slate-400">{entry.protoname || entry.proto || ""}</td>
+                    <td className="px-2 py-1 text-slate-400">
+                      {entry.protoname || entry.proto || ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>

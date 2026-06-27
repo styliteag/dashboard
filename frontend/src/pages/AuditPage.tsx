@@ -58,7 +58,10 @@ export default function AuditLogPage() {
           <input
             type="text"
             value={actionFilter}
-            onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setActionFilter(e.target.value);
+              setPage(1);
+            }}
             placeholder="e.g. auth, ipsec, firmware"
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
@@ -68,7 +71,10 @@ export default function AuditLogPage() {
           <input
             type="number"
             value={hoursFilter}
-            onChange={(e) => { setHoursFilter(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setHoursFilter(e.target.value);
+              setPage(1);
+            }}
             placeholder="24"
             min={1}
             className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"

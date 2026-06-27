@@ -204,7 +204,9 @@ export default function InstancesPage() {
           <button
             onClick={() => setActiveTag(null)}
             className={`rounded-full px-3 py-1 text-xs ${
-              !activeTag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              !activeTag
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
             }`}
           >
             All
@@ -214,7 +216,9 @@ export default function InstancesPage() {
               key={tag}
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
               className={`rounded-full px-3 py-1 text-xs ${
-                activeTag === tag ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                activeTag === tag
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
               {tag}
@@ -241,7 +245,10 @@ export default function InstancesPage() {
           >
             IPsec Restart
           </button>
-          <button onClick={selectAll} className="ml-auto text-xs text-slate-400 hover:text-slate-200">
+          <button
+            onClick={selectAll}
+            className="ml-auto text-xs text-slate-400 hover:text-slate-200"
+          >
             All
           </button>
           <button onClick={selectNone} className="text-xs text-slate-400 hover:text-slate-200">
@@ -251,7 +258,9 @@ export default function InstancesPage() {
       )}
 
       {bulkMsg && (
-        <div className="mt-2 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">{bulkMsg}</div>
+        <div className="mt-2 rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">
+          {bulkMsg}
+        </div>
       )}
 
       {/* View toggle + Export */}
@@ -308,7 +317,9 @@ export default function InstancesPage() {
                   <input
                     type="checkbox"
                     checked={selected.size > 0 && selected.size === filtered.length}
-                    onChange={() => (selected.size === filtered.length ? selectNone() : selectAll())}
+                    onChange={() =>
+                      selected.size === filtered.length ? selectNone() : selectAll()
+                    }
                     className="rounded border-slate-600"
                     aria-label="Select all"
                   />
@@ -342,16 +353,10 @@ export default function InstancesPage() {
       {/* Dialogs */}
       {showAdd && <AddInstanceDialog onClose={() => setShowAdd(false)} />}
       {editTarget && (
-        <EditInstanceDialog
-          instance={editTarget}
-          onClose={() => setEditTarget(null)}
-        />
+        <EditInstanceDialog instance={editTarget} onClose={() => setEditTarget(null)} />
       )}
       {deleteTarget && (
-        <DeleteInstanceDialog
-          instance={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-        />
+        <DeleteInstanceDialog instance={deleteTarget} onClose={() => setDeleteTarget(null)} />
       )}
     </div>
   );

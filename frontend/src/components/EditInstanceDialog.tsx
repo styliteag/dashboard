@@ -63,7 +63,10 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
-          ? form.tags.split(",").map((t) => t.trim()).filter(Boolean)
+          ? form.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
           : null,
         // null clears the override back to the global default; a number sets it.
         [agentMode ? "push_interval_seconds" : "poll_interval_seconds"]:
@@ -195,7 +198,9 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
                     onChange={set("ssh_key")}
                     rows={4}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                    placeholder={instance.ssh_key_set ? "unchanged" : "-----BEGIN OPENSSH PRIVATE KEY-----"}
+                    placeholder={
+                      instance.ssh_key_set ? "unchanged" : "-----BEGIN OPENSSH PRIVATE KEY-----"
+                    }
                   />
                 </div>
               </>

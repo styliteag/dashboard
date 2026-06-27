@@ -41,7 +41,7 @@ export function firstHostFromSelector(remoteTs: string): string {
     const ipInt = octets.reduce((acc, o) => (acc << 8) | o, 0) >>> 0;
     // A host or a tiny block (/31, /32) is already a concrete address.
     if (prefix >= 31) return token.split("/")[0];
-    const mask = prefix === 0 ? 0 : ((0xffffffff << (32 - prefix)) >>> 0);
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
     const firstHost = (((ipInt & mask) >>> 0) + 1) >>> 0;
     return [24, 16, 8, 0].map((s) => (firstHost >>> s) & 0xff).join(".");
   }

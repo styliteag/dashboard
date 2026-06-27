@@ -30,13 +30,22 @@ export default function Layout() {
           <Link to="/vpn" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
             <Shield className="h-4 w-4" /> VPN
           </Link>
-          <Link to="/firmware" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+          <Link
+            to="/firmware"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
             <Package className="h-4 w-4" /> Firmware
           </Link>
-          <Link to="/audit" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+          <Link
+            to="/audit"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
             <FileText className="h-4 w-4" /> Audit
           </Link>
-          <Link to="/password" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+          <Link
+            to="/password"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
             <KeyRound className="h-4 w-4" /> Password
           </Link>
           <span className="text-slate-600">|</span>

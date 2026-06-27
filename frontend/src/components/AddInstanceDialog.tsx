@@ -81,14 +81,18 @@ export default function AddInstanceDialog({ onClose }: Props) {
           : {}),
         ...(form.interval.trim() !== ""
           ? {
-              [form.agent_mode ? "push_interval_seconds" : "poll_interval_seconds"]:
-                Number(form.interval),
+              [form.agent_mode ? "push_interval_seconds" : "poll_interval_seconds"]: Number(
+                form.interval,
+              ),
             }
           : {}),
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
-          ? form.tags.split(",").map((t) => t.trim()).filter(Boolean)
+          ? form.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
           : null,
       };
       return api.post<Instance>("/api/instances", body);
@@ -190,8 +194,8 @@ export default function AddInstanceDialog({ onClose }: Props) {
         )}
         {form.agent_mode && (
           <p className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">
-            In Agent mode no API key is required. After creating the instance you receive an
-            agent token to install on the firewall.
+            In Agent mode no API key is required. After creating the instance you receive an agent
+            token to install on the firewall.
           </p>
         )}
         {isSecurepoint && (
