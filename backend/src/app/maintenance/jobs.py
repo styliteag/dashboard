@@ -15,6 +15,7 @@ import structlog
 from sqlalchemy import text
 
 from app.db.base import get_sessionmaker
+from app.logs.store import prune_logfiles as _prune_logfiles_store
 from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.maintenance")
@@ -66,4 +67,16 @@ async def prune_check_events() -> int:
     deleted = result.rowcount or 0
     if deleted:
         log.info("check_events.pruned", rows=deleted)
+    return deleted
+
+
+async def prune_logfiles() -> int:
+    """Keep only the newest few log snapshots per (instance, name). Safety net —
+    ingest already prunes on write. Returns rows deleted."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        deleted = await _prune_logfiles_store(session)
+        await session.commit()
+    if deleted:
+        log.info("logfiles.pruned", rows=deleted)
     return deleted

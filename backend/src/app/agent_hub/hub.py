@@ -23,6 +23,7 @@ from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.ipsec.event_store import record_tunnel_events
 from app.ipsec.history import diff_ipsec
+from app.logs.store import record_logfiles
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import dispatch_async
 from app.xsense.schemas import (
@@ -626,6 +627,10 @@ class AgentHub:
             await record_tunnel_events(session, instance_id, ts, tunnel_events)
             # Append any service-check state transitions (same commit as the push).
             await record_check_events(session, instance_id, ts, check_transitions)
+            # Store any pushed logfile snapshots (hourly) for AI analysis; the store
+            # prunes to the newest few per name so this table never grows unbounded.
+            if data.get("logfiles"):
+                await record_logfiles(session, instance_id, data["logfiles"])
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None

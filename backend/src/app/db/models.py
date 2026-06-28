@@ -19,6 +19,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -392,6 +393,32 @@ class CheckEvent(Base):
     summary: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
 
     __table_args__ = (Index("ix_check_event_lookup", "instance_id", "ts"),)
+
+
+class Logfile(Base):
+    """A recent logfile snapshot pushed by the agent (hourly), kept for AI analysis.
+
+    Only the last few snapshots per ``(instance_id, name)`` are retained — there is
+    no long-term log history here. The agent caps the pushed content; ``content`` is
+    MEDIUMTEXT on MariaDB so a ~1 MB snapshot fits (plain TEXT tops out at 64 KB).
+    Pruned to the newest 3 per (instance, name) on write and by ``prune_logfiles``.
+    """
+
+    __tablename__ = "logfiles"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    # Logical log name, e.g. "system", "filter", "ipsec", "gateways", "openvpn".
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    bytes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    content: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+
+    __table_args__ = (Index("ix_logfile_lookup", "instance_id", "name", "collected_at"),)
 
 
 class EnrollmentCode(Base):

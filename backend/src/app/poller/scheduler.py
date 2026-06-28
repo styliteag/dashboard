@@ -19,7 +19,12 @@ from sqlalchemy import select, update
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
-from app.maintenance.jobs import prune_check_events, prune_ipsec_events, prune_metrics
+from app.maintenance.jobs import (
+    prune_check_events,
+    prune_ipsec_events,
+    prune_logfiles,
+    prune_metrics,
+)
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import dispatch_async
 from app.poller.gate import effective_interval, is_due, is_stale, stale_threshold
@@ -248,6 +253,8 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         prune_check_events, "interval", hours=24, id="check_events_prune", max_instances=1
     )
+    # Logfile snapshots: ingest prunes on write; this is a daily safety net.
+    _scheduler.add_job(prune_logfiles, "interval", hours=24, id="logfiles_prune", max_instances=1)
     _scheduler.start()
     log.info(
         "scheduler.started",
