@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import smtplib
+import ssl
 from dataclasses import dataclass
+from email.message import EmailMessage
 from urllib.parse import urlparse
 
 import httpx
@@ -196,6 +199,75 @@ async def _send_mattermost(s, title: str, message: str, level: str) -> ChannelRe
         return ChannelResult("mattermost", "failed", str(exc))
 
 
+def _parse_recipients(raw: str) -> list[str]:
+    """Split a comma/whitespace-separated recipient string into addresses."""
+    return [a for a in raw.replace(",", " ").split() if a]
+
+
+def _smtp_send(
+    *,
+    host: str,
+    port: int,
+    security: str,
+    sender: str,
+    recipients: list[str],
+    username: str,
+    password: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Blocking SMTP send — run via ``asyncio.to_thread``. Raises on any failure.
+
+    ``security``: "ssl" = implicit TLS (465), "starttls" = upgrade after connect
+    (587), "none" = plaintext (25). Authenticates only when a username is given.
+    Kept sync + dependency-free (stdlib ``smtplib``) and separate from the async
+    wrapper so it is trivial to monkeypatch in tests.
+    """
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(body)
+    if security == "ssl":
+        with smtplib.SMTP_SSL(host, port, timeout=15, context=ssl.create_default_context()) as smtp:
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(msg)
+        return
+    with smtplib.SMTP(host, port, timeout=15) as smtp:
+        if security == "starttls":
+            smtp.starttls(context=ssl.create_default_context())
+        if username:
+            smtp.login(username, password)
+        smtp.send_message(msg)
+
+
+async def _send_email(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
+    host = getattr(s, "notify_email_smtp_host", "") or ""
+    sender = getattr(s, "notify_email_from", "") or ""
+    recipients = _parse_recipients(getattr(s, "notify_email_to", "") or "")
+    if not (host and sender and recipients):
+        return ChannelResult("email", "skipped")
+    try:
+        await asyncio.to_thread(
+            _smtp_send,
+            host=host,
+            port=int(getattr(s, "notify_email_smtp_port", 587) or 587),
+            security=getattr(s, "notify_email_security", "starttls") or "starttls",
+            sender=sender,
+            recipients=recipients,
+            username=getattr(s, "notify_email_username", "") or "",
+            password=getattr(s, "notify_email_password", "") or "",
+            subject=title,
+            body=message,
+        )
+        log.info("notify.email.sent", recipients=len(recipients))
+        return ChannelResult("email", "sent")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("notify.email.failed", error=str(exc))
+        return ChannelResult("email", "failed", str(exc))
+
+
 async def _dispatch(title: str, message: str, level: str) -> list[ChannelResult]:
     s = effective_settings()
     return [
@@ -203,6 +275,7 @@ async def _dispatch(title: str, message: str, level: str) -> list[ChannelResult]
         await _send_telegram(s, title, message, level),
         await _send_ntfy(s, title, message, level),
         await _send_mattermost(s, title, message, level),
+        await _send_email(s, title, message, level),
     ]
 
 

@@ -15,6 +15,9 @@ _EMPTY = SimpleNamespace(
     notify_telegram_chat_id="",
     notify_ntfy_url="",
     notify_mattermost_url="",
+    notify_email_smtp_host="",
+    notify_email_from="",
+    notify_email_to="",
 )
 
 
@@ -28,7 +31,7 @@ async def _resolve_public(_host: str) -> list[str]:
 async def test_dispatch_covers_all_channels_and_skips_unconfigured(monkeypatch) -> None:
     monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
     results = await notifier.send_test_notification()
-    assert {r.channel for r in results} == {"webhook", "telegram", "ntfy", "mattermost"}
+    assert {r.channel for r in results} == {"webhook", "telegram", "ntfy", "mattermost", "email"}
     assert all(r.status == "skipped" for r in results)  # nothing configured → no network
 
 
@@ -75,6 +78,68 @@ def test_mattermost_is_secret_setting() -> None:
     assert d.is_secret is True
     assert d.group == "Notifications"
     assert d.type == "str"
+
+
+def _email_cfg(**over) -> SimpleNamespace:
+    base = dict(
+        notify_webhook_url="",
+        notify_telegram_token="",
+        notify_telegram_chat_id="",
+        notify_ntfy_url="",
+        notify_mattermost_url="",
+        notify_email_smtp_host="smtp.example.com",
+        notify_email_smtp_port=587,
+        notify_email_security="starttls",
+        notify_email_from="orbit@example.com",
+        notify_email_to="ops@example.com, oncall@example.com",
+        notify_email_username="orbit",
+        notify_email_password="secret",
+    )
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+@pytest.mark.asyncio
+async def test_email_skipped_when_incomplete(monkeypatch) -> None:
+    # Host set but no recipients → not "configured" → skipped, never connects.
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _email_cfg(notify_email_to=""))
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["email"].status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_email_sends_when_configured(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_smtp_send(**kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _email_cfg())
+    monkeypatch.setattr(notifier, "_smtp_send", _fake_smtp_send)
+
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["email"].status == "sent"
+    assert captured["host"] == "smtp.example.com"
+    assert captured["port"] == 587
+    assert captured["recipients"] == ["ops@example.com", "oncall@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_email_failure_is_reported_not_raised(monkeypatch) -> None:
+    def _boom(**kwargs) -> None:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _email_cfg())
+    monkeypatch.setattr(notifier, "_smtp_send", _boom)
+
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["email"].status == "failed"
+    assert "connection refused" in results["email"].detail
+
+
+def test_email_password_is_secret_setting() -> None:
+    assert EDITABLE["notify_email_password"].is_secret is True
+    assert EDITABLE["notify_email_smtp_host"].is_secret is False
 
 
 def _ntfy_cfg(url: str) -> SimpleNamespace:

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Email (SMTP) notification channel** — alerts can now be delivered by email in
+  addition to webhook/Telegram/ntfy/Mattermost. Configure SMTP host/port, transport
+  security (STARTTLS / implicit TLS / none), from + recipient addresses and optional
+  auth in Settings → Notifications (the password is stored encrypted). Email is
+  attempted only when host, from and to are set; the "Send test" button reports its
+  per-channel result like every other channel.
+- **Settings page split into tabs** — General · Notifications · Checkmk, so each
+  section stays short. Notifications groups the Mattermost and email channels (plus
+  the test button) with room for more Mattermost options later.
 - **Interface-error check** — the per-interface driver error counters the agent
   already reports are now turned into a rate ((in+out errors)/sec, derived in the
   agent hub from two consecutive pushes) and evaluated per physical interface:

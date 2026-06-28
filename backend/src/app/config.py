@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     # Mattermost incoming-webhook URL (contains a secret token). Editable in the
     # Settings UI as a secret; env default here for first-boot/ops parity.
     notify_mattermost_url: str = ""
+    # Email (SMTP). Editable in the Settings UI; the password is a secret. Email is
+    # "configured" (and attempted) only when host, from and to are all set.
+    notify_email_smtp_host: str = ""
+    notify_email_smtp_port: int = 587
+    notify_email_security: str = "starttls"  # "starttls" | "ssl" | "none"
+    notify_email_from: str = ""
+    notify_email_to: str = ""  # comma/space-separated recipients
+    notify_email_username: str = ""
+    notify_email_password: str = ""
 
 
 @lru_cache(maxsize=1)
