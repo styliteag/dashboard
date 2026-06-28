@@ -170,71 +170,98 @@ def _read_pfsense_version() -> str:
         return ""
 
 
-def _read_pfsense_branch() -> str:
-    """Read the active pfSense update branch / software train.
+# pfSense repo dirs vary by release: new CE/Plus use /usr/local/etc, very old
+# (2.6/2.7) use /usr/local/share. The active repo is the pfSense.conf symlink.
+_PFSENSE_REPO_DIRS = (
+    "/usr/local/etc/pfSense/pkg/repos",
+    "/usr/local/share/pfSense/pkg/repos",
+)
+_PFSENSE_REPO_LINK = "/usr/local/etc/pkg/repos/pfSense.conf"
 
-    This is the key piece for knowing *which train* the box is on.
-    `pfSense-upgrade -c` only ever reports updates *within the current train*.
-    To see a newer major train you generally have to switch the branch first
-    (in the GUI or by editing the repo config).
 
-    Preference order:
-    1. <pkg_repo_conf_path> value from /cf/conf/config.xml (authoritative).
-    2. Target of the /usr/local/etc/pkg/repos/pfSense.conf symlink.
-    Returns a normalized short name (e.g. "26.03", "26_03_1") or raw value.
-    Empty on failure.
+def _pfsense_active_conf() -> str:
+    """Absolute path to the active pfSense repo .conf (the pfSense.conf symlink).
+
+    Universal across layouts; falls back to an absolute ``pkg_repo_conf_path`` in
+    config.xml. Empty on failure.
     """
-    # 1. config.xml via robust text search (full XML parse can be noisy on pfSense config)
-    config_path = "/cf/conf/config.xml"
     try:
-        if os.path.exists(config_path):
-            raw = Path(config_path).read_text(errors="replace")
-            m = re.search(r"<pkg_repo_conf_path>([^<]+)</pkg_repo_conf_path>", raw)
-            if m:
-                val = m.group(1).strip()
-                if "/" in val:
-                    val = val.rsplit("/", 1)[-1]
-                val = re.sub(r"^pfSense-repo-", "", val)
-                val = re.sub(r"\.conf$", "", val, flags=re.I)
-                val = val.replace("_rel", "")
-                if val:
-                    return val
-    except Exception:
-        pass
-
-    # 2. symlink fallback (very reliable)
-    try:
-        target = os.readlink("/usr/local/etc/pkg/repos/pfSense.conf")
-        m = re.search(r"pfSense-repo-([A-Za-z0-9_.-]+)", target)
-        if m:
-            val = m.group(1).replace("_rel", "").replace(".conf", "")
-            return val
+        return os.readlink(_PFSENSE_REPO_LINK)
     except (OSError, AttributeError):
         pass
-
+    try:
+        if os.path.exists("/cf/conf/config.xml"):
+            raw = Path("/cf/conf/config.xml").read_text(errors="replace")
+            m = re.search(r"<pkg_repo_conf_path>([^<]+)</pkg_repo_conf_path>", raw)
+            if m and m.group(1).strip().startswith("/"):
+                return m.group(1).strip()
+    except Exception:
+        pass
     return ""
 
 
-def _list_pfsense_branches() -> list[str]:
-    """Best-effort list of branch identifiers discovered from local repo definitions.
+def _pfsense_branch_from_conf(conf_path: str) -> str:
+    """Software-train id for a repo .conf, parsed from the package URL.
 
-    This can surface other trains that have been seen/ cached on the box
-    (e.g. after a GUI visit to Update Settings). Not guaranteed to list
-    brand new remote trains.
+    The repo filename is unreliable — new boxes name it ``pfSense-repo-NNNN.conf``
+    where ``NNNN`` is a meaningless index slot, old boxes use a bare
+    ``pfSense-repo.conf``. The package URL inside the .conf always carries the
+    train, identically to the ``.name`` descriptor::
+
+        pkg+https://pkg.pfsense.org/pfSense_v2_8_1_amd64-core            -> 2_8_1
+        pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_... -> 26_03
+
+    Falls back to the ``.name`` / ``.descr`` sibling, then the filename token.
+    """
+    if not conf_path:
+        return ""
+    try:
+        raw = Path(conf_path).read_text(errors="replace")
+        m = re.search(r"[-_]v([0-9]+(?:_[0-9]+)+)_", raw)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    base = re.sub(r"\.conf$", "", conf_path, flags=re.I)
+    for ext in (".name", ".descr"):
+        try:
+            txt = Path(base + ext).read_text(errors="replace").strip()
+            if txt:
+                return txt
+        except OSError:
+            continue
+    tok = re.sub(r"^pfSense-repo-?", "", conf_path.rsplit("/", 1)[-1])
+    return re.sub(r"\.conf$", "", tok, flags=re.I)
+
+
+def _read_pfsense_branch() -> str:
+    """Active pfSense update branch / software train.
+
+    `pfSense-upgrade -c` only ever reports updates *within the current train*; to
+    reach a newer major train the branch must be switched first. Empty on failure.
+    """
+    return _pfsense_branch_from_conf(_pfsense_active_conf())
+
+
+def _list_pfsense_branches() -> list[str]:
+    """Best-effort list of train ids from the local repo .conf definitions.
+
+    Only ``pfSense-repo*.conf`` files are real repos — the sibling ``.abi`` /
+    ``.altabi`` / ``.descr`` metadata files are NOT branches (the old glob leaked
+    them as junk like "0000.abi"). Each .conf resolves to its train via the URL.
     """
     try:
-        repo_dir = Path("/usr/local/etc/pfSense/pkg/repos")
-        if not repo_dir.exists():
-            return []
-        names: list[str] = []
-        for p in list(repo_dir.glob("*")):
-            if p.is_file():
-                m = re.search(r"pfSense-repo-([0-9A-Za-z_.-]+)", p.name)
-                if m:
-                    n = m.group(1).replace("_rel", "").replace(".conf", "").replace(".descr", "")
-                    if n and n not in names:
-                        names.append(n)
-        return sorted(set(names))[:12]
+        for d in _PFSENSE_REPO_DIRS:
+            confs = sorted(Path(d).glob("pfSense-repo*.conf"))
+            if not confs:
+                continue
+            names: list[str] = []
+            for conf in confs:
+                label = _pfsense_branch_from_conf(str(conf))
+                if label and label not in names:
+                    names.append(label)
+            return names[:12]
+        return []
     except Exception:
         return []
 

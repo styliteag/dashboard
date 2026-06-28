@@ -23,6 +23,22 @@ class FakePath:
             raise OSError(f"no such file: {self._p}")
         return content
 
+    def glob(self, pattern: str):
+        import fnmatch
+
+        prefix = self._p.rstrip("/") + "/"
+        for key in sorted(FakePath.registry):
+            if key.startswith(prefix):
+                rest = key[len(prefix) :]
+                if "/" not in rest and fnmatch.fnmatch(rest, pattern):
+                    yield FakePath(key)
+
+    def __str__(self) -> str:
+        return self._p
+
+    def __lt__(self, other: object) -> bool:
+        return self._p < str(other)
+
 
 @pytest.fixture
 def fake_fs(monkeypatch: pytest.MonkeyPatch):
@@ -157,6 +173,56 @@ def test_opnsense_update_check_stale_catalogue_no_false_uptodate(
     upgrade, latest, _ = agent._opnsense_update_check("26.1.9")
     assert upgrade is False
     assert latest == "26.1.9"
+
+
+_REPO_DIR = "/usr/local/etc/pfSense/pkg/repos/"
+# Verbatim url lines captured on real boxes (CE 2.8.1 / Plus 26.03 / old CE 2.7.0).
+_CONF_CE = 'pfSense: {\n  url: "pkg+https://pkg.pfsense.org/pfSense_v2_8_1_amd64-core",\n}'
+_CONF_PLUS = (
+    'pfSense: {\n  url: "pkg+https://pfsense-plus-pkg.netgate.com/'
+    'pfSense_plus-v26_03_aarch64-core",\n}'
+)
+_CONF_OLD = 'pfSense: {\n  url: "pkg+https://pkg.pfsense.org/pfSense_v2_7_0_amd64-core",\n}'
+
+
+def test_pfsense_branch_from_conf_ce_url(fake_fs: dict) -> None:
+    # Index-slot filename ("0000") is meaningless; the train comes from the URL.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = _CONF_CE
+    assert agent._pfsense_branch_from_conf(_REPO_DIR + "pfSense-repo-0000.conf") == "2_8_1"
+
+
+def test_pfsense_branch_from_conf_plus_url(fake_fs: dict) -> None:
+    # Plus uses a different url shape ("pfSense_plus-v26_03_aarch64") — same train.
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = _CONF_PLUS
+    assert agent._pfsense_branch_from_conf(_REPO_DIR + "pfSense-repo-0001.conf") == "26_03"
+
+
+def test_pfsense_branch_from_conf_old_layout_url(fake_fs: dict) -> None:
+    # Old 2.6/2.7 box: bare pfSense-repo.conf, no .name file — URL still works.
+    base = "/usr/local/share/pfSense/pkg/repos/pfSense-repo"
+    fake_fs[base + ".conf"] = _CONF_OLD
+    assert agent._pfsense_branch_from_conf(base + ".conf") == "2_7_0"
+
+
+def test_pfsense_branch_from_conf_falls_back_to_descr(fake_fs: dict) -> None:
+    # No parseable URL → human descriptor (matches pfSense's GUI branch label).
+    base = _REPO_DIR + "pfSense-repo-0000"
+    fake_fs[base + ".conf"] = "pfSense: {}"  # no url
+    fake_fs[base + ".descr"] = "Current Stable Version (2.8.1)\n"
+    assert agent._pfsense_branch_from_conf(base + ".conf") == "Current Stable Version (2.8.1)"
+
+
+def test_list_pfsense_branches_only_conf_files(fake_fs: dict) -> None:
+    # Two repo slots resolve to train ids; .abi/.altabi metadata are NOT branches.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_1_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.abi"] = "FreeBSD:15:amd64\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.altabi"] = "freebsd:15:x86:64\n"
+    assert agent._list_pfsense_branches() == ["26_03_1", "26_03"]
 
 
 def test_pfsense_update_detection() -> None:
