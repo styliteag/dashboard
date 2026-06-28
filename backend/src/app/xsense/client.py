@@ -424,6 +424,7 @@ class OPNsenseClient:
         return FirmwareStatus(
             product_name=data.get("product_name", data.get("product_id", "")),
             product_version=data.get("product_version", ""),
+            branch=data.get("product_series") or data.get("series", ""),
             product_latest=product_latest,
             needs_reboot=str(needs_reboot) not in ("0", "", "false", "False"),
             upgrade_available=status_val in ("upgrade", "update") or bool(all_updates),

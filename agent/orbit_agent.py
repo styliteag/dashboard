@@ -41,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.6"
+__version__ = "1.6.8"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1121,6 +1121,28 @@ def collect_firmware() -> dict:
         low = out.lower()
         upgrade_available = "can be updated" in low or "updates available" in low
 
+        # Report OPNsense series as branch/train
+        if not branch:
+            try:
+                ver_out = _run(["opnsense-version"])
+                data = json.loads(ver_out)
+                branch = data.get("product_series") or data.get("CORE_SERIES", "")
+            except Exception:
+                pass
+
+        # Also detect core opnsense package updates (point releases within series
+        # are sometimes not reported by -c but are visible to pkg)
+        if not upgrade_available:
+            try:
+                installed = _run(["pkg", "query", "%v", "opnsense"]).strip()
+                latest = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
+                if installed and latest and installed != latest:
+                    upgrade_available = True
+                    if not out or "up to date" in out.lower():
+                        out = f"{installed} can be updated to {latest}"
+            except Exception:
+                pass
+
     return {
         "product_version": version,
         "branch": branch,
@@ -1934,6 +1956,22 @@ def execute_command(action: str, params: dict) -> dict:
             version = _read_opnsense_version()
             branch = ""
             known = []
+            # Report series as branch/train for OPNsense
+            try:
+                ver_out = _run(["opnsense-version"])
+                data = json.loads(ver_out)
+                branch = data.get("product_series") or data.get("CORE_SERIES", "")
+            except Exception:
+                pass
+            # Also check pkg for core update (catches point releases)
+            try:
+                installed = _run(["pkg", "query", "%v", "opnsense"]).strip()
+                latest = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
+                if installed and latest and installed != latest:
+                    if not out or "up to date" in out.lower():
+                        out = f"{installed} can be updated to {latest}"
+            except Exception:
+                pass
         return {
             "success": True,
             "output": out.strip()[:500],

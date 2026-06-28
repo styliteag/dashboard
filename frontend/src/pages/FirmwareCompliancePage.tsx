@@ -63,6 +63,8 @@ export default function FirmwareCompliancePage() {
 
   const { sorted, sort, toggle } = useSort(filtered, FW_ACCESSORS);
 
+  const hasBranch = sorted.some((e) => !!e.branch);
+
   return (
     <div>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -113,7 +115,7 @@ export default function FirmwareCompliancePage() {
                 <SortHeader label="Instance" colKey="instance" sort={sort} toggle={toggle} />
                 <SortHeader label="Location" colKey="location" sort={sort} toggle={toggle} />
                 <SortHeader label="Installed" colKey="installed" sort={sort} toggle={toggle} />
-                <SortHeader label="Branch" colKey="branch" sort={sort} toggle={toggle} />
+                {hasBranch && <SortHeader label="Branch" colKey="branch" sort={sort} toggle={toggle} />}
                 <SortHeader label="Latest" colKey="latest" sort={sort} toggle={toggle} />
                 <SortHeader label="Updates" colKey="updates" sort={sort} toggle={toggle} />
                 <SortHeader label="Last check" colKey="last_check" sort={sort} toggle={toggle} />
@@ -141,7 +143,9 @@ export default function FirmwareCompliancePage() {
                   </td>
                   <td className="px-3 py-2 text-slate-400">{e.location || "—"}</td>
                   <td className="px-3 py-2 font-mono text-xs">{e.product_version}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-400">{e.branch || "—"}</td>
+                  {hasBranch && (
+                    <td className="px-3 py-2 font-mono text-xs text-slate-400">{e.branch || "—"}</td>
+                  )}
                   <td className="px-3 py-2 font-mono text-xs">
                     {e.product_latest && e.product_latest !== e.product_version ? (
                       <span className="text-amber-400">{e.product_latest}</span>
