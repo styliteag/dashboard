@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.llm.analyze import build_chat_request, parse_chat_response
 from app.llm.providers import (
     PROVIDERS,
     PROVIDERS_BY_ID,
@@ -37,3 +38,27 @@ def test_item_uses_catalog_default_without_settings_field() -> None:
     # an unset secret masks to an empty value.
     key_item = _item(EDITABLE[api_key_setting("openai")])
     assert key_item.is_secret and key_item.value == ""
+
+
+def test_build_chat_request_openai_vs_anthropic() -> None:
+    oa = PROVIDERS_BY_ID["openai"]
+    url, headers, body = build_chat_request(oa, "sk-x", "gpt-4o-mini", "SYS", "USER")
+    assert url.endswith("/chat/completions")
+    assert headers["Authorization"] == "Bearer sk-x"
+    assert body["messages"][0] == {"role": "system", "content": "SYS"}
+    assert body["messages"][1]["content"] == "USER"
+
+    an = PROVIDERS_BY_ID["anthropic"]
+    url, headers, body = build_chat_request(an, "sk-a", "claude-opus-4-8", "SYS", "USER")
+    assert url.endswith("/v1/messages")
+    assert headers["x-api-key"] == "sk-a"
+    assert body["system"] == "SYS" and body["max_tokens"] > 0
+    assert body["messages"] == [{"role": "user", "content": "USER"}]
+
+
+def test_parse_chat_response_both_styles() -> None:
+    oa = {"choices": [{"message": {"content": "hello"}}]}
+    assert parse_chat_response("openai", oa) == "hello"
+    an = {"content": [{"type": "text", "text": "world"}]}
+    assert parse_chat_response("anthropic", an) == "world"
+    assert parse_chat_response("openai", {}) == ""

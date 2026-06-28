@@ -15,6 +15,10 @@ from dataclasses import dataclass
 AUTH_BEARER = "bearer"  # Authorization: Bearer <key>  (OpenAI, OpenRouter)
 AUTH_X_API_KEY = "x-api-key"  # x-api-key + anthropic-version  (Anthropic)
 
+# Chat-completion request/response shapes.
+CHAT_OPENAI = "openai"  # POST /chat/completions, choices[0].message.content
+CHAT_ANTHROPIC = "anthropic"  # POST /v1/messages, content[0].text
+
 _ANTHROPIC_VERSION = "2023-06-01"
 
 
@@ -26,6 +30,8 @@ class LLMProvider:
     default_model: str
     auth: str  # AUTH_BEARER | AUTH_X_API_KEY
     models_path: str  # appended to base_url for the connectivity/key probe
+    chat_path: str  # appended to base_url for a chat-completion request
+    chat_style: str  # CHAT_OPENAI | CHAT_ANTHROPIC
 
 
 PROVIDERS: tuple[LLMProvider, ...] = (
@@ -36,6 +42,8 @@ PROVIDERS: tuple[LLMProvider, ...] = (
         default_model="gpt-4o-mini",
         auth=AUTH_BEARER,
         models_path="/models",
+        chat_path="/chat/completions",
+        chat_style=CHAT_OPENAI,
     ),
     LLMProvider(
         id="anthropic",
@@ -44,6 +52,8 @@ PROVIDERS: tuple[LLMProvider, ...] = (
         default_model="claude-opus-4-8",
         auth=AUTH_X_API_KEY,
         models_path="/v1/models",
+        chat_path="/v1/messages",
+        chat_style=CHAT_ANTHROPIC,
     ),
     LLMProvider(
         id="openrouter",
@@ -52,6 +62,8 @@ PROVIDERS: tuple[LLMProvider, ...] = (
         default_model="openai/gpt-4o-mini",
         auth=AUTH_BEARER,
         models_path="/models",
+        chat_path="/chat/completions",
+        chat_style=CHAT_OPENAI,
     ),
 )
 
