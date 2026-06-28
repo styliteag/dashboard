@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent: cert collector used `str.removesuffix()` (Python 3.9+), crashing on
+  older pfSense boxes running Python 3.8 with `AttributeError`. The push loop
+  re-raised that error, taking the agent permanently silent ("agent silent for
+  >120s") over a single bad field. Replaced with a 3.8-safe suffix strip and
+  hardened `_push_loop` so a collector failure now skips one cycle instead of
+  killing the loop. (agent `__version__` → 1.8.2)
+
 ## [1.9.0] - 2026-06-28
 
 ### Added

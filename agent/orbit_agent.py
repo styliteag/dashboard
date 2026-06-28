@@ -41,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.8.1"
+__version__ = "1.9.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1511,7 +1511,12 @@ def _openssl_cert_info(pem: bytes) -> dict | None:
     if not m:
         return None
     # openssl -enddate is always GMT, e.g. "Jun 28 14:36:28 2027 GMT".
-    raw = m.group(1).strip().removesuffix(" GMT").strip()
+    # NB: str.removesuffix() is 3.9+; the agent must run on Python 3.8 (older
+    # pfSense). Strip the suffix the 3.8-safe way.
+    raw = m.group(1).strip()
+    if raw.endswith(" GMT"):
+        raw = raw[:-4]
+    raw = raw.strip()
     try:
         not_after = datetime.strptime(raw, "%b %d %H:%M:%S %Y").replace(tzinfo=UTC)
     except ValueError:
@@ -3060,11 +3065,20 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
     while True:
         try:
             snapshot = await asyncio.get_event_loop().run_in_executor(None, collect_all)
-            await ws.send(json.dumps({"type": "metrics", "data": snapshot}))
-            log.debug("pushed metrics snapshot")
         except Exception as exc:
-            log.warning("push error: %s", exc)
-            raise
+            # A single collector raising must NOT kill the push loop — that would
+            # take the agent silent (dashboard: "agent silent for >120s") over one
+            # bad field. Skip this cycle, keep the loop (and liveness) alive.
+            log.warning("metrics collection failed, skipping cycle: %s", exc)
+        else:
+            try:
+                await ws.send(json.dumps({"type": "metrics", "data": snapshot}))
+                log.debug("pushed metrics snapshot")
+            except Exception as exc:
+                # Send failure means the socket is gone — let it propagate so the
+                # outer connection loop reconnects.
+                log.warning("push error: %s", exc)
+                raise
         await asyncio.sleep(cfg.push_interval)
 
 
