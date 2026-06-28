@@ -118,16 +118,27 @@ export interface NtpStatus {
   peer: string;
 }
 
+export interface ConfigInfo {
+  revision_time: string;
+  revision_description: string;
+  revision_user: string;
+}
+
 export interface SystemStatus {
   cpu: CpuStatus;
   memory: MemoryStatus;
   load: LoadAvg;
   pf: PfStatus;
   ntp: NtpStatus;
+  config: ConfigInfo;
   disks: DiskStatus[];
   interfaces: InterfaceStatus[];
   uptime: string | null;
   version: string | null;
+}
+
+export interface ConfigInfoResponse extends ConfigInfo {
+  last_backup_at: string | null;
 }
 
 export interface ServiceInfo {

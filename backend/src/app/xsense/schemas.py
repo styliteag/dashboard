@@ -79,6 +79,16 @@ class NtpStatus(BaseModel):
     peer: str = ""
 
 
+class ConfigInfo(BaseModel):
+    """Last config-change metadata from ``config.xml`` <revision> (agent push only)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    revision_time: str = ""  # ISO 8601, "" when unknown
+    revision_description: str = ""
+    revision_user: str = ""
+
+
 class DiskUsage(BaseModel):
     """Derived from /api/diagnostics/system/systemDisk."""
 
@@ -122,6 +132,7 @@ class SystemStatus(BaseModel):
     load: LoadAvg = LoadAvg()
     pf: PfStatus = PfStatus()
     ntp: NtpStatus = NtpStatus()
+    config: ConfigInfo = ConfigInfo()
     disks: list[DiskUsage] = []
     interfaces: list[InterfaceStats] = []
 

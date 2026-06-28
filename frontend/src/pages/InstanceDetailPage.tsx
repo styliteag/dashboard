@@ -19,6 +19,7 @@ import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
 import SystemHealthSection from "../components/SystemHealthSection";
 import ServicesSection from "../components/ServicesSection";
+import ConfigSection from "../components/ConfigSection";
 import GatewaySection from "../components/GatewaySection";
 import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
@@ -191,6 +192,8 @@ export default function InstanceDetailPage() {
           <SystemHealthSection instanceId={nid} />
 
           <ChecksSection instanceId={nid} />
+
+          <ConfigSection instanceId={nid} />
 
           <ServicesSection instanceId={nid} />
         </>

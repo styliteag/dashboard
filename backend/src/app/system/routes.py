@@ -4,21 +4,71 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.db.base import get_session
-from app.db.models import User
+from app.db.models import AuditLog, User
 from app.instances import service as inst_service
 from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, GatewayStatus, ServiceInfo
+from app.xsense.schemas import ActionResult, ConfigInfo, GatewayStatus, ServiceInfo
 
 router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
+
+
+class ConfigInfoResponse(BaseModel):
+    """Last config change (from the agent's config.xml <revision>) plus the last
+    time a config backup was downloaded through the dashboard (from the audit log)."""
+
+    revision_time: str = ""
+    revision_description: str = ""
+    revision_user: str = ""
+    last_backup_at: str | None = None
+
+
+@router.get("/config-info", response_model=ConfigInfoResponse)
+async def config_info(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> ConfigInfoResponse:
+    """Config-change metadata + last backup time. Revision is agent-push only."""
+    inst = await inst_service.get_instance(session, instance_id)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    rev = ConfigInfo()
+    if inst.agent_mode:
+        cached = hub.get_last_status(instance_id)
+        if cached is not None:
+            rev = cached.config
+
+    last_backup = (
+        await session.execute(
+            select(AuditLog.ts)
+            .where(
+                AuditLog.action == "config.backup",
+                AuditLog.target_id == str(instance_id),
+                AuditLog.result == "ok",
+            )
+            .order_by(AuditLog.ts.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    return ConfigInfoResponse(
+        revision_time=rev.revision_time,
+        revision_description=rev.revision_description,
+        revision_user=rev.revision_user,
+        last_backup_at=last_backup.isoformat() if last_backup else None,
+    )
 
 
 @router.get("/services", response_model=list[ServiceInfo])

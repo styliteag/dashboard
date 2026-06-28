@@ -22,6 +22,7 @@ from app.ipsec.history import diff_ipsec
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.xsense.schemas import (
+    ConfigInfo,
     CpuUsage,
     DiskUsage,
     FirmwareStatus,
@@ -60,6 +61,7 @@ def status_from_agent(data: dict) -> SystemStatus:
     load_data = data.get("loadavg", {})
     pf_data = data.get("pf", {})
     ntp_data = data.get("ntp", {})
+    config_data = data.get("config", {})
     return SystemStatus(
         name=system.get("hostname"),
         version=data.get("firmware", {}).get("product_version"),
@@ -90,6 +92,11 @@ def status_from_agent(data: dict) -> SystemStatus:
             offset_ms=ntp_data.get("offset_ms", 0),
             jitter_ms=ntp_data.get("jitter_ms", 0),
             peer=ntp_data.get("peer", ""),
+        ),
+        config=ConfigInfo(
+            revision_time=config_data.get("revision_time", ""),
+            revision_description=config_data.get("revision_description", ""),
+            revision_user=config_data.get("revision_user", ""),
         ),
         disks=[
             DiskUsage(
