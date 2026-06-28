@@ -158,6 +158,14 @@ export interface CertInfo {
   issuer: string;
 }
 
+export interface CheckHistoryEvent {
+  ts: string;
+  check_key: string;
+  old_state: number; // 0 OK, 1 WARN, 2 CRIT, 3 UNKNOWN
+  new_state: number;
+  summary: string;
+}
+
 // ----- Metrics --------------------------------------------------------------
 
 export interface MetricPoint {

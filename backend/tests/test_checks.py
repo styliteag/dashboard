@@ -91,6 +91,43 @@ def test_service_checks_dns_all_down_is_crit() -> None:
     assert any(c.key == "service:dns" and c.state == CheckState.CRIT for c in out)
 
 
+def test_diff_checks_baseline_and_transitions() -> None:
+    from app.checks.history import current_states, diff_checks
+    from app.checks.models import ServiceCheck
+
+    checks = [
+        ServiceCheck(key="memory", state=0, summary="ok"),
+        ServiceCheck(key="cpu", state=0, summary="ok"),
+    ]
+    # No baseline yet → no events (avoids first-push / restart spam).
+    assert diff_checks(None, checks) == []
+
+    baseline = current_states(checks)
+    # No change → no events.
+    assert diff_checks(baseline, checks) == []
+
+    # memory goes CRIT → one transition 0→2; cpu unchanged → not reported.
+    changed = [
+        ServiceCheck(key="memory", state=2, summary="crit"),
+        ServiceCheck(key="cpu", state=0, summary="ok"),
+    ]
+    evs = diff_checks(baseline, changed)
+    assert len(evs) == 1
+    assert (evs[0].check_key, evs[0].old_state, evs[0].new_state) == ("memory", 0, 2)
+
+
+def test_diff_checks_new_problem_vs_new_ok() -> None:
+    from app.checks.history import diff_checks
+    from app.checks.models import ServiceCheck
+
+    # A brand-new key absent from the baseline: OK is silent, a problem emits.
+    base = {"memory": 0}
+    new_ok = diff_checks(base, [ServiceCheck(key="gateway:WAN", state=0, summary="ok")])
+    assert new_ok == []
+    new_bad = diff_checks(base, [ServiceCheck(key="gateway:WAN", state=2, summary="down")])
+    assert len(new_bad) == 1 and new_bad[0].new_state == 2
+
+
 def test_cert_checks_thresholds() -> None:
     from app.checks.evaluate import cert_checks
     from app.xsense.schemas import CertInfo

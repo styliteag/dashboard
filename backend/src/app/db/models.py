@@ -328,6 +328,37 @@ class IPsecTunnelEvent(Base):
     __table_args__ = (Index("ix_ipsec_event_lookup", "instance_id", "tunnel_id", "ts"),)
 
 
+class CheckEvent(Base):
+    """One recorded service-check state transition (alert/check history).
+
+    Appended by the agent-push ingest (``agent_hub.hub.handle_metrics``): after each
+    push it re-evaluates the instance's checks and diffs them against the previous
+    states (``app.checks.history.diff_checks``), recording one row per key whose
+    state changed (OK↔WARN↔CRIT). A transition log, not periodic snapshots — stays
+    tiny. The previous states survive a backend restart via the hydrated
+    ``status_snapshot`` so a restart does not re-fire every check. Pruned by
+    ``prune_check_events`` after ``check_event_retention_days``.
+    """
+
+    __tablename__ = "check_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Stable check key, e.g. "memory", "gateway:WAN", "cert:<refid>", "ipsec.tunnel:x".
+    check_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    # CheckState values (0=OK, 1=WARN, 2=CRIT, 3=UNKNOWN).
+    old_state: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_state: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+
+    __table_args__ = (Index("ix_check_event_lookup", "instance_id", "ts"),)
+
+
 class EnrollmentCode(Base):
     """One-time agent enrollment code (see §16 chunk C2).
 

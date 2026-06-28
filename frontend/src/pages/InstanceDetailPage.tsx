@@ -17,6 +17,7 @@ import InstanceHeader from "../components/InstanceHeader";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
+import CheckHistorySection from "../components/CheckHistorySection";
 import SystemHealthSection from "../components/SystemHealthSection";
 import ServicesSection from "../components/ServicesSection";
 import ConfigSection from "../components/ConfigSection";
@@ -193,6 +194,8 @@ export default function InstanceDetailPage() {
           <SystemHealthSection instanceId={nid} />
 
           <ChecksSection instanceId={nid} />
+
+          <CheckHistorySection instanceId={nid} />
 
           <ConfigSection instanceId={nid} />
 

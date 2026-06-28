@@ -96,6 +96,15 @@ _DEFS: tuple[SettingDef, ...] = (
         max=3650,
     ),
     SettingDef(
+        "check_event_retention_days",
+        "int",
+        "Check event retention",
+        "Retention",
+        help="Service-check state-change history kept this many days.",
+        min=1,
+        max=3650,
+    ),
+    SettingDef(
         "gui_idle_minutes",
         "int",
         "GUI proxy idle close",

@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
-from app.auth.deps import read_principal
+from app.auth.deps import current_user, read_principal
 from app.checkmk.exclusions import excluded_reason, is_excluded
 from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
+from app.checks.event_store import read_check_events
 from app.db.base import get_session
-from app.db.models import CheckmkExportExclusion, Instance
+from app.db.models import CheckmkExportExclusion, Instance, User
 from app.xsense.registry import registry
 from app.xsense.schemas import (
     CertInfo,
@@ -80,6 +82,42 @@ async def instance_checks(
 
     sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, instance_id)
     return evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
+
+
+class CheckHistoryEvent(BaseModel):
+    ts: str
+    check_key: str
+    old_state: int
+    new_state: int
+    summary: str
+
+
+@router.get("/instances/{instance_id}/checks/history", response_model=list[CheckHistoryEvent])
+async def instance_check_history(
+    instance_id: int,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[CheckHistoryEvent]:
+    """Recorded check state-change history for one instance, most recent first.
+
+    Populated by the agent-push ingest; direct-API instances have no history yet.
+    """
+    inst = await session.get(Instance, instance_id)
+    if inst is None or inst.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    limit = max(1, min(limit, 500))
+    rows = await read_check_events(session, instance_id, limit)
+    return [
+        CheckHistoryEvent(
+            ts=row.ts.isoformat(),
+            check_key=row.check_key,
+            old_state=row.old_state,
+            new_state=row.new_state,
+            summary=row.summary,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/export/checkmk")

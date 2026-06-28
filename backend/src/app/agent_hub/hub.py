@@ -15,6 +15,9 @@ import structlog
 from fastapi import WebSocket
 from sqlalchemy import select
 
+from app.checks.evaluate import evaluate_checks
+from app.checks.event_store import record_check_events
+from app.checks.history import current_states, diff_checks
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.ipsec.event_store import record_tunnel_events
@@ -297,6 +300,10 @@ class AgentHub:
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
         self._last_certs: dict[int, list[CertInfo]] = {}
+        # Last evaluated check states ({key: state}) per instance — the baseline
+        # the next push diffs against to record check-history transitions. Survives
+        # a backend restart via the persisted status_snapshot (no restart spam).
+        self._last_check_states: dict[int, dict[str, int]] = {}
         # GUI-proxy tunnels: stream_id -> queue of frames coming back from the agent.
         self._tunnels: dict[str, asyncio.Queue] = {}
 
@@ -431,6 +438,9 @@ class AgentHub:
         certs = self._last_certs.get(instance_id)
         if certs is not None:
             snap["certificates"] = [c.model_dump(mode="json") for c in certs]
+        check_states = self._last_check_states.get(instance_id)
+        if check_states is not None:
+            snap["check_states"] = check_states
         return snap
 
     def hydrate_instance(self, instance_id: int, snapshot: dict | None) -> None:
@@ -465,6 +475,10 @@ class AgentHub:
                 self._last_certs[instance_id] = [
                     CertInfo.model_validate(c) for c in snapshot["certificates"]
                 ]
+            if snapshot.get("check_states"):
+                self._last_check_states[instance_id] = {
+                    str(k): int(v) for k, v in snapshot["check_states"].items()
+                }
         except Exception as exc:  # noqa: BLE001 — a bad snapshot must not block startup
             log.warning("hub.hydrate_skip", instance_id=instance_id, error=str(exc))
 
@@ -531,6 +545,21 @@ class AgentHub:
         if data.get("firmware"):
             self._last_firmware[instance_id] = firmware_from_agent(data, ts.isoformat())
 
+        # Re-evaluate checks from the just-updated caches and diff against the
+        # previous states to record check-history transitions. The previous states
+        # survive a restart via the hydrated snapshot, so a restart doesn't re-fire
+        # every check (same property the IPsec history relies on).
+        checks = evaluate_checks(
+            status,
+            self._last_gateways.get(instance_id),
+            self._last_ipsec.get(instance_id),
+            self._last_firmware.get(instance_id),
+            self._last_services.get(instance_id),
+            self._last_certs.get(instance_id),
+        )
+        check_transitions = diff_checks(self._last_check_states.get(instance_id), checks)
+        self._last_check_states[instance_id] = current_states(checks)
+
         recovered_name: str | None = None
         async with sessionmaker() as session:
             inst = await session.get(Instance, instance_id)
@@ -543,6 +572,8 @@ class AgentHub:
             await write_poll_metrics(session, instance_id, ts, status)
             # Append any IPsec tunnel state transitions (same commit as the push).
             await record_tunnel_events(session, instance_id, ts, tunnel_events)
+            # Append any service-check state transitions (same commit as the push).
+            await record_check_events(session, instance_id, ts, check_transitions)
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None
