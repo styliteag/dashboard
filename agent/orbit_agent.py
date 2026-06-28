@@ -41,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -300,6 +300,25 @@ def collect_memory() -> dict:
         "total_mb": round(total_mb, 1),
         "used_mb": round(used_mb, 1),
         "used_pct": round(used_pct, 1),
+        **_collect_swap(),
+    }
+
+
+def _collect_swap() -> dict:
+    """Swap usage from ``swapinfo -k`` (summed across devices). Empty when no swap."""
+    total_kb = used_kb = 0
+    for line in _run(["swapinfo", "-k"]).splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 3 and parts[1].isdigit() and parts[2].isdigit():
+            total_kb += int(parts[1])
+            used_kb += int(parts[2])
+    total_mb = total_kb / 1024
+    used_mb = used_kb / 1024
+    pct = (used_mb / total_mb * 100) if total_mb > 0 else 0.0
+    return {
+        "swap_total_mb": round(total_mb, 1),
+        "swap_used_mb": round(used_mb, 1),
+        "swap_used_pct": round(pct, 1),
     }
 
 
@@ -363,6 +382,14 @@ def collect_disk() -> list[dict]:
     ]
 
 
+def _netstat_int(token: str) -> int:
+    """netstat error/coll columns are '-' when the driver exposes no counter → 0."""
+    try:
+        return int(token)
+    except (ValueError, TypeError):
+        return 0
+
+
 def collect_interfaces() -> list[dict]:
     """Get interface info: address/status from ifconfig, byte counters from netstat."""
     # Byte counters from netstat -ibn (first row per interface = link-layer row)
@@ -374,12 +401,16 @@ def collect_interfaces() -> list[dict]:
         name = parts[0]
         if name not in bytes_map:
             try:
-                # netstat -ibn columns (with or without Idrop):
-                # ... Ibytes Opkts Oerrs Obytes Coll
-                # [-5]  [-4]  [-3]  [-2]  [-1]
+                # netstat -ibn columns (Idrop is optional, shifting the input side):
+                #   Name Mtu Network Address Ipkts Ierrs [Idrop] Ibytes Opkts Oerrs Obytes Coll
+                # Input side is stable from the LEFT (Ierrs = [5], before optional Idrop);
+                # output side is stable from the RIGHT (Coll [-1], Obytes [-2], Oerrs [-3]).
                 bytes_map[name] = {
                     "bytes_received": int(parts[-5]),
                     "bytes_transmitted": int(parts[-2]),
+                    "in_errors": _netstat_int(parts[5]),
+                    "out_errors": _netstat_int(parts[-3]),
+                    "collisions": _netstat_int(parts[-1]),
                 }
             except (ValueError, IndexError):
                 pass
@@ -399,7 +430,16 @@ def collect_interfaces() -> list[dict]:
                     "name": name,
                     "status": "up" if ("UP" in flags and "RUNNING" in flags) else "down",
                     "address": None,
-                    **bytes_map.get(name, {"bytes_received": 0, "bytes_transmitted": 0}),
+                    **bytes_map.get(
+                        name,
+                        {
+                            "bytes_received": 0,
+                            "bytes_transmitted": 0,
+                            "in_errors": 0,
+                            "out_errors": 0,
+                            "collisions": 0,
+                        },
+                    ),
                 }
             else:
                 current = None
@@ -1253,20 +1293,249 @@ def collect_firewall_log(limit: int = 30) -> list[dict]:
     return entries[-limit:]
 
 
+def collect_loadavg() -> dict:
+    """1/5/15-minute load average from ``sysctl vm.loadavg`` ('{ 0.37 0.29 0.26 }')."""
+    nums = _run(["sysctl", "-n", "vm.loadavg"]).strip().strip("{}").split()
+    try:
+        return {"one": float(nums[0]), "five": float(nums[1]), "fifteen": float(nums[2])}
+    except (ValueError, IndexError):
+        return {"one": 0.0, "five": 0.0, "fifteen": 0.0}
+
+
+def collect_pf() -> dict:
+    """pf state-table usage: current states vs the hard limit (``pfctl``, needs root).
+
+    Both OPNsense and pfSense run pf, so the same parse works on each. State-table
+    exhaustion is a real outage mode that is otherwise invisible.
+    """
+    current = 0
+    for line in _run(["pfctl", "-si"]).splitlines():
+        m = re.search(r"current entries\s+(\d+)", line)
+        if m:
+            current = int(m.group(1))
+            break
+    limit = 0
+    for line in _run(["pfctl", "-sm"]).splitlines():
+        m = re.search(r"states\s+hard limit\s+(\d+)", line)
+        if m:
+            limit = int(m.group(1))
+            break
+    pct = (current / limit * 100) if limit > 0 else 0.0
+    return {"states_current": current, "states_limit": limit, "states_pct": round(pct, 1)}
+
+
+def collect_ntp() -> dict:
+    """NTP sync state via ``ntpq``. ``synced`` is True only once a clock is usable
+    (stratum < 16); a freshly-booted box reporting stratum 16 is NOT an error — the
+    dashboard check treats unsynced as a soft state, never CRIT.
+
+    Reading association 0 (``rv 0``) is more robust than parsing peer-table tally
+    codes. ntpd ships by default on both platforms.
+    """
+    rv = _run(["ntpq", "-c", "rv 0"], timeout=8)
+    stratum = -1
+    offset_ms = 0.0
+    jitter_ms = 0.0
+    m = re.search(r"stratum=(\d+)", rv)
+    if m:
+        stratum = int(m.group(1))
+    m = re.search(r"offset=([-\d.]+)", rv)
+    if m:
+        offset_ms = float(m.group(1))
+    m = re.search(r"sys_jitter=([-\d.]+)", rv)
+    if m:
+        jitter_ms = float(m.group(1))
+    peer = ""
+    for line in _run(["ntpq", "-pn"], timeout=8).splitlines():
+        if line.startswith("*"):  # '*' tally = the currently selected sys.peer
+            fields = line[1:].split()
+            peer = fields[0] if fields else ""
+            break
+    return {
+        "synced": 0 <= stratum < 16,
+        "stratum": stratum,
+        "offset_ms": round(offset_ms, 3),
+        "jitter_ms": round(jitter_ms, 3),
+        "peer": peer,
+    }
+
+
+def collect_config() -> dict:
+    """Last config-change metadata from ``/conf/config.xml`` <revision> (both platforms).
+
+    pfSense wraps description/username in CDATA; ElementTree reads that transparently.
+    """
+    try:
+        root = ElementTree.parse(_CONFIG_XML).getroot()
+    except (OSError, ElementTree.ParseError):
+        return {}
+    rev = root.find("./revision")
+    if rev is None:
+        return {}
+    raw_time = (rev.findtext("time") or "").strip()
+    iso = ""
+    try:
+        if raw_time:
+            iso = datetime.fromtimestamp(float(raw_time), UTC).isoformat()
+    except (ValueError, OSError, OverflowError):
+        iso = ""
+    return {
+        "revision_time": iso,
+        "revision_description": (rev.findtext("description") or "").strip()[:300],
+        "revision_user": (rev.findtext("username") or "").strip()[:128],
+    }
+
+
+def collect_services() -> list[dict]:
+    """Per-service running state. OPNsense: ``configctl service list``;
+    pfSense: ``get_services()`` via PHP (no configctl there)."""
+    if detect_platform() == "pfsense":
+        return _collect_services_pfsense()
+    return _collect_services_opnsense()
+
+
+def _collect_services_opnsense() -> list[dict]:
+    out = _run(["configctl", "service", "list"], timeout=15)
+    start = out.find("[")
+    if start < 0:
+        return []
+    try:
+        data = json.loads(out[start:])
+    except json.JSONDecodeError:
+        return []
+    services = []
+    for s in data:
+        if not isinstance(s, dict) or not s.get("name"):
+            continue
+        # ``status`` is a human string: "<name> is running as pid N." / "... is not running."
+        low = str(s.get("status", "")).lower()
+        running = "running" in low and "not running" not in low
+        services.append({
+            "name": s.get("name", ""),
+            "description": s.get("description", ""),
+            "running": running,
+        })
+    return services
+
+
+_PFSENSE_SVC_PHP = (
+    'require_once("globals.inc"); require_once("service-utils.inc"); '
+    "$out=array(); foreach (get_services() as $s) { $n=isset($s['name'])?$s['name']:''; "
+    "if(!$n) continue; "
+    "$out[]=array('name'=>$n,'description'=>isset($s['description'])?$s['description']:'',"
+    "'running'=>is_service_running($n,$s)?true:false); } echo json_encode($out);"
+)
+
+
+def _collect_services_pfsense() -> list[dict]:
+    out = _run(["php", "-r", _PFSENSE_SVC_PHP], timeout=15)
+    start = out.find("[")
+    if start < 0:
+        return []
+    try:
+        data = json.loads(out[start:])
+    except json.JSONDecodeError:
+        return []
+    return [
+        {
+            "name": s.get("name", ""),
+            "description": s.get("description", ""),
+            "running": bool(s.get("running", False)),
+        }
+        for s in data
+        if isinstance(s, dict) and s.get("name")
+    ]
+
+
+def collect_certificates() -> list[dict]:
+    """Certificate expiry from ``/conf/config.xml`` <cert>/<ca>. The agent is
+    stdlib-only (no x509 parser), so each PEM is piped through ``openssl x509``.
+    Works on both platforms; the GUI cert is flagged via <system><webgui><ssl-certref>.
+    """
+    try:
+        root = ElementTree.parse(_CONFIG_XML).getroot()
+    except (OSError, ElementTree.ParseError):
+        return []
+    gui_ref = (root.findtext("./system/webgui/ssl-certref") or "").strip()
+    out: list[dict] = []
+    elements = [("cert", e) for e in root.findall("./cert")]
+    elements += [("ca", e) for e in root.findall("./ca")]
+    for kind, el in elements:
+        crt_b64 = (el.findtext("crt") or "").strip()
+        if not crt_b64:
+            continue
+        try:
+            pem = base64.b64decode(crt_b64)
+        except ValueError:  # binascii.Error is a ValueError subclass
+            continue
+        info = _openssl_cert_info(pem)
+        if info is None:
+            continue
+        refid = (el.findtext("refid") or "").strip()
+        out.append({
+            "refid": refid,
+            "name": (el.findtext("descr") or "").strip() or refid or "(unnamed)",
+            "type": kind,
+            "is_gui": bool(gui_ref) and refid == gui_ref,
+            **info,
+        })
+    return out
+
+
+def _openssl_cert_info(pem: bytes) -> dict | None:
+    """Parse one PEM cert via ``openssl x509`` → expiry + subject/issuer, or None."""
+    try:
+        r = subprocess.run(
+            ["openssl", "x509", "-noout", "-enddate", "-subject", "-issuer"],
+            input=pem,
+            capture_output=True,
+            timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if r.returncode != 0:
+        return None
+    txt = r.stdout.decode(errors="replace")
+    m = re.search(r"notAfter=(.+)", txt)
+    if not m:
+        return None
+    # openssl -enddate is always GMT, e.g. "Jun 28 14:36:28 2027 GMT".
+    raw = m.group(1).strip().removesuffix(" GMT").strip()
+    try:
+        not_after = datetime.strptime(raw, "%b %d %H:%M:%S %Y").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+    days = (not_after - datetime.now(UTC)).days
+    subj = re.search(r"subject=(.+)", txt)
+    issuer = re.search(r"issuer=(.+)", txt)
+    return {
+        "not_after": not_after.isoformat(),
+        "days_remaining": days,
+        "subject": (subj.group(1).strip() if subj else "")[:200],
+        "issuer": (issuer.group(1).strip() if issuer else "")[:200],
+    }
+
+
 def collect_all() -> dict:
     """Full snapshot of this OPNsense instance."""
     return {
         "ts": datetime.now(UTC).isoformat(),
         "system": collect_system_info(),
         "uptime": collect_uptime(),
+        "loadavg": collect_loadavg(),
         "cpu": collect_cpu(),
         "memory": collect_memory(),
         "disks": collect_disk(),
+        "pf": collect_pf(),
+        "ntp": collect_ntp(),
         "interfaces": collect_interfaces(),
         "gateways": collect_gateways(),
         "ipsec": collect_ipsec(),
         "firmware": collect_firmware(),
         "firewall_log": collect_firewall_log(30),
+        "config": collect_config(),
+        "services": collect_services(),
+        "certificates": collect_certificates(),
     }
 
 
