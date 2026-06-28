@@ -9,6 +9,9 @@ interface Iface {
   address: string | null;
   bytes_received: number;
   bytes_transmitted: number;
+  in_errors: number;
+  out_errors: number;
+  collisions: number;
 }
 
 interface SystemStatus {
@@ -73,11 +76,13 @@ export default function InterfacesSection({ instanceId }: { instanceId: number }
               <th className="px-3 py-2">Address</th>
               <th className="px-3 py-2">RX</th>
               <th className="px-3 py-2">TX</th>
+              <th className="px-3 py-2">Errors</th>
             </tr>
           </thead>
           <tbody>
             {data.interfaces.map((i) => {
               const up = i.status.toLowerCase().includes("up");
+              const errs = (i.in_errors ?? 0) + (i.out_errors ?? 0) + (i.collisions ?? 0);
               return (
                 <tr key={i.name} className="border-t border-slate-800">
                   <td className="px-3 py-2 font-medium">{i.name}</td>
@@ -92,6 +97,15 @@ export default function InterfacesSection({ instanceId }: { instanceId: number }
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     ↑ {fmtRate(rate(i.name, "bytes_transmitted"))}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {errs === 0 ? (
+                      <span className="text-slate-600">—</span>
+                    ) : (
+                      <span className="text-amber-400" title="in / out / collisions">
+                        {i.in_errors}/{i.out_errors}/{i.collisions}
+                      </span>
+                    )}
                   </td>
                 </tr>
               );

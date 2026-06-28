@@ -30,7 +30,10 @@ from app.xsense.schemas import (
     IPsecChild,
     IPsecServiceStatus,
     IPsecTunnel,
+    LoadAvg,
     MemoryUsage,
+    NtpStatus,
+    PfStatus,
     SystemStatus,
 )
 
@@ -53,6 +56,9 @@ def status_from_agent(data: dict) -> SystemStatus:
     cpu_data = data.get("cpu", {})
     mem_data = data.get("memory", {})
     system = data.get("system", {})
+    load_data = data.get("loadavg", {})
+    pf_data = data.get("pf", {})
+    ntp_data = data.get("ntp", {})
     return SystemStatus(
         name=system.get("hostname"),
         version=data.get("firmware", {}).get("product_version"),
@@ -63,6 +69,26 @@ def status_from_agent(data: dict) -> SystemStatus:
             used_pct=mem_data.get("used_pct", 0),
             total_mb=mem_data.get("total_mb", 0),
             used_mb=mem_data.get("used_mb", 0),
+            swap_total_mb=mem_data.get("swap_total_mb", 0),
+            swap_used_mb=mem_data.get("swap_used_mb", 0),
+            swap_used_pct=mem_data.get("swap_used_pct", 0),
+        ),
+        load=LoadAvg(
+            one=load_data.get("one", 0),
+            five=load_data.get("five", 0),
+            fifteen=load_data.get("fifteen", 0),
+        ),
+        pf=PfStatus(
+            states_current=pf_data.get("states_current", 0),
+            states_limit=pf_data.get("states_limit", 0),
+            states_pct=pf_data.get("states_pct", 0),
+        ),
+        ntp=NtpStatus(
+            synced=bool(ntp_data.get("synced", False)),
+            stratum=ntp_data.get("stratum", -1),
+            offset_ms=ntp_data.get("offset_ms", 0),
+            jitter_ms=ntp_data.get("jitter_ms", 0),
+            peer=ntp_data.get("peer", ""),
         ),
         disks=[
             DiskUsage(
@@ -79,6 +105,9 @@ def status_from_agent(data: dict) -> SystemStatus:
                 address=i.get("address"),
                 bytes_received=i.get("bytes_received", 0),
                 bytes_transmitted=i.get("bytes_transmitted", 0),
+                in_errors=i.get("in_errors", 0),
+                out_errors=i.get("out_errors", 0),
+                collisions=i.get("collisions", 0),
             )
             for i in data.get("interfaces", [])
         ],

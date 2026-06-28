@@ -39,6 +39,44 @@ class MemoryUsage(BaseModel):
     used_pct: float = 0.0  # 0..100
     total_mb: float = 0.0
     used_mb: float = 0.0
+    # Swap (agent push only; direct poll leaves these 0 → swap_total_mb==0 means
+    # "no data", which the swap check treats as "skip" rather than "0% used").
+    swap_total_mb: float = 0.0
+    swap_used_mb: float = 0.0
+    swap_used_pct: float = 0.0
+
+
+class LoadAvg(BaseModel):
+    """System load average over 1/5/15 minutes (agent push only)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    one: float = 0.0
+    five: float = 0.0
+    fifteen: float = 0.0
+
+
+class PfStatus(BaseModel):
+    """pf state-table usage (agent push only). ``states_limit==0`` means no data."""
+
+    model_config = ConfigDict(extra="allow")
+
+    states_current: int = 0
+    states_limit: int = 0
+    states_pct: float = 0.0
+
+
+class NtpStatus(BaseModel):
+    """NTP sync state (agent push only). ``stratum==-1`` means no data; ``stratum==16``
+    is a reachable-but-unsynced clock (a soft state, never CRIT)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    synced: bool = False
+    stratum: int = -1
+    offset_ms: float = 0.0
+    jitter_ms: float = 0.0
+    peer: str = ""
 
 
 class DiskUsage(BaseModel):
@@ -63,6 +101,11 @@ class InterfaceStats(BaseModel):
     bytes_transmitted: int = 0
     # These are raw counters. Throughput (bytes/sec) is derived on read — via
     # to_rate() on the metrics endpoint (?rate=true) and client-side in the UI.
+    # Driver error/collision counters (agent push only; '-' columns map to 0). A
+    # NIC driver that exposes no counter always reports 0 here.
+    in_errors: int = 0
+    out_errors: int = 0
+    collisions: int = 0
 
 
 class SystemStatus(BaseModel):
@@ -76,6 +119,9 @@ class SystemStatus(BaseModel):
     platform: str | None = None
     cpu: CpuUsage = CpuUsage()
     memory: MemoryUsage = MemoryUsage()
+    load: LoadAvg = LoadAvg()
+    pf: PfStatus = PfStatus()
+    ntp: NtpStatus = NtpStatus()
     disks: list[DiskUsage] = []
     interfaces: list[InterfaceStats] = []
 

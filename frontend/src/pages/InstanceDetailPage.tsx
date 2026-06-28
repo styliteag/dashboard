@@ -17,6 +17,7 @@ import InstanceHeader from "../components/InstanceHeader";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
+import SystemHealthSection from "../components/SystemHealthSection";
 import GatewaySection from "../components/GatewaySection";
 import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
@@ -29,6 +30,8 @@ type Range = (typeof RANGES)[number];
 const METRICS = [
   { key: "cpu.total", label: "CPU %", color: "#10b981" },
   { key: "memory.used_pct", label: "RAM %", color: "#6366f1" },
+  { key: "load.1m", label: "Load (1m)", color: "#f59e0b" },
+  { key: "pf.states_pct", label: "pf states %", color: "#0ea5e9" },
 ] as const;
 
 const TABS = [
@@ -183,6 +186,8 @@ export default function InstanceDetailPage() {
               ))}
             </div>
           </section>
+
+          <SystemHealthSection instanceId={nid} />
 
           <ChecksSection instanceId={nid} />
         </>

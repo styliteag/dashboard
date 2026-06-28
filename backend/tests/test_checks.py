@@ -10,6 +10,9 @@ from app.checks.evaluate import (
     gateway_checks,
     ipsec_checks,
     memory_check,
+    ntp_check,
+    pf_states_check,
+    swap_check,
 )
 from app.xsense.schemas import (
     CpuUsage,
@@ -19,8 +22,46 @@ from app.xsense.schemas import (
     IPsecServiceStatus,
     IPsecTunnel,
     MemoryUsage,
+    NtpStatus,
+    PfStatus,
     SystemStatus,
 )
+
+
+def test_swap_check_skips_without_swap_device() -> None:
+    assert swap_check(MemoryUsage(swap_total_mb=0)) is None  # no data → no check
+
+
+def test_swap_thresholds() -> None:
+    assert swap_check(MemoryUsage(swap_total_mb=1024, swap_used_pct=10)).state == CheckState.OK
+    assert swap_check(MemoryUsage(swap_total_mb=1024, swap_used_pct=50)).state == CheckState.WARN
+    assert swap_check(MemoryUsage(swap_total_mb=1024, swap_used_pct=80)).state == CheckState.CRIT
+
+
+def test_pf_states_skips_without_data() -> None:
+    assert pf_states_check(PfStatus(states_limit=0)) is None
+
+
+def test_pf_states_thresholds() -> None:
+    assert pf_states_check(PfStatus(states_limit=1000, states_pct=10)).state == CheckState.OK
+    assert pf_states_check(PfStatus(states_limit=1000, states_pct=85)).state == CheckState.WARN
+    assert pf_states_check(PfStatus(states_limit=1000, states_pct=96)).state == CheckState.CRIT
+
+
+def test_ntp_skips_without_data() -> None:
+    assert ntp_check(NtpStatus(stratum=-1)) is None  # no ntpq data
+
+
+def test_ntp_unsynced_is_warn_not_crit() -> None:
+    # A reachable-but-unsynced clock (stratum 16) must never read CRIT.
+    c = ntp_check(NtpStatus(stratum=16, synced=False))
+    assert c is not None and c.state == CheckState.WARN
+
+
+def test_ntp_synced_ok() -> None:
+    c = ntp_check(NtpStatus(stratum=2, synced=True, offset_ms=1.2, peer="1.2.3.4"))
+    assert c is not None and c.state == CheckState.OK
+    assert "1.2.3.4" in c.summary
 
 
 def test_memory_thresholds() -> None:

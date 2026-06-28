@@ -64,6 +64,19 @@ async def write_poll_metrics(
     add("memory.total_mb", status.memory.total_mb)
     add("memory.used_mb", status.memory.used_mb)
 
+    # Load average (agent push only; direct poll leaves load at 0).
+    add("load.1m", status.load.one)
+    add("load.5m", status.load.five)
+    add("load.15m", status.load.fifteen)
+
+    # Swap + pf state-table — only when the agent actually reported them
+    # (total/limit 0 means "no data"; don't store a misleading 0-series).
+    if status.memory.swap_total_mb > 0:
+        add("memory.swap_used_pct", status.memory.swap_used_pct)
+    if status.pf.states_limit > 0:
+        add("pf.states_current", float(status.pf.states_current))
+        add("pf.states_pct", status.pf.states_pct)
+
     for disk in status.disks:
         label = disk.mountpoint.replace("/", "_").strip("_") or "root"
         add(f"disk.{label}.used_pct", disk.used_pct)

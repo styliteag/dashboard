@@ -10,6 +10,8 @@ from app.xsense.schemas import (
     GatewayStatus,
     IPsecServiceStatus,
     MemoryUsage,
+    NtpStatus,
+    PfStatus,
     SystemStatus,
 )
 
@@ -18,6 +20,8 @@ _MEM_WARN, _MEM_CRIT = 80.0, 90.0
 _DISK_WARN, _DISK_CRIT = 80.0, 90.0
 _CPU_WARN = 95.0  # CPU is spiky — warn only, never crit
 _GW_LOSS_WARN, _GW_LOSS_CRIT = 20.0, 80.0
+_PF_WARN, _PF_CRIT = 80.0, 95.0  # pf state-table fill (exhaustion drops new flows)
+_SWAP_WARN, _SWAP_CRIT = 50.0, 80.0  # swap in use = memory pressure
 
 _GW_DOWN_WORDS = ("down", "force_down", "offline")
 _IPSEC_UP = {"established", "installed", "connected", "up", "1", "true", "yes"}
@@ -47,6 +51,69 @@ def memory_check(mem: MemoryUsage) -> ServiceCheck:
         metrics=[
             PerfMetric(name="mem_used_pct", value=pct, warn=_MEM_WARN, crit=_MEM_CRIT, unit="%")
         ],
+    )
+
+
+def swap_check(mem: MemoryUsage) -> ServiceCheck | None:
+    """Swap-in-use check. None when the box reports no swap device (no data)."""
+    if mem.swap_total_mb <= 0:
+        return None
+    pct = mem.swap_used_pct
+    if pct >= _SWAP_CRIT:
+        state, word = CheckState.CRIT, "critical"
+    elif pct >= _SWAP_WARN:
+        state, word = CheckState.WARN, "high"
+    else:
+        state, word = CheckState.OK, "ok"
+    return ServiceCheck(
+        key="swap",
+        state=int(state),
+        summary=f"Swap {pct:.0f}% used ({word})",
+        metrics=[
+            PerfMetric(name="swap_used_pct", value=pct, warn=_SWAP_WARN, crit=_SWAP_CRIT, unit="%")
+        ],
+    )
+
+
+def pf_states_check(pf: PfStatus) -> ServiceCheck | None:
+    """pf state-table fill. None when no data (states_limit==0, e.g. direct poll)."""
+    if pf.states_limit <= 0:
+        return None
+    pct = pf.states_pct
+    if pct >= _PF_CRIT:
+        state, word = CheckState.CRIT, "critical"
+    elif pct >= _PF_WARN:
+        state, word = CheckState.WARN, "high"
+    else:
+        state, word = CheckState.OK, "ok"
+    return ServiceCheck(
+        key="pf_states",
+        state=int(state),
+        summary=f"pf states {pf.states_current}/{pf.states_limit} ({pct:.0f}%, {word})",
+        metrics=[
+            PerfMetric(name="pf_states_pct", value=pct, warn=_PF_WARN, crit=_PF_CRIT, unit="%"),
+            PerfMetric(name="pf_states", value=float(pf.states_current)),
+        ],
+    )
+
+
+def ntp_check(ntp: NtpStatus) -> ServiceCheck | None:
+    """NTP sync. None when no data (stratum==-1). A reachable-but-unsynced clock
+    (stratum 16) is WARN, never CRIT — a freshly booted box must not read red."""
+    if ntp.stratum < 0:
+        return None
+    if ntp.synced:
+        peer = f" via {ntp.peer}" if ntp.peer else ""
+        return ServiceCheck(
+            key="ntp",
+            state=int(CheckState.OK),
+            summary=f"NTP synced (stratum {ntp.stratum}, offset {ntp.offset_ms:.1f}ms){peer}",
+            metrics=[PerfMetric(name="ntp_offset_ms", value=ntp.offset_ms, unit="ms")],
+        )
+    return ServiceCheck(
+        key="ntp",
+        state=int(CheckState.WARN),
+        summary="NTP not synchronised (no usable peer yet)",
     )
 
 
@@ -201,6 +268,11 @@ def evaluate_checks(
     """Evaluate all available aspects of an instance into service checks."""
     checks = [memory_check(status.memory), cpu_check(status.cpu)]
     checks += disk_checks(status.disks)
+    # Optional system-telemetry checks — each returns None when the box reported
+    # no data (e.g. direct-poll instances, which don't carry pf/ntp/swap).
+    for opt in (swap_check(status.memory), pf_states_check(status.pf), ntp_check(status.ntp)):
+        if opt is not None:
+            checks.append(opt)
     if gateways:
         checks += gateway_checks(gateways)
     if ipsec is not None:

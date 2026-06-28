@@ -75,6 +75,9 @@ export interface MemoryStatus {
   total_mb: number;
   used_mb: number;
   used_pct: number;
+  swap_total_mb: number;
+  swap_used_mb: number;
+  swap_used_pct: number;
 }
 
 export interface DiskStatus {
@@ -90,11 +93,37 @@ export interface InterfaceStatus {
   address: string | null;
   bytes_received: number;
   bytes_transmitted: number;
+  in_errors: number;
+  out_errors: number;
+  collisions: number;
+}
+
+export interface LoadAvg {
+  one: number;
+  five: number;
+  fifteen: number;
+}
+
+export interface PfStatus {
+  states_current: number;
+  states_limit: number; // 0 = no data
+  states_pct: number;
+}
+
+export interface NtpStatus {
+  synced: boolean;
+  stratum: number; // -1 = no data, 16 = reachable but unsynced
+  offset_ms: number;
+  jitter_ms: number;
+  peer: string;
 }
 
 export interface SystemStatus {
   cpu: CpuStatus;
   memory: MemoryStatus;
+  load: LoadAvg;
+  pf: PfStatus;
+  ntp: NtpStatus;
   disks: DiskStatus[];
   interfaces: InterfaceStatus[];
   uptime: string | null;

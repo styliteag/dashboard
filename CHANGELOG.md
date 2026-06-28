@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **System telemetry: load average, swap, pf state-table, NTP sync, interface errors** — the agent now collects, and the instance Overview/Network tabs now show, the 1/5/15-minute load average, swap usage, the pf state-table fill (current vs hard limit — a real exhaustion/outage signal that was previously invisible), NTP sync state (stratum/offset/peer), and per-interface error/collision counters. New service checks: `pf_states` (WARN ≥80 %, CRIT ≥95 % of the limit), `swap` (WARN ≥50 %, CRIT ≥80 %) and `ntp` (a reachable-but-unsynced clock is WARN, never CRIT, so a freshly booted box does not read red). Load and pf-state fill are also charted over time. Works on OPNsense and pfSense. (Agent `__version__` → 1.8.0.)
+
 ### Changed
 
 - **License changed to the Business Source License 1.1 (BSL 1.1).**
