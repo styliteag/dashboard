@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { MessageSquare, Send, Mail, Settings as SettingsIcon } from "lucide-react";
+import { MessageSquare, Send, Mail, Bot, Settings as SettingsIcon } from "lucide-react";
 import GeneralSettings from "../components/settings/GeneralSettings";
 import ChannelAlertSelection from "../components/settings/ChannelAlertSelection";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
 import CheckmkExport from "../components/settings/CheckmkExport";
+import LlmProviderTests from "../components/settings/LlmProviderTests";
 
 /**
  * Settings hub, split into tabs to keep each section short:
@@ -17,6 +18,7 @@ const TABS = [
   { key: "mattermost", label: "Mattermost" },
   { key: "telegram", label: "Telegram" },
   { key: "email", label: "Email" },
+  { key: "ai", label: "AI" },
   { key: "checkmk", label: "Checkmk" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -81,7 +83,24 @@ export default function SettingsPage() {
 
       {tab === "general" && (
         <section className="mt-6">
-          <GeneralSettings exclude={["Mattermost", "Telegram", "Email"]} />
+          <GeneralSettings exclude={["Mattermost", "Telegram", "Email", "LLM"]} />
+        </section>
+      )}
+
+      {tab === "ai" && (
+        <section className="mt-6 space-y-6">
+          <GeneralSettings
+            include={["LLM"]}
+            title="LLM providers"
+            icon={<Bot className="h-4 w-4 text-slate-400" />}
+            intro={
+              <>
+                API keys for AI log analysis. Keys are stored encrypted; only the chosen provider is
+                contacted, and log data is anonymized before it is sent.
+              </>
+            }
+          />
+          <LlmProviderTests />
         </section>
       )}
 

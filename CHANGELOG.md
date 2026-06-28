@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **LLM provider API keys** — a new Settings → AI tab stores encrypted API keys for
+  OpenAI, Anthropic and OpenRouter (extensible: adding a provider is a few lines in
+  the backend catalog, no DB migration). Each provider has an editable base URL and
+  model (defaults from the catalog) so OpenAI-compatible/self-hosted endpoints work.
+  A per-provider "Test key" button validates the stored key against the provider's
+  models endpoint (`POST /api/llm/test`). Keys are stored with the existing Fernet
+  helper in `app_settings` and never returned in plaintext. Groundwork for the
+  upcoming AI log analysis.
+
 ## [1.9.3] - 2026-06-28
 
 ### Changed

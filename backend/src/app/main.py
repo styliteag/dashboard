@@ -26,6 +26,7 @@ from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
+from app.llm.routes import router as llm_router
 from app.metrics.routes import router as metrics_router
 from app.notifications.routes import router as notifications_router
 from app.notifications.store import load_routes
@@ -205,6 +206,7 @@ def create_app() -> FastAPI:
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(notifications_router, prefix="/api")
+    app.include_router(llm_router, prefix="/api")
     return app
 
 

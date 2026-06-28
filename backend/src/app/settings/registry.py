@@ -11,6 +11,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.llm.providers import (
+    PROVIDERS,
+    api_key_setting,
+    base_url_setting,
+    model_setting,
+)
+
 
 @dataclass(frozen=True)
 class SettingDef:
@@ -24,6 +31,9 @@ class SettingDef:
     min: int | None = None
     max: int | None = None
     options: tuple[str, ...] | None = None
+    # Keys whose default does NOT come from a ``Settings`` field (e.g. LLM provider
+    # base URLs / models) carry it here, so ``Settings`` needs no extra fields.
+    default: str | None = None
 
 
 _DEFS: tuple[SettingDef, ...] = (
@@ -205,7 +215,49 @@ _DEFS: tuple[SettingDef, ...] = (
     ),
 )
 
-EDITABLE: dict[str, SettingDef] = {d.key: d for d in _DEFS}
+
+def _llm_defs() -> tuple[SettingDef, ...]:
+    """One API-key (secret) + base-URL + model setting per LLM provider, grouped
+    under ``LLM`` so the Settings UI renders them on a single AI tab. Defaults come
+    from the provider catalog, not env, so ``Settings`` needs no extra fields."""
+    defs: list[SettingDef] = []
+    for p in PROVIDERS:
+        defs.append(
+            SettingDef(
+                api_key_setting(p.id),
+                "str",
+                f"{p.label} API key",
+                "LLM",
+                help=f"{p.label} API key. Stored encrypted; used only for the AI log analysis.",
+                is_secret=True,
+                default="",
+            )
+        )
+        defs.append(
+            SettingDef(
+                base_url_setting(p.id),
+                "str",
+                f"{p.label} base URL",
+                "LLM",
+                help="Override the API base URL (e.g. a proxy or self-hosted, "
+                "OpenAI-compatible endpoint).",
+                default=p.default_base_url,
+            )
+        )
+        defs.append(
+            SettingDef(
+                model_setting(p.id),
+                "str",
+                f"{p.label} model",
+                "LLM",
+                help="Model id used for analysis requests.",
+                default=p.default_model,
+            )
+        )
+    return tuple(defs)
+
+
+EDITABLE: dict[str, SettingDef] = {d.key: d for d in (*_DEFS, *_llm_defs())}
 
 
 def coerce_value(defn: SettingDef, raw: str) -> int | str | bool:

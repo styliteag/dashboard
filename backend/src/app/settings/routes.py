@@ -42,7 +42,9 @@ class SettingUpdate(BaseModel):
 
 
 def _item(defn: SettingDef) -> SettingItem:
-    env_default = getattr(get_settings(), defn.key)
+    # Keys with an explicit catalog default (LLM provider settings) carry it on the
+    # def; everything else falls back to its env/Settings field.
+    env_default = defn.default if defn.default is not None else getattr(get_settings(), defn.key)
     override = get_override(defn.key)
     if defn.is_secret:
         value = _MASK if override is not None else ""
