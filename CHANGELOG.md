@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Interface-error alerting now skips bridge, lagg and tunnel pseudo-interfaces
+  (`bridge`, `lagg`, `gre`, `ovpn`, `tun`, `tap`, `wg`) in addition to the existing
+  `lo/enc/pflog/pfsync/gif/stf`. On FreeBSD (OPNsense/pfSense) these count Oerrs from
+  BUM-flood-to-a-down-member and ENOBUFS — not wire faults — so a bridge with dead
+  member ports no longer raises a false interface-error check. Real driver errors
+  still surface on the physical member interface.
+
 ## [1.9.2] - 2026-06-28
 
 ### Added

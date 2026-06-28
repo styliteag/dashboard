@@ -40,7 +40,23 @@ _SWAP_WARN, _SWAP_CRIT = 50.0, 80.0  # swap in use = memory pressure
 _CERT_WARN_DAYS, _CERT_CRIT_DAYS = 30, 7  # certificate expiry runway
 _IFACE_ERR_WARN, _IFACE_ERR_CRIT = 1.0, 10.0  # interface (in+out) errors per second
 # Pseudo/virtual interfaces have no NIC driver to report meaningful errors → skip.
-_IFACE_SKIP_PREFIXES = ("lo", "enc", "pflog", "pfsync", "gif", "stf")
+# bridge/lagg in particular count Oerrs from BUM-flood-to-down-member and ENOBUFS,
+# not wire faults — a real driver error already surfaces on the physical member.
+_IFACE_SKIP_PREFIXES = (
+    "lo",
+    "enc",
+    "pflog",
+    "pfsync",
+    "gif",
+    "stf",
+    "bridge",
+    "lagg",
+    "gre",
+    "ovpn",
+    "tun",
+    "tap",
+    "wg",
+)
 
 _GW_DOWN_WORDS = ("down", "force_down", "offline")
 _IPSEC_UP = {"established", "installed", "connected", "up", "1", "true", "yes"}

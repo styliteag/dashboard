@@ -39,6 +39,10 @@ def test_iface_error_checks_skip_no_data_down_and_pseudo() -> None:
         InterfaceStats(name="igb1", status="down", err_rate=0.0),  # link down
         InterfaceStats(name="lo0", status="up", err_rate=99.0),  # pseudo
         InterfaceStats(name="pfsync0", status="up", err_rate=99.0),  # pseudo
+        InterfaceStats(
+            name="bridge0", status="up", err_rate=99.0
+        ),  # flood-to-down-member, not wire
+        InterfaceStats(name="ovpns1", status="up", err_rate=99.0),  # tunnel, no NIC driver
     ]
     assert iface_error_checks(ifaces) == []
 
