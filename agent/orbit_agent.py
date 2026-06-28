@@ -1552,9 +1552,14 @@ _last_log_ts = [0.0]  # monotonic time of the last collection (mutable holder)
 
 
 def _newest_log(pattern: str) -> str:
-    """Newest file matching ``pattern`` (OPNsense dated logs), or '' if none."""
-    files = glob.glob(pattern)
-    return max(files, key=os.path.getmtime) if files else ""
+    """Newest file matching ``pattern`` (OPNsense dated logs), or '' if none.
+
+    Tolerates a file vanishing between glob and getmtime (log rotation)."""
+    try:
+        files = glob.glob(pattern)
+        return max(files, key=os.path.getmtime) if files else ""
+    except OSError:
+        return ""
 
 
 def _resolve_log_path(platform_name: str, opn_glob: str, pf_path: str) -> str:
@@ -1576,11 +1581,16 @@ def collect_logfiles() -> list:
     for name, opn_glob, pf_path in _LOG_SOURCES:
         if total >= _LOG_TOTAL_CAP:
             break
-        path = _resolve_log_path(platform_name, opn_glob, pf_path)
-        if not path:
+        # One bad log (vanished mid-rotation, unreadable) must never drop the rest
+        # or, since this is the last entry in collect_all(), the whole push.
+        try:
+            path = _resolve_log_path(platform_name, opn_glob, pf_path)
+            if not path:
+                continue
+            budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
+            content = _run(["tail", "-c", str(budget), path], timeout=10)
+        except Exception:
             continue
-        budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
-        content = _run(["tail", "-c", str(budget), path], timeout=10)
         if content:
             out.append({"name": name, "content": content})
             total += len(content)
