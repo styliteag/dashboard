@@ -40,6 +40,8 @@ Migrations run automatically via `alembic upgrade head` in `docker/start.sh` (co
 
 When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates on a version diff — an unchanged version means the fix never deploys to a box) and run `just agent-test`. Likewise run `just checkmk-test` after any `checkmk/` change.
 
+- **The agent must run on Python 3.8.** Older pfSense boxes (2.6/2.7-era, FreeBSD) ship Python 3.8 — newer OPNsense/pfSense run 3.11, so a 3.9+ feature passes every test box yet silently bricks the old ones on self-update. Before declaring an agent change done, scan for **runtime** 3.9+ APIs: `str.removeprefix`/`removesuffix` (3.9), `dict |` merge (3.9), `math.lcm`/`isqrt`, `int.bit_count` (3.10), `match`/`case` (3.10), `zoneinfo`/`graphlib`, `functools.cache`. The file has `from __future__ import annotations`, so `list[dict]` / `X | None` **annotations** are fine (stored as strings, never evaluated) — only real *calls/statements* break. Past incident: `str.removesuffix()` in the cert collector took a 3.8 pfSense agent permanently silent ("agent silent for >120s"). If you can't test on a 3.8 box, `python3.8 -W error -c "import ast,sys; ast.parse(open('agent/orbit_agent.py').read())"` catches syntax-level breaks at least.
+
 ## CHANGELOG
 
 `CHANGELOG.md` is kept and follows [Keep a Changelog](https://keepachangelog.com/) + SemVer. For any user-visible change, add a bullet under `## [Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` …) **as part of the same change** — don't leave it for later.
