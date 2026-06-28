@@ -257,3 +257,19 @@ async def test_single_channel_test_filters(monkeypatch) -> None:
     monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
     results = await notifier.send_test_notification("email")
     assert {r.channel for r in results} == {"email"}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_is_fire_and_forget(monkeypatch) -> None:
+    import asyncio
+
+    ran = asyncio.Event()
+
+    async def _fake_send(*a, **k) -> None:
+        ran.set()
+
+    monkeypatch.setattr(notifier, "send_notification", _fake_send)
+    assert notifier.dispatch_async("t", "m") is None  # returns immediately
+    assert ran.is_set() is False  # not awaited inline
+    await asyncio.sleep(0)  # let the scheduled task run
+    assert ran.is_set() is True

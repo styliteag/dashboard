@@ -248,6 +248,24 @@ async def send_notification(
     await _dispatch(title, message, level, category, respect_routes=True)
 
 
+# Strong refs to in-flight fire-and-forget sends, so the event loop doesn't GC a
+# task mid-send (asyncio only holds a weak ref). Discarded when the task finishes.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def dispatch_async(
+    title: str, message: str, level: str = "info", category: str = AVAILABILITY
+) -> None:
+    """Fire-and-forget ``send_notification``: schedule the send as a background task
+    so a caller on a latency-sensitive path (the agent WS ingest, the poll cycle)
+    is never blocked by channel send latency (~10s/HTTP channel, SMTP). Delivery is
+    best-effort — ``send_notification`` already logs every failure and never raises,
+    so the task needs no result handling."""
+    task = asyncio.create_task(send_notification(title, message, level, category))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 async def send_test_notification(channel: str | None = None) -> list[ChannelResult]:
     """Send a test message and report per-channel status (for the Settings UI).
 

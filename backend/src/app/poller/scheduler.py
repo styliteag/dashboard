@@ -21,7 +21,7 @@ from app.db.models import Instance
 from app.devices.types import Transport
 from app.maintenance.jobs import prune_check_events, prune_ipsec_events, prune_metrics
 from app.metrics.store import is_online, write_poll_metrics
-from app.notifications.notifier import send_notification
+from app.notifications.notifier import dispatch_async
 from app.poller.gate import effective_interval, is_due, is_stale, stale_threshold
 from app.settings.store import effective_settings
 from app.xsense.registry import registry
@@ -60,7 +60,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
             await session.commit()
 
         if was_offline:
-            await send_notification(
+            dispatch_async(
                 f"✅ {instance_name} is back online",
                 f"Instance {instance_name} recovered.",
                 level="info",
@@ -82,7 +82,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
                     inst.last_error_message = str(exc)[:500]
                     await session.commit()
                     if was_online:
-                        await send_notification(
+                        dispatch_async(
                             f"🔴 {instance_name} is offline",
                             f"Instance {instance_name} failed: {str(exc)[:200]}",
                             level="error",
@@ -157,8 +157,8 @@ async def _check_stale_agents() -> None:
     sessionmaker = get_sessionmaker()
 
     # Collect instances we actually flipped offline, notify AFTER the session is
-    # closed — send_notification can block ~10s/channel, and holding the session
-    # open while it does widens the staleness race window (and ties up a DB conn).
+    # closed: the send is fire-and-forget, but it must not run while the session is
+    # held (it would tie up a DB conn) — keep notification scheduling off the DB path.
     flagged: list[tuple[str, int]] = []
     async with sessionmaker() as session:
         rows = (
@@ -208,7 +208,7 @@ async def _check_stale_agents() -> None:
                 flagged.append((inst.name, threshold))
 
     for name, threshold in flagged:
-        await send_notification(
+        dispatch_async(
             f"🔴 {name} agent offline",
             f"No metrics push from {name} for over {threshold}s.",
             level="error",

@@ -24,7 +24,7 @@ from app.db.models import Instance
 from app.ipsec.event_store import record_tunnel_events
 from app.ipsec.history import diff_ipsec
 from app.metrics.store import is_online, write_poll_metrics
-from app.notifications.notifier import send_notification
+from app.notifications.notifier import dispatch_async
 from app.xsense.schemas import (
     CertInfo,
     ConfigInfo,
@@ -635,7 +635,7 @@ class AgentHub:
             await session.commit()
 
         if recovered_name:
-            await send_notification(
+            dispatch_async(
                 f"✅ {recovered_name} agent back online",
                 f"Agent for {recovered_name} resumed pushing metrics.",
                 level="info",
@@ -644,12 +644,10 @@ class AgentHub:
         # Fire a per-check alert for every state transition. Each is routed by its
         # category, so a channel only gets it when subscribed (history is recorded
         # regardless, above). Transitions are sparse — one per actual state change.
-        # These are sequential awaits: an unsubscribed category is a cheap set-lookup
-        # skip, but a subscribed+configured channel adds its send latency to ingest
-        # (same blocking trade-off the direct poller notes). Fire-and-forget later.
+        # Sends are fire-and-forget so channel send latency never blocks ingest.
         for transition in check_transitions:
             title, msg, level, cat = _check_alert(instance_name, transition)
-            await send_notification(title, msg, level=level, category=cat)
+            dispatch_async(title, msg, level=level, category=cat)
         log.debug("agent.metrics", instance_id=instance_id, cpu=status.cpu.total)
 
 
