@@ -1,0 +1,1251 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "stylite-orbit-dashboard",
+      "name": "stylite-orbit-dashboard",
+      "version": "1.8.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/aiomysql@0.3.2",
+      "name": "aiomysql",
+      "version": "0.3.2",
+      "purl": "pkg:pypi/aiomysql@0.3.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/alembic@1.18.4",
+      "name": "alembic",
+      "version": "1.18.4",
+      "purl": "pkg:pypi/alembic@1.18.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/annotated-doc@0.0.4",
+      "name": "annotated-doc",
+      "version": "0.0.4",
+      "purl": "pkg:pypi/annotated-doc@0.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/annotated-types@0.7.0",
+      "name": "annotated-types",
+      "version": "0.7.0",
+      "purl": "pkg:pypi/annotated-types@0.7.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT License"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/anyio@4.13.0",
+      "name": "anyio",
+      "version": "4.13.0",
+      "purl": "pkg:pypi/anyio@4.13.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/apscheduler@3.11.2",
+      "name": "APScheduler",
+      "version": "3.11.2",
+      "purl": "pkg:pypi/apscheduler@3.11.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/argon2-cffi@25.1.0",
+      "name": "argon2-cffi",
+      "version": "25.1.0",
+      "purl": "pkg:pypi/argon2-cffi@25.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/argon2-cffi-bindings@25.1.0",
+      "name": "argon2-cffi-bindings",
+      "version": "25.1.0",
+      "purl": "pkg:pypi/argon2-cffi-bindings@25.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/asyncssh@2.23.1",
+      "name": "asyncssh",
+      "version": "2.23.1",
+      "purl": "pkg:pypi/asyncssh@2.23.1",
+      "licenses": [
+        {
+          "expression": "EPL-2.0 OR GPL-2.0-or-later"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/certifi@2026.4.22",
+      "name": "certifi",
+      "version": "2026.4.22",
+      "purl": "pkg:pypi/certifi@2026.4.22",
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/cffi@2.0.0",
+      "name": "cffi",
+      "version": "2.0.0",
+      "purl": "pkg:pypi/cffi@2.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/click@8.3.3",
+      "name": "click",
+      "version": "8.3.3",
+      "purl": "pkg:pypi/click@8.3.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/cryptography@47.0.0",
+      "name": "cryptography",
+      "version": "47.0.0",
+      "purl": "pkg:pypi/cryptography@47.0.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR BSD-3-Clause"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/fastapi@0.136.1",
+      "name": "fastapi",
+      "version": "0.136.1",
+      "purl": "pkg:pypi/fastapi@0.136.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/greenlet@3.4.0",
+      "name": "greenlet",
+      "version": "3.4.0",
+      "purl": "pkg:pypi/greenlet@3.4.0",
+      "licenses": [
+        {
+          "expression": "MIT AND PSF-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/h11@0.16.0",
+      "name": "h11",
+      "version": "0.16.0",
+      "purl": "pkg:pypi/h11@0.16.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/httpcore@1.0.9",
+      "name": "httpcore",
+      "version": "1.0.9",
+      "purl": "pkg:pypi/httpcore@1.0.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/httptools@0.7.1",
+      "name": "httptools",
+      "version": "0.7.1",
+      "purl": "pkg:pypi/httptools@0.7.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/httpx@0.28.1",
+      "name": "httpx",
+      "version": "0.28.1",
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/idna@3.13",
+      "name": "idna",
+      "version": "3.13",
+      "purl": "pkg:pypi/idna@3.13",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/itsdangerous@2.2.0",
+      "name": "itsdangerous",
+      "version": "2.2.0",
+      "purl": "pkg:pypi/itsdangerous@2.2.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "BSD License"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/mako@1.3.11",
+      "name": "Mako",
+      "version": "1.3.11",
+      "purl": "pkg:pypi/mako@1.3.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/markupsafe@3.0.3",
+      "name": "MarkupSafe",
+      "version": "3.0.3",
+      "purl": "pkg:pypi/markupsafe@3.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pycparser@3.0",
+      "name": "pycparser",
+      "version": "3.0",
+      "purl": "pkg:pypi/pycparser@3.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pydantic@2.13.3",
+      "name": "pydantic",
+      "version": "2.13.3",
+      "purl": "pkg:pypi/pydantic@2.13.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pydantic-core@2.46.3",
+      "name": "pydantic_core",
+      "version": "2.46.3",
+      "purl": "pkg:pypi/pydantic-core@2.46.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pydantic-settings@2.14.0",
+      "name": "pydantic-settings",
+      "version": "2.14.0",
+      "purl": "pkg:pypi/pydantic-settings@2.14.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pymysql@1.1.2",
+      "name": "PyMySQL",
+      "version": "1.1.2",
+      "purl": "pkg:pypi/pymysql@1.1.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/python-dotenv@1.2.2",
+      "name": "python-dotenv",
+      "version": "1.2.2",
+      "purl": "pkg:pypi/python-dotenv@1.2.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pyyaml@6.0.3",
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "purl": "pkg:pypi/pyyaml@6.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/sqlalchemy@2.0.49",
+      "name": "SQLAlchemy",
+      "version": "2.0.49",
+      "purl": "pkg:pypi/sqlalchemy@2.0.49",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/starlette@1.0.0",
+      "name": "starlette",
+      "version": "1.0.0",
+      "purl": "pkg:pypi/starlette@1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/structlog@25.5.0",
+      "name": "structlog",
+      "version": "25.5.0",
+      "purl": "pkg:pypi/structlog@25.5.0",
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/typing-extensions@4.15.0",
+      "name": "typing_extensions",
+      "version": "4.15.0",
+      "purl": "pkg:pypi/typing-extensions@4.15.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "PSF-2.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/typing-inspection@0.4.2",
+      "name": "typing-inspection",
+      "version": "0.4.2",
+      "purl": "pkg:pypi/typing-inspection@0.4.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/tzlocal@5.3.1",
+      "name": "tzlocal",
+      "version": "5.3.1",
+      "purl": "pkg:pypi/tzlocal@5.3.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/uvicorn@0.46.0",
+      "name": "uvicorn",
+      "version": "0.46.0",
+      "purl": "pkg:pypi/uvicorn@0.46.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/uvloop@0.22.1",
+      "name": "uvloop",
+      "version": "0.22.1",
+      "purl": "pkg:pypi/uvloop@0.22.1",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT License"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/watchfiles@1.1.1",
+      "name": "watchfiles",
+      "version": "1.1.1",
+      "purl": "pkg:pypi/watchfiles@1.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/websockets@16.0",
+      "name": "websockets",
+      "version": "16.0",
+      "purl": "pkg:pypi/websockets@16.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@babel/runtime@7.29.2",
+      "name": "@babel/runtime",
+      "version": "7.29.2",
+      "purl": "pkg:npm/@babel/runtime@7.29.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@remix-run/router@1.23.2",
+      "name": "@remix-run/router",
+      "version": "1.23.2",
+      "purl": "pkg:npm/@remix-run/router@1.23.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@tanstack/query-core@5.100.5",
+      "name": "@tanstack/query-core",
+      "version": "5.100.5",
+      "purl": "pkg:npm/@tanstack/query-core@5.100.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@tanstack/react-query@5.100.5",
+      "name": "@tanstack/react-query",
+      "version": "5.100.5",
+      "purl": "pkg:npm/@tanstack/react-query@5.100.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-array@3.2.2",
+      "name": "@types/d3-array",
+      "version": "3.2.2",
+      "purl": "pkg:npm/@types/d3-array@3.2.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-color@3.1.3",
+      "name": "@types/d3-color",
+      "version": "3.1.3",
+      "purl": "pkg:npm/@types/d3-color@3.1.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-ease@3.0.2",
+      "name": "@types/d3-ease",
+      "version": "3.0.2",
+      "purl": "pkg:npm/@types/d3-ease@3.0.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-interpolate@3.0.4",
+      "name": "@types/d3-interpolate",
+      "version": "3.0.4",
+      "purl": "pkg:npm/@types/d3-interpolate@3.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-path@3.1.1",
+      "name": "@types/d3-path",
+      "version": "3.1.1",
+      "purl": "pkg:npm/@types/d3-path@3.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-scale@4.0.9",
+      "name": "@types/d3-scale",
+      "version": "4.0.9",
+      "purl": "pkg:npm/@types/d3-scale@4.0.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-shape@3.1.8",
+      "name": "@types/d3-shape",
+      "version": "3.1.8",
+      "purl": "pkg:npm/@types/d3-shape@3.1.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-time@3.0.4",
+      "name": "@types/d3-time",
+      "version": "3.0.4",
+      "purl": "pkg:npm/@types/d3-time@3.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@types/d3-timer@3.0.2",
+      "name": "@types/d3-timer",
+      "version": "3.0.2",
+      "purl": "pkg:npm/@types/d3-timer@3.0.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/clsx@2.1.1",
+      "name": "clsx",
+      "version": "2.1.1",
+      "purl": "pkg:npm/clsx@2.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/csstype@3.2.3",
+      "name": "csstype",
+      "version": "3.2.3",
+      "purl": "pkg:npm/csstype@3.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-array@3.2.4",
+      "name": "d3-array",
+      "version": "3.2.4",
+      "purl": "pkg:npm/d3-array@3.2.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-color@3.1.0",
+      "name": "d3-color",
+      "version": "3.1.0",
+      "purl": "pkg:npm/d3-color@3.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-ease@3.0.1",
+      "name": "d3-ease",
+      "version": "3.0.1",
+      "purl": "pkg:npm/d3-ease@3.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-format@3.1.2",
+      "name": "d3-format",
+      "version": "3.1.2",
+      "purl": "pkg:npm/d3-format@3.1.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-interpolate@3.0.1",
+      "name": "d3-interpolate",
+      "version": "3.0.1",
+      "purl": "pkg:npm/d3-interpolate@3.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-path@3.1.0",
+      "name": "d3-path",
+      "version": "3.1.0",
+      "purl": "pkg:npm/d3-path@3.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-scale@4.0.2",
+      "name": "d3-scale",
+      "version": "4.0.2",
+      "purl": "pkg:npm/d3-scale@4.0.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-shape@3.2.0",
+      "name": "d3-shape",
+      "version": "3.2.0",
+      "purl": "pkg:npm/d3-shape@3.2.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-time@3.1.0",
+      "name": "d3-time",
+      "version": "3.1.0",
+      "purl": "pkg:npm/d3-time@3.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-time-format@4.1.0",
+      "name": "d3-time-format",
+      "version": "4.1.0",
+      "purl": "pkg:npm/d3-time-format@4.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/d3-timer@3.0.1",
+      "name": "d3-timer",
+      "version": "3.0.1",
+      "purl": "pkg:npm/d3-timer@3.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/decimal.js-light@2.5.1",
+      "name": "decimal.js-light",
+      "version": "2.5.1",
+      "purl": "pkg:npm/decimal.js-light@2.5.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/dom-helpers@5.2.1",
+      "name": "dom-helpers",
+      "version": "5.2.1",
+      "purl": "pkg:npm/dom-helpers@5.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/eventemitter3@4.0.7",
+      "name": "eventemitter3",
+      "version": "4.0.7",
+      "purl": "pkg:npm/eventemitter3@4.0.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/fast-equals@5.4.0",
+      "name": "fast-equals",
+      "version": "5.4.0",
+      "purl": "pkg:npm/fast-equals@5.4.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/internmap@2.0.3",
+      "name": "internmap",
+      "version": "2.0.3",
+      "purl": "pkg:npm/internmap@2.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/js-tokens@4.0.0",
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "purl": "pkg:npm/js-tokens@4.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/lodash@4.18.1",
+      "name": "lodash",
+      "version": "4.18.1",
+      "purl": "pkg:npm/lodash@4.18.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/loose-envify@1.4.0",
+      "name": "loose-envify",
+      "version": "1.4.0",
+      "purl": "pkg:npm/loose-envify@1.4.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/lucide-react@0.453.0",
+      "name": "lucide-react",
+      "version": "0.453.0",
+      "purl": "pkg:npm/lucide-react@0.453.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/object-assign@4.1.1",
+      "name": "object-assign",
+      "version": "4.1.1",
+      "purl": "pkg:npm/object-assign@4.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/prop-types@15.8.1",
+      "name": "prop-types",
+      "version": "15.8.1",
+      "purl": "pkg:npm/prop-types@15.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react@18.3.1",
+      "name": "react",
+      "version": "18.3.1",
+      "purl": "pkg:npm/react@18.3.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-dom@18.3.1",
+      "name": "react-dom",
+      "version": "18.3.1",
+      "purl": "pkg:npm/react-dom@18.3.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-is@16.13.1",
+      "name": "react-is",
+      "version": "16.13.1",
+      "purl": "pkg:npm/react-is@16.13.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-router@6.30.3",
+      "name": "react-router",
+      "version": "6.30.3",
+      "purl": "pkg:npm/react-router@6.30.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-router-dom@6.30.3",
+      "name": "react-router-dom",
+      "version": "6.30.3",
+      "purl": "pkg:npm/react-router-dom@6.30.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-smooth@4.0.4",
+      "name": "react-smooth",
+      "version": "4.0.4",
+      "purl": "pkg:npm/react-smooth@4.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-transition-group@4.4.5",
+      "name": "react-transition-group",
+      "version": "4.4.5",
+      "purl": "pkg:npm/react-transition-group@4.4.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/recharts@2.15.4",
+      "name": "recharts",
+      "version": "2.15.4",
+      "purl": "pkg:npm/recharts@2.15.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/recharts-scale@0.4.5",
+      "name": "recharts-scale",
+      "version": "0.4.5",
+      "purl": "pkg:npm/recharts-scale@0.4.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/scheduler@0.23.2",
+      "name": "scheduler",
+      "version": "0.23.2",
+      "purl": "pkg:npm/scheduler@0.23.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/tiny-invariant@1.3.3",
+      "name": "tiny-invariant",
+      "version": "1.3.3",
+      "purl": "pkg:npm/tiny-invariant@1.3.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/victory-vendor@36.9.2",
+      "name": "victory-vendor",
+      "version": "36.9.2",
+      "purl": "pkg:npm/victory-vendor@36.9.2",
+      "licenses": [
+        {
+          "expression": "MIT AND ISC"
+        }
+      ]
+    }
+  ]
+}

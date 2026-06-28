@@ -71,6 +71,32 @@ Contributor License Agreement (CLA) may be required before larger contributions
 are merged — this keeps the copyright consolidated so the dual model stays
 enforceable.
 
+## Third-party components
+
+Orbit bundles open-source libraries, each under its own license. The full list —
+backend (Python) and frontend (JavaScript), restricted to what actually ships in
+the production container — lives in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md),
+regenerated with `just notices` whenever a runtime dependency changes. The notices
+file ships inside the container image alongside this license. The same run emits
+[`sbom.cdx.json`](sbom.cdx.json), a CycloneDX 1.6 Software Bill of Materials of the
+shipped components, also bundled in the image.
+
+Almost every dependency is permissively licensed (MIT / BSD / ISC / Apache-2.0),
+which imposes no restriction on distributing Orbit under the BSL. Two are weak
+("file-level") copyleft and remain fine because we use them **unmodified, as
+libraries**:
+
+- **asyncssh** — dual-licensed `EPL-2.0 OR GPL-2.0-or-later`. We rely on the
+  GPL-2.0-or-later arm, which is compatible with Orbit's GPL-3.0-or-later Change
+  License, so the dependency stays clean both now and after the Change Date.
+- **certifi** (CA bundle) — `MPL-2.0`. File-level copyleft on the bundle itself;
+  used as-is, so its terms do not extend to Orbit's own code.
+
+No dependency is under a strong/network copyleft license (GPL/AGPL applied to a
+combined work), so bundling them does not force Orbit's own source under those
+terms. If you modify a copyleft dependency's own files, that component's license
+governs those changes.
+
 ## Trademark
 
 "STYLiTE" and "STYLiTE Orbit" are trademarks of STYLiTE. The BSL grants no rights

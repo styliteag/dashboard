@@ -101,6 +101,17 @@ dev-logs:
 release type="patch":
     ./release.sh {{type}}
 
+# Regenerate THIRD-PARTY-NOTICES.md AND sbom.cdx.json (CycloneDX 1.6) from the
+# shipped runtime deps. Needs `backend-install` + `frontend-install` first (reads
+# the backend venv metadata and frontend node_modules). Run after changing any
+# runtime dependency. Covers app dependencies only — for an SBOM that also
+# includes base-image OS packages, scan the built image with syft.
+notices:
+    cd backend && uv run python ../scripts/gen_notices.py
+
+# Alias: same generator, emphasises the SBOM artifact.
+sbom: notices
+
 # Generate a Fernet master key for DASH_MASTER_KEY
 gen-key:
     cd backend && uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'

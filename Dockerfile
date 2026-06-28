@@ -64,6 +64,10 @@ COPY --from=backend-builder /app/alembic /app/alembic
 # Copy agent scripts (served at /api/agent/script and /api/agent/rc)
 COPY agent/ /app/agent/
 
+# License + third-party attribution — the BSL requires the license to travel
+# with every copy, and the bundled OSS licenses require their notices to ship.
+COPY LICENSE LICENSING.md THIRD-PARTY-NOTICES.md sbom.cdx.json /app/
+
 # Copy frontend build into nginx webroot
 COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 
