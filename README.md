@@ -300,3 +300,16 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
 - [`CHECKMK.md`](CHECKMK.md) — full Checkmk integration guide (what's exposed, API key, datasource program, piggyback hosts, troubleshooting).
 - [`checkmk/README.md`](checkmk/README.md) — Checkmk special-agent install and auth.
 - [`CLAUDE.md`](CLAUDE.md) — repository conventions and done-criteria.
+
+## License
+
+STYLiTE Orbit Dashboard is **source-available** under the **Business Source
+License 1.1 (BSL 1.1)** — see [`LICENSE`](LICENSE) and [`LICENSING.md`](LICENSING.md).
+
+- ✅ Read, build, modify, and run it for your **own** organization.
+- ❌ Offering it to third parties as a hosted / managed service, or reselling it,
+  needs a **commercial license** — contact `office@stylite.de`.
+- Each released version becomes **GPL-3.0-or-later** four years after its release.
+
+BSL is *not* an OSI-approved "Open Source" license; the correct term is
+*source-available*.

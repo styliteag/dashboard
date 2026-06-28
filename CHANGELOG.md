@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **License changed to the Business Source License 1.1 (BSL 1.1).**
+  STYLiTE Orbit is now *source-available*: the source stays public and you may run
+  it for your own organization, but offering it to third parties as a hosted /
+  managed service or reselling it requires a commercial license from STYLiTE. Each
+  released version automatically converts to GPL-3.0-or-later four years after its
+  release. See [`LICENSE`](LICENSE) and [`LICENSING.md`](LICENSING.md).
+
 ## [1.7.0] - 2026-06-28
 
 ### Fixed
