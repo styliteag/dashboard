@@ -41,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.8.0"
+__version__ = "1.8.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1294,12 +1294,23 @@ def collect_firewall_log(limit: int = 30) -> list[dict]:
 
 
 def collect_loadavg() -> dict:
-    """1/5/15-minute load average from ``sysctl vm.loadavg`` ('{ 0.37 0.29 0.26 }')."""
+    """1/5/15-minute load average from ``sysctl vm.loadavg`` ('{ 0.37 0.29 0.26 }'),
+    plus the CPU core count (``hw.ncpu``) so the dashboard can normalise load per
+    core. ``cores`` is 0 when the count can't be read (then the load check skips)."""
+    try:
+        cores = int(_run(["sysctl", "-n", "hw.ncpu"]).strip())
+    except (ValueError, IndexError):
+        cores = 0
     nums = _run(["sysctl", "-n", "vm.loadavg"]).strip().strip("{}").split()
     try:
-        return {"one": float(nums[0]), "five": float(nums[1]), "fifteen": float(nums[2])}
+        return {
+            "one": float(nums[0]),
+            "five": float(nums[1]),
+            "fifteen": float(nums[2]),
+            "cores": cores,
+        }
     except (ValueError, IndexError):
-        return {"one": 0.0, "five": 0.0, "fifteen": 0.0}
+        return {"one": 0.0, "five": 0.0, "fifteen": 0.0, "cores": cores}
 
 
 def collect_pf() -> dict:

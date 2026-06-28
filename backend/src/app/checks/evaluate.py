@@ -9,7 +9,9 @@ from app.xsense.schemas import (
     DiskUsage,
     FirmwareStatus,
     GatewayStatus,
+    InterfaceStats,
     IPsecServiceStatus,
+    LoadAvg,
     MemoryUsage,
     NtpStatus,
     PfStatus,
@@ -27,10 +29,18 @@ _DNS_SERVICES = frozenset({"unbound", "dnsmasq"})
 _MEM_WARN, _MEM_CRIT = 80.0, 90.0
 _DISK_WARN, _DISK_CRIT = 80.0, 90.0
 _CPU_WARN = 95.0  # CPU is spiky — warn only, never crit
+# Load is saturation (run-queue depth), not utilization, so unlike CPU it gets a
+# CRIT — but only on the stable 5-min average, normalised per core, and set high
+# enough not to flap: a sustained run queue ≥2× cores is real contention, ≥4× is
+# severe sustained overload.
+_LOAD_WARN_PER_CORE, _LOAD_CRIT_PER_CORE = 2.0, 4.0
 _GW_LOSS_WARN, _GW_LOSS_CRIT = 20.0, 80.0
 _PF_WARN, _PF_CRIT = 80.0, 95.0  # pf state-table fill (exhaustion drops new flows)
 _SWAP_WARN, _SWAP_CRIT = 50.0, 80.0  # swap in use = memory pressure
 _CERT_WARN_DAYS, _CERT_CRIT_DAYS = 30, 7  # certificate expiry runway
+_IFACE_ERR_WARN, _IFACE_ERR_CRIT = 1.0, 10.0  # interface (in+out) errors per second
+# Pseudo/virtual interfaces have no NIC driver to report meaningful errors → skip.
+_IFACE_SKIP_PREFIXES = ("lo", "enc", "pflog", "pfsync", "gif", "stf")
 
 _GW_DOWN_WORDS = ("down", "force_down", "offline")
 _IPSEC_UP = {"established", "installed", "connected", "up", "1", "true", "yes"}
@@ -123,6 +133,37 @@ def ntp_check(ntp: NtpStatus) -> ServiceCheck | None:
         key="ntp",
         state=int(CheckState.WARN),
         summary="NTP not synchronised (no usable peer yet)",
+    )
+
+
+def load_check(load: LoadAvg) -> ServiceCheck | None:
+    """5-minute load average normalised per CPU core. None when no data
+    (``cores==0``: direct poll or a pre-1.8.1 agent). Uses the 5-min average (not
+    1-min) so a transient spike does not flap the state."""
+    if load.cores <= 0:
+        return None
+    per_core = load.five / load.cores
+    if per_core >= _LOAD_CRIT_PER_CORE:
+        state, word = CheckState.CRIT, "critical"
+    elif per_core >= _LOAD_WARN_PER_CORE:
+        state, word = CheckState.WARN, "high"
+    else:
+        state, word = CheckState.OK, "ok"
+    return ServiceCheck(
+        key="load",
+        state=int(state),
+        summary=(
+            f"Load {load.five:.2f} (5m) = {per_core:.2f}/core over {load.cores} cores ({word})"
+        ),
+        metrics=[
+            PerfMetric(
+                name="load_per_core",
+                value=round(per_core, 2),
+                warn=_LOAD_WARN_PER_CORE,
+                crit=_LOAD_CRIT_PER_CORE,
+            ),
+            PerfMetric(name="load5", value=load.five),
+        ],
     )
 
 
@@ -300,6 +341,40 @@ def service_checks(services: list[ServiceInfo]) -> list[ServiceCheck]:
     return out
 
 
+def iface_error_checks(interfaces: list[InterfaceStats]) -> list[ServiceCheck]:
+    """Per-interface driver error rate ((in+out errors)/sec, derived in the agent
+    hub from two consecutive pushes). Skips pseudo interfaces and down links, and
+    skips any interface whose rate is unknown (``err_rate < 0`` — single snapshot,
+    counter reset, or direct poll) so a check is never invented from no data."""
+    out: list[ServiceCheck] = []
+    for i in interfaces:
+        if i.err_rate < 0 or i.status != "up" or i.name.startswith(_IFACE_SKIP_PREFIXES):
+            continue
+        if i.err_rate >= _IFACE_ERR_CRIT:
+            state, word = CheckState.CRIT, "critical"
+        elif i.err_rate >= _IFACE_ERR_WARN:
+            state, word = CheckState.WARN, "elevated"
+        else:
+            state, word = CheckState.OK, "ok"
+        out.append(
+            ServiceCheck(
+                key=f"iface_errors:{i.name}",
+                state=int(state),
+                summary=f"Interface {i.name} errors {i.err_rate:.2f}/s ({word})",
+                metrics=[
+                    PerfMetric(
+                        name="iface_err_rate",
+                        value=i.err_rate,
+                        warn=_IFACE_ERR_WARN,
+                        crit=_IFACE_ERR_CRIT,
+                        unit="/s",
+                    )
+                ],
+            )
+        )
+    return out
+
+
 def cert_checks(certs: list[CertInfo]) -> list[ServiceCheck]:
     """Certificate-expiry checks. CRIT when expired or <7 days left, WARN <30 days."""
     out: list[ServiceCheck] = []
@@ -346,9 +421,15 @@ def evaluate_checks(
     checks += disk_checks(status.disks)
     # Optional system-telemetry checks — each returns None when the box reported
     # no data (e.g. direct-poll instances, which don't carry pf/ntp/swap).
-    for opt in (swap_check(status.memory), pf_states_check(status.pf), ntp_check(status.ntp)):
+    for opt in (
+        load_check(status.load),
+        swap_check(status.memory),
+        pf_states_check(status.pf),
+        ntp_check(status.ntp),
+    ):
         if opt is not None:
             checks.append(opt)
+    checks += iface_error_checks(status.interfaces)
     if gateways:
         checks += gateway_checks(gateways)
     if ipsec is not None:

@@ -84,6 +84,7 @@ def status_from_agent(data: dict) -> SystemStatus:
             one=load_data.get("one", 0),
             five=load_data.get("five", 0),
             fifteen=load_data.get("fifteen", 0),
+            cores=load_data.get("cores", 0),
         ),
         pf=PfStatus(
             states_current=pf_data.get("states_current", 0),
@@ -124,6 +125,28 @@ def status_from_agent(data: dict) -> SystemStatus:
             for i in data.get("interfaces", [])
         ],
     )
+
+
+def annotate_iface_error_rates(
+    new: SystemStatus, prev: SystemStatus | None, dt_seconds: float
+) -> SystemStatus:
+    """Return a copy of ``new`` whose interfaces carry a derived ``err_rate``
+    ((in+out errors)/sec) computed against ``prev``. Counters are cumulative, so a
+    rate needs two samples; an interface keeps the -1.0 "no data" sentinel when it
+    has no previous sample, when either counter went backwards (reboot / counter
+    reset), or when ``dt_seconds`` is not positive (e.g. first push after restart)."""
+    if prev is None or dt_seconds <= 0:
+        return new
+    prev_by_name = {i.name: i for i in prev.interfaces}
+    ifaces = []
+    for i in new.interfaces:
+        p = prev_by_name.get(i.name)
+        rate = -1.0
+        if p is not None and i.in_errors >= p.in_errors and i.out_errors >= p.out_errors:
+            delta = (i.in_errors - p.in_errors) + (i.out_errors - p.out_errors)
+            rate = round(delta / dt_seconds, 3)
+        ifaces.append(i.model_copy(update={"err_rate": rate}))
+    return new.model_copy(update={"interfaces": ifaces})
 
 
 def gateways_from_agent(data: dict) -> list[GatewayStatus]:
@@ -300,6 +323,10 @@ class AgentHub:
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
         self._last_certs: dict[int, list[CertInfo]] = {}
+        # Timestamp of the previous metrics push per instance — the time base for
+        # deriving per-interface error *rates* (counters are cumulative). In-memory
+        # only (not hydrated), so the first push after a restart gets one no-data round.
+        self._last_metrics_ts: dict[int, datetime] = {}
         # Last evaluated check states ({key: state}) per instance — the baseline
         # the next push diffs against to record check-history transitions. Survives
         # a backend restart via the persisted status_snapshot (no restart spam).
@@ -507,8 +534,15 @@ class AgentHub:
         sessionmaker = get_sessionmaker()
         ts = datetime.now(UTC)
 
-        status = status_from_agent(data)
+        # Derive per-interface error rates from the previous snapshot BEFORE it is
+        # overwritten (same prev-then-overwrite pattern the IPsec diff uses below),
+        # then cache and evaluate the one annotated status object.
+        prev_status = self._last_status.get(instance_id)
+        prev_ts = self._last_metrics_ts.get(instance_id)
+        dt = (ts - prev_ts).total_seconds() if prev_ts is not None else 0.0
+        status = annotate_iface_error_rates(status_from_agent(data), prev_status, dt)
         self._last_status[instance_id] = status
+        self._last_metrics_ts[instance_id] = ts
 
         # Cache gateways — only update when the agent actually sent entries;
         # an empty list most likely means the collector failed, not that all

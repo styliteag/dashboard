@@ -9,6 +9,7 @@ from app.checks.evaluate import (
     firmware_check,
     gateway_checks,
     ipsec_checks,
+    load_check,
     memory_check,
     ntp_check,
     pf_states_check,
@@ -21,11 +22,50 @@ from app.xsense.schemas import (
     GatewayStatus,
     IPsecServiceStatus,
     IPsecTunnel,
+    LoadAvg,
     MemoryUsage,
     NtpStatus,
     PfStatus,
     SystemStatus,
 )
+
+
+def test_iface_error_checks_skip_no_data_down_and_pseudo() -> None:
+    from app.checks.evaluate import iface_error_checks
+    from app.xsense.schemas import InterfaceStats
+
+    ifaces = [
+        InterfaceStats(name="igb0", status="up", err_rate=-1.0),  # no rate yet
+        InterfaceStats(name="igb1", status="down", err_rate=0.0),  # link down
+        InterfaceStats(name="lo0", status="up", err_rate=99.0),  # pseudo
+        InterfaceStats(name="pfsync0", status="up", err_rate=99.0),  # pseudo
+    ]
+    assert iface_error_checks(ifaces) == []
+
+
+def test_iface_error_checks_thresholds() -> None:
+    from app.checks.evaluate import iface_error_checks
+    from app.xsense.schemas import InterfaceStats
+
+    def state_for(rate: float) -> int:
+        checks = iface_error_checks([InterfaceStats(name="igb0", status="up", err_rate=rate)])
+        assert len(checks) == 1 and checks[0].key == "iface_errors:igb0"
+        return checks[0].state
+
+    assert state_for(0.0) == CheckState.OK
+    assert state_for(1.0) == CheckState.WARN
+    assert state_for(10.0) == CheckState.CRIT
+
+
+def test_load_check_skips_without_cores() -> None:
+    assert load_check(LoadAvg(five=3.0, cores=0)) is None  # no core count → no check
+
+
+def test_load_check_thresholds_per_core() -> None:
+    # 4 cores: 4.0 → 1.0/core OK, 8.0 → 2.0/core WARN, 16.0 → 4.0/core CRIT
+    assert load_check(LoadAvg(five=4.0, cores=4)).state == CheckState.OK
+    assert load_check(LoadAvg(five=8.0, cores=4)).state == CheckState.WARN
+    assert load_check(LoadAvg(five=16.0, cores=4)).state == CheckState.CRIT
 
 
 def test_swap_check_skips_without_swap_device() -> None:

@@ -174,8 +174,8 @@ async def preview(
     )
     instances: list[PreviewInstance] = []
     for inst in rows:
-        sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
-        checks = evaluate_checks(sys_status, gateways, ipsec, firmware)
+        sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, inst.id)
+        checks = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
         pchecks: list[PreviewCheck] = []
         for c in checks:
             reason = excluded_reason(c.key, inst.id, rules)

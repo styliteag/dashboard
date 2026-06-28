@@ -11,11 +11,42 @@ import pytest
 
 from app.agent_hub.hub import (
     AgentHub,
+    annotate_iface_error_rates,
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
     status_from_agent,
 )
+from app.xsense.schemas import InterfaceStats, SystemStatus
+
+
+def _status_with(ifaces: list[InterfaceStats]) -> SystemStatus:
+    return SystemStatus(interfaces=ifaces)
+
+
+def test_iface_error_rate_needs_two_samples() -> None:
+    new = _status_with([InterfaceStats(name="igb0", in_errors=10, out_errors=5)])
+    # No previous snapshot → rate stays the -1.0 no-data sentinel.
+    assert annotate_iface_error_rates(new, None, 30.0).interfaces[0].err_rate == -1.0
+
+
+def test_iface_error_rate_derived_from_delta() -> None:
+    prev = _status_with([InterfaceStats(name="igb0", in_errors=10, out_errors=5)])
+    new = _status_with([InterfaceStats(name="igb0", in_errors=40, out_errors=5)])
+    # (40-10)+(5-5)=30 errors over 30s → 1.0/s
+    assert annotate_iface_error_rates(new, prev, 30.0).interfaces[0].err_rate == 1.0
+
+
+def test_iface_error_rate_counter_reset_is_no_data() -> None:
+    prev = _status_with([InterfaceStats(name="igb0", in_errors=100, out_errors=5)])
+    new = _status_with([InterfaceStats(name="igb0", in_errors=2, out_errors=5)])  # rebooted
+    assert annotate_iface_error_rates(new, prev, 30.0).interfaces[0].err_rate == -1.0
+
+
+def test_iface_error_rate_skips_when_dt_not_positive() -> None:
+    prev = _status_with([InterfaceStats(name="igb0", in_errors=10, out_errors=5)])
+    new = _status_with([InterfaceStats(name="igb0", in_errors=40, out_errors=5)])
+    assert annotate_iface_error_rates(new, prev, 0.0).interfaces[0].err_rate == -1.0
 
 
 class _FakeWS:

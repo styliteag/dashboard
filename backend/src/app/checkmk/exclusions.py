@@ -14,16 +14,26 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-# The eight export categories = the prefix (before the first ":") of every key
-# emitted by ``evaluate_checks``. Order is the display order in the Settings UI.
+# The export categories = the prefix (before the first ":") of every key emitted
+# by ``evaluate_checks``. Order is the display order in the Settings UI. INVARIANT:
+# keep this in lock-step with the keys ``evaluate_checks`` can produce — a new
+# check family that isn't listed here can't be toggled off in the Settings UI
+# (only via a full-key rule). The frontend ``CATEGORY_LABELS`` mirror must grow too.
 CATEGORIES: tuple[str, ...] = (
     "memory",
     "cpu",
+    "load",
+    "swap",
     "disk",
     "gateway",
+    "pf_states",
+    "ntp",
     "ipsec.service",
     "ipsec.tunnel",
     "ipsec.tunnel_ping",
+    "service",
+    "cert",
+    "iface_errors",
     "firmware",
 )
 

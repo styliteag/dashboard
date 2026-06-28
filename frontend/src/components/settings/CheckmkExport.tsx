@@ -7,14 +7,22 @@ import type { CheckmkConfig, CheckmkExclusionRule, CheckmkPreview } from "../../
 const CONFIG_QK = ["checkmk-config"];
 const PREVIEW_QK = ["checkmk-preview"];
 
+// Mirror of backend CATEGORIES (app/checkmk/exclusions.py) — keep in lock-step.
 const CATEGORY_LABELS: Record<string, string> = {
   memory: "Memory",
   cpu: "CPU",
+  load: "Load average",
+  swap: "Swap",
   disk: "Disks",
   gateway: "Gateways",
+  pf_states: "pf state table",
+  ntp: "NTP sync",
   "ipsec.service": "IPsec service",
   "ipsec.tunnel": "IPsec tunnels",
   "ipsec.tunnel_ping": "IPsec ping monitors",
+  service: "Vital services",
+  cert: "Certificates",
+  iface_errors: "Interface errors",
   firmware: "Firmware",
 };
 

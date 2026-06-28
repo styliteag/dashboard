@@ -47,13 +47,16 @@ class MemoryUsage(BaseModel):
 
 
 class LoadAvg(BaseModel):
-    """System load average over 1/5/15 minutes (agent push only)."""
+    """System load average over 1/5/15 minutes (agent push only). ``cores==0`` means
+    no data (direct poll, or a pre-1.8.1 agent) → the load check skips, since load
+    is only meaningful normalised per CPU core."""
 
     model_config = ConfigDict(extra="allow")
 
     one: float = 0.0
     five: float = 0.0
     fifteen: float = 0.0
+    cores: int = 0
 
 
 class PfStatus(BaseModel):
@@ -116,6 +119,10 @@ class InterfaceStats(BaseModel):
     in_errors: int = 0
     out_errors: int = 0
     collisions: int = 0
+    # Derived in the agent hub from two consecutive pushes: (in+out errors)/sec.
+    # -1.0 = no rate yet (no previous sample, counter reset, or the direct-poll
+    # path) → the iface-error check skips it. Not collected by the agent.
+    err_rate: float = -1.0
 
 
 class SystemStatus(BaseModel):

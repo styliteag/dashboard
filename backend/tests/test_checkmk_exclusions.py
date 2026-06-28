@@ -16,17 +16,32 @@ def test_category_derivation() -> None:
     assert category("ipsec.tunnel_ping:site-a/10.0.5.0/24") == "ipsec.tunnel_ping"
     # IPv6 selector keeps only the first colon as the split point
     assert category("ipsec.tunnel_ping:site-a/2001:db8::/64") == "ipsec.tunnel_ping"
+    assert category("load") == "load"
+    assert category("swap") == "swap"
+    assert category("pf_states") == "pf_states"
+    assert category("ntp") == "ntp"
+    assert category("service:sshd") == "service"
+    assert category("cert:abc123") == "cert"
+    assert category("iface_errors:igb0") == "iface_errors"
 
 
-def test_all_eight_categories_listed() -> None:
+def test_all_categories_listed() -> None:
+    # Must match every category ``evaluate_checks`` can emit (see CATEGORIES note).
     assert set(CATEGORIES) == {
         "memory",
         "cpu",
+        "load",
+        "swap",
         "disk",
         "gateway",
+        "pf_states",
+        "ntp",
         "ipsec.service",
         "ipsec.tunnel",
         "ipsec.tunnel_ping",
+        "service",
+        "cert",
+        "iface_errors",
         "firmware",
     }
 
