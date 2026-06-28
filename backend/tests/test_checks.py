@@ -91,6 +91,27 @@ def test_service_checks_dns_all_down_is_crit() -> None:
     assert any(c.key == "service:dns" and c.state == CheckState.CRIT for c in out)
 
 
+def test_cert_checks_thresholds() -> None:
+    from app.checks.evaluate import cert_checks
+    from app.xsense.schemas import CertInfo
+
+    states = {
+        c.key: c.state
+        for c in cert_checks(
+            [
+                CertInfo(refid="a", name="ok", days_remaining=200),
+                CertInfo(refid="b", name="soon", days_remaining=20),
+                CertInfo(refid="c", name="urgent", days_remaining=3),
+                CertInfo(refid="d", name="dead", days_remaining=-5),
+            ]
+        )
+    }
+    assert states["cert:a"] == CheckState.OK
+    assert states["cert:b"] == CheckState.WARN
+    assert states["cert:c"] == CheckState.CRIT
+    assert states["cert:d"] == CheckState.CRIT  # expired
+
+
 def test_memory_thresholds() -> None:
     assert memory_check(MemoryUsage(used_pct=50)).state == CheckState.OK
     assert memory_check(MemoryUsage(used_pct=80)).state == CheckState.WARN

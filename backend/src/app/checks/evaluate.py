@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.checks.models import CheckState, PerfMetric, ServiceCheck
 from app.xsense.schemas import (
+    CertInfo,
     CpuUsage,
     DiskUsage,
     FirmwareStatus,
@@ -29,6 +30,7 @@ _CPU_WARN = 95.0  # CPU is spiky — warn only, never crit
 _GW_LOSS_WARN, _GW_LOSS_CRIT = 20.0, 80.0
 _PF_WARN, _PF_CRIT = 80.0, 95.0  # pf state-table fill (exhaustion drops new flows)
 _SWAP_WARN, _SWAP_CRIT = 50.0, 80.0  # swap in use = memory pressure
+_CERT_WARN_DAYS, _CERT_CRIT_DAYS = 30, 7  # certificate expiry runway
 
 _GW_DOWN_WORDS = ("down", "force_down", "offline")
 _IPSEC_UP = {"established", "installed", "connected", "up", "1", "true", "yes"}
@@ -298,12 +300,46 @@ def service_checks(services: list[ServiceInfo]) -> list[ServiceCheck]:
     return out
 
 
+def cert_checks(certs: list[CertInfo]) -> list[ServiceCheck]:
+    """Certificate-expiry checks. CRIT when expired or <7 days left, WARN <30 days."""
+    out: list[ServiceCheck] = []
+    for c in certs:
+        days = c.days_remaining
+        if days < _CERT_CRIT_DAYS:
+            state = CheckState.CRIT
+            word = "EXPIRED" if days < 0 else f"expires in {days}d"
+        elif days < _CERT_WARN_DAYS:
+            state, word = CheckState.WARN, f"expires in {days}d"
+        else:
+            state, word = CheckState.OK, f"valid for {days}d"
+        label = c.name or c.refid or "certificate"
+        gui = " [GUI]" if c.is_gui else ""
+        out.append(
+            ServiceCheck(
+                key=f"cert:{c.refid or label}",
+                state=int(state),
+                summary=f"Certificate {label}{gui} {word}",
+                metrics=[
+                    PerfMetric(
+                        name="cert_days_remaining",
+                        value=float(days),
+                        warn=float(_CERT_WARN_DAYS),
+                        crit=float(_CERT_CRIT_DAYS),
+                        unit="d",
+                    )
+                ],
+            )
+        )
+    return out
+
+
 def evaluate_checks(
     status: SystemStatus,
     gateways: list[GatewayStatus] | None = None,
     ipsec: IPsecServiceStatus | None = None,
     firmware: FirmwareStatus | None = None,
     services: list[ServiceInfo] | None = None,
+    certs: list[CertInfo] | None = None,
 ) -> list[ServiceCheck]:
     """Evaluate all available aspects of an instance into service checks."""
     checks = [memory_check(status.memory), cpu_check(status.cpu)]
@@ -319,6 +355,8 @@ def evaluate_checks(
         checks += ipsec_checks(ipsec)
     if services:
         checks += service_checks(services)
+    if certs:
+        checks += cert_checks(certs)
     if firmware is not None and firmware.product_version:
         checks.append(firmware_check(firmware))
     return checks

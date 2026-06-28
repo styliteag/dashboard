@@ -18,9 +18,24 @@ from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, ConfigInfo, GatewayStatus, ServiceInfo
+from app.xsense.schemas import ActionResult, CertInfo, ConfigInfo, GatewayStatus, ServiceInfo
 
 router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
+
+
+@router.get("/certificates", response_model=list[CertInfo])
+async def certificates(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[CertInfo]:
+    """Certificates and their expiry (agent push only). Direct/Securepoint = empty."""
+    inst = await inst_service.get_instance(session, instance_id)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if inst.agent_mode:
+        return hub.get_last_certs(instance_id) or []
+    return []
 
 
 class ConfigInfoResponse(BaseModel):

@@ -284,3 +284,25 @@ class ServiceInfo(BaseModel):
     name: str = ""
     description: str = ""
     running: bool = False
+
+
+# --- Certificates ------------------------------------------------------------
+
+
+class CertInfo(BaseModel):
+    """One certificate (or CA) and its expiry (agent push only).
+
+    Parsed from ``config.xml`` <cert>/<ca> via ``openssl``. ``days_remaining`` may
+    be negative for an already-expired certificate.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    refid: str = ""
+    name: str = ""
+    type: str = "cert"  # "cert" | "ca"
+    is_gui: bool = False  # the active web-GUI certificate
+    not_after: str = ""  # ISO 8601 expiry
+    days_remaining: int = 0
+    subject: str = ""
+    issuer: str = ""

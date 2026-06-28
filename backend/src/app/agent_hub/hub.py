@@ -22,6 +22,7 @@ from app.ipsec.history import diff_ipsec
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import send_notification
 from app.xsense.schemas import (
+    CertInfo,
     ConfigInfo,
     CpuUsage,
     DiskUsage,
@@ -193,6 +194,23 @@ def services_from_agent(data: dict) -> list[ServiceInfo]:
     ]
 
 
+def certs_from_agent(data: dict) -> list[CertInfo]:
+    return [
+        CertInfo(
+            refid=c.get("refid", ""),
+            name=c.get("name", ""),
+            type=c.get("type", "cert"),
+            is_gui=bool(c.get("is_gui", False)),
+            not_after=c.get("not_after", ""),
+            days_remaining=int(c.get("days_remaining", 0)),
+            subject=c.get("subject", ""),
+            issuer=c.get("issuer", ""),
+        )
+        for c in data.get("certificates", [])
+        if isinstance(c, dict)
+    ]
+
+
 def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
     fw_data = data.get("firmware", {})
     upgrade_available = bool(fw_data.get("upgrade_available", False))
@@ -278,6 +296,7 @@ class AgentHub:
         self._last_ipsec: dict[int, IPsecServiceStatus] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
+        self._last_certs: dict[int, list[CertInfo]] = {}
         # GUI-proxy tunnels: stream_id -> queue of frames coming back from the agent.
         self._tunnels: dict[str, asyncio.Queue] = {}
 
@@ -383,6 +402,9 @@ class AgentHub:
     def get_last_services(self, instance_id: int) -> list[ServiceInfo] | None:
         return self._last_services.get(instance_id)
 
+    def get_last_certs(self, instance_id: int) -> list[CertInfo] | None:
+        return self._last_certs.get(instance_id)
+
     # --- restart persistence (DB snapshot) -----------------------------------
 
     def _snapshot_for(self, instance_id: int) -> dict | None:
@@ -406,6 +428,9 @@ class AgentHub:
         services = self._last_services.get(instance_id)
         if services is not None:
             snap["services"] = [s.model_dump(mode="json") for s in services]
+        certs = self._last_certs.get(instance_id)
+        if certs is not None:
+            snap["certificates"] = [c.model_dump(mode="json") for c in certs]
         return snap
 
     def hydrate_instance(self, instance_id: int, snapshot: dict | None) -> None:
@@ -435,6 +460,10 @@ class AgentHub:
             if snapshot.get("services"):
                 self._last_services[instance_id] = [
                     ServiceInfo.model_validate(s) for s in snapshot["services"]
+                ]
+            if snapshot.get("certificates"):
+                self._last_certs[instance_id] = [
+                    CertInfo.model_validate(c) for c in snapshot["certificates"]
                 ]
         except Exception as exc:  # noqa: BLE001 — a bad snapshot must not block startup
             log.warning("hub.hydrate_skip", instance_id=instance_id, error=str(exc))
@@ -493,6 +522,10 @@ class AgentHub:
         # empty list on a collector failure must not wipe the cache).
         if data.get("services"):
             self._last_services[instance_id] = services_from_agent(data)
+
+        # Cache certificates — same guard (empty list = collector failure, keep cache).
+        if data.get("certificates"):
+            self._last_certs[instance_id] = certs_from_agent(data)
 
         # Cache firmware data from agent push
         if data.get("firmware"):

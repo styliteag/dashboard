@@ -147,6 +147,17 @@ export interface ServiceInfo {
   running: boolean;
 }
 
+export interface CertInfo {
+  refid: string;
+  name: string;
+  type: string; // "cert" | "ca"
+  is_gui: boolean;
+  not_after: string; // ISO expiry
+  days_remaining: number; // negative = expired
+  subject: string;
+  issuer: string;
+}
+
 // ----- Metrics --------------------------------------------------------------
 
 export interface MetricPoint {
