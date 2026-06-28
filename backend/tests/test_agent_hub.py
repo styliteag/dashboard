@@ -11,13 +11,25 @@ import pytest
 
 from app.agent_hub.hub import (
     AgentHub,
+    _check_alert,
     annotate_iface_error_rates,
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
     status_from_agent,
 )
+from app.checks.history import CheckTransition
 from app.xsense.schemas import InterfaceStats, SystemStatus
+
+
+def test_check_alert_maps_state_to_level_and_category() -> None:
+    crit = CheckTransition(check_key="cert:abc", old_state=0, new_state=2, summary="Certificate x")
+    title, message, level, category = _check_alert("opn1", crit)
+    assert level == "error" and category == "cert"  # category() strips the ":abc"
+    assert "opn1" in title and message == "Certificate x"
+    # WARN → warning, OK (recovery) → info.
+    assert _check_alert("opn1", CheckTransition("cpu", 0, 1, "CPU high"))[2] == "warning"
+    assert _check_alert("opn1", CheckTransition("memory", 2, 0, "Memory ok"))[2] == "info"
 
 
 def _status_with(ifaces: list[InterfaceStats]) -> SystemStatus:

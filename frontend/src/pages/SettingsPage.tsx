@@ -1,22 +1,50 @@
-import { useState } from "react";
-import { Bell, Settings as SettingsIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { MessageSquare, Send, Mail, Settings as SettingsIcon } from "lucide-react";
 import GeneralSettings from "../components/settings/GeneralSettings";
+import ChannelAlertSelection from "../components/settings/ChannelAlertSelection";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
 import CheckmkExport from "../components/settings/CheckmkExport";
 
 /**
  * Settings hub, split into tabs to keep each section short:
  *  - General: runtime-overridable .env defaults (polling, retention, …).
- *  - Notifications: alert channels (Mattermost, email, + the test button).
+ *  - One tab per notification channel (Mattermost / Telegram / Email): its
+ *    connection config + which alert categories it receives.
  *  - Checkmk: API key + export config.
- * New notification channels and future Mattermost options slot into their tabs.
  */
 const TABS = [
   { key: "general", label: "General" },
-  { key: "notifications", label: "Notifications" },
+  { key: "mattermost", label: "Mattermost" },
+  { key: "telegram", label: "Telegram" },
+  { key: "email", label: "Email" },
   { key: "checkmk", label: "Checkmk" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+
+// (settings group, channel key, tab icon, intro) for the three channel tabs.
+const CHANNELS: Record<
+  string,
+  { group: string; channel: string; icon: ReactNode; intro: ReactNode }
+> = {
+  mattermost: {
+    group: "Mattermost",
+    channel: "mattermost",
+    icon: <MessageSquare className="h-4 w-4 text-slate-400" />,
+    intro: <>Post alerts to a Mattermost channel via an incoming webhook.</>,
+  },
+  telegram: {
+    group: "Telegram",
+    channel: "telegram",
+    icon: <Send className="h-4 w-4 text-slate-400" />,
+    intro: <>Send alerts through a Telegram bot to a chat or channel.</>,
+  },
+  email: {
+    group: "Email",
+    channel: "email",
+    icon: <Mail className="h-4 w-4 text-slate-400" />,
+    intro: <>Email alerts over SMTP. Secrets (SMTP password) are stored encrypted.</>,
+  },
+};
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>(
@@ -26,6 +54,8 @@ export default function SettingsPage() {
     localStorage.setItem("settings.tab", t);
     setTab(t);
   };
+
+  const channel = CHANNELS[tab];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -51,23 +81,19 @@ export default function SettingsPage() {
 
       {tab === "general" && (
         <section className="mt-6">
-          <GeneralSettings exclude={["Notifications"]} />
+          <GeneralSettings exclude={["Mattermost", "Telegram", "Email"]} />
         </section>
       )}
 
-      {tab === "notifications" && (
-        <section className="mt-6">
+      {channel && (
+        <section className="mt-6 space-y-6">
           <GeneralSettings
-            include={["Notifications"]}
-            title="Notification channels"
-            icon={<Bell className="h-4 w-4 text-slate-400" />}
-            intro={
-              <>
-                Where instance up/down and service-check alerts are delivered. Secrets (webhook
-                tokens, SMTP password) are stored encrypted. Use “Send test” to verify each channel.
-              </>
-            }
+            include={[channel.group]}
+            title={`${channel.group} connection`}
+            icon={channel.icon}
+            intro={channel.intro}
           />
+          <ChannelAlertSelection channel={channel.channel} />
         </section>
       )}
 

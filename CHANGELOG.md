@@ -9,15 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Email (SMTP) notification channel** — alerts can now be delivered by email in
-  addition to webhook/Telegram/ntfy/Mattermost. Configure SMTP host/port, transport
-  security (STARTTLS / implicit TLS / none), from + recipient addresses and optional
-  auth in Settings → Notifications (the password is stored encrypted). Email is
-  attempted only when host, from and to are set; the "Send test" button reports its
-  per-channel result like every other channel.
-- **Settings page split into tabs** — General · Notifications · Checkmk, so each
-  section stays short. Notifications groups the Mattermost and email channels (plus
-  the test button) with room for more Mattermost options later.
+- **Email (SMTP) notification channel** — alerts can now be delivered by email.
+  Configure SMTP host/port, transport security (STARTTLS / implicit TLS / none),
+  from + recipient addresses and optional auth in Settings → Email (the password is
+  stored encrypted). Email is attempted only when host, from and to are set.
+- **Telegram is now configurable in the UI** — the bot token (secret) and chat ID
+  moved from env-only into Settings → Telegram, like Mattermost. The env vars still
+  seed first-boot defaults.
+- **Per-channel alert routing** — each channel (Mattermost / Telegram / Email) now
+  chooses *which* alerts it receives, like the Checkmk export selection: a matrix of
+  alert categories (`availability` for instance up/down, plus every service-check
+  category — cpu, cert, gateway, ipsec…). Subscriptions are opt-in; `availability`
+  is enabled for every channel by default so up/down alerts work out of the box.
+  Service-check state changes are now emitted as alerts (routed by their category),
+  not only recorded in history. (Alembic `017`, new `notification_routes` table.)
+- **Settings page split into tabs** — General · Mattermost · Telegram · Email ·
+  Checkmk, so each section stays short. Each channel tab carries its connection
+  config plus its alert-category selection and a per-channel test button.
+
+### Removed
+
+- **Generic webhook and ntfy notification channels** — dropped in favour of the
+  three first-class, UI-configurable channels (Mattermost, Telegram, Email). The
+  `DASH_NOTIFY_WEBHOOK_URL` / `DASH_NOTIFY_NTFY_URL` env vars are no longer read.
 - **Interface-error check** — the per-interface driver error counters the agent
   already reports are now turned into a rate ((in+out errors)/sec, derived in the
   agent hub from two consecutive pushes) and evaluated per physical interface:

@@ -249,6 +249,29 @@ class CheckmkExportExclusion(Base):
     __table_args__ = (UniqueConstraint("instance_id", "target", name="uq_checkmk_exclusion"),)
 
 
+class NotificationRoute(Base):
+    """Subscription: notification ``channel`` receives alerts of ``category``.
+
+    Presence = subscribed (opt-in); absence = that channel does not get that
+    category. ``category`` is ``availability`` (instance offline/recovered) or a
+    Checkmk check category (``cpu``, ``cert``, ``gateway`` …). The ``availability``
+    rows are seeded for every channel by the migration so up/down alerts work out
+    of the box; the noisier check categories are opt-in. See
+    ``app.notifications.routing``.
+    """
+
+    __tablename__ = "notification_routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("channel", "category", name="uq_notification_route"),)
+
+
 class IPsecPingMonitor(Base):
     """Optional per-Phase-2 connectivity probe for an IPsec child SA.
 

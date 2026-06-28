@@ -64,6 +64,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
                 f"✅ {instance_name} is back online",
                 f"Instance {instance_name} recovered.",
                 level="info",
+                category="availability",
             )
         log.debug("poll.ok", instance=instance_name, cpu=status.cpu.total)
 
@@ -85,6 +86,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
                             f"🔴 {instance_name} is offline",
                             f"Instance {instance_name} failed: {str(exc)[:200]}",
                             level="error",
+                            category="availability",
                         )
         except Exception:  # noqa: BLE001
             log.error("poll.error_update_failed", instance=instance_name)
@@ -210,6 +212,7 @@ async def _check_stale_agents() -> None:
             f"🔴 {name} agent offline",
             f"No metrics push from {name} for over {threshold}s.",
             level="error",
+            category="availability",
         )
 
 

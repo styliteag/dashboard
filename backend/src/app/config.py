@@ -87,14 +87,15 @@ class Settings(BaseSettings):
     # Close an instance's forwarder after this many idle minutes (0 = never).
     gui_idle_minutes: int = 15
 
-    # Notifications (all optional)
-    notify_webhook_url: str = ""
+    # Notifications (all optional). Three channels — Mattermost, Telegram, Email —
+    # all editable (and overridable) in the Settings UI; env defaults here for
+    # first-boot/ops parity. Per-channel alert-category routing lives in the
+    # ``notification_routes`` table (see app.notifications.routing).
+    # Mattermost incoming-webhook URL (contains a secret token; stored encrypted).
+    notify_mattermost_url: str = ""
+    # Telegram bot token (secret) + target chat id. Configured when both are set.
     notify_telegram_token: str = ""
     notify_telegram_chat_id: str = ""
-    notify_ntfy_url: str = ""
-    # Mattermost incoming-webhook URL (contains a secret token). Editable in the
-    # Settings UI as a secret; env default here for first-boot/ops parity.
-    notify_mattermost_url: str = ""
     # Email (SMTP). Editable in the Settings UI; the password is a secret. Email is
     # "configured" (and attempted) only when host, from and to are all set.
     notify_email_smtp_host: str = ""

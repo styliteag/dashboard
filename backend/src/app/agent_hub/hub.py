@@ -15,6 +15,7 @@ import structlog
 from fastapi import WebSocket
 from sqlalchemy import select
 
+from app.checkmk.exclusions import category as _check_category
 from app.checks.evaluate import evaluate_checks
 from app.checks.event_store import record_check_events
 from app.checks.history import current_states, diff_checks
@@ -125,6 +126,21 @@ def status_from_agent(data: dict) -> SystemStatus:
             for i in data.get("interfaces", [])
         ],
     )
+
+
+# Map a check's new state to a notification level + label/icon for the alert text.
+_STATE_LEVEL = {0: "info", 1: "warning", 2: "error", 3: "warning"}
+_STATE_ICON = {0: "✅", 1: "⚠️", 2: "🔴", 3: "❔"}
+
+
+def _check_alert(instance_name: str, transition) -> tuple[str, str, str, str]:  # noqa: ANN001
+    """Build ``(title, message, level, category)`` for one check state transition.
+    Category mirrors the Checkmk check category so it lands in the same routing
+    bucket the admin subscribes a channel to."""
+    icon = _STATE_ICON.get(transition.new_state, "❔")
+    title = f"{icon} {instance_name}: {transition.summary}"
+    level = _STATE_LEVEL.get(transition.new_state, "warning")
+    return title, transition.summary, level, _check_category(transition.check_key)
 
 
 def annotate_iface_error_rates(
@@ -595,10 +611,12 @@ class AgentHub:
         self._last_check_states[instance_id] = current_states(checks)
 
         recovered_name: str | None = None
+        instance_name = ""
         async with sessionmaker() as session:
             inst = await session.get(Instance, instance_id)
             if inst is None:
                 return
+            instance_name = inst.name
             # Was this instance offline (e.g. flagged by the staleness watchdog)?
             # If so, this push is a recovery — notify once.
             if not is_online(inst.last_success_at, inst.last_error_at) and inst.last_error_at:
@@ -621,7 +639,17 @@ class AgentHub:
                 f"✅ {recovered_name} agent back online",
                 f"Agent for {recovered_name} resumed pushing metrics.",
                 level="info",
+                category="availability",
             )
+        # Fire a per-check alert for every state transition. Each is routed by its
+        # category, so a channel only gets it when subscribed (history is recorded
+        # regardless, above). Transitions are sparse — one per actual state change.
+        # These are sequential awaits: an unsubscribed category is a cheap set-lookup
+        # skip, but a subscribed+configured channel adds its send latency to ingest
+        # (same blocking trade-off the direct poller notes). Fire-and-forget later.
+        for transition in check_transitions:
+            title, msg, level, cat = _check_alert(instance_name, transition)
+            await send_notification(title, msg, level=level, category=cat)
         log.debug("agent.metrics", instance_id=instance_id, cpu=status.cpu.total)
 
 

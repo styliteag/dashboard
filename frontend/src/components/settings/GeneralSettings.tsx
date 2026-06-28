@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
-import type { AppSettingItem, NotificationTestResult } from "../../lib/types";
+import type { AppSettingItem } from "../../lib/types";
 
 const QK = ["app-settings"];
 
@@ -10,48 +10,6 @@ function groupOrder(items: AppSettingItem[]): string[] {
   const seen: string[] = [];
   for (const it of items) if (!seen.includes(it.group)) seen.push(it.group);
   return seen;
-}
-
-const STATUS_CLS: Record<string, string> = {
-  sent: "text-emerald-400",
-  skipped: "text-slate-500",
-  failed: "text-red-400",
-};
-
-function NotificationTest() {
-  const [results, setResults] = useState<NotificationTestResult[] | null>(null);
-  const testMut = useMutation({
-    mutationFn: () => api.post<NotificationTestResult[]>("/api/notifications/test"),
-    onSuccess: setResults,
-  });
-  return (
-    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-xs text-slate-400">
-          <Bell className="h-3.5 w-3.5" /> Send a test message to all configured channels.
-        </span>
-        <button
-          type="button"
-          onClick={() => testMut.mutate()}
-          disabled={testMut.isPending}
-          className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600 disabled:opacity-50"
-        >
-          {testMut.isPending ? "Sending…" : "Send test"}
-        </button>
-      </div>
-      {results && (
-        <ul className="mt-2 space-y-1">
-          {results.map((r) => (
-            <li key={r.channel} className="flex items-center gap-2 text-xs">
-              <span className="w-24 text-slate-400">{r.channel}</span>
-              <span className={STATUS_CLS[r.status] ?? "text-slate-400"}>{r.status}</span>
-              {r.detail && <span className="truncate text-slate-600">{r.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 interface GeneralSettingsProps {
@@ -99,6 +57,8 @@ export default function GeneralSettings({
         return n;
       });
       qc.invalidateQueries({ queryKey: QK });
+      // A channel's config drives its "configured" badge in the routing matrix.
+      qc.invalidateQueries({ queryKey: ["notification-routing"] });
     },
     onError: (e, v) =>
       setError((s) => ({ ...s, [v.key]: e instanceof ApiError ? e.message : "Save failed" })),
@@ -113,6 +73,7 @@ export default function GeneralSettings({
         return n;
       });
       qc.invalidateQueries({ queryKey: QK });
+      qc.invalidateQueries({ queryKey: ["notification-routing"] });
     },
   });
 
@@ -223,7 +184,6 @@ export default function GeneralSettings({
                   );
                 })}
             </div>
-            {group === "Notifications" && <NotificationTest />}
           </div>
         ))}
 

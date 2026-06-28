@@ -408,3 +408,21 @@ export interface NotificationTestResult {
   status: "sent" | "skipped" | "failed";
   detail: string;
 }
+
+// --- Notifications: per-channel alert-category routing -----------------------
+
+export interface NotificationChannelInfo {
+  key: string;
+  configured: boolean;
+}
+
+export interface NotificationRoute {
+  channel: string;
+  category: string;
+}
+
+export interface NotificationRoutingMatrix {
+  channels: NotificationChannelInfo[];
+  categories: string[];
+  routes: NotificationRoute[];
+}

@@ -1,10 +1,10 @@
-"""Notification dispatcher — sends alerts to all configured channels.
+"""Notification dispatcher — sends alerts to the subscribed channels.
 
-Channels (each optional): generic webhook, Telegram, ntfy, Mattermost. The
-Mattermost webhook URL is editable in the Settings UI (secret); the others come
-from the environment (``DASH_NOTIFY_*``). Values are read through
-``effective_settings()`` so a DB override applies live. Failures are logged,
-never raised.
+Channels (each optional): Mattermost, Telegram, Email. All three are configurable
+in the Settings UI; config values are read through ``effective_settings()`` so a DB
+override applies live. Each alert carries a *category* (``availability`` or a check
+category); a channel only receives it when it is subscribed to that category
+(``app.notifications.store``). Failures are logged, never raised.
 """
 
 from __future__ import annotations
@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
+from app.notifications.routing import AVAILABILITY
+from app.notifications.store import is_subscribed_live
 from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.notifications")
@@ -85,23 +87,6 @@ def _result(channel: str, resp: httpx.Response) -> ChannelResult:
     return ChannelResult(channel, "sent")
 
 
-async def _send_webhook(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
-    url = getattr(s, "notify_webhook_url", "") or ""
-    if not url:
-        return ChannelResult("webhook", "skipped")
-    reason = await _ssrf_block_reason(url)
-    if reason:
-        log.warning("notify.webhook.blocked", reason=reason)
-        return ChannelResult("webhook", "failed", reason)
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            resp = await c.post(url, json={"title": title, "message": message, "level": level})
-        return _result("webhook", resp)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("notify.webhook.failed", error=str(exc))
-        return ChannelResult("webhook", "failed", str(exc))
-
-
 async def _send_telegram(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
     token = getattr(s, "notify_telegram_token", "") or ""
     chat = getattr(s, "notify_telegram_chat_id", "") or ""
@@ -123,63 +108,6 @@ async def _send_telegram(s, title: str, message: str, level: str) -> ChannelResu
     except Exception as exc:  # noqa: BLE001
         log.warning("notify.telegram.failed", error=str(exc))
         return ChannelResult("telegram", "failed", str(exc))
-
-
-def _split_ntfy_url(url: str) -> tuple[str, str]:
-    """Split an ntfy topic URL into ``(server_base, topic)``.
-
-    ntfy's JSON publishing API must be POSTed to the server *root* with the topic in
-    the body — POSTing JSON to the topic URL would publish the literal JSON as the
-    message text (and still return 200). Returns ``("", "")`` when there is no topic
-    segment, so the caller can fail instead of dumping JSON to the root.
-    """
-    parsed = urlparse(url)
-    segments = [seg for seg in parsed.path.split("/") if seg]
-    if not parsed.scheme or not parsed.netloc or not segments:
-        return "", ""
-    topic = segments[-1]
-    base = f"{parsed.scheme}://{parsed.netloc}"
-    base_path = "/".join(segments[:-1])
-    if base_path:
-        base = f"{base}/{base_path}"
-    return base, topic
-
-
-# ntfy JSON priority is numeric 1-5; matches the old high/default/low header values.
-_NTFY_PRIORITY = {"error": 4, "warning": 3}
-
-
-async def _send_ntfy(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
-    url = getattr(s, "notify_ntfy_url", "") or ""
-    if not url:
-        return ChannelResult("ntfy", "skipped")
-    reason = await _ssrf_block_reason(url)
-    if reason:
-        log.warning("notify.ntfy.blocked", reason=reason)
-        return ChannelResult("ntfy", "failed", reason)
-    base, topic = _split_ntfy_url(url)
-    if not topic:
-        log.warning("notify.ntfy.failed", error="no topic in URL")
-        return ChannelResult("ntfy", "failed", "ntfy URL has no topic")
-    # JSON publishing carries the title in the UTF-8 body. The previous header form
-    # ("Title") is latin-1 only, so every emoji-prefixed alert title (🔴/✅) raised
-    # UnicodeEncodeError and the channel silently failed on every real alert.
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            resp = await c.post(
-                base,
-                json={
-                    "topic": topic,
-                    "title": title,
-                    "message": message,
-                    "priority": _NTFY_PRIORITY.get(level, 2),
-                    "tags": ["shield"],
-                },
-            )
-        return _result("ntfy", resp)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("notify.ntfy.failed", error=str(exc))
-        return ChannelResult("ntfy", "failed", str(exc))
 
 
 async def _send_mattermost(s, title: str, message: str, level: str) -> ChannelResult:  # noqa: ANN001
@@ -268,28 +196,73 @@ async def _send_email(s, title: str, message: str, level: str) -> ChannelResult:
         return ChannelResult("email", "failed", str(exc))
 
 
-async def _dispatch(title: str, message: str, level: str) -> list[ChannelResult]:
+def channel_configured(channel: str, s=None) -> bool:  # noqa: ANN001
+    """Whether a channel has enough config to actually send (same predicate the
+    senders use to decide skip-vs-send). Drives the 'subscribed but not configured'
+    hint in the Settings UI."""
+    s = s or effective_settings()
+    if channel == "mattermost":
+        return bool(getattr(s, "notify_mattermost_url", ""))
+    if channel == "telegram":
+        return bool(
+            getattr(s, "notify_telegram_token", "") and getattr(s, "notify_telegram_chat_id", "")
+        )
+    if channel == "email":
+        return bool(
+            getattr(s, "notify_email_smtp_host", "")
+            and getattr(s, "notify_email_from", "")
+            and _parse_recipients(getattr(s, "notify_email_to", "") or "")
+        )
+    return False
+
+
+# channel name -> sender. The dispatch order is the channel display order.
+_CHANNEL_SENDERS = (
+    ("mattermost", _send_mattermost),
+    ("telegram", _send_telegram),
+    ("email", _send_email),
+)
+
+
+async def _dispatch(
+    title: str, message: str, level: str, category: str, *, respect_routes: bool
+) -> list[ChannelResult]:
+    """Send to each channel. When ``respect_routes`` is on, a channel not subscribed
+    to ``category`` is reported as skipped without attempting a send (the test path
+    turns it off to reach every configured channel)."""
     s = effective_settings()
-    return [
-        await _send_webhook(s, title, message, level),
-        await _send_telegram(s, title, message, level),
-        await _send_ntfy(s, title, message, level),
-        await _send_mattermost(s, title, message, level),
-        await _send_email(s, title, message, level),
-    ]
+    results: list[ChannelResult] = []
+    for channel, sender in _CHANNEL_SENDERS:
+        if respect_routes and not is_subscribed_live(channel, category):
+            results.append(ChannelResult(channel, "skipped", "not subscribed"))
+            continue
+        results.append(await sender(s, title, message, level))
+    return results
 
 
-async def send_notification(title: str, message: str, level: str = "info") -> None:
-    """Send to all configured channels. Failures are logged, not raised."""
-    await _dispatch(title, message, level)
+async def send_notification(
+    title: str, message: str, level: str = "info", category: str = AVAILABILITY
+) -> None:
+    """Send an alert of ``category`` to every channel subscribed to it. Failures are
+    logged, not raised."""
+    await _dispatch(title, message, level, category, respect_routes=True)
 
 
-async def send_test_notification() -> list[ChannelResult]:
-    """Send a test message and report per-channel status (for the Settings UI)."""
+async def send_test_notification(channel: str | None = None) -> list[ChannelResult]:
+    """Send a test message and report per-channel status (for the Settings UI).
+
+    Bypasses subscriptions (a test proves connectivity, independent of routing).
+    With ``channel`` set, only that channel is tested.
+    """
     # Emoji-prefixed like real alert titles, so the Test button exercises the same
     # Unicode-encoding path a production alert takes (it previously did not).
-    return await _dispatch(
+    results = await _dispatch(
         "✅ Orbit test notification",
         "If you can read this, Orbit notifications are working.",
         "info",
+        AVAILABILITY,
+        respect_routes=False,
     )
+    if channel is not None:
+        return [r for r in results if r.channel == channel]
+    return results

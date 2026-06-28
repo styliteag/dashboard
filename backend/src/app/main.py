@@ -28,6 +28,7 @@ from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
 from app.metrics.routes import router as metrics_router
 from app.notifications.routes import router as notifications_router
+from app.notifications.store import load_routes
 from app.poller.scheduler import start_scheduler, stop_scheduler
 from app.routes import health
 from app.settings.routes import router as settings_router
@@ -63,7 +64,8 @@ async def lifespan(app: FastAPI):
     try:
         async with get_sessionmaker()() as session:
             count = await load_overrides(session)
-        log.info("settings.loaded", overrides=count)
+            routes = await load_routes(session)
+        log.info("settings.loaded", overrides=count, notification_routes=routes)
     except Exception as exc:  # noqa: BLE001 — never block startup on settings load
         log.error("settings.load_failed", error=str(exc))
     _configure_logging(effective_settings().log_level)
