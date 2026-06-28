@@ -33,7 +33,8 @@ export default function SystemHealthSection({ instanceId }: { instanceId: number
         {hasLoad && (
           <Card icon={<Gauge className="h-4 w-4 text-emerald-400" />} label="Load avg">
             <span className="font-mono">
-              {data.load.one.toFixed(2)} · {data.load.five.toFixed(2)} · {data.load.fifteen.toFixed(2)}
+              {data.load.one.toFixed(2)} · {data.load.five.toFixed(2)} ·{" "}
+              {data.load.fifteen.toFixed(2)}
             </span>
             <span className="ml-1 text-xs text-slate-500">1·5·15m</span>
           </Card>

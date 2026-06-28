@@ -115,7 +115,9 @@ export default function FirmwareCompliancePage() {
                 <SortHeader label="Instance" colKey="instance" sort={sort} toggle={toggle} />
                 <SortHeader label="Location" colKey="location" sort={sort} toggle={toggle} />
                 <SortHeader label="Installed" colKey="installed" sort={sort} toggle={toggle} />
-                {hasBranch && <SortHeader label="Branch" colKey="branch" sort={sort} toggle={toggle} />}
+                {hasBranch && (
+                  <SortHeader label="Branch" colKey="branch" sort={sort} toggle={toggle} />
+                )}
                 <SortHeader label="Latest" colKey="latest" sort={sort} toggle={toggle} />
                 <SortHeader label="Updates" colKey="updates" sort={sort} toggle={toggle} />
                 <SortHeader label="Last check" colKey="last_check" sort={sort} toggle={toggle} />
@@ -144,7 +146,9 @@ export default function FirmwareCompliancePage() {
                   <td className="px-3 py-2 text-slate-400">{e.location || "—"}</td>
                   <td className="px-3 py-2 font-mono text-xs">{e.product_version}</td>
                   {hasBranch && (
-                    <td className="px-3 py-2 font-mono text-xs text-slate-400">{e.branch || "—"}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                      {e.branch || "—"}
+                    </td>
                   )}
                   <td className="px-3 py-2 font-mono text-xs">
                     {e.product_latest && e.product_latest !== e.product_version ? (

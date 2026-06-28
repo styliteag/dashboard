@@ -12,7 +12,9 @@ const STATE_CLASS: Record<number, string> = {
 };
 
 function StateBadge({ state }: { state: number }) {
-  return <span className={STATE_CLASS[state] ?? "text-slate-400"}>{STATE_LABEL[state] ?? state}</span>;
+  return (
+    <span className={STATE_CLASS[state] ?? "text-slate-400"}>{STATE_LABEL[state] ?? state}</span>
+  );
 }
 
 /**
