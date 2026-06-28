@@ -5,6 +5,7 @@ The fixtures mirror the live ``/spcgi.cgi`` envelopes captured from a UTM 14.1.6
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -93,6 +94,33 @@ def _router(request: Request) -> Response:
     if (module, command) == ("interface", ["address", "get"]):
         return _ok(_INTERFACE_ADDRS)
     return Response(200, json={"result": {"code": 400, "message": "unknown command"}})
+
+
+@pytest.mark.asyncio
+async def test_concurrent_commands_log_in_once() -> None:
+    """The status endpoints now gather several commands at once on the cached client.
+    The login lock must collapse the concurrent lazy-login into a single login."""
+    logins = {"n": 0}
+
+    def _counting(request: Request) -> Response:
+        payload = json.loads(request.content)
+        module, command = payload["module"], payload["command"]
+        if (module, command) == ("auth", ["login"]):
+            logins["n"] += 1
+            return _ok(["session opened"], sessionid=_SID)
+        if (module, command) == ("appmgmt", ["status"]):
+            return _ok(_APPMGMT_STATUS)
+        if (module, command) == ("ipsec", ["status"]):
+            return _ok(_IPSEC_STATUS)
+        return Response(200, json={"result": {"code": 400, "message": "unknown"}})
+
+    with respx.mock(base_url=_BASE) as mock:
+        mock.post("/spcgi.cgi").mock(side_effect=_counting)
+        sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)  # no eager login
+        await asyncio.gather(sp.appmgmt_status(), sp.appmgmt_status(), sp.ipsec_status())
+        await sp.aclose()
+
+    assert logins["n"] == 1  # without the lock this would be 3
 
 
 @pytest.mark.asyncio

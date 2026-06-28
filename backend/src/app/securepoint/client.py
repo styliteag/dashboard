@@ -18,6 +18,7 @@ secret) is used in the read path.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import ssl
 from typing import Any
@@ -85,6 +86,10 @@ class SecurepointClient:
         self._password = password
         self._ssh = ssh
         self._sessionid: str | None = None
+        # Serialise (lazy) login so concurrent commands on this cached client —
+        # the status endpoints now gather several calls at once — don't each open a
+        # separate session and race on ``_sessionid``.
+        self._login_lock = asyncio.Lock()
 
         verify: ssl.SSLContext | bool
         if not ssl_verify:
@@ -161,13 +166,24 @@ class SecurepointClient:
         except SecurepointError as exc:
             if not self._is_session_expired(exc):
                 raise
-            self._sessionid = None
-            await self.login()
+            await self._relogin(stale=self._sessionid)
             return await self._run(module, command, arguments)
 
     async def _ensure_session(self) -> None:
-        if self._sessionid is None:
-            await self.login()
+        if self._sessionid is not None:
+            return
+        async with self._login_lock:
+            # Re-check: another coroutine may have logged in while we waited.
+            if self._sessionid is None:
+                await self.login()
+
+    async def _relogin(self, stale: str | None) -> None:
+        """Re-login after an expired session, but only once across concurrent callers:
+        skip if another coroutine already refreshed the session id meanwhile."""
+        async with self._login_lock:
+            if self._sessionid == stale or self._sessionid is None:
+                self._sessionid = None
+                await self.login()
 
     @staticmethod
     def _is_session_expired(exc: SecurepointError) -> bool:

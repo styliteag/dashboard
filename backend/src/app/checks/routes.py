@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -14,6 +16,7 @@ from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
 from app.checks.event_store import read_check_events
 from app.db.base import get_session
 from app.db.models import CheckmkExportExclusion, Instance, User
+from app.settings.store import effective_settings
 from app.xsense.registry import registry
 from app.xsense.schemas import (
     CertInfo,
@@ -59,14 +62,42 @@ async def _gather(
             hub.get_last_certs(instance_id),
         )
     client = await registry.get(inst)
-    return (
-        await _safe(client.poll_status, SystemStatus()),
-        await _safe(client.gateway_status, None),
-        await _safe(client.ipsec_status, None),
-        await _safe(client.firmware_status, None),
-        None,
-        None,
+    # The four aspects are independent round-trips to the same appliance — fetch
+    # them concurrently (each _safe swallows its own failure, so one bad aspect
+    # can't sink the gather). Bounded by the appliance's own connection limit.
+    sys_status, gateways, ipsec, firmware = await asyncio.gather(
+        _safe(client.poll_status, SystemStatus()),
+        _safe(client.gateway_status, None),
+        _safe(client.ipsec_status, None),
+        _safe(client.firmware_status, None),
     )
+    return (sys_status, gateways, ipsec, firmware, None, None)
+
+
+GatheredAspects = tuple[
+    SystemStatus,
+    list[GatewayStatus] | None,
+    IPsecServiceStatus | None,
+    FirmwareStatus | None,
+    list[ServiceInfo] | None,
+    list[CertInfo] | None,
+]
+
+
+async def gather_many(rows: list[Instance]) -> list[tuple[Instance, GatheredAspects]]:
+    """Gather every instance's aspects concurrently, preserving input order.
+
+    Push instances resolve from the hub cache (cheap); direct/Securepoint instances
+    are polled live. Bounded by ``poll_concurrency`` so a sweep over many direct
+    appliances doesn't open an unbounded fan-out of sessions at once.
+    """
+    sem = asyncio.Semaphore(max(1, effective_settings().poll_concurrency))
+
+    async def one(inst: Instance) -> tuple[Instance, GatheredAspects]:
+        async with sem:
+            return inst, await _gather(inst, inst.id)
+
+    return list(await asyncio.gather(*(one(inst) for inst in rows)))
 
 
 @router.get("/instances/{instance_id}/checks", response_model=list[ServiceCheck])
@@ -144,8 +175,7 @@ async def export_checkmk(
     rules = [(r.instance_id, r.target) for r in rule_rows]
 
     instances = []
-    for inst in rows:
-        sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, inst.id)
+    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
         checks = [
             c
             for c in evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
@@ -193,8 +223,7 @@ async def all_checks(
     )
 
     alerts: list[ServiceAlert] = []
-    for inst in rows:
-        sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, inst.id)
+    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
         for c in evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs):
             reason = excluded_reason(c.key, inst.id, rules)
             alerts.append(

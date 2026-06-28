@@ -15,7 +15,7 @@ from app.audit.log import write_audit
 from app.auth.deps import require_admin
 from app.checkmk.exclusions import CATEGORIES, Rule, category, excluded_reason
 from app.checks import evaluate_checks
-from app.checks.routes import _gather
+from app.checks.routes import gather_many
 from app.db.base import get_session
 from app.db.models import CheckmkExportExclusion, Instance, User
 from app.net import client_ip
@@ -173,8 +173,7 @@ async def preview(
         .all()
     )
     instances: list[PreviewInstance] = []
-    for inst in rows:
-        sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, inst.id)
+    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
         checks = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
         pchecks: list[PreviewCheck] = []
         for c in checks:
