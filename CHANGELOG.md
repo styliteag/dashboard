@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-28
+
 ### Fixed
 
 - **OPNsense firmware updates are detected again (point releases like 26.1.9 → 26.1.10)** — the agent relied on `opnsense-update -c`, which only reports base-set (release) upgrades and misses point releases that ship as the `opnsense` pkg. Its pkg fallback compared `pkg query`/`pkg rquery` but never refreshed the repo catalogue first, so `rquery` read a stale (often empty) cache and reported "Up to date" on boxes that genuinely had an update. The agent now runs `pkg update` before the compare and reports the real available version as `product_latest` (the Firmware tab's "Latest"). Both the periodic push and the on-demand "Check" use one shared code path. (Agent `__version__` → 1.6.9.)
