@@ -12,8 +12,15 @@ from app.xsense.schemas import (
     MemoryUsage,
     NtpStatus,
     PfStatus,
+    ServiceInfo,
     SystemStatus,
 )
+
+# Services that are always-on and unambiguous → a stopped one is CRIT. DNS is
+# handled as a group (at least one resolver must run) to avoid false alarms when
+# a box runs unbound instead of dnsmasq (the unused one shows as stopped).
+_VITAL_SERVICES = frozenset({"sshd", "configd"})
+_DNS_SERVICES = frozenset({"unbound", "dnsmasq"})
 
 # Thresholds (percent). Follow-up: make these configurable per instance/global.
 _MEM_WARN, _MEM_CRIT = 80.0, 90.0
@@ -259,11 +266,44 @@ def firmware_check(fw: FirmwareStatus) -> ServiceCheck:
     )
 
 
+def service_checks(services: list[ServiceInfo]) -> list[ServiceCheck]:
+    """Vital-service checks. Only services actually present on the box are checked,
+    so an absent service never invents a (red) check. DNS is a group: CRIT only when
+    no resolver is running at all."""
+    if not services:
+        return []
+    by_name = {s.name: s for s in services}
+    out: list[ServiceCheck] = []
+    for name in sorted(_VITAL_SERVICES):
+        svc = by_name.get(name)
+        if svc is None:
+            continue
+        out.append(
+            ServiceCheck(
+                key=f"service:{name}",
+                state=int(CheckState.OK if svc.running else CheckState.CRIT),
+                summary=f"Service {name} {'running' if svc.running else 'STOPPED'}",
+            )
+        )
+    dns = [by_name[n] for n in sorted(_DNS_SERVICES) if n in by_name]
+    if dns:
+        running = any(s.running for s in dns)
+        out.append(
+            ServiceCheck(
+                key="service:dns",
+                state=int(CheckState.OK if running else CheckState.CRIT),
+                summary="DNS resolver running" if running else "No DNS resolver running",
+            )
+        )
+    return out
+
+
 def evaluate_checks(
     status: SystemStatus,
     gateways: list[GatewayStatus] | None = None,
     ipsec: IPsecServiceStatus | None = None,
     firmware: FirmwareStatus | None = None,
+    services: list[ServiceInfo] | None = None,
 ) -> list[ServiceCheck]:
     """Evaluate all available aspects of an instance into service checks."""
     checks = [memory_check(status.memory), cpu_check(status.cpu)]
@@ -277,6 +317,8 @@ def evaluate_checks(
         checks += gateway_checks(gateways)
     if ipsec is not None:
         checks += ipsec_checks(ipsec)
+    if services:
+        checks += service_checks(services)
     if firmware is not None and firmware.product_version:
         checks.append(firmware_check(firmware))
     return checks

@@ -16,9 +16,25 @@ from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, GatewayStatus
+from app.xsense.schemas import ActionResult, GatewayStatus, ServiceInfo
 
 router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
+
+
+@router.get("/services", response_model=list[ServiceInfo])
+async def services(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[ServiceInfo]:
+    """Per-service running state. Agent mode: last push from the hub cache.
+    Direct/Securepoint poll does not carry services → empty list."""
+    inst = await inst_service.get_instance(session, instance_id)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if inst.agent_mode:
+        return hub.get_last_services(instance_id) or []
+    return []
 
 
 @router.get("/gateways", response_model=list[GatewayStatus])

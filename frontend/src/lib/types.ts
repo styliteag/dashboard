@@ -130,6 +130,12 @@ export interface SystemStatus {
   version: string | null;
 }
 
+export interface ServiceInfo {
+  name: string;
+  description: string;
+  running: boolean;
+}
+
 // ----- Metrics --------------------------------------------------------------
 
 export interface MetricPoint {

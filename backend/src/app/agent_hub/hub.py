@@ -34,6 +34,7 @@ from app.xsense.schemas import (
     MemoryUsage,
     NtpStatus,
     PfStatus,
+    ServiceInfo,
     SystemStatus,
 )
 
@@ -173,6 +174,18 @@ def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
     )
 
 
+def services_from_agent(data: dict) -> list[ServiceInfo]:
+    return [
+        ServiceInfo(
+            name=s.get("name", ""),
+            description=s.get("description", ""),
+            running=bool(s.get("running", False)),
+        )
+        for s in data.get("services", [])
+        if isinstance(s, dict) and s.get("name")
+    ]
+
+
 def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
     fw_data = data.get("firmware", {})
     upgrade_available = bool(fw_data.get("upgrade_available", False))
@@ -257,6 +270,7 @@ class AgentHub:
         self._last_gateways: dict[int, list[GatewayStatus]] = {}
         self._last_ipsec: dict[int, IPsecServiceStatus] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
+        self._last_services: dict[int, list[ServiceInfo]] = {}
         # GUI-proxy tunnels: stream_id -> queue of frames coming back from the agent.
         self._tunnels: dict[str, asyncio.Queue] = {}
 
@@ -359,6 +373,9 @@ class AgentHub:
     def get_last_firewall_log(self, instance_id: int) -> list[dict] | None:
         return self._last_firewall_log.get(instance_id)
 
+    def get_last_services(self, instance_id: int) -> list[ServiceInfo] | None:
+        return self._last_services.get(instance_id)
+
     # --- restart persistence (DB snapshot) -----------------------------------
 
     def _snapshot_for(self, instance_id: int) -> dict | None:
@@ -379,6 +396,9 @@ class AgentHub:
         fwl = self._last_firewall_log.get(instance_id)
         if fwl is not None:
             snap["firewall_log"] = fwl
+        services = self._last_services.get(instance_id)
+        if services is not None:
+            snap["services"] = [s.model_dump(mode="json") for s in services]
         return snap
 
     def hydrate_instance(self, instance_id: int, snapshot: dict | None) -> None:
@@ -405,6 +425,10 @@ class AgentHub:
                 self._last_ipsec[instance_id] = IPsecServiceStatus.model_validate(snapshot["ipsec"])
             if snapshot.get("firewall_log"):
                 self._last_firewall_log[instance_id] = snapshot["firewall_log"]
+            if snapshot.get("services"):
+                self._last_services[instance_id] = [
+                    ServiceInfo.model_validate(s) for s in snapshot["services"]
+                ]
         except Exception as exc:  # noqa: BLE001 — a bad snapshot must not block startup
             log.warning("hub.hydrate_skip", instance_id=instance_id, error=str(exc))
 
@@ -457,6 +481,11 @@ class AgentHub:
         fw_log = data.get("firewall_log")
         if fw_log is not None:
             self._last_firewall_log[instance_id] = fw_log
+
+        # Cache services — only when the agent actually sent a services list (an
+        # empty list on a collector failure must not wipe the cache).
+        if data.get("services"):
+            self._last_services[instance_id] = services_from_agent(data)
 
         # Cache firmware data from agent push
         if data.get("firmware"):

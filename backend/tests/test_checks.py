@@ -64,6 +64,33 @@ def test_ntp_synced_ok() -> None:
     assert "1.2.3.4" in c.summary
 
 
+def test_service_checks_vital_and_dns() -> None:
+    from app.checks.evaluate import service_checks
+    from app.xsense.schemas import ServiceInfo
+
+    assert service_checks([]) == []  # no data → no checks
+    svcs = [
+        ServiceInfo(name="sshd", running=True),
+        ServiceInfo(name="configd", running=False),
+        ServiceInfo(name="unbound", running=True),
+        ServiceInfo(name="dnsmasq", running=False),  # unused resolver → not an alert
+        ServiceInfo(name="iperf", running=False),  # non-vital → ignored
+    ]
+    by_key = {c.key: c.state for c in service_checks(svcs)}
+    assert by_key["service:sshd"] == CheckState.OK
+    assert by_key["service:configd"] == CheckState.CRIT
+    assert by_key["service:dns"] == CheckState.OK  # unbound up → resolver present
+    assert "service:iperf" not in by_key
+
+
+def test_service_checks_dns_all_down_is_crit() -> None:
+    from app.checks.evaluate import service_checks
+    from app.xsense.schemas import ServiceInfo
+
+    out = service_checks([ServiceInfo(name="unbound", running=False)])
+    assert any(c.key == "service:dns" and c.state == CheckState.CRIT for c in out)
+
+
 def test_memory_thresholds() -> None:
     assert memory_check(MemoryUsage(used_pct=50)).state == CheckState.OK
     assert memory_check(MemoryUsage(used_pct=80)).state == CheckState.WARN

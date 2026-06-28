@@ -257,3 +257,19 @@ class GatewayStatus(BaseModel):
     stddev: str = ""
     loss: str = ""  # e.g. "0.0%"
     interface: str = ""
+
+
+# --- Services ----------------------------------------------------------------
+
+
+class ServiceInfo(BaseModel):
+    """One system service and whether it is running (agent push only).
+
+    OPNsense: ``configctl service list``; pfSense: ``get_services()`` via PHP.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str = ""
+    description: str = ""
+    running: bool = False

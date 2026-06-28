@@ -17,6 +17,7 @@ from app.xsense.schemas import (
     FirmwareStatus,
     GatewayStatus,
     IPsecServiceStatus,
+    ServiceInfo,
     SystemStatus,
 )
 
@@ -33,15 +34,23 @@ async def _safe(coro_fn, default):
 async def _gather(
     inst: Instance, instance_id: int
 ) -> tuple[
-    SystemStatus, list[GatewayStatus] | None, IPsecServiceStatus | None, FirmwareStatus | None
+    SystemStatus,
+    list[GatewayStatus] | None,
+    IPsecServiceStatus | None,
+    FirmwareStatus | None,
+    list[ServiceInfo] | None,
 ]:
-    """Collect the four aspects: from the agent-hub cache (push) or live (direct)."""
+    """Collect the aspects: from the agent-hub cache (push) or live (direct).
+
+    Services are agent-push only; direct/Securepoint poll returns None for them.
+    """
     if inst.agent_mode:
         return (
             hub.get_last_status(instance_id) or SystemStatus(),
             hub.get_last_gateways(instance_id),
             hub.get_last_ipsec(instance_id),
             hub.get_last_firmware(instance_id),
+            hub.get_last_services(instance_id),
         )
     client = await registry.get(inst)
     return (
@@ -49,6 +58,7 @@ async def _gather(
         await _safe(client.gateway_status, None),
         await _safe(client.ipsec_status, None),
         await _safe(client.firmware_status, None),
+        None,
     )
 
 
@@ -63,8 +73,8 @@ async def instance_checks(
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    sys_status, gateways, ipsec, firmware = await _gather(inst, instance_id)
-    return evaluate_checks(sys_status, gateways, ipsec, firmware)
+    sys_status, gateways, ipsec, firmware, services = await _gather(inst, instance_id)
+    return evaluate_checks(sys_status, gateways, ipsec, firmware, services)
 
 
 @router.get("/export/checkmk")
@@ -92,10 +102,10 @@ async def export_checkmk(
 
     instances = []
     for inst in rows:
-        sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
+        sys_status, gateways, ipsec, firmware, services = await _gather(inst, inst.id)
         checks = [
             c
-            for c in evaluate_checks(sys_status, gateways, ipsec, firmware)
+            for c in evaluate_checks(sys_status, gateways, ipsec, firmware, services)
             if not is_excluded(c.key, inst.id, rules)
         ]
         instances.append(
@@ -141,8 +151,8 @@ async def all_checks(
 
     alerts: list[ServiceAlert] = []
     for inst in rows:
-        sys_status, gateways, ipsec, firmware = await _gather(inst, inst.id)
-        for c in evaluate_checks(sys_status, gateways, ipsec, firmware):
+        sys_status, gateways, ipsec, firmware, services = await _gather(inst, inst.id)
+        for c in evaluate_checks(sys_status, gateways, ipsec, firmware, services):
             reason = excluded_reason(c.key, inst.id, rules)
             alerts.append(
                 ServiceAlert(
