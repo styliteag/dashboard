@@ -16,7 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A per-provider "Test key" button validates the stored key against the provider's
   models endpoint (`POST /api/llm/test`). Keys are stored with the existing Fernet
   helper in `app_settings` and never returned in plaintext. Groundwork for the
-  upcoming AI log analysis.
+  AI log analysis below.
+- **AI log analysis** — the agent now collects the important logs (system, filter,
+  gateways, ipsec, resolver, openvpn) **hourly**, capped to ~1 MB total, and pushes
+  them to the backend, which keeps only the **last 3 snapshots per log** (no
+  long-term history; Alembic `020`, new `logfiles` table). On a firewall's **Log**
+  tab a new *AI Log Analysis* panel lets an admin preview the exact anonymized text,
+  pick a configured provider, and send it for analysis — the model flags anomalies
+  like ARP flapping / duplicate IPs, interface errors, failing services, IPsec or
+  gateway issues. Anonymization keeps internal IPs (they aid diagnosis) but
+  pseudonymizes public IPs, strips MAC vendor bits, and redacts hostnames and
+  secrets; raw log content never reaches the browser. Log paths are platform-aware
+  (OPNsense dated `/var/log/<cat>/…`, pfSense `/var/log/<name>.log`, both plaintext).
+  (Agent `__version__` → 1.9.1.)
 
 ## [1.9.3] - 2026-06-28
 

@@ -27,6 +27,7 @@ import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
+import AiLogAnalysisSection from "../components/AiLogAnalysisSection";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Range = (typeof RANGES)[number];
@@ -226,10 +227,11 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Log: firewall log */}
+      {/* Log: firewall log + AI log analysis */}
       {tab === "log" && (
         <div>
           <FirewallLogSection instanceId={nid} />
+          <AiLogAnalysisSection instanceId={nid} />
         </div>
       )}
 
