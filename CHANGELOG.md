@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-06-28
+
 ### Added
 
 - **Check / alert history** — every state change of a service check (OK↔WARN↔CRIT) is now recorded as a transition and shown in a new "Check history" panel on the instance Overview (most recent first). The agent-push ingest re-evaluates checks each push and diffs them against the previous states; the previous states survive a backend restart, so a restart does not re-fire every check, and the very first push only records a baseline. Retention is configurable (`DASH_CHECK_EVENT_RETENTION_DAYS`, default 90 days) with a daily prune job. (Alembic `016`, new `check_events` table.)
