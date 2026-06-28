@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import glob
 import hashlib
 import http.client
 import ipaddress
@@ -41,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.9.0"
+__version__ = "1.9.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1532,6 +1533,61 @@ def _openssl_cert_info(pem: bytes) -> dict | None:
     }
 
 
+# Important logs to ship for AI analysis. Both OPNsense and pfSense log in
+# plaintext (no clog): OPNsense under /var/log/<cat>/<cat>_YYYYMMDD.log (dated,
+# newest wins), pfSense under /var/log/<name>.log (single rotating file).
+# (logical name, opnsense glob, pfsense path)
+_LOG_SOURCES = (
+    ("system", "/var/log/system/system_*.log", "/var/log/system.log"),
+    ("filter", "/var/log/filter/filter_*.log", "/var/log/filter.log"),
+    ("gateways", "/var/log/dpinger/dpinger_*.log", "/var/log/gateways.log"),
+    ("ipsec", "/var/log/ipsec/ipsec_*.log", "/var/log/ipsec.log"),
+    ("resolver", "/var/log/resolver/resolver_*.log", "/var/log/resolver.log"),
+    ("openvpn", "/var/log/openvpn/openvpn_*.log", "/var/log/openvpn.log"),
+)
+_LOG_INTERVAL = 3600  # collect at most hourly
+_LOG_TOTAL_CAP = 1_000_000  # ~1 MB across all logs per snapshot
+_LOG_PER_FILE = 250_000  # per-log byte cap
+_last_log_ts = [0.0]  # monotonic time of the last collection (mutable holder)
+
+
+def _newest_log(pattern: str) -> str:
+    """Newest file matching ``pattern`` (OPNsense dated logs), or '' if none."""
+    files = glob.glob(pattern)
+    return max(files, key=os.path.getmtime) if files else ""
+
+
+def _resolve_log_path(platform_name: str, opn_glob: str, pf_path: str) -> str:
+    if platform_name == "pfsense":
+        return pf_path if os.path.exists(pf_path) else ""
+    return _newest_log(opn_glob)  # opnsense / unknown use the dated layout
+
+
+def collect_logfiles() -> list:
+    """Tail important logs (≈1 MB total) for AI analysis, at most hourly.
+
+    Returns ``[]`` between hourly ticks so the common push stays small."""
+    now = time.monotonic()
+    if _last_log_ts[0] and (now - _last_log_ts[0]) < _LOG_INTERVAL:
+        return []
+    platform_name = detect_platform()
+    out = []
+    total = 0
+    for name, opn_glob, pf_path in _LOG_SOURCES:
+        if total >= _LOG_TOTAL_CAP:
+            break
+        path = _resolve_log_path(platform_name, opn_glob, pf_path)
+        if not path:
+            continue
+        budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
+        content = _run(["tail", "-c", str(budget), path], timeout=10)
+        if content:
+            out.append({"name": name, "content": content})
+            total += len(content)
+    _last_log_ts[0] = now
+    return out
+
+
 def collect_all() -> dict:
     """Full snapshot of this OPNsense instance."""
     return {
@@ -1552,6 +1608,7 @@ def collect_all() -> dict:
         "config": collect_config(),
         "services": collect_services(),
         "certificates": collect_certificates(),
+        "logfiles": collect_logfiles(),
     }
 
 
