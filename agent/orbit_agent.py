@@ -41,7 +41,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.6.8"
+__version__ = "1.6.10"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1081,8 +1081,71 @@ def _read_opnsense_version() -> str:
     return _run(["pkg", "query", "%v", "opnsense"]).strip()
 
 
-# Track when we last ran a full firmware update check (network call)
+# Track when we last ran a full firmware update check (network call). The verdict
+# is cached because pushes happen every ~30s but the network check only every 10
+# min — without the cache the cheap interim pushes would blank a detected update.
 _last_fw_check_ts: float = 0.0
+_last_fw_verdict: dict = {}
+
+
+def _opnsense_series() -> str:
+    """OPNsense major series (e.g. '26.1'), reported to the dashboard as branch/train."""
+    try:
+        data = json.loads(_run(["opnsense-version"]))
+        return data.get("product_series") or data.get("CORE_SERIES", "")
+    except Exception:
+        return ""
+
+
+def _opnsense_update_check(installed: str) -> tuple[bool, str, str]:
+    """Detect an OPNsense update. Returns ``(upgrade_available, latest, output)``.
+
+    ``opnsense-update -c`` only reports base-set (release) upgrades, so it MISSES
+    pkg point releases — e.g. 26.1.9 -> 26.1.10, which ship as the ``opnsense``
+    package. Refresh the repo catalogue, then compare the installed vs the remote
+    ``opnsense`` package version: that is the authoritative point-release signal
+    and matches what the GUI firmware check shows. ``pkg rquery`` reads the local
+    catalogue cache, so the ``pkg update`` refresh is what makes this work — a
+    stale cache otherwise returns an empty remote version (false "up to date").
+    """
+    out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
+    low = out.lower()
+    upgrade_available = "can be updated" in low or "updates available" in low
+    latest = installed
+    try:
+        _run(["pkg", "update", "-q"], timeout=60)  # refresh catalogue (lock-busy → next cycle)
+        cur = _run(["pkg", "query", "%v", "opnsense"]).strip()
+        remote = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
+        if remote:
+            latest = remote
+        if cur and remote and cur != remote:
+            upgrade_available = True
+            if not out or "up to date" in low:
+                out = f"{cur} can be updated to {remote}"
+    except Exception:
+        pass
+    return upgrade_available, latest, out
+
+
+def _store_fw_verdict(
+    branch: str, known_branches: list, upgrade_available: bool, latest: str, out: str
+) -> dict:
+    """Cache the firmware verdict + restart the 10-min throttle window.
+
+    Both the periodic push and the manual ``firmware.check`` go through here so a
+    just-run check is reflected by the cheap interim pushes (otherwise a throttled
+    push would overwrite a fresh manual check with the stale cached verdict).
+    """
+    global _last_fw_check_ts, _last_fw_verdict
+    _last_fw_verdict = {
+        "branch": branch,
+        "known_branches": known_branches,
+        "upgrade_available": upgrade_available,
+        "product_latest": latest,
+        "update_check_output": out.strip()[:500],
+    }
+    _last_fw_check_ts = time.monotonic()
+    return _last_fw_verdict
 
 
 def _pfsense_update_available(out: str) -> bool:
@@ -1101,55 +1164,32 @@ def _pfsense_update_available(out: str) -> bool:
 
 
 def collect_firmware() -> dict:
-    """Firmware version on every push; update check every 10 minutes (per platform)."""
-    global _last_fw_check_ts
+    """Firmware version on every push; update check every 10 minutes (per platform).
+
+    Only ``product_version`` is recomputed every push (a cheap local file read); the
+    branch + upgrade verdict come from the cached last network check so the frequent
+    interim pushes never blank a detected update (see ``_last_fw_verdict``).
+    """
     pfsense = detect_platform() == "pfsense"
     version = _read_pfsense_version() if pfsense else _read_opnsense_version()
-    branch = _read_pfsense_branch() if pfsense else ""
-    known_branches = _list_pfsense_branches() if pfsense else []
 
     now = time.monotonic()
-    if now - _last_fw_check_ts < 600:  # 0 on first call → always runs immediately
-        return {"product_version": version, "branch": branch, "known_branches": known_branches}
-    _last_fw_check_ts = now
+    if _last_fw_verdict and now - _last_fw_check_ts < 600:
+        return {"product_version": version, **_last_fw_verdict}
 
     if pfsense:
+        branch = _read_pfsense_branch()
+        known_branches = _list_pfsense_branches()
         out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
         upgrade_available = _pfsense_update_available(out)
+        latest = version  # pfSense-upgrade reports no target version
     else:
-        out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
-        low = out.lower()
-        upgrade_available = "can be updated" in low or "updates available" in low
+        branch = _opnsense_series()
+        known_branches = []
+        upgrade_available, latest, out = _opnsense_update_check(version)
 
-        # Report OPNsense series as branch/train
-        if not branch:
-            try:
-                ver_out = _run(["opnsense-version"])
-                data = json.loads(ver_out)
-                branch = data.get("product_series") or data.get("CORE_SERIES", "")
-            except Exception:
-                pass
-
-        # Also detect core opnsense package updates (point releases within series
-        # are sometimes not reported by -c but are visible to pkg)
-        if not upgrade_available:
-            try:
-                installed = _run(["pkg", "query", "%v", "opnsense"]).strip()
-                latest = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
-                if installed and latest and installed != latest:
-                    upgrade_available = True
-                    if not out or "up to date" in out.lower():
-                        out = f"{installed} can be updated to {latest}"
-            except Exception:
-                pass
-
-    return {
-        "product_version": version,
-        "branch": branch,
-        "known_branches": known_branches,
-        "upgrade_available": upgrade_available,
-        "update_check_output": out.strip()[:500],
-    }
+    verdict = _store_fw_verdict(branch, known_branches, upgrade_available, latest, out)
+    return {"product_version": version, **verdict}
 
 
 def collect_uptime() -> str:
@@ -1951,33 +1991,24 @@ def execute_command(action: str, params: dict) -> dict:
             version = _read_pfsense_version()
             branch = _read_pfsense_branch()
             known = _list_pfsense_branches()
+            upgrade_available = _pfsense_update_available(out)
+            latest = version  # pfSense-upgrade reports no target version
         else:
-            out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=60)
             version = _read_opnsense_version()
-            branch = ""
+            branch = _opnsense_series()
             known = []
-            # Report series as branch/train for OPNsense
-            try:
-                ver_out = _run(["opnsense-version"])
-                data = json.loads(ver_out)
-                branch = data.get("product_series") or data.get("CORE_SERIES", "")
-            except Exception:
-                pass
-            # Also check pkg for core update (catches point releases)
-            try:
-                installed = _run(["pkg", "query", "%v", "opnsense"]).strip()
-                latest = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
-                if installed and latest and installed != latest:
-                    if not out or "up to date" in out.lower():
-                        out = f"{installed} can be updated to {latest}"
-            except Exception:
-                pass
+            upgrade_available, latest, out = _opnsense_update_check(version)
+        # Refresh the push-loop cache so a throttled interim push doesn't revert
+        # this fresh manual check back to the previous verdict.
+        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out)
         return {
             "success": True,
-            "output": out.strip()[:500],
+            "output": verdict["update_check_output"],
             "product_version": version,
-            "branch": branch,
-            "known_branches": known,
+            "product_latest": verdict["product_latest"],
+            "upgrade_available": verdict["upgrade_available"],
+            "branch": verdict["branch"],
+            "known_branches": verdict["known_branches"],
         }
 
     elif action == "firmware.update":
@@ -2427,8 +2458,11 @@ def _clear_probation() -> None:
 
 
 async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> None:
-    """Verify + stage a pushed update, ack, then exit for the supervisor to respawn."""
-    version = params.get("version", "")
+    """Verify + stage a pushed update, ack, then exit for the supervisor to respawn.
+
+    The unsigned ``version`` param is intentionally ignored — anti-rollback gates on
+    the version embedded in the signature-covered code (see ``_is_forward_update``).
+    """
     try:
         code = base64.b64decode(params.get("code", ""), validate=True)
     except (ValueError, TypeError):

@@ -174,9 +174,10 @@ class FirmwareStatus(BaseModel):
 
     product_name: str = ""
     product_version: str = ""
-    branch: str = ""  # pfSense update branch / software train (e.g. "26.03", "Latest stable version")
+    # update branch / software train (pfSense "26.03" / "Latest stable version", OPNsense series)
+    branch: str = ""
     known_branches: list[str] = []  # other locally known trains (best-effort)
-    product_latest: str = ""
+    product_latest: str = ""  # available version (agent: OPNsense pkg rquery); else = installed
     needs_reboot: bool = False
     upgrade_available: bool = False
     updates_available: int = 0

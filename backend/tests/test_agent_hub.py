@@ -144,9 +144,20 @@ def test_firmware_from_agent_derives_updates_count() -> None:
     assert fw.updates_available == 0
     assert fw.last_check == "2026-06-23T10:00:00+00:00"
 
-    upgradable = dict(AGENT_PUSH, firmware={"product_version": "25.7", "upgrade_available": True})
+    # Older agent without product_latest: Latest falls back to installed (never blank).
+    assert fw.product_latest == "26.03-RELEASE"
+
+    upgradable = dict(
+        AGENT_PUSH,
+        firmware={
+            "product_version": "26.1.9",
+            "product_latest": "26.1.10",
+            "upgrade_available": True,
+        },
+    )
     fw2 = firmware_from_agent(upgradable, "x")
     assert fw2.upgrade_available is True
+    assert fw2.product_latest == "26.1.10"  # agent-reported available version surfaces
     assert fw2.updates_available == 1
     assert fw2.branch == ""  # not provided in override
     assert fw2.known_branches == []

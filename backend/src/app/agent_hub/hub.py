@@ -151,7 +151,9 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
         product_version=fw_data.get("product_version", ""),
         branch=fw_data.get("branch", ""),
         known_branches=fw_data.get("known_branches", []) or [],
-        product_latest=fw_data.get("product_version", ""),  # agent doesn't know latest
+        # Agent now reports the available version (OPNsense pkg rquery); older
+        # agents omit it → fall back to installed so "Latest" never goes blank.
+        product_latest=fw_data.get("product_latest") or fw_data.get("product_version", ""),
         upgrade_available=upgrade_available,
         updates_available=1 if upgrade_available else 0,
         status_msg=fw_data.get("update_check_output", ""),

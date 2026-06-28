@@ -68,9 +68,12 @@ async def firmware_check(
             )
         result_raw = await agent.send_command("firmware.check", timeout=90)
         output = result_raw.get("output", "")
-        upgrade_available = (
-            "can be updated" in output.lower() or "updates available" in output.lower()
-        )
+        # Newer agents report the verdict explicitly; older ones only the output text.
+        upgrade_available = result_raw.get("upgrade_available")
+        if upgrade_available is None:
+            upgrade_available = (
+                "can be updated" in output.lower() or "updates available" in output.lower()
+            )
         # firmware.check now returns the version too; fall back to what we already cached
         product_version = result_raw.get("product_version") or (
             hub.get_last_firmware(instance_id).product_version
@@ -78,9 +81,7 @@ async def firmware_check(
             else ""
         )
         branch = result_raw.get("branch") or (
-            hub.get_last_firmware(instance_id).branch
-            if hub.get_last_firmware(instance_id)
-            else ""
+            hub.get_last_firmware(instance_id).branch if hub.get_last_firmware(instance_id) else ""
         )
         known = result_raw.get("known_branches") or (
             hub.get_last_firmware(instance_id).known_branches
@@ -95,7 +96,7 @@ async def firmware_check(
                 product_version=product_version,
                 branch=branch,
                 known_branches=known,
-                product_latest=product_version,
+                product_latest=result_raw.get("product_latest") or product_version,
                 upgrade_available=upgrade_available,
                 updates_available=1 if upgrade_available else 0,
                 status_msg=output[:500],

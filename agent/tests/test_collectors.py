@@ -86,15 +86,77 @@ def test_read_opnsense_version_falls_through_empty_product_version(fake_fs: dict
     assert agent._read_opnsense_version() == "25.7.11_9"
 
 
-def test_collect_firmware_pfsense_reads_version(
+def test_collect_firmware_throttled_preserves_verdict(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Regression: pushes happen every ~30s but the network check only every 10 min.
+    # The throttled (cheap) push must refresh product_version yet KEEP the last
+    # upgrade verdict + latest, otherwise it blanks a detected update to "up to date".
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
-    # Pretend a check ran recently so the version-only path is taken (no subprocess).
     monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic())
+    monkeypatch.setattr(
+        agent,
+        "_last_fw_verdict",
+        {
+            "branch": "26.03",
+            "known_branches": ["26.03"],
+            "upgrade_available": True,
+            "product_latest": "26.04-RELEASE",
+            "update_check_output": "will be upgraded",
+        },
+    )
     fake_fs["/etc/version"] = "26.03-RELEASE\n"
-    # branch not present in this minimal fs -> empty + []
-    assert agent.collect_firmware() == {"product_version": "26.03-RELEASE", "branch": "", "known_branches": []}
+    out = agent.collect_firmware()
+    assert out["product_version"] == "26.03-RELEASE"  # recomputed every push
+    assert out["upgrade_available"] is True  # verdict preserved, not blanked
+    assert out["product_latest"] == "26.04-RELEASE"
+
+
+def test_opnsense_update_check_detects_pkg_point_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    # opnsense-update -c misses pkg point releases (26.1.9 -> 26.1.10); the pkg
+    # compare after a catalogue refresh must catch it and report the real latest.
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:2] == ["/usr/local/sbin/opnsense-update", "-c"]:
+            return ""  # base set is current -> no signal here
+        if cmd[:3] == ["pkg", "query", "%v"]:
+            return "26.1.9\n"
+        if cmd[:3] == ["pkg", "rquery", "%v"]:
+            return "26.1.10\n"
+        return ""  # pkg update -q
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    upgrade, latest, out = agent._opnsense_update_check("26.1.9")
+    assert upgrade is True
+    assert latest == "26.1.10"
+    assert "26.1.10" in out
+
+
+def test_opnsense_update_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:3] == ["pkg", "query", "%v"] or cmd[:3] == ["pkg", "rquery", "%v"]:
+            return "26.1.10\n"
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    upgrade, latest, _ = agent._opnsense_update_check("26.1.10")
+    assert upgrade is False
+    assert latest == "26.1.10"  # latest still reported even with no update
+
+
+def test_opnsense_update_check_stale_catalogue_no_false_uptodate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # If rquery comes back empty (stale/missing catalogue) we must NOT claim an
+    # update; latest falls back to installed rather than going blank.
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:3] == ["pkg", "query", "%v"]:
+            return "26.1.9\n"
+        return ""  # rquery empty, update -q noop
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    upgrade, latest, _ = agent._opnsense_update_check("26.1.9")
+    assert upgrade is False
+    assert latest == "26.1.9"
 
 
 def test_pfsense_update_detection() -> None:

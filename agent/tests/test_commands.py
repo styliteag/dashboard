@@ -90,21 +90,29 @@ def test_firmware_check_pfsense_uses_pfsense_upgrade(monkeypatch: pytest.MonkeyP
 
 
 def test_firmware_check_opnsense_uses_opnsense_update(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict = {}
+    cmds: list[list[str]] = []
 
     def fake_run(cmd: list[str], timeout: int = 5) -> str:
-        captured["cmd"] = cmd
-        return "up to date"
+        cmds.append(cmd)
+        if cmd[:2] == ["/usr/local/sbin/opnsense-update", "-c"]:
+            return "up to date"
+        if cmd[:3] == ["pkg", "query", "%v"]:
+            return "26.1.9"
+        if cmd[:3] == ["pkg", "rquery", "%v"]:
+            return "26.1.10"  # a newer core package is available
+        if cmd == ["opnsense-version"]:
+            return '{"product_series": "26.1"}'
+        return ""  # pkg update -q
 
     monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
     monkeypatch.setattr(agent, "_run", fake_run)
-    monkeypatch.setattr(agent, "_read_opnsense_version", lambda: "25.7.11_9")
-    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "")  # not called but safe
-    monkeypatch.setattr(agent, "_list_pfsense_branches", lambda: [])
+    monkeypatch.setattr(agent, "_read_opnsense_version", lambda: "26.1.9")
     result = agent.execute_command("firmware.check", {})
-    assert captured["cmd"] == ["/usr/local/sbin/opnsense-update", "-c"]
-    assert result["product_version"] == "25.7.11_9"
-    assert result.get("branch") == ""
+    assert ["/usr/local/sbin/opnsense-update", "-c"] in cmds
+    assert result["product_version"] == "26.1.9"
+    assert result["product_latest"] == "26.1.10"  # pkg point release surfaced
+    assert result["upgrade_available"] is True
+    assert result.get("branch") == "26.1"
     assert result.get("known_branches") == []
 
 
