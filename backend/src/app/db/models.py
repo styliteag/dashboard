@@ -254,22 +254,34 @@ class NotificationRoute(Base):
 
     Presence = subscribed (opt-in); absence = that channel does not get that
     category. ``category`` is ``availability`` (instance offline/recovered) or a
-    Checkmk check category (``cpu``, ``cert``, ``gateway`` …). The ``availability``
-    rows are seeded for every channel by the migration so up/down alerts work out
-    of the box; the noisier check categories are opt-in. See
-    ``app.notifications.routing``.
+    Checkmk check category (``cpu``, ``cert``, ``gateway`` …). ``instance_id`` NULL
+    is a **global** route (every instance); a value scopes it to one instance.
+    Matching is override/precedence — a per-instance route wins over the global one,
+    its ``enabled`` flag deciding (so a global-on category can be switched off for a
+    single box) — see ``app.notifications.routing``. Global routes are pure presence
+    (always ``enabled``); ``enabled=False`` only ever appears on a per-instance row.
+    The ``availability`` rows are seeded globally for every channel by the migration
+    so up/down alerts work out of the box; the noisier check categories are opt-in.
     """
 
     __tablename__ = "notification_routes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     channel: Mapped[str] = mapped_column(String(32), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Per-instance override toggle: False = explicitly suppress this category for the
+    # scoped instance even though a global route is on. Global rows are always True.
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (UniqueConstraint("channel", "category", name="uq_notification_route"),)
+    __table_args__ = (
+        UniqueConstraint("instance_id", "channel", "category", name="uq_notification_route"),
+    )
 
 
 class IPsecPingMonitor(Base):

@@ -63,6 +63,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
             dispatch_async(
                 f"✅ {instance_name} is back online",
                 f"Instance {instance_name} recovered.",
+                instance_id,
                 level="info",
                 category="availability",
             )
@@ -85,6 +86,7 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
                         dispatch_async(
                             f"🔴 {instance_name} is offline",
                             f"Instance {instance_name} failed: {str(exc)[:200]}",
+                            instance_id,
                             level="error",
                             category="availability",
                         )
@@ -159,7 +161,7 @@ async def _check_stale_agents() -> None:
     # Collect instances we actually flipped offline, notify AFTER the session is
     # closed: the send is fire-and-forget, but it must not run while the session is
     # held (it would tie up a DB conn) — keep notification scheduling off the DB path.
-    flagged: list[tuple[str, int]] = []
+    flagged: list[tuple[str, int, int]] = []
     async with sessionmaker() as session:
         rows = (
             (
@@ -205,12 +207,13 @@ async def _check_stale_agents() -> None:
             await session.commit()
             if result.rowcount:
                 log.warning("agent.stale", instance=inst.name, instance_id=inst.id)
-                flagged.append((inst.name, threshold))
+                flagged.append((inst.name, inst.id, threshold))
 
-    for name, threshold in flagged:
+    for name, instance_id, threshold in flagged:
         dispatch_async(
             f"🔴 {name} agent offline",
             f"No metrics push from {name} for over {threshold}s.",
+            instance_id,
             level="error",
             category="availability",
         )

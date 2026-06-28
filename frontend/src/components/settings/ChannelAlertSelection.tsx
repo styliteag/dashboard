@@ -34,30 +34,87 @@ const STATUS_CLS: Record<string, string> = {
   failed: "text-red-400",
 };
 
+// "global" = a route with instance_id null (every instance); a number scopes it to
+// one instance. Matching is override/precedence (see app/notifications/routing.py):
+// a per-instance route wins over the global one. So at instance scope a category is
+// tri-state — inherit the global value, or explicitly override it on/off for that
+// one box. Global scope stays a plain on/off.
+type Scope = "global" | number;
+
+// A category's resolved state at the current scope.
+//   on:       effective — does this channel get the category for this scope?
+//   inherit:  instance scope only — no per-instance row, so the global value applies.
+//   globalOn: is the global route on (the value an instance row would override)?
+type CatState = { on: boolean; inherit: boolean; globalOn: boolean };
+
 export default function ChannelAlertSelection({ channel }: { channel: string }) {
   const qc = useQueryClient();
   const [testResult, setTestResult] = useState<NotificationTestResult | null>(null);
+  const [scope, setScope] = useState<Scope>("global");
 
   const { data } = useQuery({
     queryKey: ROUTING_QK,
     queryFn: () => api.get<NotificationRoutingMatrix>("/api/notifications/routing"),
   });
 
-  const subscribed = new Set(
-    (data?.routes ?? []).filter((r) => r.channel === channel).map((r) => r.category),
+  const channelRoutes = (data?.routes ?? []).filter((r) => r.channel === channel);
+  // Global routes are pure presence (always enabled); a category is global-on when a
+  // global row exists for it.
+  const globalCats = new Set(
+    channelRoutes.filter((r) => r.instance_id === null && r.enabled).map((r) => r.category),
+  );
+  // Per-instance override rows for the selected instance: category -> enabled.
+  const overrides = new Map<string, boolean>(
+    typeof scope === "number"
+      ? channelRoutes
+          .filter((r) => r.instance_id === scope)
+          .map((r) => [r.category, r.enabled] as [string, boolean])
+      : [],
   );
   const configured = data?.channels.find((c) => c.key === channel)?.configured ?? false;
+  const instances = data?.instances ?? [];
 
-  const toggleMut = useMutation({
-    mutationFn: ({ category, on }: { category: string; on: boolean }) =>
-      on
-        ? api.post("/api/notifications/routes", { channel, category })
-        : api.del(
-            `/api/notifications/routes?channel=${channel}&category=${encodeURIComponent(category)}`,
-          ),
-    // Refetch the shared matrix so every channel tab stays in sync.
+  // Per category at the current scope. At instance scope a per-instance override (if
+  // present) wins over the global value; otherwise the category inherits the global.
+  const stateOf = (cat: string): CatState => {
+    const globalOn = globalCats.has(cat);
+    if (scope === "global") return { on: globalOn, inherit: false, globalOn };
+    if (overrides.has(cat)) return { on: overrides.get(cat)!, inherit: false, globalOn };
+    return { on: globalOn, inherit: true, globalOn };
+  };
+
+  const iid = scope === "global" ? null : scope;
+
+  // Upsert a route (global on/off via add+remove; per-instance via an explicit
+  // enabled flag so a global-on category can be overridden off for one box).
+  const setMut = useMutation({
+    mutationFn: ({ category, enabled }: { category: string; enabled: boolean }) =>
+      api.post("/api/notifications/routes", { instance_id: iid, channel, category, enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ROUTING_QK }),
   });
+
+  // Remove a route row: at global scope this turns the category off for all; at
+  // instance scope it clears the override and the category falls back to inherit.
+  const clearMut = useMutation({
+    mutationFn: (category: string) => {
+      const q = `channel=${channel}&category=${encodeURIComponent(category)}`;
+      return api.del(`/api/notifications/routes?${q}${iid === null ? "" : `&instance_id=${iid}`}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ROUTING_QK }),
+  });
+
+  const pending = setMut.isPending || clearMut.isPending;
+
+  // Toggling the checkbox. Global scope: presence add/remove. Instance scope: write
+  // an explicit override opposite to the effective value (upserts on or off).
+  const toggle = (cat: string, st: CatState) => {
+    if (scope === "global") {
+      if (st.on) clearMut.mutate(cat);
+      else setMut.mutate({ category: cat, enabled: true });
+      return;
+    }
+    setMut.mutate({ category: cat, enabled: !st.on });
+  };
 
   const testMut = useMutation({
     mutationFn: () =>
@@ -81,9 +138,28 @@ export default function ChannelAlertSelection({ channel }: { channel: string }) 
         </button>
       </div>
       <p className="mt-1 text-xs text-slate-400">
-        Pick the alert categories this channel receives. A category stays silent here until you
-        enable it — only “Instance up / down” is on by default.
+        Pick the alert categories this channel receives. Choose a scope: <em>All instances</em>{" "}
+        applies to every firewall; pick one to override categories for just that box — add extra
+        ones, or switch a global category off. A box-level choice wins over the global one; clear
+        it (↺) to fall back to the global value.
       </p>
+
+      {/* Scope selector — global vs one instance. */}
+      <div className="mt-3 flex items-center gap-2">
+        <label className="text-xs font-medium text-slate-400">Scope</label>
+        <select
+          value={scope === "global" ? "global" : String(scope)}
+          onChange={(e) => setScope(e.target.value === "global" ? "global" : Number(e.target.value))}
+          className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100"
+        >
+          <option value="global">All instances (global)</option>
+          {instances.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.name} ({i.device_type})
+            </option>
+          ))}
+        </select>
+      </div>
 
       {!configured && (
         <p className="mt-3 flex items-center gap-2 rounded-lg border border-amber-600/30 bg-amber-600/10 px-3 py-2 text-xs text-amber-400">
@@ -104,21 +180,43 @@ export default function ChannelAlertSelection({ channel }: { channel: string }) 
 
       <div className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         {(data?.categories ?? []).map((cat) => {
-          const on = subscribed.has(cat);
+          const st = stateOf(cat);
+          // Tri-state at instance scope: an inheriting box shows the checkbox as
+          // indeterminate (the global value applies but isn't an explicit choice).
+          // `indeterminate` is a DOM property, not a JSX prop — set it via a ref.
           return (
-            <label
-              key={cat}
-              className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
-            >
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={toggleMut.isPending}
-                onChange={() => toggleMut.mutate({ category: cat, on: !on })}
-                className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-emerald-600 focus:ring-emerald-600"
-              />
-              {CATEGORY_LABELS[cat] ?? cat}
-            </label>
+            <div key={cat} className="flex items-center gap-2 text-sm">
+              <label className="flex flex-1 cursor-pointer items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={st.on}
+                  ref={(el) => {
+                    if (el) el.indeterminate = st.inherit;
+                  }}
+                  disabled={pending}
+                  onChange={() => toggle(cat, st)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-emerald-600 focus:ring-emerald-600 disabled:cursor-not-allowed"
+                />
+                <span className={st.inherit ? "text-slate-400" : undefined}>
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </span>
+              </label>
+              {st.inherit ? (
+                <span className="text-xs text-slate-600">
+                  via global · {st.globalOn ? "on" : "off"}
+                </span>
+              ) : scope !== "global" ? (
+                <button
+                  type="button"
+                  onClick={() => clearMut.mutate(cat)}
+                  disabled={pending}
+                  title="Clear the override and inherit the global value"
+                  className="text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50"
+                >
+                  ↺ {st.on ? "on" : "off"}
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>

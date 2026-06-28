@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-instance notification routing with override** — Mattermost/Telegram/Email
+  alert routing can now be scoped to a single firewall, not just global. In Settings
+  → Notifications each channel gets a scope selector (*All instances* + one per
+  firewall); pick an instance to **override** categories for just that box. Matching
+  is precedence: a per-instance choice wins over the global one, so a globally-on
+  category can be switched **off** for a single firewall (and a globally-off one
+  switched on). At instance scope each category is tri-state — inherit the global
+  value (shown as "via global"), or an explicit on/off override that can be cleared
+  (↺) back to inherit. Existing global routes are unchanged. (Alembic `019`, new
+  `notification_routes.enabled` column.)
+
 ## [1.9.1] - 2026-06-28
 
 ### Fixed

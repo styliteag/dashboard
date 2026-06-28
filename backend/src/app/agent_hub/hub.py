@@ -638,6 +638,7 @@ class AgentHub:
             dispatch_async(
                 f"✅ {recovered_name} agent back online",
                 f"Agent for {recovered_name} resumed pushing metrics.",
+                instance_id,
                 level="info",
                 category="availability",
             )
@@ -647,7 +648,7 @@ class AgentHub:
         # Sends are fire-and-forget so channel send latency never blocks ingest.
         for transition in check_transitions:
             title, msg, level, cat = _check_alert(instance_name, transition)
-            dispatch_async(title, msg, level=level, category=cat)
+            dispatch_async(title, msg, instance_id, level=level, category=cat)
         log.debug("agent.metrics", instance_id=instance_id, cpu=status.cpu.total)
 
 

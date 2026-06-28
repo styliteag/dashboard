@@ -225,15 +225,22 @@ _CHANNEL_SENDERS = (
 
 
 async def _dispatch(
-    title: str, message: str, level: str, category: str, *, respect_routes: bool
+    title: str,
+    message: str,
+    level: str,
+    category: str,
+    instance_id: int | None,
+    *,
+    respect_routes: bool,
 ) -> list[ChannelResult]:
     """Send to each channel. When ``respect_routes`` is on, a channel not subscribed
-    to ``category`` is reported as skipped without attempting a send (the test path
-    turns it off to reach every configured channel)."""
+    to ``category`` for ``instance_id`` is reported as skipped without attempting a
+    send (the test path turns it off — and passes ``instance_id=None`` — to reach
+    every configured channel)."""
     s = effective_settings()
     results: list[ChannelResult] = []
     for channel, sender in _CHANNEL_SENDERS:
-        if respect_routes and not is_subscribed_live(channel, category):
+        if respect_routes and not is_subscribed_live(channel, category, instance_id):
             results.append(ChannelResult(channel, "skipped", "not subscribed"))
             continue
         results.append(await sender(s, title, message, level))
@@ -241,11 +248,16 @@ async def _dispatch(
 
 
 async def send_notification(
-    title: str, message: str, level: str = "info", category: str = AVAILABILITY
+    title: str, message: str, instance_id: int, level: str = "info", category: str = AVAILABILITY
 ) -> None:
-    """Send an alert of ``category`` to every channel subscribed to it. Failures are
-    logged, not raised."""
-    await _dispatch(title, message, level, category, respect_routes=True)
+    """Send an alert of ``category`` for ``instance_id`` to every subscribed channel.
+
+    ``instance_id`` is required (not defaulted): routing resolves per instance (a
+    per-instance route overrides the global one), so a missing id would silently
+    match only global routes and ignore every per-instance override — a forgotten
+    call site must fail loudly, not degrade to global-only. Failures are logged,
+    not raised."""
+    await _dispatch(title, message, level, category, instance_id, respect_routes=True)
 
 
 # Strong refs to in-flight fire-and-forget sends, so the event loop doesn't GC a
@@ -254,14 +266,14 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 def dispatch_async(
-    title: str, message: str, level: str = "info", category: str = AVAILABILITY
+    title: str, message: str, instance_id: int, level: str = "info", category: str = AVAILABILITY
 ) -> None:
-    """Fire-and-forget ``send_notification``: schedule the send as a background task
-    so a caller on a latency-sensitive path (the agent WS ingest, the poll cycle)
-    is never blocked by channel send latency (~10s/HTTP channel, SMTP). Delivery is
-    best-effort — ``send_notification`` already logs every failure and never raises,
-    so the task needs no result handling."""
-    task = asyncio.create_task(send_notification(title, message, level, category))
+    """Fire-and-forget ``send_notification`` for ``instance_id``: schedule the send as
+    a background task so a caller on a latency-sensitive path (the agent WS ingest,
+    the poll cycle) is never blocked by channel send latency (~10s/HTTP channel,
+    SMTP). Delivery is best-effort — ``send_notification`` already logs every failure
+    and never raises, so the task needs no result handling."""
+    task = asyncio.create_task(send_notification(title, message, instance_id, level, category))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -279,6 +291,7 @@ async def send_test_notification(channel: str | None = None) -> list[ChannelResu
         "If you can read this, Orbit notifications are working.",
         "info",
         AVAILABILITY,
+        None,
         respect_routes=False,
     )
     if channel is not None:

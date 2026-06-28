@@ -57,8 +57,8 @@ async def test_dispatch_skips_channels_not_subscribed(monkeypatch) -> None:
     # Everything configured, but no channel is subscribed to the category → all
     # skipped as "not subscribed", and no network call is attempted.
     monkeypatch.setattr(notifier, "effective_settings", lambda: _all_configured())
-    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat: False)
-    results = await notifier._dispatch("t", "m", "info", "cpu", respect_routes=True)
+    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat, iid: False)
+    results = await notifier._dispatch("t", "m", "info", "cpu", 1, respect_routes=True)
     assert {r.channel for r in results} == {"mattermost", "telegram", "email"}
     assert all(r.status == "skipped" and r.detail == "not subscribed" for r in results)
 
@@ -69,9 +69,10 @@ async def test_dispatch_sends_only_to_subscribed_channel(monkeypatch) -> None:
     monkeypatch.setattr(notifier, "_resolve", _resolve_public)
     monkeypatch.setattr(notifier.httpx, "AsyncClient", _Client)
     # Only mattermost is subscribed to "cpu".
-    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat: ch == "mattermost")
+    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat, iid: ch == "mattermost")
     results = {
-        r.channel: r for r in await notifier._dispatch("t", "m", "info", "cpu", respect_routes=True)
+        r.channel: r
+        for r in await notifier._dispatch("t", "m", "info", "cpu", 1, respect_routes=True)
     }
     assert results["mattermost"].status == "sent"
     assert results["telegram"].status == "skipped"
@@ -269,7 +270,7 @@ async def test_dispatch_async_is_fire_and_forget(monkeypatch) -> None:
         ran.set()
 
     monkeypatch.setattr(notifier, "send_notification", _fake_send)
-    assert notifier.dispatch_async("t", "m") is None  # returns immediately
+    assert notifier.dispatch_async("t", "m", 1) is None  # returns immediately
     assert ran.is_set() is False  # not awaited inline
     await asyncio.sleep(0)  # let the scheduled task run
     assert ran.is_set() is True

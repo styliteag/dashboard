@@ -417,12 +417,21 @@ export interface NotificationChannelInfo {
 }
 
 export interface NotificationRoute {
+  instance_id: number | null; // null = global (every instance)
   channel: string;
   category: string;
+  enabled: boolean; // false = a per-instance off-override (global rows are always true)
+}
+
+export interface NotificationRoutingInstance {
+  id: number;
+  name: string;
+  device_type: string;
 }
 
 export interface NotificationRoutingMatrix {
   channels: NotificationChannelInfo[];
   categories: string[];
+  instances: NotificationRoutingInstance[];
   routes: NotificationRoute[];
 }
