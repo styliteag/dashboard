@@ -32,7 +32,22 @@ _SECRET_RE = re.compile(
 
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b")
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-_IPV6_RE = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{1,4}\b")
+# Full IPv6 incl. "::" compression (the previous pattern missed every compressed
+# address, leaking public IPv6). Candidates are validated by ipaddress below, so a
+# loose-but-broad match is fine; internal (ULA/link-local/loopback) IPs are kept.
+_IPV6_RE = re.compile(
+    r"(?<![\w:.])(?:"
+    r"(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}"  # 1:2:3:4:5:6:7:8
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,7}:"  # 1::            1:2:3:4:5:6:7::
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}"  # 1::8          1:2:3:4:5:6::8
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}"
+    r"|[0-9A-Fa-f]{1,4}:(?::[0-9A-Fa-f]{1,4}){1,6}"
+    r"|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:)"  # ::8          ::
+    r")(?![\w:.])"
+)
 _FQDN_RE = re.compile(r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,24}\b")
 
 # TLD-shaped tokens that are really filenames/keywords, not hostnames — leave them.

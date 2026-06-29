@@ -33,6 +33,17 @@ def test_secrets_redacted() -> None:
     assert "MIIabc" not in out and "REDACTED" in out
 
 
+def test_public_ipv6_pseudonymized_internal_kept() -> None:
+    out = anonymize("pub 2606:4700:4700::1111 ula fd00::1 ll fe80::1 lo ::1")
+    assert "2606:4700:4700::1111" not in out  # public IPv6 → scrubbed
+    assert "PUBIP6_1" in out
+    assert "fd00::1" in out  # ULA kept
+    assert "fe80::1" in out  # link-local kept
+    # a second distinct public IPv6 gets its own token
+    out2 = anonymize("2606:4700:4700::1111 and 2001:4860:4860::8888")
+    assert out2.count("PUBIP6_1") == 1 and "PUBIP6_2" in out2
+
+
 def test_fqdn_pseudonymized_but_filenames_kept() -> None:
     out = anonymize("host kc-of.stylite.de is down")
     assert "kc-of.stylite.de" not in out and "HOST1" in out
