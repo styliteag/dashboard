@@ -6,9 +6,8 @@ arbitrary host/port and turn the root agent into a TCP pivot into the box's LAN.
 
 from __future__ import annotations
 
-import pytest
-
 import orbit_agent as agent
+import pytest
 
 
 class _FakeWS:

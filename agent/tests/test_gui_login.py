@@ -71,7 +71,9 @@ def test_ensure_gui_creds_pfsense_provisions_without_relay(monkeypatch: pytest.M
     assert agent._ensure_gui_credentials(_cfg()) == ("orbit", "NEWPW")
 
 
-def test_ensure_gui_creds_pfsense_none_when_provision_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_gui_creds_pfsense_none_when_provision_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
     monkeypatch.setattr(agent, "_load_cached_credentials", lambda: None)
     monkeypatch.setattr(agent, "_provision_pf_gui_credentials", lambda: None)
@@ -94,12 +96,16 @@ def test_ensure_gui_creds_opnsense_provisions_when_absent(monkeypatch: pytest.Mo
 def test_provision_gui_password_caches(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     cache = tmp_path / "gui.pw"
     monkeypatch.setattr(agent, "_GUIPW_CACHE", str(cache))
-    monkeypatch.setattr(agent, "_run", lambda *a, **k: json.dumps({"user": "orbit", "password": "P"}))
+    monkeypatch.setattr(
+        agent, "_run", lambda *a, **k: json.dumps({"user": "orbit", "password": "P"})
+    )
     assert agent._provision_gui_password() == ("orbit", "P")
     assert json.loads(cache.read_text())["password"] == "P"
 
 
-def test_provision_gui_password_error_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_provision_gui_password_error_returns_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     monkeypatch.setattr(agent, "_GUIPW_CACHE", str(tmp_path / "gui.pw"))
     monkeypatch.setattr(agent, "_run", lambda *a, **k: json.dumps({"error": "no orbit user"}))
     assert agent._provision_gui_password() is None

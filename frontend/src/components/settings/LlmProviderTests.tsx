@@ -46,7 +46,8 @@ export default function LlmProviderTests() {
         <Bot className="h-4 w-4 text-slate-400" /> Provider key check
       </h3>
       <p className="mt-1 text-xs text-slate-400">
-        Validate a stored key against the provider — it calls the provider's models endpoint; a 200
+        Validate a stored key against the provider — it calls the provider&apos;s models endpoint; a
+        200
         means the key authenticates. Save the key above first.
       </p>
 

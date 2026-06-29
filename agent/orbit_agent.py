@@ -4,7 +4,7 @@
 Collects system metrics locally (no API needed), connects outbound via WebSocket,
 and executes commands received from the dashboard.
 
-Dependencies: Python 3.9+ only — no pip packages (stdlib WebSocket client).
+Dependencies: Python 3.8+ only — no pip packages (stdlib WebSocket client).
 Config: /usr/local/etc/orbit-agent.conf (JSON)
 """
 from __future__ import annotations
@@ -42,10 +42,12 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.3"
+__version__ = "2.0.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
-os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
+os.environ["PATH"] = (
+    "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
+)
 
 def _path_with_legacy(new: str, legacy: str) -> str:
     """Prefer the new path; fall back to the legacy name so an agent that
@@ -118,8 +120,12 @@ class Config:
         self.log_level = data.get("log_level", self.log_level)
         # Relay creds were renamed opnsense_api_* -> local_api_*; read the old
         # key names as a fallback so pre-rename config files keep working.
-        self.local_api_url = data.get("local_api_url", data.get("opnsense_api_url", self.local_api_url))
-        self.local_api_key = data.get("local_api_key", data.get("opnsense_api_key", self.local_api_key))
+        self.local_api_url = data.get(
+            "local_api_url", data.get("opnsense_api_url", self.local_api_url)
+        )
+        self.local_api_key = data.get(
+            "local_api_key", data.get("opnsense_api_key", self.local_api_key)
+        )
         self.local_api_secret = data.get(
             "local_api_secret", data.get("opnsense_api_secret", self.local_api_secret)
         )
@@ -401,11 +407,11 @@ def collect_interfaces() -> list[dict]:
             continue
         name = parts[0]
         if name not in bytes_map:
-            try:
-                # netstat -ibn columns (Idrop is optional, shifting the input side):
-                #   Name Mtu Network Address Ipkts Ierrs [Idrop] Ibytes Opkts Oerrs Obytes Coll
-                # Input side is stable from the LEFT (Ierrs = [5], before optional Idrop);
-                # output side is stable from the RIGHT (Coll [-1], Obytes [-2], Oerrs [-3]).
+            # netstat -ibn columns (Idrop is optional, shifting the input side):
+            #   Name Mtu Network Address Ipkts Ierrs [Idrop] Ibytes Opkts Oerrs Obytes Coll
+            # Input side is stable from the LEFT (Ierrs = [5], before optional Idrop);
+            # output side is stable from the RIGHT (Coll [-1], Obytes [-2], Oerrs [-3]).
+            with contextlib.suppress(ValueError, IndexError):
                 bytes_map[name] = {
                     "bytes_received": int(parts[-5]),
                     "bytes_transmitted": int(parts[-2]),
@@ -413,8 +419,6 @@ def collect_interfaces() -> list[dict]:
                     "out_errors": _netstat_int(parts[-3]),
                     "collisions": _netstat_int(parts[-1]),
                 }
-            except (ValueError, IndexError):
-                pass
 
     # Address and up/down status from ifconfig -a
     result: list[dict] = []
@@ -1129,7 +1133,9 @@ def run_ping_checks(tunnels: list[dict], monitors: list[dict], now_iso: str) -> 
             m = _match_monitor(t, ch, monitors)
             if m is None:
                 continue
-            jobs.append((ch, m.get("source", ""), m.get("destination", ""), int(m.get("ping_count") or 3)))
+            jobs.append(
+                (ch, m.get("source", ""), m.get("destination", ""), int(m.get("ping_count") or 3))
+            )
     if not jobs:
         return
     with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
@@ -1181,7 +1187,8 @@ def collect_ipsec() -> dict:
 
 
 def _read_opnsense_version() -> str:
-    """Read OPNsense version string — tries direct file read first (most reliable in daemon context)."""
+    """Read OPNsense version string — tries direct file read first
+    (most reliable in daemon context)."""
     # File read needs no subprocess and no PATH — most reliable approach.
     # Current OPNsense stores these as JSON objects ({"product_version": "25.7.11_9", ...});
     # older builds stored a bare version string. Handle both, else we'd surface "{".
@@ -1698,9 +1705,15 @@ def collect_logfiles() -> list:
     extras = (
         ("rules", lambda: _run(["pfctl", "-sr"], timeout=10)),
         ("dmesg", lambda: _run(["sh", "-c", "dmesg -a 2>/dev/null | tail -n 200"], timeout=10)),
-        ("pf", lambda: _run(["sh", "-c", "pfctl -si 2>/dev/null; pfctl -sm 2>/dev/null"], timeout=10)),
+        (
+            "pf",
+            lambda: _run(["sh", "-c", "pfctl -si 2>/dev/null; pfctl -sm 2>/dev/null"], timeout=10),
+        ),
         ("mbufs", lambda: _run(["netstat", "-m"], timeout=10)),
-        ("neighbors", lambda: _run(["sh", "-c", "arp -an 2>/dev/null; ndp -an 2>/dev/null"], timeout=10)),
+        (
+            "neighbors",
+            lambda: _run(["sh", "-c", "arp -an 2>/dev/null; ndp -an 2>/dev/null"], timeout=10),
+        ),
         ("ifconfig", lambda: _run(["ifconfig", "-a"], timeout=10)),
         ("listeners", lambda: _run(["sockstat", "-4", "-6", "-l"], timeout=10)),
         ("dhcp", _dhcp_lines),
@@ -2191,7 +2204,9 @@ $mdl = new User();
 $user = $mdl->getUserByName($username);
 if (!$user) { echo json_encode(["error" => "no orbit user"]); exit; }
 $hash = $mdl->generatePasswordHash($pw);
-if ($hash === false || strpos($hash, '$') !== 0) { echo json_encode(["error" => "hash failed"]); exit; }
+if ($hash === false || strpos($hash, '$') !== 0) {
+    echo json_encode(["error" => "hash failed"]); exit;
+}
 $user->password = $hash;
 $mdl->serializeToConfig(false, true);
 Config::getInstance()->save();
@@ -2406,7 +2421,11 @@ def _diagnose_ipsec(name: str) -> list[dict]:
     try:
         conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
         remote = next(
-            (c["remote"] for c in conns if c.get("name") == name and "%" not in c.get("remote", "%")),
+            (
+                c["remote"]
+                for c in conns
+                if c.get("name") == name and "%" not in c.get("remote", "%")
+            ),
             "",
         )
     except Exception:  # best-effort — never fail the bundle on a parse error
@@ -2470,7 +2489,10 @@ def execute_command(action: str, params: dict) -> dict:
         res = _ping_once(source, dest, count)
         state = res.get("ping_state")
         if state == "ok":
-            msg = f"reply from {dest}: {res.get('ping_rtt_ms')} ms avg, {res.get('ping_loss_pct')}% loss"
+            msg = (
+                f"reply from {dest}: {res.get('ping_rtt_ms')} ms avg, "
+                f"{res.get('ping_loss_pct')}% loss"
+            )
         elif state == "fail":
             msg = f"no reply from {dest} (100% loss) — Phase 2 not passing traffic?"
         else:
@@ -2997,7 +3019,10 @@ async def _handle_self_update(ws: WebSocket, request_id: str, params: dict) -> N
     if not _is_forward_update(code):
         pushed = _code_version(code) or "unknown"
         await _send_update_result(
-            ws, request_id, False, f"downgrade refused: pushed {pushed} not newer than {__version__}"
+            ws,
+            request_id,
+            False,
+            f"downgrade refused: pushed {pushed} not newer than {__version__}",
         )
         return
     staged = _code_version(code)  # validated forward above

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 import orbit_agent as agent
+import pytest
 
 _SAS = (
     "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 established=10 "
@@ -234,8 +233,10 @@ def test_match_monitor_by_name_and_selector() -> None:
 def test_match_monitor_skips_disabled_and_other_tunnel() -> None:
     tunnel = {"id": "con1"}
     child = {"name": "x"}
-    assert agent._match_monitor(tunnel, child, [{"tunnel_id": "con1", "child_name": "x", "enabled": False}]) is None
-    assert agent._match_monitor(tunnel, child, [{"tunnel_id": "con2", "child_name": "x", "enabled": True}]) is None
+    disabled = [{"tunnel_id": "con1", "child_name": "x", "enabled": False}]
+    other_tunnel = [{"tunnel_id": "con2", "child_name": "x", "enabled": True}]
+    assert agent._match_monitor(tunnel, child, disabled) is None
+    assert agent._match_monitor(tunnel, child, other_tunnel) is None
 
 
 def test_match_monitor_pinned_selector_not_sibling_with_shared_name() -> None:
@@ -279,7 +280,9 @@ def test_run_ping_checks_annotates_child(monkeypatch) -> None:
         agent, "_ping_once",
         lambda src, dst, cnt: {"ping_state": "ok", "ping_loss_pct": 0.0, "ping_rtt_ms": 1.0},
     )
-    child = {"name": "x", "local_ts": "10.1.1.0/24", "remote_ts": "10.2.2.0/24", "ping_state": "none"}
+    child = {
+        "name": "x", "local_ts": "10.1.1.0/24", "remote_ts": "10.2.2.0/24", "ping_state": "none"
+    }
     tunnels = [{"id": "con1", "children": [child]}]
     monitors = [
         {"tunnel_id": "con1", "child_name": "x", "enabled": True,

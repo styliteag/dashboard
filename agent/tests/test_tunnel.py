@@ -13,7 +13,6 @@ import base64
 import json
 
 import orbit_agent as agent
-import pytest
 
 
 class _FakeWS:

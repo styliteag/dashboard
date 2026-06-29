@@ -814,7 +814,7 @@ devfs                      devfs      1.0K      0B    1.0K     0%    /dev
 zroot/var/log              zfs        9.6G     10G     9.6G    52%    /var/log
 zroot/tmp                  zfs        9.6G    1.4M    9.6G     0%    /tmp
 zroot                      zfs        9.6G     96K    9.6G     0%    /zroot
-/usr/local/lib/python3.13  nullfs      11G    1.5G    9.6G    14%    /var/unbound/usr/local/lib/python3.13
+/usr/local/lib/python3.13  nullfs   11G   1.5G  9.6G  14%  /var/unbound/usr/local/lib/python3.13
 """
 
 # Real `df -T -h` from a pfSense UFS box: a ufs root, a tmpfs, and two devfs.

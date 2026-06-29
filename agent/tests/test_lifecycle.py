@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 
 import orbit_agent as agent
-import pytest
-
 
 # --- uninstall teardown script ----------------------------------------------
 
