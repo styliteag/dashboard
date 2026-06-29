@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-06-29
+
 ### Fixed
 
 - **IPsec Phase-2 ping monitor no longer binds to the wrong split child** — split
