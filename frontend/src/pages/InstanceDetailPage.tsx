@@ -25,6 +25,7 @@ import CertificatesSection from "../components/CertificatesSection";
 import GatewaySection from "../components/GatewaySection";
 import InterfacesSection from "../components/InterfacesSection";
 import IPsecSection from "../components/IPsecSection";
+import ConnectivitySection from "../components/ConnectivitySection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
 import AiLogAnalysisSection from "../components/AiLogAnalysisSection";
@@ -43,6 +44,7 @@ const TABS = [
   { key: "overview", label: "Overview" },
   { key: "network", label: "Network" },
   { key: "security", label: "VPN" },
+  { key: "connectivity", label: "Connectivity" },
   { key: "log", label: "Log" },
   { key: "firmware", label: "Firmware" },
   { key: "agent", label: "Agent" },
@@ -67,9 +69,12 @@ export default function InstanceDetailPage() {
     queryFn: () => api.get<Instance>(`/api/instances/${id}`),
   });
 
-  // Securepoint is direct-only — no agent mode, so hide the Agent tab/switch.
+  // Securepoint is direct-only — no agent mode, so hide the agent-only tabs
+  // (Agent + Connectivity, both of which need the on-box agent).
   const isSecurepoint = instance?.device_type === "securepoint";
-  const tabs = isSecurepoint ? TABS.filter((t) => t.key !== "agent") : TABS;
+  const tabs = isSecurepoint
+    ? TABS.filter((t) => t.key !== "agent" && t.key !== "connectivity")
+    : TABS;
 
   // The selected tab persists across instances; if it's not available here
   // (e.g. "agent" on a Securepoint box), fall back to overview.
@@ -225,6 +230,16 @@ export default function InstanceDetailPage() {
             }
             stale={instance?.stale ?? false}
             staleSeconds={instance?.stale_seconds ?? null}
+          />
+        </div>
+      )}
+
+      {/* Connectivity: standalone (tunnel-independent) ping monitors */}
+      {tab === "connectivity" && (
+        <div>
+          <ConnectivitySection
+            instanceId={nid}
+            pingSupported={instance?.agent_mode ?? false}
           />
         </div>
       )}

@@ -256,6 +256,29 @@ export interface IPsecServiceStatus {
   tunnels: IPsecTunnel[];
 }
 
+// ----- Connectivity (standalone, tunnel-independent ping monitors) ----------
+
+export interface ConnectivityMonitor {
+  id: number;
+  instance_id: number;
+  name: string;
+  source: string; // local box-owned source IP; "" = default route
+  destination: string;
+  enabled: boolean;
+  ping_count: number;
+}
+
+export type ConnMonitorCreate = Omit<ConnectivityMonitor, "id" | "instance_id">;
+export type ConnMonitorUpdate = Partial<ConnMonitorCreate>;
+
+// A monitor joined with its latest pushed ping result (GET /connectivity/status).
+export interface ConnectivityState extends ConnectivityMonitor {
+  ping_state: PingState | string; // none | ok | fail | error
+  ping_rtt_ms: number | null;
+  ping_loss_pct: number | null;
+  ping_ts: string | null;
+}
+
 export interface DiagnosisSection {
   title: string;
   content: string;

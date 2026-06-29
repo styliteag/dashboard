@@ -26,6 +26,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   "ipsec.service": "IPsec service",
   "ipsec.tunnel": "IPsec tunnels",
   "ipsec.tunnel_ping": "IPsec ping monitors",
+  connectivity: "Connectivity pings",
   service: "Vital services",
   cert: "Certificates",
   iface_errors: "Interface errors",
