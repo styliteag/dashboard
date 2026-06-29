@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **pfSense WebUI auto-login without relay** — auto-login on pfSense silently failed
+  (`no GUI credentials`) on any box where the relay was never enabled, because pfSense
+  drew its WebUI credentials only from the relay-provisioned apikey cache. OPNsense was
+  unaffected (it mints its own GUI password on demand). The agent now provisions the
+  `orbit` page-all user on demand for pfSense auto-login too — without installing the
+  pfRest REST API package — so auto-login works independently of the relay.
+
 ## [2.0.1] - 2026-06-29
 
 ### Added

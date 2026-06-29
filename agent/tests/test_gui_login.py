@@ -64,9 +64,17 @@ def test_ensure_gui_creds_pfsense_reuses_relay_secret(monkeypatch: pytest.Monkey
     assert agent._ensure_gui_credentials(_cfg()) == ("orbit", "RELAYPW")
 
 
-def test_ensure_gui_creds_pfsense_none_without_relay(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_gui_creds_pfsense_provisions_without_relay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
     monkeypatch.setattr(agent, "_load_cached_credentials", lambda: None)
+    monkeypatch.setattr(agent, "_provision_pf_gui_credentials", lambda: ("orbit", "NEWPW"))
+    assert agent._ensure_gui_credentials(_cfg()) == ("orbit", "NEWPW")
+
+
+def test_ensure_gui_creds_pfsense_none_when_provision_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_load_cached_credentials", lambda: None)
+    monkeypatch.setattr(agent, "_provision_pf_gui_credentials", lambda: None)
     assert agent._ensure_gui_credentials(_cfg()) is None
 
 

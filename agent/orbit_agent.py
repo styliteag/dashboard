@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -2169,16 +2169,34 @@ def _provision_gui_password() -> tuple[str, str] | None:
     return user, pw
 
 
+def _provision_pf_gui_credentials() -> tuple[str, str] | None:
+    """pfSense: ensure the `orbit` page-all user exists + cache its password.
+
+    GUI auto-login shares the orbit user that relay would otherwise create. When
+    relay is disabled the apikey cache is absent, so we provision the user here —
+    WITHOUT installing pfRest (auto-login needs only a local WebUI account, not the
+    REST API). Reuses _PROVISION_PF_PHP so relay and GUI stay a single credential
+    source (the apikey cache): a later relay.enable just re-mints the same user.
+    """
+    pair = _run_provision_php(_PROVISION_PF_PHP)
+    if pair:
+        log.warning("gui: provisioned pfSense orbit user for WebUI auto-login (page-all)")
+    return pair
+
+
 def _ensure_gui_credentials(cfg: Config) -> tuple[str, str] | None:
     """(username, password) for replaying the firewall WebUI login.
 
-    pfSense reuses the cached relay secret (it IS the user's password). OPNsense
-    mints + caches a dedicated WebUI password (the relay user's own password is a
-    random unknown — its API auth uses a separate key pair).
+    pfSense reuses the cached relay secret (it IS the user's password); if relay was
+    never enabled the cache is absent, so provision the orbit user on demand (no
+    pfRest). OPNsense mints + caches a dedicated WebUI password (the relay user's own
+    password is a random unknown — its API auth uses a separate key pair).
     """
     if detect_platform() == "pfsense":
         cached = _load_cached_credentials()
-        return (cached[0], cached[1]) if cached else None
+        if cached:
+            return (cached[0], cached[1])
+        return _provision_pf_gui_credentials()
     cached_pw = _load_cached_gui_password()
     if cached_pw:
         return ("orbit", cached_pw)
