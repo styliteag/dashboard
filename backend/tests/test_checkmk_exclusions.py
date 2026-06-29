@@ -26,8 +26,13 @@ def test_category_derivation() -> None:
 
 
 def test_all_categories_listed() -> None:
-    # Must match every category ``evaluate_checks`` can emit (see CATEGORIES note).
+    # Must match every category the export can emit (see CATEGORIES note): the
+    # evaluate_checks families plus the overlay services (agent/ping/http).
     assert set(CATEGORIES) == {
+        "agent",
+        "maintenance",
+        "ping",
+        "http",
         "memory",
         "cpu",
         "load",

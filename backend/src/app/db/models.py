@@ -104,6 +104,16 @@ class Instance(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
+    # Optional out-of-band reachability probe (§ availability): an admin-supplied
+    # URL/host the dashboard can reach directly. NULL = no probe (the default;
+    # relay-only boxes leave it empty). Monitored by ICMP + HTTP independent of the
+    # agent, so a silent-but-alive box (agent dead) is distinguishable from a dead one.
+    ping_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Maintenance flag: while True every check for this instance is capped at WARN
+    # (yellow, never red). Set by an admin; auto-cleared the moment the agent/probe
+    # reports healthy again. Avoids paging on a box that's down on purpose.
+    maintenance: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+
     # Health/poll status (updated by the poller)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -22,6 +22,9 @@ interface Props {
   pingSupported?: boolean;
   // Tunnel diagnostics (swanctl + log + ping over SSH) — Securepoint/SSH only.
   diagnoseSupported?: boolean;
+  // Push mode: agent silent → the tunnel statuses below are last-known, not live.
+  stale?: boolean;
+  staleSeconds?: number | null;
 }
 
 interface DialogTarget {
@@ -35,6 +38,8 @@ export default function IPsecSection({
   instanceId,
   pingSupported = true,
   diagnoseSupported = false,
+  stale = false,
+  staleSeconds = null,
 }: Props) {
   const queryClient = useQueryClient();
   const qk = ["ipsec", instanceId];
@@ -153,6 +158,14 @@ export default function IPsecSection({
           <RotateCw className="h-3 w-3" /> Restart Service
         </button>
       </div>
+
+      {/* Agent silent → the statuses below are the last push, not live. */}
+      {stale && (
+        <div className="mt-2 rounded-lg border border-amber-800/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300">
+          Agent silent{staleSeconds != null ? ` for ${staleSeconds}s` : ""} — tunnel status below is
+          the last-known value, not live.
+        </div>
+      )}
 
       {/* Restart confirmation */}
       {confirmRestart && (

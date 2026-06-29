@@ -72,3 +72,10 @@ def is_stale(now: datetime, agent_last_seen: datetime | None, threshold_seconds:
     if agent_last_seen is None:
         return False
     return (now - as_utc(agent_last_seen)).total_seconds() > threshold_seconds
+
+
+def agent_age_seconds(now: datetime, agent_last_seen: datetime | None) -> int | None:
+    """Whole seconds since the agent last reported, or None if it never has."""
+    if agent_last_seen is None:
+        return None
+    return int((now - as_utc(agent_last_seen)).total_seconds())

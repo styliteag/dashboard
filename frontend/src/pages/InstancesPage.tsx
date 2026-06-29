@@ -95,8 +95,13 @@ export default function InstancesPage() {
   });
 
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [maintenanceOnly, setMaintenanceOnly] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  // Maintenance boxes are intentionally muted (yellow ceiling) — surface a count so
+  // they don't vanish into the noise (a forgotten one sits yellow forever otherwise).
+  const maintenanceCount = instances.filter((i) => i.maintenance).length;
 
   const toggleSelect = (id: number) => {
     setSelected((s) => {
@@ -131,7 +136,8 @@ export default function InstancesPage() {
       (i.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (i.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()));
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
-    return matchSearch && matchTag;
+    const matchMaintenance = !maintenanceOnly || i.maintenance;
+    return matchSearch && matchTag && matchMaintenance;
   });
 
   const { sorted, sort, toggle } = useSort(filtered, INST_ACCESSORS);
@@ -157,6 +163,20 @@ export default function InstancesPage() {
           <KpiTile label="Degraded" value={overview.degraded} color="text-amber-400" />
           <KpiTile label="Offline" value={overview.offline} color="text-red-400" />
         </div>
+      )}
+
+      {/* Maintenance filter — only when some box is flagged (mitigates forever-yellow). */}
+      {maintenanceCount > 0 && (
+        <button
+          onClick={() => setMaintenanceOnly((v) => !v)}
+          className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${
+            maintenanceOnly
+              ? "border-amber-600 bg-amber-600/20 text-amber-300"
+              : "border-amber-800/50 bg-amber-900/20 text-amber-400 hover:bg-amber-900/30"
+          }`}
+        >
+          🛠️ {maintenanceCount} in maintenance{maintenanceOnly ? " — showing only these" : ""}
+        </button>
       )}
 
       {/* Agent update banner */}

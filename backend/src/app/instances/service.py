@@ -134,6 +134,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
         location=payload.location,
         notes=payload.notes,
         tags=payload.tags,
+        ping_url=payload.ping_url,
     )
     session.add(inst)
     await session.flush()
@@ -184,6 +185,11 @@ async def update_instance(
         inst.notes = payload.notes or None
     if payload.tags is not None:
         inst.tags = payload.tags or None
+    # Empty string clears the probe; the validator already maps "" → None.
+    if "ping_url" in fields_set:
+        inst.ping_url = payload.ping_url
+    if payload.maintenance is not None:
+        inst.maintenance = payload.maintenance
     # Capture the box's SSH host key (TOFU) when enrichment is on but unpinned —
     # e.g. right after a new key was uploaded above (which reset ssh_host_key).
     await _maybe_pin_host_key(inst)

@@ -223,6 +223,8 @@ export default function InstanceDetailPage() {
             diagnoseSupported={
               (instance?.agent_mode ?? false) || instance?.device_type === "securepoint"
             }
+            stale={instance?.stale ?? false}
+            staleSeconds={instance?.stale_seconds ?? null}
           />
         </div>
       )}

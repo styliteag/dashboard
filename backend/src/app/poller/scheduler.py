@@ -28,6 +28,8 @@ from app.maintenance.jobs import (
 from app.metrics.store import is_online, write_poll_metrics
 from app.notifications.notifier import dispatch_async
 from app.poller.gate import effective_interval, is_due, is_stale, stale_threshold
+from app.probe import run_probe
+from app.probe.registry import probe_registry
 from app.settings.store import effective_settings
 from app.xsense.registry import registry
 
@@ -224,6 +226,63 @@ async def _check_stale_agents() -> None:
         )
 
 
+def _probe_confirms_up(view) -> bool:  # noqa: ANN001 — ProbeResult | None
+    """True when a debounced probe view positively confirms reachability."""
+    return view is not None and (view.icmp_up is True or view.http_up is True)
+
+
+async def _probe_targets() -> None:
+    """Run the out-of-band ICMP+HTTP probe for every instance with a ``ping_url``.
+
+    Independent of the agent: distinguishes "box up, agent dead" from "box down".
+    Results feed the debounced :data:`probe_registry`, which the check routes read.
+    Registry state for instances that dropped their ``ping_url`` is pruned so it
+    can't go stale.
+    """
+    settings = effective_settings()
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Instance).where(
+                        Instance.deleted_at.is_(None),
+                        Instance.ping_url.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    targets = [(r.id, r.ping_url, r.maintenance) for r in rows if (r.ping_url or "").strip()]
+    probe_registry.prune({iid for iid, _, _ in targets})
+    if not targets:
+        return
+
+    semaphore = asyncio.Semaphore(settings.poll_concurrency)
+    threshold = settings.probe_fail_threshold
+
+    async def one(instance_id: int, ping_url: str) -> None:
+        async with semaphore:
+            result = await run_probe(ping_url)
+        probe_registry.update(instance_id, result, threshold)
+
+    await asyncio.gather(*(one(iid, url) for iid, url, _ in targets))
+
+    # Auto-clear maintenance for any flagged instance the probe now confirms up
+    # (the direct/probe-only counterpart to the agent-heartbeat clear in the hub).
+    recovered = [
+        iid for iid, _, maint in targets if maint and _probe_confirms_up(probe_registry.get(iid))
+    ]
+    if recovered:
+        async with sessionmaker() as session:
+            await session.execute(
+                update(Instance).where(Instance.id.in_(recovered)).values(maintenance=False)
+            )
+            await session.commit()
+        log.info("probe.maintenance_cleared", instance_ids=recovered)
+
+
 def start_scheduler() -> None:
     global _scheduler
     settings = effective_settings()
@@ -242,6 +301,15 @@ def start_scheduler() -> None:
         seconds=settings.poll_tick_seconds,
         id="check_stale_agents",
         max_instances=1,
+    )
+    # Out-of-band reachability probe (ICMP+HTTP) for instances with a ping_url.
+    _scheduler.add_job(
+        _probe_targets,
+        "interval",
+        seconds=settings.probe_interval_seconds,
+        id="probe_targets",
+        max_instances=1,
+        next_run_time=datetime.now(UTC),
     )
     # Metrics maintenance: raw-metrics retention prune (replaces TimescaleDB).
     _scheduler.add_job(prune_metrics, "interval", hours=1, id="metrics_prune", max_instances=1)

@@ -10,6 +10,10 @@ const ROUTING_QK = ["notification-routing"];
 // signal; the rest mirror the Checkmk check categories. Unknown keys fall back to
 // the raw token so a new backend category still renders (just unlabelled).
 const CATEGORY_LABELS: Record<string, string> = {
+  agent: "Agent liveness",
+  maintenance: "Maintenance mode",
+  ping: "ICMP reachability",
+  http: "HTTP reachability",
   availability: "Instance up / down",
   memory: "Memory",
   cpu: "CPU",

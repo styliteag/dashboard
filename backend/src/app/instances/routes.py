@@ -6,6 +6,7 @@ Closes US-2.1, US-2.2, US-2.3, US-2.4, US-2.5.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
@@ -24,8 +25,10 @@ from app.instances.schemas import (
     InstanceResponse,
     InstanceUpdate,
     TestConnectionResponse,
+    instance_response,
 )
 from app.net import client_ip
+from app.settings.store import effective_settings
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -47,6 +50,8 @@ _SAFE_AUDIT_FIELDS = {
     "location",
     "notes",
     "tags",
+    "ping_url",
+    "maintenance",
 }
 # Secret-bearing fields: never logged by value, only recorded by name when rotated.
 # (ca_bundle is a public cert but is kept out of the detail to stay small/uniform.)
@@ -73,8 +78,11 @@ def _safe_audit_detail(payload: InstanceUpdate) -> dict:
 async def list_all(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
-) -> list[Instance]:
-    return await service.list_instances(session)
+) -> list[InstanceResponse]:
+    rows = await service.list_instances(session)
+    settings = effective_settings()
+    now = datetime.now(UTC)
+    return [instance_response(inst, settings, now) for inst in rows]
 
 
 @router.post("", response_model=InstanceResponse, status_code=status.HTTP_201_CREATED)
@@ -129,11 +137,11 @@ async def get(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
-) -> Instance:
+) -> InstanceResponse:
     inst = await service.get_instance(session, instance_id)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    return inst
+    return instance_response(inst, effective_settings(), datetime.now(UTC))
 
 
 @router.patch("/{instance_id}", response_model=InstanceResponse)

@@ -26,6 +26,13 @@ export interface Instance {
   last_success_at: string | null;
   last_error_at: string | null;
   last_error_message: string | null;
+  /** Optional out-of-band probe target (URL or host); null = no probe. */
+  ping_url: string | null;
+  /** Maintenance ceiling: while true, all checks cap at WARN (yellow, never red). */
+  maintenance: boolean;
+  /** Push mode: agent silent past its threshold — last-known sub-states are stale. */
+  stale: boolean;
+  stale_seconds: number | null;
   created_at: string;
   updated_at: string;
 }

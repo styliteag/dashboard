@@ -612,6 +612,7 @@ class AgentHub:
         self._last_check_states[instance_id] = current_states(checks)
 
         recovered_name: str | None = None
+        cleared_maintenance = False
         instance_name = ""
         async with sessionmaker() as session:
             inst = await session.get(Instance, instance_id)
@@ -635,10 +636,23 @@ class AgentHub:
             inst.last_error_at = None
             inst.last_error_message = None
             inst.agent_last_seen = ts
+            # Maintenance auto-clears the moment the agent reports again — a healthy
+            # heartbeat means the planned-down window is over (admin's intent).
+            if inst.maintenance:
+                inst.maintenance = False
+                cleared_maintenance = True
             # Persist the just-updated caches so a backend restart can re-hydrate.
             inst.status_snapshot = self._snapshot_for(instance_id)
             await session.commit()
 
+        if cleared_maintenance:
+            dispatch_async(
+                f"🛠️ {instance_name} maintenance ended",
+                f"{instance_name} reported in again — maintenance flag cleared.",
+                instance_id,
+                level="info",
+                category="availability",
+            )
         if recovered_name:
             dispatch_async(
                 f"✅ {recovered_name} agent back online",

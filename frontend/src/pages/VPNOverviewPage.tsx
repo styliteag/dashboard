@@ -41,6 +41,8 @@ interface GlobalTunnel {
   bytes_out: number;
   tags?: string[];
   agent_mode?: boolean;
+  stale?: boolean;
+  stale_seconds?: number | null;
   children: IPsecChild[];
   ike_init_spi?: string;
   ike_resp_spi?: string;
@@ -79,6 +81,10 @@ function buildGroups(tunnels: GlobalTunnel[]): TunnelGroup[] {
 
 /** Combined health of a paired link, for the group header badge. */
 function pairHealth(a: GlobalTunnel, b: GlobalTunnel): { cls: string; label: string } {
+  // Staleness wins: if either end's agent is silent, this side's status is
+  // last-known, not live — never report a stale pair as "both up" (it must stay
+  // expanded, not collapse as healthy).
+  if (a.stale || b.stale) return { cls: "bg-amber-600/20 text-amber-400", label: "stale" };
   const aUp = isUp(a.phase1_status);
   const bUp = isUp(b.phase1_status);
   if (aUp !== bUp) return { cls: "bg-red-600/20 text-red-400", label: "status mismatch" };
@@ -363,11 +369,15 @@ export default function VPNOverviewPage() {
           <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
           <td className="px-3 py-2">
             <span
-              className={`inline-flex items-center gap-1 ${up ? "text-emerald-400" : "text-red-400"}`}
+              className={`inline-flex items-center gap-1 ${
+                t.stale ? "text-slate-400" : up ? "text-emerald-400" : "text-red-400"
+              }`}
+              title={t.stale ? "Agent silent — last-known status, not live" : undefined}
             >
               {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
               {t.phase1_status}
             </span>
+            {t.stale && <StaleChip seconds={t.stale_seconds} />}
           </td>
           <td className="whitespace-nowrap px-3 py-2">
             <div className="flex items-center gap-2">
@@ -672,6 +682,19 @@ export default function VPNOverviewPage() {
         />
       )}
     </div>
+  );
+}
+
+/** Amber "agent silent" marker shown next to a tunnel whose owning instance is stale. */
+function StaleChip({ seconds }: { seconds?: number | null }) {
+  const age = seconds != null ? ` ${fmtDuration(seconds)}` : "";
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 rounded bg-amber-600/20 px-1.5 py-0.5 text-xs text-amber-400"
+      title="The owning instance's agent has gone silent — this value is the last push, not live."
+    >
+      stale · agent silent{age}
+    </span>
   );
 }
 

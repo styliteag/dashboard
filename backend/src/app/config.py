@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     # enough to tolerate the brief reconnect during a self-update restart.
     agent_stale_seconds: int = 120
 
+    # Out-of-band reachability probe (instances.ping_url, opt-in per instance). The
+    # probe job runs every ``probe_interval_seconds``; an axis (ICMP/HTTP) only flips
+    # to *down* after ``probe_fail_threshold`` consecutive failures (flap protection,
+    # so a single dropped packet or backend network blip can't red a box).
+    probe_interval_seconds: int = 60
+    probe_fail_threshold: int = 3
+
     # Metrics maintenance (replaces TimescaleDB retention).
     metrics_retention_days: int = 30  # raw metrics kept this long
     # IPsec tunnel state-change history (VPN-overview popup); transition log is

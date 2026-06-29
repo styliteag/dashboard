@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent-staleness overlay (P1)** — when a push agent goes silent past its scaled
+  threshold, the dashboard no longer trusts its last-known sub-states as live. A new
+  explicit **`agent`** Checkmk service goes WARN ("agent silent for Xs") so the host
+  summary turns yellow the moment contact is lost, and while stale every other check
+  is capped CRIT→WARN (a "down" verdict on stale data is a guess, not a fact). The
+  instance API now exposes `stale` / `stale_seconds`, and the global VPN overview
+  mutes stale tunnels with a "stale · agent silent" marker (a stale pair never
+  collapses as "both up"); the per-instance IPsec section shows a last-known banner.
+  Confidence model: stale = *unknown*, not *down*. (No DB migration.)
+  **Deploy note:** the `agent` service is a new Checkmk item — run **service
+  discovery** on the affected hosts so it gets monitored; until then a silent agent
+  turns the host yellow only after discovery picks the service up.
+- **Out-of-band reachability probe (P2)** — each instance gains an optional
+  `ping_url` (URL or bare host). A scheduler job probes it independently of the
+  agent: **ICMP** (stdlib, no iputils/raw-subprocess — verified working from the
+  container) and an **HTTP** GET (TLS-verify off for self-signed certs, redirects not
+  followed, `<400` = up). New Checkmk services `ping` / `http` follow the confidence
+  model — a confirmed-up signal (agent fresh **or** ICMP reply) caps a failing probe
+  at WARN; otherwise it's CRIT (confirmed down). Flap protection: an axis only flips
+  to down after `DASH_PROBE_FAIL_THRESHOLD` (default 3) consecutive failures, probed
+  every `DASH_PROBE_INTERVAL_SECONDS` (default 60). This distinguishes "box up, agent
+  dead" from "box down". Alembic `021`.
+- **Maintenance mode (P2)** — an admin can flag an instance `maintenance`: every
+  check is then capped at WARN (yellow, never red) and a `maintenance` service makes
+  the host visibly yellow with the reason. The flag **auto-clears** the moment the
+  agent reports in again (hub heartbeat) or the probe confirms the box up. Edit/Add
+  dialogs gain a ping-URL field and a maintenance toggle; the Instances page shows an
+  "in maintenance" count + filter so a forgotten yellow box doesn't vanish. New
+  Checkmk categories `agent` / `maintenance` / `ping` / `http` are listed in the
+  export-exclusion settings (also need **service discovery** to be monitored).
+
 ## [2.0.0] - 2026-06-29
 
 ### Added

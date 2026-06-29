@@ -27,6 +27,27 @@ def _check_slug(value: str | None) -> str | None:
     return value
 
 
+def _check_ping_url(value: str | None) -> str | None:
+    """Validate the optional out-of-band probe target.
+
+    Accepts an empty string (→ None, "no probe"), a bare host/IP (ICMP only), or a
+    full http(s) URL (ICMP to its host + HTTP-200 check). Anything with a scheme
+    must be http(s); a non-empty value is length-bounded to the column.
+    """
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if len(v) > 512:
+        raise ValueError("ping_url too long (max 512 chars)")
+    if "://" in v:
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(f"invalid ping URL: {v!r}")
+    return v
+
+
 def _normalize_base_urls(value: str) -> str:
     """Validate a comma-separated list of http(s) URLs; return them ', '-joined.
 
@@ -71,6 +92,8 @@ class InstanceCreate(BaseModel):
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
+    # Optional out-of-band reachability probe target (URL or host); empty = none.
+    ping_url: str | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -81,6 +104,11 @@ class InstanceCreate(BaseModel):
     @classmethod
     def _validate_slug(cls, v: str | None) -> str | None:
         return _check_slug(v)
+
+    @field_validator("ping_url")
+    @classmethod
+    def _validate_ping_url(cls, v: str | None) -> str | None:
+        return _check_ping_url(v)
 
 
 class InstanceUpdate(BaseModel):
@@ -106,6 +134,10 @@ class InstanceUpdate(BaseModel):
     location: str | None = None
     notes: str | None = None
     tags: list[str] | None = None
+    # Empty string clears the probe target; omit to leave unchanged.
+    ping_url: str | None = None
+    # Maintenance flag (yellow ceiling). Admin-toggled; auto-cleared on recovery.
+    maintenance: bool | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -116,6 +148,11 @@ class InstanceUpdate(BaseModel):
     @classmethod
     def _validate_slug(cls, v: str | None) -> str | None:
         return _check_slug(v)
+
+    @field_validator("ping_url")
+    @classmethod
+    def _validate_ping_url(cls, v: str | None) -> str | None:
+        return _check_ping_url(v)
 
 
 class InstanceResponse(BaseModel):
@@ -145,8 +182,34 @@ class InstanceResponse(BaseModel):
     last_success_at: datetime | None
     last_error_at: datetime | None
     last_error_message: str | None
+    # Out-of-band probe target + maintenance ceiling (P2 availability).
+    ping_url: str | None = None
+    maintenance: bool = False
+    # Agent-staleness overlay (push mode): True once the agent has been silent past
+    # its scaled threshold, so the UI can flag last-known sub-states as stale rather
+    # than trust them as live. Always False for direct-poll instances.
+    stale: bool = False
+    stale_seconds: int | None = None
     created_at: datetime
     updated_at: datetime
+
+
+def instance_response(inst, settings, now: datetime) -> InstanceResponse:  # noqa: ANN001
+    """Serialize an instance, layering in the computed agent-staleness flags.
+
+    Single source of truth for staleness is :func:`app.checks.staleness.staleness_for`
+    — the same calc that drives the Checkmk ``agent`` service, so API and export agree.
+    """
+    # Imported lazily to avoid an import cycle (checks.staleness pulls in checks.models).
+    from app.checks.staleness import staleness_for
+
+    s = staleness_for(inst, settings, now)
+    return InstanceResponse.model_validate(inst).model_copy(
+        update={
+            "stale": bool(s and s.stale),
+            "stale_seconds": s.age_seconds if s else None,
+        }
+    )
 
 
 class TestConnectionResponse(BaseModel):

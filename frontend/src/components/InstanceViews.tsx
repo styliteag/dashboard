@@ -66,13 +66,23 @@ function fmtTime(iso: string | null): string {
 function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
   const status = statusMeta(inst);
   return (
-    <Link
-      to={`/instances/${inst.id}`}
-      className={`inline-flex items-center gap-1.5 hover:underline ${status.color}`}
-    >
-      {status.icon}
-      {!compact && status.label}
-    </Link>
+    <span className="inline-flex items-center gap-1.5">
+      <Link
+        to={`/instances/${inst.id}`}
+        className={`inline-flex items-center gap-1.5 hover:underline ${status.color}`}
+      >
+        {status.icon}
+        {!compact && status.label}
+      </Link>
+      {inst.maintenance && (
+        <span
+          className="rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-400"
+          title="In maintenance — alerts capped at WARN (yellow, never red)"
+        >
+          Maint
+        </span>
+      )}
+    </span>
   );
 }
 

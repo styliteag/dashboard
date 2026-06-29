@@ -20,6 +20,10 @@ from collections.abc import Iterable
 # check family that isn't listed here can't be toggled off in the Settings UI
 # (only via a full-key rule). The frontend ``CATEGORY_LABELS`` mirror must grow too.
 CATEGORIES: tuple[str, ...] = (
+    "agent",  # agent-staleness service (push mode)
+    "maintenance",  # maintenance-mode banner (alerts capped at WARN)
+    "ping",  # out-of-band ICMP reachability probe
+    "http",  # out-of-band HTTP reachability probe
     "memory",
     "cpu",
     "load",

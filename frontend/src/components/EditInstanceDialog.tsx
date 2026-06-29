@@ -49,6 +49,8 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     location: instance.location ?? "",
     tags: (instance.tags ?? []).join(", "),
     notes: instance.notes ?? "",
+    ping_url: instance.ping_url ?? "",
+    maintenance: instance.maintenance,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +73,9 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         // null clears the override back to the global default; a number sets it.
         [agentMode ? "push_interval_seconds" : "poll_interval_seconds"]:
           form.interval.trim() === "" ? null : Number(form.interval),
+        // Out-of-band probe target; empty clears it. Maintenance is a direct toggle.
+        ping_url: form.ping_url.trim(),
+        maintenance: form.maintenance,
       };
       if (agentMode) {
         body.gui_login_enabled = form.gui_login_enabled;
@@ -140,6 +145,22 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         )}
         <Input label="Location" value={form.location} onChange={set("location")} />
         <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
+        <Input
+          label="Reachability probe (ping URL or host, empty = none)"
+          value={form.ping_url}
+          onChange={set("ping_url")}
+          placeholder="https://10.0.0.1:4444"
+        />
+        <label className="flex items-center gap-2 text-sm text-amber-300">
+          <input
+            type="checkbox"
+            checked={form.maintenance}
+            onChange={(e) => setForm((f) => ({ ...f, maintenance: e.target.checked }))}
+            className="rounded border-slate-600"
+          />
+          Maintenance — cap all checks at WARN (yellow, never red); auto-clears when it
+          reports healthy again
+        </label>
         <Input
           label={`${agentMode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}
           value={form.interval}

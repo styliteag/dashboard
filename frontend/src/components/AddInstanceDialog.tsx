@@ -27,6 +27,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     location: "",
     notes: "",
     tags: "",
+    ping_url: "", // out-of-band reachability probe target; empty = none
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +95,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
               .map((t) => t.trim())
               .filter(Boolean)
           : null,
+        ping_url: form.ping_url.trim() || null,
       };
       return api.post<Instance>("/api/instances", body);
     },
@@ -234,6 +236,12 @@ export default function AddInstanceDialog({ onClose }: Props) {
         )}
         <Input label="Location" value={form.location} onChange={set("location")} />
         <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
+        <Input
+          label="Reachability probe (ping URL or host, empty = none)"
+          value={form.ping_url}
+          onChange={set("ping_url")}
+          placeholder="https://10.0.0.1:4444"
+        />
         <Input
           label={`${form.agent_mode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}
           value={form.interval}

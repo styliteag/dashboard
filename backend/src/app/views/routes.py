@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -11,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.auth.deps import current_user
+from app.checks.staleness import staleness_for
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.settings.store import effective_settings
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
 from app.xsense.schemas import IPsecChild
@@ -44,6 +47,11 @@ class GlobalTunnel(BaseModel):
     bytes_out: int
     tags: list[str] = []  # the owning instance's tags — for filtering the overview
     agent_mode: bool = False  # ping monitors are agent-only; UI hides the affordance otherwise
+    # Agent-staleness overlay: when True the owning instance's agent has gone
+    # silent, so phase1_status/children here are last-known, not live — the UI
+    # mutes the row and flags it rather than trusting a stale "established".
+    stale: bool = False
+    stale_seconds: int | None = None
     children: list[IPsecChild] = []
     ike_init_spi: str = ""
     ike_resp_spi: str = ""
@@ -109,6 +117,8 @@ async def global_vpn_overview(
         .scalars()
         .all()
     )
+    settings = effective_settings()
+    now = datetime.now(UTC)
 
     async def fetch_tunnels(inst: Instance) -> list[GlobalTunnel]:
         try:
@@ -122,6 +132,7 @@ async def global_vpn_overview(
                 status = await asyncio.wait_for(client.ipsec_status(), _FETCH_TIMEOUT)
             if status is None:
                 return []
+            s = staleness_for(inst, settings, now)
             return [
                 GlobalTunnel(
                     instance_id=inst.id,
@@ -139,6 +150,8 @@ async def global_vpn_overview(
                     bytes_out=t.bytes_out,
                     tags=inst.tags or [],
                     agent_mode=inst.agent_mode,
+                    stale=bool(s and s.stale),
+                    stale_seconds=s.age_seconds if s else None,
                     children=t.children,
                     ike_init_spi=t.ike_init_spi,
                     ike_resp_spi=t.ike_resp_spi,

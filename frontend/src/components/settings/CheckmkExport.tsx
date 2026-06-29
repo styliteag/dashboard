@@ -9,6 +9,10 @@ const PREVIEW_QK = ["checkmk-preview"];
 
 // Mirror of backend CATEGORIES (app/checkmk/exclusions.py) — keep in lock-step.
 const CATEGORY_LABELS: Record<string, string> = {
+  agent: "Agent liveness",
+  maintenance: "Maintenance mode",
+  ping: "ICMP reachability",
+  http: "HTTP reachability",
   memory: "Memory",
   cpu: "CPU",
   load: "Load average",
