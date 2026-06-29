@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **IPsec Phase-2 children with multiple subnets are no longer duplicated/mislabelled**
+  — a single configured Phase-2 child with several local nets
+  (`10.110.0.0/16, 192.168.0.0/24 → 192.168.200.0/24`) is split by strongSwan into
+  one CHILD_SA per subnet, all sharing the child name. The agent matched live SAs
+  by name, so the shared name collapsed them: the dashboard showed `2/1` with the
+  first net repeated and the second net dropped (BadVilbel tunnel). The agent now
+  expands each configured child to one row per `(local × remote)` selector pair and
+  matches live SAs by selector-pair membership, so every subnet shows as its own
+  independently-pingable Phase-2 row with the correct `up/total` count.
 - **Network tab no longer flags virtual-interface errors as faults** — the interface
   table coloured the error counter amber for every interface, so a `bridge0`/`lagg`/`ovpn`
   Oerr count (BUM-flood/ENOBUFS, not a wire fault) lit up as an alarm. The health check

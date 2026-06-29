@@ -401,21 +401,91 @@ def test_parse_swanctl_conns_counts_phase2() -> None:
 
 
 def test_tunnel_carries_uptime_and_phase2() -> None:
-    # The merged dashboard row must surface the new fields when an SA is present
-    # and zero them for a configured-but-down tunnel.
+    # The merged dashboard row counts Phase-2 from the merged selector-pair rows:
+    # total = configured pairs (or live pairs when no conn), up = INSTALLED rows.
     sa = agent._parse_swanctl_sas(_SWANCTL_SAS)[0]
     up = agent._tunnel("conn", None, sa, {})
     assert up["seconds_established"] == 1235
     assert up["phase2_up"] == 1
     assert up["phase2_total"] == 1  # falls back to live child count when no conn
-    # the configured conn count ("n") is preferred over the live SA count
-    preferred = agent._tunnel("conn", {"phase2_total": 2}, sa, {})
+    # Two configured pairs, one of them live → "1/2": the configured-but-down pair
+    # survives as a down row and still counts toward the denominator.
+    conn = {"children": [
+        {"name": "c", "local_ts": "10.1.1.0/24", "remote_ts": "10.2.2.0/24"},  # live (sa)
+        {"name": "c", "local_ts": "10.9.9.0/24", "remote_ts": "10.2.2.0/24"},  # down
+    ]}
+    preferred = agent._tunnel("conn", conn, sa, {})
     assert preferred["phase2_up"] == 1
     assert preferred["phase2_total"] == 2
-    down = agent._tunnel("conn", {"local": "", "remote": "", "phase2_total": 2}, None, {})
+    down_conn = {"local": "", "remote": "", "children": [
+        {"name": "c", "local_ts": "a", "remote_ts": "b"},
+        {"name": "c", "local_ts": "x", "remote_ts": "y"},
+    ]}
+    down = agent._tunnel("conn", down_conn, None, {})
     assert down["seconds_established"] == 0
     assert down["phase2_up"] == 0
     assert down["phase2_total"] == 2
+
+
+# A single configured Phase-2 child with multiple local subnets. strongSwan
+# splits it into one CHILD_SA per (local x remote) selector pair, and every split
+# SA carries the SAME child name. The conn side must expand to one row per pair so
+# the live SAs overlay 1:1 by selector. Regression: the dashboard showed "2/1"
+# with the first local net repeated and the second net dropped (BadVilbel tunnel).
+_SWANCTL_CONNS_MULTINET = (
+    "bv {local_addrs=[93.0.0.1] remote_addrs=[80.0.0.1] version=IKEv2 "
+    "children {0246d00e {mode=TUNNEL "
+    "local-ts=[10.110.0.0/16 192.168.0.0/24] remote-ts=[192.168.200.0/24]}}}"
+)
+# Peer that splits: two CHILD_SAs, one per local subnet, sharing name=0246d00e.
+_SWANCTL_SAS_MULTINET_SPLIT = (
+    "bv {uniqueid=2 state=ESTABLISHED remote-host=80.0.0.1 local-host=93.0.0.1 established=99 "
+    "child-sas {0246d00e-12 {name=0246d00e uniqueid=2092 state=INSTALLED bytes-in=1 bytes-out=2 "
+    "local-ts=[10.110.0.0/16] remote-ts=[192.168.200.0/24]} "
+    "0246d00e-4 {name=0246d00e uniqueid=2094 state=INSTALLED bytes-in=3 bytes-out=4 "
+    "local-ts=[192.168.0.0/24] remote-ts=[192.168.200.0/24]}}}"
+)
+# Peer that does NOT split: one CHILD_SA carrying both local subnets in its ts list.
+_SWANCTL_SAS_MULTINET_SINGLE = (
+    "bv {uniqueid=2 state=ESTABLISHED remote-host=80.0.0.1 local-host=93.0.0.1 established=99 "
+    "child-sas {0246d00e-1 {name=0246d00e state=INSTALLED bytes-in=1 bytes-out=2 "
+    "local-ts=[10.110.0.0/16 192.168.0.0/24] remote-ts=[192.168.200.0/24]}}}"
+)
+
+_MULTINET_PAIRS = [
+    ("10.110.0.0/16", "192.168.200.0/24"),
+    ("192.168.0.0/24", "192.168.200.0/24"),
+]
+
+
+def test_parse_conns_expands_multinet_child_to_pairs() -> None:
+    conn = agent._parse_swanctl_conns(_SWANCTL_CONNS_MULTINET)[0]
+    pairs = {(c["local_ts"], c["remote_ts"]) for c in conn["children"]}
+    assert pairs == set(_MULTINET_PAIRS)
+    assert conn["phase2_total"] == 2  # two selector pairs, not one configured child
+
+
+def test_tunnel_multinet_split_sas_show_distinct_pairs() -> None:
+    # Regression for "2/1" + duplicate local net: each split SA must map to its own
+    # configured pair (by selector, never by the shared name) → two distinct rows.
+    conn = agent._parse_swanctl_conns(_SWANCTL_CONNS_MULTINET)[0]
+    sa = agent._parse_swanctl_sas(_SWANCTL_SAS_MULTINET_SPLIT)[0]
+    t = agent._tunnel("bv", conn, sa, {})
+    assert sorted((c["local_ts"], c["remote_ts"]) for c in t["children"]) == _MULTINET_PAIRS
+    assert all(c["state"] == "INSTALLED" for c in t["children"])
+    assert (t["phase2_up"], t["phase2_total"]) == (2, 2)
+
+
+def test_tunnel_multinet_single_sa_membership_no_double_count() -> None:
+    # Non-splitting peer: one CHILD_SA carries both subnets. Both configured pairs
+    # match that SA by ts-list membership, yet its byte counter is summed once at
+    # the tunnel level (the latent _first() bug on the SA side, made robust).
+    conn = agent._parse_swanctl_conns(_SWANCTL_CONNS_MULTINET)[0]
+    sa = agent._parse_swanctl_sas(_SWANCTL_SAS_MULTINET_SINGLE)[0]
+    t = agent._tunnel("bv", conn, sa, {})
+    assert sorted((c["local_ts"], c["remote_ts"]) for c in t["children"]) == _MULTINET_PAIRS
+    assert (t["phase2_up"], t["phase2_total"]) == (2, 2)
+    assert (t["bytes_in"], t["bytes_out"]) == (1, 2)  # counted once, not doubled
 
 
 def test_parse_swanctl_sas_sums_child_bytes() -> None:

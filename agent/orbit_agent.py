@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -651,6 +651,20 @@ def _clean_ts(ts: str) -> str:
     return ts.split("|", 1)[0].split("[", 1)[0].strip()
 
 
+def _ts_list(v: object) -> list[str]:
+    """All traffic selectors of a vici ts field, cleaned (vici returns a list).
+
+    A single configured Phase-2 child may carry several subnets
+    (``local-ts=[A B]``); ``_first`` would silently drop all but the first. This
+    keeps every selector so the connection can be expanded to one row per pair.
+    """
+    if isinstance(v, list):
+        return [_clean_ts(str(x)) for x in v if str(x).strip()]
+    if isinstance(v, str) and v.strip():
+        return [_clean_ts(v)]
+    return []
+
+
 # Marker keys unique to each record type — never present on the raw envelope.
 _IKE_SA_MARKERS = frozenset({"uniqueid", "state", "local-host", "remote-host", "child-sas"})
 _CONN_MARKERS = frozenset({"local_addrs", "remote_addrs", "children"})
@@ -727,6 +741,11 @@ def _parse_swanctl_sas(out: str) -> list[dict]:
                     "name": _first(child.get("name")) or re.sub(r"-\d+$", "", ckey),
                     "local_ts": _clean_ts(_first(child.get("local-ts"))),
                     "remote_ts": _clean_ts(_first(child.get("remote-ts"))),
+                    # Full selector lists: a non-splitting peer keeps every subnet
+                    # of a multi-net child in ONE CHILD_SA — _merge_children matches
+                    # configured pairs against these (not just the first selector).
+                    "local_ts_list": _ts_list(child.get("local-ts")),
+                    "remote_ts_list": _ts_list(child.get("remote-ts")),
                     "state": str(child.get("state", "")).upper(),
                     "bytes_in": _to_int(child.get("bytes-in")),
                     "bytes_out": _to_int(child.get("bytes-out")),
@@ -778,17 +797,23 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
             for ckey, child in children.items():
                 if not isinstance(child, dict):
                     continue
-                child_rows.append({
-                    "name": ckey,  # configured child key = the Phase-2 id (UUID on OPNsense)
-                    "local_ts": _clean_ts(_first(child.get("local-ts"))),
-                    "remote_ts": _clean_ts(_first(child.get("remote-ts"))),
-                })
+                # strongSwan installs one CHILD_SA per (local x remote) selector
+                # pair, so a child with several local subnets becomes several
+                # Phase-2 rows. Expand here; ["" ] keeps a child with one side
+                # missing from vanishing.
+                for lt in _ts_list(child.get("local-ts")) or [""]:
+                    for rt in _ts_list(child.get("remote-ts")) or [""]:
+                        child_rows.append({
+                            "name": ckey,  # configured child key (UUID on OPNsense)
+                            "local_ts": lt,
+                            "remote_ts": rt,
+                        })
         conns.append({
             "name": name,
             "local": _first(conn.get("local_addrs")),
             "remote": _first(conn.get("remote_addrs")),
-            # configured phase-2 children → the "n" in "x/n up"
-            "phase2_total": len(children) if isinstance(children, dict) else 0,
+            # configured phase-2 selector pairs → the "n" in "x/n up"
+            "phase2_total": len(child_rows),
             "children": child_rows,  # configured Phase-2 selectors (up or down)
         })
     return conns
@@ -841,27 +866,60 @@ def _child_row(cc: dict | None, sc: dict | None) -> dict:
     }
 
 
-def _merge_children(conn_children: list[dict], sa_children: list[dict]) -> list[dict]:
-    """Overlay live child SAs onto configured Phase-2 entries.
+def _sa_locals(sc: dict) -> list[str]:
+    """A live child's local selectors (full list, else the single scalar)."""
+    return sc.get("local_ts_list") or ([sc["local_ts"]] if sc.get("local_ts") else [])
 
-    Match by name first, then by traffic-selector pair (the child name drifts when
-    OPNsense regenerates UUIDs on apply). Live children with no configured match
-    are still surfaced so nothing disappears.
+
+def _sa_remotes(sc: dict) -> list[str]:
+    """A live child's remote selectors (full list, else the single scalar)."""
+    return sc.get("remote_ts_list") or ([sc["remote_ts"]] if sc.get("remote_ts") else [])
+
+
+def _find_sa_for_pair(cc: dict, sa_children: list[dict]) -> dict | None:
+    """Live child SA whose traffic selectors cover this configured pair.
+
+    Match on the selector pair, never on the child name: strongSwan splits one
+    configured multi-subnet child into N CHILD_SAs that all share that name, so
+    a name index would collapse them (last-wins) and duplicate one pair while
+    dropping the rest. Membership also handles the non-splitting peer, where one
+    CHILD_SA carries every subnet in its ts list.
     """
-    sa_by_name = {c["name"]: c for c in sa_children if c.get("name")}
-    sa_by_sel = {(c.get("local_ts"), c.get("remote_ts")): c for c in sa_children}
+    lt, rt = cc.get("local_ts"), cc.get("remote_ts")
+    for sc in sa_children:
+        if lt in _sa_locals(sc) and rt in _sa_remotes(sc):
+            return sc
+    return None
+
+
+def _expand_sa_child(sc: dict) -> list[dict]:
+    """A live child with no configured match → one row per its own selector pair."""
+    rows: list[dict] = []
+    for lt in _sa_locals(sc) or [""]:
+        for rt in _sa_remotes(sc) or [""]:
+            rows.append(_child_row({"name": sc.get("name"), "local_ts": lt, "remote_ts": rt}, sc))
+    return rows
+
+
+def _merge_children(conn_children: list[dict], sa_children: list[dict]) -> list[dict]:
+    """Overlay live child SAs onto configured Phase-2 selector pairs — one row each.
+
+    Each configured pair becomes a row, annotated with the matching live SA's
+    state (or empty when down). Live children with no configured match are still
+    surfaced so nothing disappears. A single SA may cover several configured pairs
+    (non-splitting peer); its byte counters are summed once at the tunnel level
+    (see _parse_swanctl_sas), so attributing it to multiple display rows is safe.
+    """
     out: list[dict] = []
-    used: set[int] = set()
+    matched: set[int] = set()
     for cc in conn_children:
-        sc = sa_by_name.get(cc.get("name")) or sa_by_sel.get(
-            (cc.get("local_ts"), cc.get("remote_ts"))
-        )
+        sc = _find_sa_for_pair(cc, sa_children)
         if sc is not None:
-            used.add(id(sc))
+            matched.add(id(sc))
         out.append(_child_row(cc, sc))
     for sc in sa_children:
-        if id(sc) not in used:
-            out.append(_child_row(None, sc))
+        if id(sc) not in matched:
+            out.extend(_expand_sa_child(sc))
     return out
 
 
@@ -873,6 +931,11 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
         "id": name,  # connection name → `swanctl --initiate --ike <id>`
         "description": descriptions.get(name) or name,  # human name, else the UUID
         "children": children,  # per-Phase-2 detail (selectors + live state)
+        # Count from the merged rows: total = configured pairs (live pairs when no
+        # conn), up = pairs with a live INSTALLED SA. A configured-but-down pair
+        # survives as an empty-state row and still counts toward the denominator.
+        "phase2_up": sum(1 for c in children if c.get("state") == "INSTALLED"),
+        "phase2_total": len(children),
     }
     if sa is not None:
         return {
@@ -880,9 +943,6 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
             "remote": sa["remote"] or conn.get("remote", ""),
             "local": sa["local"] or conn.get("local", ""),
             "status": sa["status"],
-            "phase2_up": sa.get("phase2_up", 0),
-            # prefer the configured child count from the conn; fall back to live SAs
-            "phase2_total": conn.get("phase2_total") or sa.get("phase2_total", 0),
             "seconds_established": sa.get("seconds_established", 0),
             "bytes_in": sa["bytes_in"],
             "bytes_out": sa["bytes_out"],
@@ -895,8 +955,6 @@ def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[st
         "remote": conn.get("remote", ""),
         "local": conn.get("local", ""),
         "status": "down",
-        "phase2_up": 0,
-        "phase2_total": conn.get("phase2_total", 0),
         "seconds_established": 0,
         "bytes_in": 0,
         "bytes_out": 0,
