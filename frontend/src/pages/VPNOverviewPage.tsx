@@ -82,11 +82,20 @@ function pairHealth(a: GlobalTunnel, b: GlobalTunnel): { cls: string; label: str
   const aUp = isUp(a.phase1_status);
   const bUp = isUp(b.phase1_status);
   if (aUp !== bUp) return { cls: "bg-red-600/20 text-red-400", label: "status mismatch" };
+  if (!aUp && !bUp) return { cls: "bg-slate-700 text-slate-300", label: "both down" };
+  // Both Phase 1 up — but "established" doesn't mean traffic flows. Fold the
+  // Phase-2 ping monitor into the health so a tunnel that's up yet not passing
+  // traffic isn't reported "both up" and auto-collapsed (the whole point of the
+  // collapse is to hide *healthy* pairs). Symmetric failure (both ends fail) is
+  // the usual outage shape, so rank by the worst end across both — a plain
+  // mismatch check misses it. No monitor configured (state "none") stays green.
   const pa = worstPing(a.children ?? []);
   const pb = worstPing(b.children ?? []);
+  const worst = worstPing([...(a.children ?? []), ...(b.children ?? [])]);
+  if (worst === "fail") return { cls: "bg-red-600/20 text-red-400", label: "ping fail" };
   if (pa !== pb) return { cls: "bg-amber-600/20 text-amber-400", label: "ping mismatch" };
-  if (aUp && bUp) return { cls: "bg-emerald-600/20 text-emerald-400", label: "both up" };
-  return { cls: "bg-slate-700 text-slate-300", label: "both down" };
+  if (worst === "error") return { cls: "bg-amber-600/20 text-amber-400", label: "ping error" };
+  return { cls: "bg-emerald-600/20 text-emerald-400", label: "both up" };
 }
 
 interface DialogTarget {

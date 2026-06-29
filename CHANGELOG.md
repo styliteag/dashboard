@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state → log tails) and capped (~48 KB, still ~90%+ below raw logs).
   (Agent `__version__` → 1.9.3.)
 
+### Fixed
+
+- **VPN overview: collapsed pairs hid ping failures.** A paired link whose Phase 1
+  was established on both ends but whose Phase-2 ping monitor was failing collapsed
+  to a green "both up" header — symmetric failure (both ends fail) slipped past the
+  ping-*mismatch* check. The pair health now ranks the worst ping across both ends:
+  it shows "ping fail" (red) / "ping error" (amber) and stays expanded so the
+  per-tunnel red ping badge is visible. (Requires a configured Phase-2 ping monitor;
+  tunnels with no monitor still report "both up".)
+
 ## [1.9.3] - 2026-06-28
 
 ### Changed
