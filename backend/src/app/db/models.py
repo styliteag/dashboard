@@ -341,6 +341,43 @@ class IPsecPingMonitor(Base):
     )
 
 
+class ConnectivityMonitor(Base):
+    """A standalone connectivity probe — a (source, destination) ping not tied to
+    any IPsec tunnel.
+
+    The agent runs ``ping -S <source> <destination>`` on the firewall each push
+    cycle and reports ok/fail/error back in the metrics push, keyed by this row's
+    ``id`` (the agent echoes the id so the check key ``connectivity:<id>`` stays
+    stable across renames and when two monitors target the same destination).
+    Agent-mode only — a direct-poll instance has no agent to ping from.
+    """
+
+    __tablename__ = "connectivity_monitors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Human label, unique per instance.
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Local source IP — must be box-owned. "" = default route.
+    source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    destination: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
+    ping_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (UniqueConstraint("instance_id", "name", name="uq_connectivity_monitor"),)
+
+
 class IPsecTunnelEvent(Base):
     """One recorded IPsec tunnel state transition (history behind the GUI popup).
 

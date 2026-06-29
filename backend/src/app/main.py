@@ -22,6 +22,7 @@ from app.bulk.routes import router as bulk_router
 from app.checkmk.routes import router as checkmk_router
 from app.checks.routes import router as checks_router
 from app.config import Settings, get_settings
+from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
 from app.instances.routes import router as instances_router
@@ -204,6 +205,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_router, prefix="/api")
     app.include_router(checks_router, prefix="/api")
     app.include_router(checkmk_router, prefix="/api")
+    app.include_router(connectivity_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(notifications_router, prefix="/api")
