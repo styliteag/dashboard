@@ -14,13 +14,10 @@ from app.agent_hub.hub import hub
 from app.auth.deps import current_user, read_principal
 from app.checkmk.exclusions import excluded_reason, is_excluded
 from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
-from app.checks.confidence import probe_checks
 from app.checks.event_store import read_check_events
-from app.checks.maintenance import apply_maintenance
-from app.checks.staleness import apply_staleness, staleness_for
+from app.checks.overlay import overlay_checks
 from app.db.base import get_session
 from app.db.models import CheckmkExportExclusion, Instance, User
-from app.probe.registry import probe_registry
 from app.settings.store import effective_settings
 from app.xsense.registry import registry
 from app.xsense.schemas import (
@@ -105,23 +102,6 @@ async def gather_many(rows: list[Instance]) -> list[tuple[Instance, GatheredAspe
     return list(await asyncio.gather(*(one(inst) for inst in rows)))
 
 
-def _overlay_checks(
-    inst: Instance, base: list[ServiceCheck], settings, now: datetime
-) -> list[ServiceCheck]:
-    """Layer the staleness overlay and the fresh out-of-band probe onto raw checks.
-
-    Staleness caps stale sub-states CRIT→WARN and adds the ``agent`` service; the
-    probe is freshly measured, so its ``ping``/``http`` checks are appended *after*
-    (uncapped) — the probe is the signal that can legitimately take a stale-but-
-    confirmed-down box back to CRIT. ``agent_fresh`` feeds the confidence model so a
-    box still pushing telemetry caps a failing probe at WARN, not CRIT.
-    """
-    s = staleness_for(inst, settings, now)
-    checks = apply_staleness(base, s)
-    checks += probe_checks(s is not None and not s.stale, probe_registry.get(inst.id))
-    return apply_maintenance(checks, inst.maintenance)
-
-
 @router.get("/instances/{instance_id}/checks", response_model=list[ServiceCheck])
 async def instance_checks(
     instance_id: int,
@@ -135,7 +115,7 @@ async def instance_checks(
 
     sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, instance_id)
     base = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
-    return _overlay_checks(inst, base, effective_settings(), datetime.now(UTC))
+    return overlay_checks(inst, base, effective_settings(), datetime.now(UTC))
 
 
 class CheckHistoryEvent(BaseModel):
@@ -201,7 +181,7 @@ async def export_checkmk(
     now = datetime.now(UTC)
     instances = []
     for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
-        evaluated = _overlay_checks(
+        evaluated = overlay_checks(
             inst,
             evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
             settings,
@@ -253,7 +233,7 @@ async def all_checks(
     now = datetime.now(UTC)
     alerts: list[ServiceAlert] = []
     for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
-        evaluated = _overlay_checks(
+        evaluated = overlay_checks(
             inst,
             evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
             settings,

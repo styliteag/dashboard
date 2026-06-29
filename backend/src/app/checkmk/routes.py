@@ -6,6 +6,8 @@ dashboard's own check views stay complete.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -15,10 +17,12 @@ from app.audit.log import write_audit
 from app.auth.deps import require_admin
 from app.checkmk.exclusions import CATEGORIES, Rule, category, excluded_reason
 from app.checks import evaluate_checks
+from app.checks.overlay import overlay_checks
 from app.checks.routes import gather_many
 from app.db.base import get_session
 from app.db.models import CheckmkExportExclusion, Instance, User
 from app.net import client_ip
+from app.settings.store import effective_settings
 
 router = APIRouter(prefix="/checkmk", tags=["checkmk"])
 
@@ -172,9 +176,16 @@ async def preview(
         .scalars()
         .all()
     )
+    settings = effective_settings()
+    now = datetime.now(UTC)
     instances: list[PreviewInstance] = []
     for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
-        checks = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
+        checks = overlay_checks(
+            inst,
+            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
+            settings,
+            now,
+        )
         pchecks: list[PreviewCheck] = []
         for c in checks:
             reason = excluded_reason(c.key, inst.id, rules)
