@@ -103,6 +103,10 @@ export interface InterfaceStatus {
   in_errors: number;
   out_errors: number;
   collisions: number;
+  // Server-derived bytes/sec (agent mode). -1 = no rate yet → fall back to
+  // client-side delta.
+  rx_rate: number;
+  tx_rate: number;
 }
 
 export interface LoadAvg {

@@ -147,22 +147,31 @@ def _check_alert(instance_name: str, transition) -> tuple[str, str, str, str]:  
 def annotate_iface_error_rates(
     new: SystemStatus, prev: SystemStatus | None, dt_seconds: float
 ) -> SystemStatus:
-    """Return a copy of ``new`` whose interfaces carry a derived ``err_rate``
-    ((in+out errors)/sec) computed against ``prev``. Counters are cumulative, so a
-    rate needs two samples; an interface keeps the -1.0 "no data" sentinel when it
-    has no previous sample, when either counter went backwards (reboot / counter
-    reset), or when ``dt_seconds`` is not positive (e.g. first push after restart)."""
+    """Return a copy of ``new`` whose interfaces carry derived per-second rates
+    (``err_rate`` = (in+out errors)/sec, ``rx_rate``/``tx_rate`` = bytes/sec)
+    computed against ``prev``. Counters are cumulative, so a rate needs two
+    samples; each rate keeps the -1.0 "no data" sentinel when there is no previous
+    sample, when its counter went backwards (reboot / counter reset), or when
+    ``dt_seconds`` is not positive (e.g. first push after restart). The three rates
+    are guarded independently so one reset counter doesn't void the others."""
     if prev is None or dt_seconds <= 0:
         return new
     prev_by_name = {i.name: i for i in prev.interfaces}
     ifaces = []
     for i in new.interfaces:
         p = prev_by_name.get(i.name)
-        rate = -1.0
-        if p is not None and i.in_errors >= p.in_errors and i.out_errors >= p.out_errors:
-            delta = (i.in_errors - p.in_errors) + (i.out_errors - p.out_errors)
-            rate = round(delta / dt_seconds, 3)
-        ifaces.append(i.model_copy(update={"err_rate": rate}))
+        err_rate = rx_rate = tx_rate = -1.0
+        if p is not None:
+            if i.in_errors >= p.in_errors and i.out_errors >= p.out_errors:
+                delta = (i.in_errors - p.in_errors) + (i.out_errors - p.out_errors)
+                err_rate = round(delta / dt_seconds, 3)
+            if i.bytes_received >= p.bytes_received:
+                rx_rate = round((i.bytes_received - p.bytes_received) / dt_seconds, 3)
+            if i.bytes_transmitted >= p.bytes_transmitted:
+                tx_rate = round((i.bytes_transmitted - p.bytes_transmitted) / dt_seconds, 3)
+        ifaces.append(
+            i.model_copy(update={"err_rate": err_rate, "rx_rate": rx_rate, "tx_rate": tx_rate})
+        )
     return new.model_copy(update={"interfaces": ifaces})
 
 

@@ -61,6 +61,39 @@ def test_iface_error_rate_skips_when_dt_not_positive() -> None:
     assert annotate_iface_error_rates(new, prev, 0.0).interfaces[0].err_rate == -1.0
 
 
+def test_iface_byte_rate_derived_from_delta() -> None:
+    prev = _status_with([InterfaceStats(name="igb0", bytes_received=1000, bytes_transmitted=500)])
+    new = _status_with([InterfaceStats(name="igb0", bytes_received=4000, bytes_transmitted=2000)])
+    iface = annotate_iface_error_rates(new, prev, 30.0).interfaces[0]
+    assert iface.rx_rate == 100.0  # (4000-1000)/30
+    assert iface.tx_rate == 50.0  # (2000-500)/30
+
+
+def test_iface_byte_rate_needs_two_samples() -> None:
+    new = _status_with([InterfaceStats(name="igb0", bytes_received=1000, bytes_transmitted=500)])
+    iface = annotate_iface_error_rates(new, None, 30.0).interfaces[0]
+    assert iface.rx_rate == -1.0
+    assert iface.tx_rate == -1.0
+
+
+def test_iface_byte_rate_counter_reset_is_no_data() -> None:
+    prev = _status_with([InterfaceStats(name="igb0", bytes_received=9000, bytes_transmitted=9000)])
+    new = _status_with([InterfaceStats(name="igb0", bytes_received=100, bytes_transmitted=200)])
+    iface = annotate_iface_error_rates(new, prev, 30.0).interfaces[0]
+    assert iface.rx_rate == -1.0
+    assert iface.tx_rate == -1.0
+
+
+def test_iface_rates_guarded_independently() -> None:
+    # rx counter advances, tx counter went backwards (a per-direction reset) → rx
+    # still yields a rate, tx stays the no-data sentinel.
+    prev = _status_with([InterfaceStats(name="igb0", bytes_received=1000, bytes_transmitted=9000)])
+    new = _status_with([InterfaceStats(name="igb0", bytes_received=4000, bytes_transmitted=200)])
+    iface = annotate_iface_error_rates(new, prev, 30.0).interfaces[0]
+    assert iface.rx_rate == 100.0
+    assert iface.tx_rate == -1.0
+
+
 class _FakeWS:
     """Minimal stand-in for a Starlette WebSocket: register() only awaits close()."""
 

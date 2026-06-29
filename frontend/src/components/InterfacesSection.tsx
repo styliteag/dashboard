@@ -12,11 +12,36 @@ interface Iface {
   in_errors: number;
   out_errors: number;
   collisions: number;
+  rx_rate: number;
+  tx_rate: number;
 }
 
 interface SystemStatus {
   interfaces: Iface[];
 }
+
+// Pseudo/virtual interfaces report Oerrs from BUM-flood/ENOBUFS, not wire faults
+// (see _IFACE_SKIP_PREFIXES in backend/src/app/checks/evaluate.py). The health
+// check ignores them — mirror that here so their counters render neutral, not as
+// an amber alarm.
+const ERR_SKIP_PREFIXES = [
+  "lo",
+  "enc",
+  "pflog",
+  "pfsync",
+  "gif",
+  "stf",
+  "bridge",
+  "lagg",
+  "gre",
+  "ovpn",
+  "tun",
+  "tap",
+  "wg",
+];
+
+const isErrSkipped = (name: string): boolean =>
+  ERR_SKIP_PREFIXES.some((p) => name.startsWith(p));
 
 function fmtRate(bps: number | null): string {
   if (bps === null) return "…";
@@ -83,6 +108,11 @@ export default function InterfacesSection({ instanceId }: { instanceId: number }
             {data.interfaces.map((i) => {
               const up = i.status.toLowerCase().includes("up");
               const errs = (i.in_errors ?? 0) + (i.out_errors ?? 0) + (i.collisions ?? 0);
+              // Prefer the server-derived rate (agent mode, where two cached
+              // /status reads are identical and a client delta would be 0); fall
+              // back to the client delta for the direct-poll path (rate = -1).
+              const rxBps = i.rx_rate >= 0 ? i.rx_rate : rate(i.name, "bytes_received");
+              const txBps = i.tx_rate >= 0 ? i.tx_rate : rate(i.name, "bytes_transmitted");
               return (
                 <tr key={i.name} className="border-t border-slate-800">
                   <td className="px-3 py-2 font-medium">{i.name}</td>
@@ -92,17 +122,20 @@ export default function InterfacesSection({ instanceId }: { instanceId: number }
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">{i.address || "—"}</td>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    ↓ {fmtRate(rate(i.name, "bytes_received"))}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    ↑ {fmtRate(rate(i.name, "bytes_transmitted"))}
-                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">↓ {fmtRate(rxBps)}</td>
+                  <td className="px-3 py-2 font-mono text-xs">↑ {fmtRate(txBps)}</td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {errs === 0 ? (
                       <span className="text-slate-600">—</span>
                     ) : (
-                      <span className="text-amber-400" title="in / out / collisions">
+                      <span
+                        className={isErrSkipped(i.name) ? "text-slate-500" : "text-amber-400"}
+                        title={
+                          isErrSkipped(i.name)
+                            ? "in / out / collisions (virtual iface — not a wire fault)"
+                            : "in / out / collisions"
+                        }
+                      >
                         {i.in_errors}/{i.out_errors}/{i.collisions}
                       </span>
                     )}

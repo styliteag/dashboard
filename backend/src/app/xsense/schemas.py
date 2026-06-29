@@ -123,6 +123,13 @@ class InterfaceStats(BaseModel):
     # -1.0 = no rate yet (no previous sample, counter reset, or the direct-poll
     # path) → the iface-error check skips it. Not collected by the agent.
     err_rate: float = -1.0
+    # Throughput (bytes/sec), derived the same way from the cumulative byte
+    # counters. -1.0 = no rate yet (same conditions as err_rate). Lets the UI show
+    # a correct rate in agent mode, where consecutive /status reads return the same
+    # cached push and a client-side delta would be 0. Direct-poll path leaves -1.0
+    # (the UI falls back to its own client-side delta, which works there).
+    rx_rate: float = -1.0
+    tx_rate: float = -1.0
 
 
 class SystemStatus(BaseModel):

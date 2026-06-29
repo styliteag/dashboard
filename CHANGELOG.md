@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Network tab no longer flags virtual-interface errors as faults** — the interface
+  table coloured the error counter amber for every interface, so a `bridge0`/`lagg`/`ovpn`
+  Oerr count (BUM-flood/ENOBUFS, not a wire fault) lit up as an alarm. The health check
+  already skips these prefixes; the frontend now mirrors that list and renders their
+  counters neutral (grey) instead of amber.
+- **Network tab RX/TX now show a stable throughput in agent mode** — the rate was
+  derived client-side by diffing two `/status` reads, but in agent mode those reads
+  return the same cached push between agent pushes, so the delta was 0 and RX/TX mostly
+  showed `0` (and, when it did fill, divided by the 30 s poll interval instead of the
+  real push interval, so the magnitude was wrong too). The agent hub now derives
+  `rx_rate`/`tx_rate` (bytes/sec) from two consecutive pushes — the same way it already
+  derives the interface error rate — and the UI renders that; it falls back to the
+  client-side delta only on the direct-poll path, where it still works.
+
 ## [2.0.2] - 2026-06-29
 
 ### Fixed
