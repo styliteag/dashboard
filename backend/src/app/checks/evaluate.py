@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.checks.models import CheckState, PerfMetric, ServiceCheck
 from app.xsense.schemas import (
     CertInfo,
+    ConnectivityResult,
     CpuUsage,
     DiskUsage,
     FirmwareStatus,
@@ -424,6 +425,42 @@ def cert_checks(certs: list[CertInfo]) -> list[ServiceCheck]:
     return out
 
 
+def connectivity_checks(results: list[ConnectivityResult]) -> list[ServiceCheck]:
+    """Standalone connectivity-ping checks (one per configured monitor).
+
+    Same categorical semantics as the IPsec Phase-2 ping: a probe that gets no
+    reply is CRIT, a misconfigured probe (bad source / no route) is WARN, an
+    unevaluated monitor (ping_state "none") is skipped. Keyed by the monitor id so
+    the key survives renames and same-destination monitors.
+    """
+    out: list[ServiceCheck] = []
+    for r in results:
+        ps = (r.ping_state or "none").strip().lower()
+        if ps == "none":
+            continue
+        label = r.name or r.destination or str(r.id)
+        if ps == "ok":
+            state, word = CheckState.OK, "ping ok"
+        elif ps == "fail":
+            state, word = CheckState.CRIT, "ping FAILED (no reply)"
+        else:  # "error" or anything unexpected → misconfiguration, not an outage
+            state, word = CheckState.WARN, "ping error (check source/destination)"
+        metrics: list[PerfMetric] = []
+        if r.ping_loss_pct is not None:
+            metrics.append(PerfMetric(name="ping_loss_pct", value=r.ping_loss_pct, unit="%"))
+        if r.ping_rtt_ms is not None:
+            metrics.append(PerfMetric(name="ping_rtt_ms", value=r.ping_rtt_ms, unit="ms"))
+        out.append(
+            ServiceCheck(
+                key=f"connectivity:{r.id}",
+                state=int(state),
+                summary=f"Connectivity {label} → {r.destination} {word}",
+                metrics=metrics,
+            )
+        )
+    return out
+
+
 def evaluate_checks(
     status: SystemStatus,
     gateways: list[GatewayStatus] | None = None,
@@ -431,6 +468,7 @@ def evaluate_checks(
     firmware: FirmwareStatus | None = None,
     services: list[ServiceInfo] | None = None,
     certs: list[CertInfo] | None = None,
+    connectivity: list[ConnectivityResult] | None = None,
 ) -> list[ServiceCheck]:
     """Evaluate all available aspects of an instance into service checks."""
     checks = [memory_check(status.memory), cpu_check(status.cpu)]
@@ -456,4 +494,6 @@ def evaluate_checks(
         checks += cert_checks(certs)
     if firmware is not None and firmware.product_version:
         checks.append(firmware_check(firmware))
+    if connectivity:
+        checks += connectivity_checks(connectivity)
     return checks

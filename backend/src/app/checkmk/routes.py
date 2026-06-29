@@ -179,10 +179,18 @@ async def preview(
     settings = effective_settings()
     now = datetime.now(UTC)
     instances: list[PreviewInstance] = []
-    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
+    for inst, (
+        sys_status,
+        gateways,
+        ipsec,
+        firmware,
+        services,
+        certs,
+        connectivity,
+    ) in await gather_many(rows):
         checks = overlay_checks(
             inst,
-            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
+            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
             settings,
             now,
         )

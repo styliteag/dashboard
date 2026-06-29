@@ -18,6 +18,7 @@ from app.connectivity import service as conn_service
 from app.connectivity.schemas import (
     ConnMonitorCreate,
     ConnMonitorRead,
+    ConnMonitorState,
     ConnMonitorUpdate,
     ConnPingTestRequest,
     ConnPingTestResult,
@@ -47,6 +48,37 @@ async def list_monitors(
     await _get_instance(instance_id, session)
     monitors = await conn_service.list_monitors(session, instance_id)
     return [ConnMonitorRead.model_validate(m) for m in monitors]
+
+
+@router.get("/status", response_model=list[ConnMonitorState])
+async def connectivity_status(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> list[ConnMonitorState]:
+    """Each configured monitor joined with its latest pushed ping result.
+
+    The live result comes from the agent-hub cache, keyed by monitor id; a monitor
+    with no result yet (just added, or agent hasn't pushed) reports ``none``.
+    """
+    await _get_instance(instance_id, session)
+    monitors = await conn_service.list_monitors(session, instance_id)
+    results = {r.id: r for r in (hub.get_last_connectivity(instance_id) or [])}
+    out: list[ConnMonitorState] = []
+    for m in monitors:
+        state = ConnMonitorState.model_validate(m)
+        r = results.get(m.id)
+        if r is not None:
+            state = state.model_copy(
+                update={
+                    "ping_state": r.ping_state,
+                    "ping_rtt_ms": r.ping_rtt_ms,
+                    "ping_loss_pct": r.ping_loss_pct,
+                    "ping_ts": r.ping_ts,
+                }
+            )
+        out.append(state)
+    return out
 
 
 @router.post("/monitors/test", response_model=ConnPingTestResult)

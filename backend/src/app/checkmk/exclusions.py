@@ -35,6 +35,7 @@ CATEGORIES: tuple[str, ...] = (
     "ipsec.service",
     "ipsec.tunnel",
     "ipsec.tunnel_ping",
+    "connectivity",  # standalone (tunnel-independent) ping monitors
     "service",
     "cert",
     "iface_errors",

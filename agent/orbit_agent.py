@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.4"
+__version__ = "2.0.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -72,6 +72,13 @@ _CONFIG: Config | None = None
 # (see _listen_loop_inner). Each entry: {tunnel_id, child_name, local_ts, remote_ts,
 # source, destination, enabled, ping_count}. collect_ipsec pings each enabled match.
 _PING_MONITORS: list[dict] = []
+
+# Standalone connectivity ping monitors (tunnel-independent), pushed in the same
+# `config_update` frame under "connectivity_monitors". Each entry:
+# {id, name, source, destination, enabled, ping_count}. collect_connectivity pings
+# each enabled one and echoes the dashboard `id` back so the backend check key
+# connectivity:<id> stays stable across renames.
+_CONN_MONITORS: list[dict] = []
 
 
 # =============================================================================
@@ -1148,6 +1155,47 @@ def run_ping_checks(tunnels: list[dict], monitors: list[dict], now_iso: str) -> 
             ch["ping_ts"] = now_iso
 
 
+def collect_connectivity() -> list:
+    """Run each enabled standalone connectivity monitor concurrently.
+
+    Tunnel-independent source->dest pings (see _CONN_MONITORS). Returns one result
+    per enabled monitor, keyed by the dashboard's stable monitor `id` so the
+    backend check key connectivity:<id> survives renames and same-destination
+    monitors. Reuses _ping_once (the same probe IPsec monitors use)."""
+    monitors = [m for m in _CONN_MONITORS if m.get("enabled", True)]
+    if not monitors:
+        return []
+    now_iso = datetime.now(UTC).isoformat()
+    results = []
+    with ThreadPoolExecutor(max_workers=min(8, len(monitors))) as pool:
+        futures = {
+            pool.submit(
+                _ping_once,
+                m.get("source", ""),
+                m.get("destination", ""),
+                int(m.get("ping_count") or 3),
+            ): m
+            for m in monitors
+        }
+        for future, m in futures.items():
+            try:
+                res = future.result()
+            except Exception:  # noqa: BLE001 — one bad ping must not sink the push
+                res = {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
+            results.append({
+                "id": m.get("id"),
+                "name": m.get("name", ""),
+                "source": m.get("source", ""),
+                "destination": m.get("destination", ""),
+                "ping_state": res.get("ping_state", "error"),
+                "ping_rtt_ms": res.get("ping_rtt_ms"),
+                "ping_loss_pct": res.get("ping_loss_pct"),
+                "ping_ts": now_iso,
+                "enabled": True,
+            })
+    return results
+
+
 def collect_ipsec() -> dict:
     """Get IPsec tunnels: configured connections merged with live SA status."""
     descriptions = _ipsec_descriptions()
@@ -1747,6 +1795,7 @@ def collect_all() -> dict:
         "interfaces": collect_interfaces(),
         "gateways": collect_gateways(),
         "ipsec": collect_ipsec(),
+        "connectivity": collect_connectivity(),
         "firmware": collect_firmware(),
         "firewall_log": collect_firewall_log(30),
         "config": collect_config(),
@@ -2480,9 +2529,10 @@ def execute_command(action: str, params: dict) -> dict:
     elif action == "ipsec.diagnose":
         return {"success": True, "sections": _diagnose_ipsec(params.get("tunnel_id", ""))}
 
-    elif action == "ipsec.ping_test":
-        # One-shot ping the dashboard runs from the config dialog BEFORE saving a
-        # Phase-2 monitor, so the user can see whether the source/destination work.
+    elif action in ("ipsec.ping_test", "connectivity.ping_test"):
+        # One-shot ping the dashboard runs from a config dialog BEFORE saving a
+        # monitor, so the user can see whether the source/destination work. Shared
+        # by the IPsec Phase-2 and the standalone connectivity dialogs.
         source = params.get("source", "")
         dest = params.get("destination", "")
         count = int(params.get("ping_count", 3) or 3)
@@ -2494,7 +2544,7 @@ def execute_command(action: str, params: dict) -> dict:
                 f"{res.get('ping_loss_pct')}% loss"
             )
         elif state == "fail":
-            msg = f"no reply from {dest} (100% loss) — Phase 2 not passing traffic?"
+            msg = f"no reply from {dest} (100% loss) — host down or path blocked?"
         else:
             msg = "ping could not run — check the source IP (must be owned by this box) and routing"
         return {
@@ -3470,13 +3520,21 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 }))
 
             elif msg_type == "config_update":
-                # Dashboard pushes config: IPsec Phase-2 ping monitors + push cadence.
+                # Dashboard pushes config: IPsec ping monitors, connectivity
+                # monitors + push cadence. Each key is applied only when present,
+                # so a partial frame (e.g. only connectivity_monitors) never wipes
+                # the others.
                 data = msg.get("data", {})
                 monitors = data.get("ipsec_ping_monitors")
                 if monitors is not None:
                     global _PING_MONITORS
                     _PING_MONITORS = monitors if isinstance(monitors, list) else []
                     log.info("applied %d ipsec ping monitor(s)", len(_PING_MONITORS))
+                conn_monitors = data.get("connectivity_monitors")
+                if conn_monitors is not None:
+                    global _CONN_MONITORS
+                    _CONN_MONITORS = conn_monitors if isinstance(conn_monitors, list) else []
+                    log.info("applied %d connectivity monitor(s)", len(_CONN_MONITORS))
                 _apply_push_interval(data.get("push_interval"))
 
             elif msg_type == "ping":

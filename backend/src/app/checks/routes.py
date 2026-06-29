@@ -22,6 +22,7 @@ from app.settings.store import effective_settings
 from app.xsense.registry import registry
 from app.xsense.schemas import (
     CertInfo,
+    ConnectivityResult,
     FirmwareStatus,
     GatewayStatus,
     IPsecServiceStatus,
@@ -48,11 +49,12 @@ async def _gather(
     FirmwareStatus | None,
     list[ServiceInfo] | None,
     list[CertInfo] | None,
+    list[ConnectivityResult] | None,
 ]:
     """Collect the aspects: from the agent-hub cache (push) or live (direct).
 
-    Services and certificates are agent-push only; direct/Securepoint poll
-    returns None for them.
+    Services, certificates and connectivity-ping results are agent-push only;
+    direct/Securepoint poll returns None for them.
     """
     if inst.agent_mode:
         return (
@@ -62,6 +64,7 @@ async def _gather(
             hub.get_last_firmware(instance_id),
             hub.get_last_services(instance_id),
             hub.get_last_certs(instance_id),
+            hub.get_last_connectivity(instance_id),
         )
     client = await registry.get(inst)
     # The four aspects are independent round-trips to the same appliance — fetch
@@ -73,7 +76,7 @@ async def _gather(
         _safe(client.ipsec_status, None),
         _safe(client.firmware_status, None),
     )
-    return (sys_status, gateways, ipsec, firmware, None, None)
+    return (sys_status, gateways, ipsec, firmware, None, None, None)
 
 
 GatheredAspects = tuple[
@@ -83,6 +86,7 @@ GatheredAspects = tuple[
     FirmwareStatus | None,
     list[ServiceInfo] | None,
     list[CertInfo] | None,
+    list[ConnectivityResult] | None,
 ]
 
 
@@ -113,8 +117,10 @@ async def instance_checks(
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    sys_status, gateways, ipsec, firmware, services, certs = await _gather(inst, instance_id)
-    base = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs)
+    sys_status, gateways, ipsec, firmware, services, certs, connectivity = await _gather(
+        inst, instance_id
+    )
+    base = evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity)
     return overlay_checks(inst, base, effective_settings(), datetime.now(UTC))
 
 
@@ -180,10 +186,18 @@ async def export_checkmk(
     settings = effective_settings()
     now = datetime.now(UTC)
     instances = []
-    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
+    for inst, (
+        sys_status,
+        gateways,
+        ipsec,
+        firmware,
+        services,
+        certs,
+        connectivity,
+    ) in await gather_many(rows):
         evaluated = overlay_checks(
             inst,
-            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
+            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
             settings,
             now,
         )
@@ -232,10 +246,18 @@ async def all_checks(
     settings = effective_settings()
     now = datetime.now(UTC)
     alerts: list[ServiceAlert] = []
-    for inst, (sys_status, gateways, ipsec, firmware, services, certs) in await gather_many(rows):
+    for inst, (
+        sys_status,
+        gateways,
+        ipsec,
+        firmware,
+        services,
+        certs,
+        connectivity,
+    ) in await gather_many(rows):
         evaluated = overlay_checks(
             inst,
-            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs),
+            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
             settings,
             now,
         )

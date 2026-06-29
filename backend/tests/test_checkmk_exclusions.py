@@ -23,6 +23,7 @@ def test_category_derivation() -> None:
     assert category("service:sshd") == "service"
     assert category("cert:abc123") == "cert"
     assert category("iface_errors:igb0") == "iface_errors"
+    assert category("connectivity:5") == "connectivity"
 
 
 def test_all_categories_listed() -> None:
@@ -44,6 +45,7 @@ def test_all_categories_listed() -> None:
         "ipsec.service",
         "ipsec.tunnel",
         "ipsec.tunnel_ping",
+        "connectivity",
         "service",
         "cert",
         "iface_errors",

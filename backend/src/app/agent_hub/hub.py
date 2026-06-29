@@ -29,6 +29,7 @@ from app.notifications.notifier import dispatch_async
 from app.xsense.schemas import (
     CertInfo,
     ConfigInfo,
+    ConnectivityResult,
     CpuUsage,
     DiskUsage,
     FirmwareStatus,
@@ -173,6 +174,20 @@ def annotate_iface_error_rates(
             i.model_copy(update={"err_rate": err_rate, "rx_rate": rx_rate, "tx_rate": tx_rate})
         )
     return new.model_copy(update={"interfaces": ifaces})
+
+
+def connectivity_from_agent(data: dict) -> list[ConnectivityResult]:
+    """Parse the agent's ``connectivity`` push section into result schemas.
+
+    Skips malformed entries (anything without a usable id) rather than failing the
+    whole push."""
+    out: list[ConnectivityResult] = []
+    for c in data.get("connectivity", []):
+        if not isinstance(c, dict) or c.get("id") is None:
+            continue
+        with contextlib.suppress(Exception):
+            out.append(ConnectivityResult.model_validate(c))
+    return out
 
 
 def gateways_from_agent(data: dict) -> list[GatewayStatus]:
@@ -346,6 +361,7 @@ class AgentHub:
         self._last_firmware: dict[int, FirmwareStatus] = {}
         self._last_gateways: dict[int, list[GatewayStatus]] = {}
         self._last_ipsec: dict[int, IPsecServiceStatus] = {}
+        self._last_connectivity: dict[int, list[ConnectivityResult]] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
         self._last_certs: dict[int, list[CertInfo]] = {}
@@ -456,6 +472,9 @@ class AgentHub:
     def get_last_ipsec(self, instance_id: int) -> IPsecServiceStatus | None:
         return self._last_ipsec.get(instance_id)
 
+    def get_last_connectivity(self, instance_id: int) -> list[ConnectivityResult] | None:
+        return self._last_connectivity.get(instance_id)
+
     def get_last_firewall_log(self, instance_id: int) -> list[dict] | None:
         return self._last_firewall_log.get(instance_id)
 
@@ -482,6 +501,9 @@ class AgentHub:
         ipsec = self._last_ipsec.get(instance_id)
         if ipsec is not None:
             snap["ipsec"] = ipsec.model_dump(mode="json")
+        connectivity = self._last_connectivity.get(instance_id)
+        if connectivity is not None:
+            snap["connectivity"] = [c.model_dump(mode="json") for c in connectivity]
         fwl = self._last_firewall_log.get(instance_id)
         if fwl is not None:
             snap["firewall_log"] = fwl
@@ -518,6 +540,10 @@ class AgentHub:
                 ]
             if snapshot.get("ipsec"):
                 self._last_ipsec[instance_id] = IPsecServiceStatus.model_validate(snapshot["ipsec"])
+            if snapshot.get("connectivity"):
+                self._last_connectivity[instance_id] = [
+                    ConnectivityResult.model_validate(c) for c in snapshot["connectivity"]
+                ]
             if snapshot.get("firewall_log"):
                 self._last_firewall_log[instance_id] = snapshot["firewall_log"]
             if snapshot.get("services"):
@@ -587,6 +613,13 @@ class AgentHub:
             self._last_ipsec[instance_id] = new_ipsec
             tunnel_events = diff_ipsec(prev_ipsec, new_ipsec)
 
+        # Cache standalone connectivity-ping results. Unlike the collector-failure
+        # guards above, an empty list here is legitimate (no monitors configured),
+        # so cache whenever the key is present — every modern agent always sends it.
+        conn = data.get("connectivity")
+        if conn is not None:
+            self._last_connectivity[instance_id] = connectivity_from_agent(data)
+
         # Cache firewall log
         fw_log = data.get("firewall_log")
         if fw_log is not None:
@@ -616,6 +649,7 @@ class AgentHub:
             self._last_firmware.get(instance_id),
             self._last_services.get(instance_id),
             self._last_certs.get(instance_id),
+            self._last_connectivity.get(instance_id),
         )
         check_transitions = diff_checks(self._last_check_states.get(instance_id), checks)
         self._last_check_states[instance_id] = current_states(checks)

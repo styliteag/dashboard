@@ -151,6 +151,28 @@ class SystemStatus(BaseModel):
     interfaces: list[InterfaceStats] = []
 
 
+class ConnectivityResult(BaseModel):
+    """One standalone connectivity-ping result pushed by the agent.
+
+    Tunnel-independent source->dest probe (see app.connectivity). ``id`` is the
+    dashboard monitor id the agent echoes back so the check key
+    ``connectivity:<id>`` is stable. ``ping_state`` mirrors the IPsec ping
+    vocabulary: none | ok | fail | error.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    name: str = ""
+    source: str = ""
+    destination: str = ""
+    ping_state: str = "none"
+    ping_rtt_ms: float | None = None
+    ping_loss_pct: float | None = None
+    ping_ts: str | None = None
+    enabled: bool = True
+
+
 # --- IPsec ------------------------------------------------------------------
 
 

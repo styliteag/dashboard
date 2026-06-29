@@ -303,3 +303,62 @@ def test_service_alert_model_and_severity() -> None:
         return 3 if s == 2 else 2 if s == 1 else 1 if s == 3 else 0
 
     assert _sev(2) > _sev(1) > _sev(3) > _sev(0)
+
+
+# --- standalone connectivity ping checks ------------------------------------
+
+
+def _conn(**kw):  # noqa: ANN003, ANN202
+    from app.xsense.schemas import ConnectivityResult
+
+    return ConnectivityResult(**kw)
+
+
+def test_connectivity_checks_state_map() -> None:
+    from app.checks.evaluate import connectivity_checks
+
+    results = [
+        _conn(id=1, name="dns", destination="10.2.2.1", ping_state="ok"),
+        _conn(id=2, name="gw", destination="10.2.2.2", ping_state="fail"),
+        _conn(id=3, name="bad", destination="10.2.2.3", ping_state="error"),
+        _conn(id=4, name="unset", destination="10.2.2.4", ping_state="none"),  # skipped
+    ]
+    checks = connectivity_checks(results)
+    by_key = {c.key: c for c in checks}
+    assert "connectivity:4" not in by_key  # "none" produces no check
+    assert by_key["connectivity:1"].state == CheckState.OK
+    assert by_key["connectivity:2"].state == CheckState.CRIT
+    assert by_key["connectivity:3"].state == CheckState.WARN
+
+
+def test_connectivity_checks_key_is_id_not_name() -> None:
+    from app.checks.evaluate import connectivity_checks
+
+    # Two monitors, same destination, different ids → distinct, stable keys.
+    checks = connectivity_checks(
+        [
+            _conn(id=7, name="a", destination="10.9.9.9", ping_state="ok"),
+            _conn(id=8, name="b", destination="10.9.9.9", ping_state="ok"),
+        ]
+    )
+    assert {c.key for c in checks} == {"connectivity:7", "connectivity:8"}
+
+
+def test_connectivity_checks_emit_perfdata() -> None:
+    from app.checks.evaluate import connectivity_checks
+
+    checks = connectivity_checks(
+        [_conn(id=1, destination="10.2.2.1", ping_state="ok", ping_rtt_ms=4.2, ping_loss_pct=0.0)]
+    )
+    names = {m.name for m in checks[0].metrics}
+    assert names == {"ping_rtt_ms", "ping_loss_pct"}
+
+
+def test_evaluate_checks_includes_connectivity() -> None:
+    status = SystemStatus(memory=MemoryUsage(used_pct=10.0), cpu=CpuUsage(total=5.0))
+    checks = evaluate_checks(
+        status,
+        connectivity=[_conn(id=1, name="dns", destination="10.2.2.1", ping_state="fail")],
+    )
+    conn = [c for c in checks if c.key == "connectivity:1"]
+    assert len(conn) == 1 and conn[0].state == CheckState.CRIT
