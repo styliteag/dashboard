@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import InstancesPage from "./pages/InstancesPage";
 import InstanceDetailPage from "./pages/InstanceDetailPage";
 import VPNOverviewPage from "./pages/VPNOverviewPage";
+import ConnectivityOverviewPage from "./pages/ConnectivityOverviewPage";
 import FirmwareCompliancePage from "./pages/FirmwareCompliancePage";
 import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
@@ -21,6 +22,7 @@ export default function App() {
           <Route index element={<InstancesPage />} />
           <Route path="instances/:id" element={<InstanceDetailPage />} />
           <Route path="vpn" element={<VPNOverviewPage />} />
+          <Route path="connectivity" element={<ConnectivityOverviewPage />} />
           <Route path="firmware" element={<FirmwareCompliancePage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="audit" element={<AuditPage />} />

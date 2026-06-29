@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Connectivity checks (standalone ping monitors)** — a new per-instance
+  **Connectivity** tab (OPNsense/pfSense, agent mode) where you configure
+  tunnel-independent `source → destination` pings. The agent runs them on the
+  firewall each push cycle (reusing the same probe the IPsec ping monitors use,
+  `ping -S <source>`), and the dashboard turns each result into a
+  `connectivity:<id>` check: **ok → OK, no reply → CRIT, misconfigured → WARN**.
+  Because the checks flow through the normal evaluation path they **alert on the
+  configured notification channels** on a state change and **export to Checkmk**
+  (new `connectivity` category, toggleable in the export-exclusion + channel-alert
+  settings). A global **Connectivity** overview page (next to VPN) lists every
+  monitor across all instances with its live state; stale rows (agent silent) are
+  muted, not trusted. A "Test now" dry-run validates source/destination before
+  saving. (Agent `__version__` → 2.0.6, Alembic `022`.)
+
 ### Fixed
 
 - **Can now add a ping monitor per subnet of a multi-net IPsec Phase-2** — adding a

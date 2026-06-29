@@ -8,6 +8,7 @@ import {
   Package,
   Settings,
   AlertTriangle,
+  Radio,
 } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
@@ -38,6 +39,12 @@ export default function Layout() {
           </Link>
           <Link to="/vpn" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
             <Shield className="h-4 w-4" /> VPN
+          </Link>
+          <Link
+            to="/connectivity"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <Radio className="h-4 w-4" /> Connectivity
           </Link>
           <Link
             to="/firmware"

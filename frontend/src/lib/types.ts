@@ -279,6 +279,33 @@ export interface ConnectivityState extends ConnectivityMonitor {
   ping_ts: string | null;
 }
 
+// Global Connectivity overview (GET /connectivity/overview) — one row per monitor
+// across all instances.
+export interface GlobalConnMonitor {
+  instance_id: number;
+  instance_name: string;
+  id: number;
+  name: string;
+  source: string;
+  destination: string;
+  enabled: boolean;
+  tags: string[];
+  stale: boolean;
+  stale_seconds: number | null;
+  ping_state: PingState | string;
+  ping_rtt_ms: number | null;
+  ping_loss_pct: number | null;
+  ping_ts: string | null;
+}
+
+export interface GlobalConnectivityResponse {
+  monitors: GlobalConnMonitor[];
+  total: number;
+  ok: number;
+  down: number;
+  error: number;
+}
+
 export interface DiagnosisSection {
   title: string;
   content: string;

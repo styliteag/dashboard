@@ -14,7 +14,7 @@ from app.agent_hub.hub import hub
 from app.auth.deps import current_user
 from app.checks.staleness import staleness_for
 from app.db.base import get_session
-from app.db.models import Instance, User
+from app.db.models import ConnectivityMonitor, Instance, User
 from app.settings.store import effective_settings
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
@@ -172,6 +172,99 @@ async def global_vpn_overview(
     return GlobalVPNResponse(
         tunnels=all_tunnels, total=len(all_tunnels), up=up, down=len(all_tunnels) - up
     )
+
+
+# --- Global Connectivity Overview ------------------------------------------
+
+
+class GlobalConnMonitor(BaseModel):
+    instance_id: int
+    instance_name: str
+    id: int
+    name: str
+    source: str
+    destination: str
+    enabled: bool
+    tags: list[str] = []
+    # Agent-staleness overlay: when True the owning instance's agent has gone
+    # silent, so ping_state here is last-known, not live — the UI mutes the row.
+    stale: bool = False
+    stale_seconds: int | None = None
+    ping_state: str = "none"  # none | ok | fail | error
+    ping_rtt_ms: float | None = None
+    ping_loss_pct: float | None = None
+    ping_ts: str | None = None
+
+
+class GlobalConnectivityResponse(BaseModel):
+    monitors: list[GlobalConnMonitor]
+    total: int
+    ok: int
+    down: int  # ping_state == "fail"
+    error: int
+
+
+@router.get("/connectivity/overview", response_model=GlobalConnectivityResponse)
+async def global_connectivity_overview(
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(current_user),
+) -> GlobalConnectivityResponse:
+    """Every standalone connectivity monitor across all instances, joined with its
+    latest pushed ping state from the agent-hub cache. Pure DB + in-memory — no
+    appliance round-trips (the firewalls do the pinging, the agent pushes results).
+    """
+    instances = (
+        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
+        .scalars()
+        .all()
+    )
+    by_id = {i.id: i for i in instances}
+    conn_cache = {iid: {r.id: r for r in (hub.get_last_connectivity(iid) or [])} for iid in by_id}
+    settings = effective_settings()
+    now = datetime.now(UTC)
+
+    monitors = (
+        (
+            await session.execute(
+                select(ConnectivityMonitor).order_by(
+                    ConnectivityMonitor.instance_id, ConnectivityMonitor.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    out: list[GlobalConnMonitor] = []
+    for m in monitors:
+        inst = by_id.get(m.instance_id)
+        if inst is None:
+            continue
+        r = conn_cache.get(inst.id, {}).get(m.id)
+        s = staleness_for(inst, settings, now)
+        out.append(
+            GlobalConnMonitor(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                id=m.id,
+                name=m.name,
+                source=m.source,
+                destination=m.destination,
+                enabled=m.enabled,
+                tags=inst.tags or [],
+                stale=bool(s and s.stale),
+                stale_seconds=s.age_seconds if s else None,
+                ping_state=(r.ping_state if r else "none"),
+                ping_rtt_ms=(r.ping_rtt_ms if r else None),
+                ping_loss_pct=(r.ping_loss_pct if r else None),
+                ping_ts=(r.ping_ts if r else None),
+            )
+        )
+
+    ok = sum(1 for x in out if x.ping_state == "ok")
+    down = sum(1 for x in out if x.ping_state == "fail")
+    error = sum(1 for x in out if x.ping_state == "error")
+    return GlobalConnectivityResponse(monitors=out, total=len(out), ok=ok, down=down, error=error)
 
 
 # --- Firmware Compliance ---------------------------------------------------
