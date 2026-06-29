@@ -43,6 +43,7 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
   const [showPreview, setShowPreview] = useState(false);
   const [preview, setPreview] = useState("");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["ipsec-diagnose", instanceId, tunnelId],
@@ -97,8 +98,10 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const active = data?.sections[Math.min(activeTab, (data.sections.length || 1) - 1)];
+
   return (
-    <Dialog title={`Diagnose tunnel: ${tunnelName}`} onClose={onClose} wide>
+    <Dialog title={`Diagnose tunnel: ${tunnelName}`} onClose={onClose} size="2xl">
       {isLoading && (
         <p className="text-sm text-slate-400">
           Gathering diagnostics over SSH (config, SAs, log, ping)…
@@ -106,9 +109,9 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
       )}
       {isError && <p className="text-sm text-red-400">Could not gather diagnostics.</p>}
       {data && (
-        <div className="space-y-3">
-          {/* Toolbar: AI analysis (left) + copy (right) */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {/* Toolbar: AI controls (left) + copy (right) */}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={provider}
@@ -140,6 +143,9 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
               >
                 <Eye className="h-3 w-3" /> {showPreview ? "Hide" : "Preview"} sent data
               </button>
+              <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                <ShieldCheck className="h-3 w-3 text-emerald-500" /> sent anonymized
+              </span>
             </div>
             <button
               onClick={copyAll}
@@ -150,44 +156,61 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
             </button>
           </div>
 
-          <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            <ShieldCheck className="h-3 w-3 text-emerald-500" />
-            Sent anonymized: internal IPs kept; public IPs, MAC vendors, hostnames and secrets
-            scrubbed.
-          </p>
-
           {showPreview && (
-            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded border border-slate-800 bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
+            <pre className="max-h-40 shrink-0 overflow-auto whitespace-pre-wrap break-all rounded border border-slate-800 bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
               {preview || "…"}
             </pre>
           )}
 
-          {result && (
-            <div className="rounded-lg border border-emerald-900/50 bg-slate-900/60 p-3">
-              {result.ok ? (
-                <>
-                  <p className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-                    <Bot className="h-3 w-3 text-emerald-500" />
-                    {result.provider} · {result.model} · {result.sent_chars} chars sent
+          {/* Two columns: AI findings | raw diagnostic sections (tabbed) */}
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Left: AI analysis */}
+            <div className="flex min-h-0 flex-col rounded-lg border border-emerald-900/40 bg-slate-900/40">
+              <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-800 px-3 py-2 text-xs font-semibold text-slate-300">
+                <Bot className="h-3.5 w-3.5 text-emerald-500" /> AI analysis
+                {result?.ok && (
+                  <span className="ml-auto font-normal text-slate-500">
+                    {result.model} · {result.sent_chars} chars
+                  </span>
+                )}
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-3">
+                {analyzeMut.isPending ? (
+                  <p className="text-xs text-slate-500">Analyzing…</p>
+                ) : result?.ok ? (
+                  <Markdown>{result.findings}</Markdown>
+                ) : result ? (
+                  <p className="text-xs text-red-400">{result.error}</p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Pick a provider and hit “Analyse with AI” to get findings on this tunnel.
                   </p>
-                  <div className="max-h-[28rem] overflow-auto pr-1">
-                    <Markdown>{result.findings}</Markdown>
-                  </div>
-                </>
-              ) : (
-                <p className="text-xs text-red-400">{result.error}</p>
-              )}
+                )}
+              </div>
             </div>
-          )}
 
-          {data.sections.map((s) => (
-            <div key={s.title} className="space-y-1">
-              <h3 className="text-xs font-semibold text-slate-300">{s.title}</h3>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded border border-slate-800 bg-slate-900 p-2 font-mono text-[11px] leading-relaxed text-slate-300">
-                {s.content || "(empty)"}
+            {/* Right: raw sections in tabs */}
+            <div className="flex min-h-0 flex-col rounded-lg border border-slate-800 bg-slate-900/40">
+              <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-800 px-2 py-1.5">
+                {data.sections.map((s, i) => (
+                  <button
+                    key={s.title}
+                    onClick={() => setActiveTab(i)}
+                    className={`rounded px-2 py-1 text-[11px] ${
+                      i === activeTab
+                        ? "bg-slate-700 text-slate-100"
+                        : "text-slate-400 hover:bg-slate-800"
+                    }`}
+                  >
+                    {s.title.split("(")[0].trim()}
+                  </button>
+                ))}
+              </div>
+              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-[11px] leading-relaxed text-slate-300">
+                {active?.content || "(empty)"}
               </pre>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </Dialog>
