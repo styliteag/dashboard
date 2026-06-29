@@ -11,6 +11,7 @@ from typing import Any
 # Token economy: send a recent slice of each log, not the full ~250 KB the agent
 # stores. Context (interfaces/tunnels/…) is tiny and always kept in full.
 PER_LOG_CHARS = 8_000  # ~2 k tokens of recent log lines per file
+RULES_CHARS = 16_000  # the ruleset is state, not a log — keep its head, not a tail
 MAX_PAYLOAD_CHARS = 40_000  # hard cap on the whole analysis payload
 
 
@@ -26,17 +27,20 @@ def _iface_problem_flags(i: dict[str, Any]) -> list[str]:
 
 
 def _interfaces(status: dict[str, Any]) -> list[str]:
-    """Signal-only: a count summary + just the interfaces that are down or erroring
-    (a healthy box has dozens of clean up-interfaces — listing them all wastes tokens)."""
+    """All interfaces, compact: name, status, address and any error flags. Cheap
+    (~one short line each) and the inventory + addresses help the model."""
     rows = status.get("interfaces") or []
     if not rows:
         return []
-    problems = [(i, f) for i in rows if (f := _iface_problem_flags(i))]
-    out = [f"  {len(rows)} total, {len(problems)} with issues"]
-    out.extend(
-        f"    {i.get('name')} {i.get('status')} [{', '.join(flags)}]" for i, flags in problems
-    )
-    return out
+    issues = 0
+    lines: list[str] = []
+    for i in rows:
+        flags = _iface_problem_flags(i)
+        if flags:
+            issues += 1
+        tag = f" [{', '.join(flags)}]" if flags else ""
+        lines.append(f"  {i.get('name')} {i.get('status')} {i.get('address') or ''}{tag}".rstrip())
+    return [f"  ({len(rows)} interfaces, {issues} with issues)", *lines]
 
 
 def _ipsec(ipsec: dict[str, Any]) -> list[str]:
@@ -128,7 +132,14 @@ def build_analysis_text(snapshot: dict[str, Any] | None, logs: list[Any]) -> str
     if context:
         parts.append(context)
     for row in logs:
-        tail = (row.content or "")[-PER_LOG_CHARS:]
-        if tail:
-            parts.append(f"===== {row.name} (last {len(tail)} chars) =====\n{tail}")
+        content = row.content or ""
+        # The ruleset is current state — keep its head (whole ruleset); logs get a tail.
+        if row.name == "rules":
+            slice_ = content[:RULES_CHARS]
+            label = f"===== rules ({len(slice_)} chars) ====="
+        else:
+            slice_ = content[-PER_LOG_CHARS:]
+            label = f"===== {row.name} (last {len(slice_)} chars) ====="
+        if slice_:
+            parts.append(f"{label}\n{slice_}")
     return "\n\n".join(parts)[:MAX_PAYLOAD_CHARS]

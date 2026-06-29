@@ -48,3 +48,13 @@ def test_bad_source_does_not_break_collection(monkeypatch) -> None:
     out = agent.collect_logfiles()
     # The first source raised; the remaining ones were still collected.
     assert out and all(e["content"] == "OK" for e in out)
+
+
+def test_collects_rules_and_dhcp(monkeypatch) -> None:
+    _reset()
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(agent, "_newest_log", lambda pattern: "/tmp/x.log")  # dhcp path probe
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "DATA")
+    names = {e["name"] for e in agent.collect_logfiles()}
+    assert "rules" in names and "dhcp" in names

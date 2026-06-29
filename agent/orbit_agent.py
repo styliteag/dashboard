@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.9.1"
+__version__ = "1.9.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1568,6 +1568,36 @@ def _resolve_log_path(platform_name: str, opn_glob: str, pf_path: str) -> str:
     return _newest_log(opn_glob)  # opnsense / unknown use the dated layout
 
 
+# DHCP backend varies (ISC dhcpd, Kea, or dnsmasq doing DHCP+DNS), so probe all
+# known log locations and use the most recently written one (the active backend).
+_DHCP_GLOBS = (
+    "/var/log/dhcpd/dhcpd_*.log",  # OPNsense ISC (dated)
+    "/var/log/dhcpd.log",  # pfSense ISC (flat)
+    "/var/log/kea/kea-dhcp4*.log",  # Kea v4
+    "/var/log/kea/kea-dhcp6*.log",  # Kea v6
+    "/var/log/kea/*.log",  # Kea (fallback)
+    "/var/log/dnsmasq/dnsmasq_*.log",  # OPNsense dnsmasq (DNS+DHCP)
+)
+# Lease/event lines across ISC ("DHCPACK"), dnsmasq ("DHCPACK"), Kea ("DHCP4_…").
+_DHCP_GREP = (
+    "DHCPACK|DHCPOFFER|DHCPDISCOVER|DHCPREQUEST|DHCPNAK|DHCPRELEASE"
+    "|DHCPINFORM|DHCPDECLINE|DHCP4_|DHCP6_"
+)
+
+
+def _dhcp_lines() -> str:
+    """DHCP lease events, grepped out of whichever backend's log is active."""
+    candidates = [f for g in _DHCP_GLOBS if (f := _newest_log(g))]
+    if not candidates:
+        return ""
+    try:
+        path = max(candidates, key=os.path.getmtime)
+    except OSError:
+        path = candidates[0]
+    cmd = "grep -E '" + _DHCP_GREP + "' " + path + " 2>/dev/null | tail -c " + str(_LOG_PER_FILE)
+    return _run(["sh", "-c", cmd], timeout=10)
+
+
 def collect_logfiles() -> list:
     """Tail important logs (≈1 MB total) for AI analysis, at most hourly.
 
@@ -1589,6 +1619,21 @@ def collect_logfiles() -> list:
                 continue
             budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
             content = _run(["tail", "-c", str(budget), path], timeout=10)
+        except Exception:
+            continue
+        if content:
+            out.append({"name": name, "content": content})
+            total += len(content)
+    # Current-state extras (not logfiles): the active ruleset and DHCP lease events.
+    extras = (
+        ("rules", lambda: _run(["pfctl", "-sr"], timeout=10)),
+        ("dhcp", _dhcp_lines),
+    )
+    for name, producer in extras:
+        if total >= _LOG_TOTAL_CAP:
+            break
+        try:
+            content = producer()[: min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)]
         except Exception:
             continue
         if content:
