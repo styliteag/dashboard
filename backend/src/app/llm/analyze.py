@@ -27,8 +27,10 @@ from app.settings.store import get_override
 log = structlog.get_logger("app.llm")
 
 _TIMEOUT = httpx.Timeout(60.0)
-_MAX_INPUT_CHARS = 40_000  # bound tokens/cost; logs are tailed before this anyway
-_MAX_TOKENS = 1500
+_MAX_INPUT_CHARS = 40_000  # bound tokens/cost; the payload is already capped upstream
+# Output budget. On reasoning models (gpt-5.x) this also covers reasoning tokens,
+# so too low a value yields an empty answer — keep enough headroom for both.
+_MAX_TOKENS = 4000
 
 SYSTEM_PROMPT = (
     "You are a senior network and firewall log analyst for OPNsense/pfSense "
@@ -62,14 +64,16 @@ def build_chat_request(
     if provider.chat_style == CHAT_ANTHROPIC:
         body: dict[str, Any] = {
             "model": model,
-            "max_tokens": _MAX_TOKENS,
+            "max_tokens": _MAX_TOKENS,  # required by Anthropic
             "system": system,
             "messages": [{"role": "user", "content": user}],
         }
     else:
+        # OpenAI standardized on max_completion_tokens; newer models (gpt-5.x, o*)
+        # reject the legacy max_tokens. OpenRouter accepts it for OpenAI-style too.
         body = {
             "model": model,
-            "max_tokens": _MAX_TOKENS,
+            "max_completion_tokens": _MAX_TOKENS,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

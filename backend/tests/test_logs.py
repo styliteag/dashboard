@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.logs.context import build_context_text
 from app.logs.store import clamp, sanitize_logfiles, surplus_ids
 
 
@@ -27,3 +28,50 @@ def test_sanitize_drops_empty_and_trims_name() -> None:
 def test_surplus_ids_keeps_last_three() -> None:
     assert surplus_ids([5, 4, 3, 2, 1], 3) == [2, 1]
     assert surplus_ids([2, 1], 3) == []
+
+
+def test_context_renders_telemetry() -> None:
+    snap = {
+        "status": {
+            "interfaces": [
+                {"name": "igc1", "status": "up", "address": "10.0.0.1", "err_rate": 2.0}
+            ],
+            "pf": {"states_current": 10, "states_limit": 100, "states_pct": 10.0},
+        },
+        "ipsec": {
+            "tunnels": [
+                {
+                    "id": "t1",
+                    "description": "to-hq",
+                    "phase1_status": "established",
+                    "phase2_up": 1,
+                    "phase2_total": 2,
+                    "children": [
+                        {
+                            "local_ts": "10.1/24",
+                            "remote_ts": "10.2/24",
+                            "state": "INSTALLED",
+                            "bytes_in": 0,
+                            "bytes_out": 0,
+                            "ping_state": "fail",
+                        }
+                    ],
+                }
+            ]
+        },
+        "gateways": [{"name": "WAN", "status": "online", "loss": "0%", "delay": "5ms"}],
+        "services": [{"name": "sshd", "running": True}, {"name": "unbound", "running": False}],
+        "certificates": [{"name": "web", "days_remaining": 5}],
+    }
+    txt = build_context_text(snap)
+    assert "SYSTEM CONTEXT" in txt
+    assert "igc1" in txt and "err_rate=2.0" in txt
+    assert "to-hq" in txt and "INSTALLED" in txt and "ping=fail" in txt
+    assert "WAN" in txt
+    assert "unbound STOPPED" in txt and "sshd STOPPED" not in txt
+    assert "web expires in 5d" in txt
+
+
+def test_context_empty_when_no_snapshot() -> None:
+    assert build_context_text(None) == ""
+    assert build_context_text({}) == ""

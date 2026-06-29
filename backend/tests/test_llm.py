@@ -42,11 +42,13 @@ def test_item_uses_catalog_default_without_settings_field() -> None:
 
 def test_build_chat_request_openai_vs_anthropic() -> None:
     oa = PROVIDERS_BY_ID["openai"]
-    url, headers, body = build_chat_request(oa, "sk-x", "gpt-4o-mini", "SYS", "USER")
+    url, headers, body = build_chat_request(oa, "sk-x", "gpt-5.5", "SYS", "USER")
     assert url.endswith("/chat/completions")
     assert headers["Authorization"] == "Bearer sk-x"
     assert body["messages"][0] == {"role": "system", "content": "SYS"}
     assert body["messages"][1]["content"] == "USER"
+    # newer OpenAI models reject the legacy max_tokens
+    assert "max_completion_tokens" in body and "max_tokens" not in body
 
     an = PROVIDERS_BY_ID["anthropic"]
     url, headers, body = build_chat_request(an, "sk-a", "claude-opus-4-8", "SYS", "USER")

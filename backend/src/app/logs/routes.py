@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin
 from app.db.base import get_session
-from app.db.models import User
+from app.db.models import Instance, User
 from app.llm.anonymize import anonymize
+from app.logs.context import build_analysis_text, build_context_text
 from app.logs.store import latest_per_name, list_logfiles
 
 router = APIRouter(prefix="/instances", tags=["logs"])
@@ -49,6 +50,9 @@ async def anonymized_instance_logs(
     session: AsyncSession = Depends(get_session),
     _admin: User = Depends(require_admin),
 ) -> AnonymizedLogs:
+    inst = await session.get(Instance, instance_id)
+    snapshot = inst.status_snapshot if inst else None
     rows = await latest_per_name(session, instance_id)
-    combined = "\n\n".join(f"===== {r.name} =====\n{r.content}" for r in rows)
-    return AnonymizedLogs(text=anonymize(combined), names=[r.name for r in rows])
+    text = build_analysis_text(snapshot, rows)
+    names = (["telemetry"] if build_context_text(snapshot) else []) + [r.name for r in rows]
+    return AnonymizedLogs(text=anonymize(text), names=names)
