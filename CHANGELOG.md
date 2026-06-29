@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **IPsec Phase-2 ping monitor no longer binds to the wrong split child** — split
+  Phase-2 children share one strongSwan child name, and monitor matching keyed on
+  that name, so a monitor pinned to one selector pair showed up on every sibling
+  row (same source/destination on both) and the probe could run against the wrong
+  subnet. Matching now keys on the selector pair first (name only as a fallback
+  for selector-less monitors), on both the agent that runs the ping and the
+  dashboard that renders "Edit ping".
+
 ## [2.0.3] - 2026-06-29
 
 ### Fixed

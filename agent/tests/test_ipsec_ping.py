@@ -238,6 +238,42 @@ def test_match_monitor_skips_disabled_and_other_tunnel() -> None:
     assert agent._match_monitor(tunnel, child, [{"tunnel_id": "con2", "child_name": "x", "enabled": True}]) is None
 
 
+def test_match_monitor_pinned_selector_not_sibling_with_shared_name() -> None:
+    # strongSwan splits a multi-net child into sibling CHILD_SAs that share one
+    # name. A monitor pinned to one selector pair must match only that pair, never
+    # the sibling — otherwise one pair's probe runs against the other (BadVilbel).
+    tunnel = {"id": "con1"}
+    child_a = {"name": "uuid", "local_ts": "10.110.0.0/16", "remote_ts": "192.168.200.0/24"}
+    child_b = {"name": "uuid", "local_ts": "192.168.0.0/24", "remote_ts": "192.168.200.0/24"}
+    monitors = [{
+        "tunnel_id": "con1", "child_name": "uuid", "enabled": True,
+        "local_ts": "192.168.0.0/24", "remote_ts": "192.168.200.0/24",
+        "source": "192.168.0.7", "destination": "192.168.200.254",
+    }]
+    assert agent._match_monitor(tunnel, child_b, monitors) is monitors[0]
+    assert agent._match_monitor(tunnel, child_a, monitors) is None  # shared name, other pair
+
+
+def test_run_ping_checks_split_children_pings_only_pinned_pair(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent, "_ping_once",
+        lambda src, dst, cnt: {"ping_state": "ok", "ping_loss_pct": 0.0, "ping_rtt_ms": 1.0},
+    )
+    a = {"name": "uuid", "local_ts": "10.110.0.0/16", "remote_ts": "192.168.200.0/24",
+         "ping_state": "none"}
+    b = {"name": "uuid", "local_ts": "192.168.0.0/24", "remote_ts": "192.168.200.0/24",
+         "ping_state": "none"}
+    tunnels = [{"id": "con1", "children": [a, b]}]
+    monitors = [{
+        "tunnel_id": "con1", "child_name": "uuid", "enabled": True,
+        "local_ts": "192.168.0.0/24", "remote_ts": "192.168.200.0/24",
+        "source": "192.168.0.7", "destination": "192.168.200.254", "ping_count": 3,
+    }]
+    agent.run_ping_checks(tunnels, monitors, "2026-06-29T00:00:00+00:00")
+    assert b["ping_state"] == "ok"  # the pinned pair was pinged
+    assert a["ping_state"] == "none"  # sibling with the shared name untouched
+
+
 def test_run_ping_checks_annotates_child(monkeypatch) -> None:
     monkeypatch.setattr(
         agent, "_ping_once",

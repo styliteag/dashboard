@@ -5,19 +5,31 @@
  */
 import type { IPsecChild, IPsecPingMonitor, PingState } from "./types";
 
-/** Match a stored ping monitor to a live child (by name, then selector pair). */
+/**
+ * Match a stored ping monitor to a live child.
+ *
+ * The selector pair is the authoritative key: strongSwan splits a multi-net
+ * child into sibling CHILD_SAs that share one name, so matching on the name alone
+ * would attach one pair's monitor to its sibling too. A monitor pinned to a
+ * selector pair therefore matches only the child with that exact pair; the name
+ * is a fallback for selector-less (legacy/whole-tunnel) monitors.
+ */
 export function findMonitor(
   monitors: IPsecPingMonitor[],
   tunnelId: string,
   child: IPsecChild,
 ): IPsecPingMonitor | null {
+  const avail = monitors.filter((m) => m.tunnel_id === tunnelId);
+  const pinned = avail.find(
+    (m) =>
+      (!!m.local_ts || !!m.remote_ts) &&
+      m.local_ts === child.local_ts &&
+      m.remote_ts === child.remote_ts,
+  );
+  if (pinned) return pinned;
   return (
-    monitors.find(
-      (m) =>
-        m.tunnel_id === tunnelId &&
-        ((m.child_name && m.child_name === child.name) ||
-          (!!m.local_ts && m.local_ts === child.local_ts && m.remote_ts === child.remote_ts)),
-    ) ?? null
+    avail.find((m) => !m.local_ts && !m.remote_ts && !!m.child_name && m.child_name === child.name) ??
+    null
   );
 }
 

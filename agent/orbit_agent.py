@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1094,20 +1094,29 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
 
 
 def _match_monitor(tunnel: dict, child: dict, monitors: list[dict]) -> dict | None:
-    """Find an enabled monitor for this child: by name, selector pair, or whole-tunnel."""
-    for m in monitors:
-        if not m.get("enabled", True) or m.get("tunnel_id") != tunnel.get("id"):
-            continue
-        child_name = m.get("child_name") or ""
-        if not child_name:  # "" applies to the whole tunnel
-            return m
-        if child_name == child.get("name"):
-            return m
-        if (
-            m.get("local_ts")
-            and m.get("local_ts") == child.get("local_ts")
+    """Find an enabled monitor for this child: selector pair first, then name/whole-tunnel.
+
+    The selector pair is the authoritative key: strongSwan splits a multi-net
+    child into sibling CHILD_SAs that share one name, so a name match alone is
+    ambiguous and would run one pair's probe against its sibling. A monitor pinned
+    to a selector pair therefore matches only the child with that exact pair; name
+    (or whole-tunnel "") matching is the fallback for selector-less monitors.
+    """
+    avail = [
+        m for m in monitors
+        if m.get("enabled", True) and m.get("tunnel_id") == tunnel.get("id")
+    ]
+    for m in avail:  # 1) exact selector-pair pin — unambiguous across shared names
+        if (m.get("local_ts") or m.get("remote_ts")) and (
+            m.get("local_ts") == child.get("local_ts")
             and m.get("remote_ts") == child.get("remote_ts")
         ):
+            return m
+    for m in avail:  # 2) selector-less fallback: child name, then whole-tunnel ("")
+        if m.get("local_ts") or m.get("remote_ts"):
+            continue  # selector-pinned to a different child
+        child_name = m.get("child_name") or ""
+        if not child_name or child_name == child.get("name"):
             return m
     return None
 
