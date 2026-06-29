@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from app.logs.context import build_context_text
+from types import SimpleNamespace
+
+from app.logs.context import build_analysis_text, build_context_text
 from app.logs.store import clamp, sanitize_logfiles, surplus_ids
 
 
@@ -75,3 +77,20 @@ def test_context_renders_telemetry() -> None:
 def test_context_empty_when_no_snapshot() -> None:
     assert build_context_text(None) == ""
     assert build_context_text({}) == ""
+
+
+def test_analysis_text_state_before_logs_and_capped() -> None:
+    rows = [
+        SimpleNamespace(name="system", content="S" * 9000),  # verbose log → tail
+        SimpleNamespace(name="rules", content="R" * 20000),  # state → head
+        SimpleNamespace(name="ifconfig", content="I" * 9000),  # state → head
+    ]
+    txt = build_analysis_text(None, rows)
+    # State snapshots come before the verbose log.
+    assert txt.index("rules") < txt.index("system")
+    assert txt.index("ifconfig") < txt.index("system")
+    # Per-source caps applied.
+    assert "R" * 12001 not in txt  # rules head capped at RULES_CHARS
+    assert "I" * 4501 not in txt  # ifconfig head capped at STATE_CHARS
+    assert "S" * 5001 not in txt  # system tail capped at PER_LOG_CHARS
+    assert len(txt) <= 48_000

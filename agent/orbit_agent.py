@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "1.9.2"
+__version__ = "1.9.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:" + os.environ.get("PATH", "")
@@ -1624,9 +1624,18 @@ def collect_logfiles() -> list:
         if content:
             out.append({"name": name, "content": content})
             total += len(content)
-    # Current-state extras (not logfiles): the active ruleset and DHCP lease events.
+    # Current-state extras (not logfiles): ruleset, DHCP events, and a set of cheap
+    # diagnostic snapshots the analysis model asked for — they surface NIC resets /
+    # link flaps (dmesg), pf state-table limits, mbuf exhaustion, ARP/NDP anomalies,
+    # link/bridge/MTU detail and listening ports that the structured telemetry misses.
     extras = (
         ("rules", lambda: _run(["pfctl", "-sr"], timeout=10)),
+        ("dmesg", lambda: _run(["sh", "-c", "dmesg -a 2>/dev/null | tail -n 200"], timeout=10)),
+        ("pf", lambda: _run(["sh", "-c", "pfctl -si 2>/dev/null; pfctl -sm 2>/dev/null"], timeout=10)),
+        ("mbufs", lambda: _run(["netstat", "-m"], timeout=10)),
+        ("neighbors", lambda: _run(["sh", "-c", "arp -an 2>/dev/null; ndp -an 2>/dev/null"], timeout=10)),
+        ("ifconfig", lambda: _run(["ifconfig", "-a"], timeout=10)),
+        ("listeners", lambda: _run(["sockstat", "-4", "-6", "-l"], timeout=10)),
         ("dhcp", _dhcp_lines),
     )
     for name, producer in extras:

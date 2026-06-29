@@ -36,9 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dead/`broken` tunnels).
 - **AI analysis is enriched and token-lean** — the analysis payload now includes
   structured telemetry (interfaces with errors, IPsec tunnel states, gateways,
-  services, pf, certs) alongside a recent tail of each log, server-bounded to ~40 KB
-  (down from ~700 KB of full logs — ~97% fewer tokens). OpenAI-style requests use
+  services, pf, certs) alongside a recent tail of each log, server-bounded
+  (down from ~700 KB of full logs). OpenAI-style requests use
   `max_completion_tokens` so newer models (gpt-5.x) work.
+- **More collected signals** — the agent now also ships the active firewall ruleset
+  (`pfctl -sr`), DHCP lease events (ISC dhcpd / Kea / dnsmasq, auto-detected), and a
+  set of cheap diagnostic snapshots the analysis model itself asked for: recent
+  kernel messages (`dmesg`, where NIC resets / link flaps / ARP moves show), pf
+  state-table counters (`pfctl -si/-sm`), mbuf usage (`netstat -m`), ARP/NDP
+  neighbours (`arp`/`ndp`), link/bridge/MTU detail (`ifconfig -a`) and listening
+  ports (`sockstat -l`). The payload is ordered by signal density (telemetry →
+  state → log tails) and capped (~48 KB, still ~90%+ below raw logs).
+  (Agent `__version__` → 1.9.3.)
 
 ## [1.9.3] - 2026-06-28
 

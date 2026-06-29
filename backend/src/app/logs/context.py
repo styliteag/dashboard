@@ -8,11 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-# Token economy: send a recent slice of each log, not the full ~250 KB the agent
-# stores. Context (interfaces/tunnels/…) is tiny and always kept in full.
-PER_LOG_CHARS = 8_000  # ~2 k tokens of recent log lines per file
-RULES_CHARS = 16_000  # the ruleset is state, not a log — keep its head, not a tail
-MAX_PAYLOAD_CHARS = 40_000  # hard cap on the whole analysis payload
+# Token economy: dense state first, then a recent tail of each verbose log, all
+# capped. Context (interfaces/tunnels/…) is tiny and always kept in full.
+PER_LOG_CHARS = 5_000  # tail of each verbose log (system/filter/ipsec/…)
+STATE_CHARS = 4_500  # head of a state snapshot (pf/mbufs/neighbors/ifconfig/…)
+RULES_CHARS = 12_000  # the ruleset is bigger but high-signal — keep more of its head
+MAX_PAYLOAD_CHARS = 48_000  # hard cap (~12 k tokens; was ~173 k of raw logs)
+
+# Names that are time-ordered logs → keep the recent TAIL. Everything else is a
+# current-state snapshot → keep the HEAD.
+_TAIL_LOGS = frozenset(
+    {"system", "filter", "ipsec", "gateways", "resolver", "openvpn", "dhcp", "dmesg"}
+)
 
 
 def _iface_problem_flags(i: dict[str, Any]) -> list[str]:
@@ -124,22 +131,30 @@ def build_context_text(snapshot: dict[str, Any] | None) -> str:
     return "\n".join(parts) if len(parts) > 1 else ""
 
 
+def _slice_for(row: Any) -> str:
+    """Head of a state snapshot (whole-ish) vs recent tail of a verbose log."""
+    content = row.content or ""
+    if row.name in _TAIL_LOGS:
+        return content[-PER_LOG_CHARS:]
+    cap = RULES_CHARS if row.name == "rules" else STATE_CHARS
+    return content[:cap]
+
+
 def build_analysis_text(snapshot: dict[str, Any] | None, logs: list[Any]) -> str:
-    """Bounded analysis payload: full structured context + the recent tail of each
-    log (``logs`` are ORM rows with ``.name``/``.content``). Capped for token cost."""
+    """Bounded analysis payload (``logs`` are ORM rows with ``.name``/``.content``).
+
+    Order by signal density: structured context, then state snapshots (ruleset,
+    pf, neighbors, ifconfig, listeners, mbufs), then the recent tail of each
+    verbose log — capped so the dense, high-signal data always survives."""
     parts: list[str] = []
     context = build_context_text(snapshot)
     if context:
         parts.append(context)
-    for row in logs:
-        content = row.content or ""
-        # The ruleset is current state — keep its head (whole ruleset); logs get a tail.
-        if row.name == "rules":
-            slice_ = content[:RULES_CHARS]
-            label = f"===== rules ({len(slice_)} chars) ====="
-        else:
-            slice_ = content[-PER_LOG_CHARS:]
-            label = f"===== {row.name} (last {len(slice_)} chars) ====="
+    state = [r for r in logs if r.name not in _TAIL_LOGS]
+    tails = [r for r in logs if r.name in _TAIL_LOGS]
+    for row in (*state, *tails):
+        slice_ = _slice_for(row)
         if slice_:
-            parts.append(f"{label}\n{slice_}")
+            kind = "recent" if row.name in _TAIL_LOGS else "state"
+            parts.append(f"===== {row.name} ({kind}, {len(slice_)} chars) =====\n{slice_}")
     return "\n\n".join(parts)[:MAX_PAYLOAD_CHARS]
