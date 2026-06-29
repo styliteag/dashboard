@@ -337,7 +337,12 @@ class IPsecPingMonitor(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("instance_id", "tunnel_id", "child_name", name="uq_ipsec_ping_monitor"),
+        # Keyed by the selector pair, not child_name: strongSwan splits a multi-net
+        # Phase-2 child into sibling CHILD_SAs that share one name, so the pair is
+        # the unambiguous Phase-2 identity (one monitor per local→remote subnet).
+        UniqueConstraint(
+            "instance_id", "tunnel_id", "local_ts", "remote_ts", name="uq_ipsec_ping_monitor"
+        ),
     )
 
 

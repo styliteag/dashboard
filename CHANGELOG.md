@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Can now add a ping monitor per subnet of a multi-net IPsec Phase-2** — adding a
+  second monitor to a tunnel whose configured Phase-2 child carries several local
+  subnets was rejected with "a ping monitor for this Phase 2 already exists". The
+  uniqueness key was the child name, which strongSwan shares across the sibling
+  CHILD_SAs it splits a multi-net child into; it now keys on the selector pair, so
+  each `local → remote` subnet gets its own monitor (Alembic `023`).
+
 ## [2.0.4] - 2026-06-29
 
 ### Fixed

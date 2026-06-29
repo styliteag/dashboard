@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import UniqueConstraint
 
 import app.agent_hub.hub as hub_mod
 from app.db.models import IPsecPingMonitor
@@ -146,6 +147,20 @@ class _FakeSession:
 
     async def delete(self, obj) -> None:
         self.deleted.append(obj)
+
+
+def test_unique_key_is_selector_pair_not_child_name() -> None:
+    # strongSwan splits a multi-net Phase-2 child into sibling CHILD_SAs that share
+    # one child name. Keying uniqueness on the name rejected a second monitor for a
+    # different subnet of the same child (the "already exists" 409 on BadVilbel).
+    # The key must be the selector pair so the siblings can each get a monitor.
+    keys = {
+        tuple(c.name for c in arg.columns)
+        for arg in IPsecPingMonitor.__table_args__
+        if isinstance(arg, UniqueConstraint)
+    }
+    assert ("instance_id", "tunnel_id", "local_ts", "remote_ts") in keys
+    assert ("instance_id", "tunnel_id", "child_name") not in keys
 
 
 @pytest.mark.asyncio
