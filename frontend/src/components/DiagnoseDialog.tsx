@@ -10,6 +10,7 @@ import { Bot, Check, ClipboardCopy, Eye, Loader2, ShieldCheck } from "lucide-rea
 import { api, ApiError } from "../lib/api";
 import type { IPsecDiagnosis } from "../lib/types";
 import Dialog from "./Dialog";
+import Markdown from "./Markdown";
 
 interface Props {
   instanceId: number;
@@ -162,15 +163,16 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
           )}
 
           {result && (
-            <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+            <div className="rounded-lg border border-emerald-900/50 bg-slate-900/60 p-3">
               {result.ok ? (
                 <>
-                  <p className="mb-1 text-[11px] text-slate-500">
+                  <p className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+                    <Bot className="h-3 w-3 text-emerald-500" />
                     {result.provider} · {result.model} · {result.sent_chars} chars sent
                   </p>
-                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-slate-200">
-                    {result.findings}
-                  </pre>
+                  <div className="max-h-[28rem] overflow-auto pr-1">
+                    <Markdown>{result.findings}</Markdown>
+                  </div>
                 </>
               ) : (
                 <p className="text-xs text-red-400">{result.error}</p>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, ChevronDown, ChevronUp, Eye, Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import Markdown from "./Markdown";
 
 interface LogfileItem {
   name: string;
@@ -172,9 +173,9 @@ export default function AiLogAnalysisSection({ instanceId }: { instanceId: numbe
                       <p className="mb-2 text-xs text-slate-500">
                         {result.provider} · {result.model} · {result.sent_chars} chars sent
                       </p>
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm text-slate-200">
-                        {result.findings}
-                      </pre>
+                      <div className="max-h-[28rem] overflow-auto pr-1">
+                        <Markdown>{result.findings}</Markdown>
+                      </div>
                     </>
                   ) : (
                     <p className="text-sm text-red-400">{result.error}</p>
