@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   secrets; raw log content never reaches the browser. Log paths are platform-aware
   (OPNsense dated `/var/log/<cat>/…`, pfSense `/var/log/<name>.log`, both plaintext).
   (Agent `__version__` → 1.9.1.)
+- **AI analysis in the IPsec Diagnose dialog** — the per-tunnel diagnostics dialog
+  (swanctl config + live SAs + charon log + peer ping) gained an *Analyse with AI*
+  button next to *Copy all*: pick a provider, optionally preview the anonymized
+  bundle, and get findings inline (e.g. "IKE up but no CHILD SAs", "DPD disabled",
+  dead/`broken` tunnels).
+- **AI analysis is enriched and token-lean** — the analysis payload now includes
+  structured telemetry (interfaces with errors, IPsec tunnel states, gateways,
+  services, pf, certs) alongside a recent tail of each log, server-bounded to ~40 KB
+  (down from ~700 KB of full logs — ~97% fewer tokens). OpenAI-style requests use
+  `max_completion_tokens` so newer models (gpt-5.x) work.
 
 ## [1.9.3] - 2026-06-28
 
