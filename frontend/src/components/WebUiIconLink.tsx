@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Globe } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 
 /**
@@ -17,11 +17,13 @@ export function WebUiIconLink({
   instanceName,
   agentMode,
   className = "",
+  iconClassName = "h-3.5 w-3.5",
 }: {
   instanceId: number;
   instanceName?: string;
   agentMode: boolean;
   className?: string;
+  iconClassName?: string;
 }) {
   const guiMut = useMutation({
     mutationFn: () => api.post<{ url: string }>(`/api/instances/${instanceId}/gui/open`),
@@ -45,7 +47,7 @@ export function WebUiIconLink({
         err ? "text-red-400" : ""
       } ${className}`}
     >
-      <Globe className="h-3.5 w-3.5" />
+      <ExternalLink className={iconClassName} />
     </button>
   );
 }

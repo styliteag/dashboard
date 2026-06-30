@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle, Globe } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle } from "lucide-react";
 import type { ConnectedAgent, Instance } from "../lib/types";
 import TestConnectionButton from "./TestConnectionButton";
+import { WebUiIconLink } from "./WebUiIconLink";
 
 export interface InstanceViewProps {
   instance: Instance;
@@ -86,26 +85,6 @@ function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
   );
 }
 
-/** "WebUI" action: opens the box's GUI through the agent tunnel (GUI-proxy handoff). */
-function TunneledGuiLink({ inst, className }: { inst: Instance; className: string }) {
-  const guiMut = useMutation({
-    mutationFn: () => api.post<{ url: string }>(`/api/instances/${inst.id}/gui/open`),
-    onSuccess: (r) => window.open(r.url, "_blank", "noopener"),
-  });
-  return (
-    <button
-      onClick={() => guiMut.mutate()}
-      disabled={guiMut.isPending}
-      title={
-        guiMut.error instanceof ApiError ? guiMut.error.message : "Open tunneled WebUI (GUI proxy)"
-      }
-      className={`${className} ${guiMut.isError ? "text-red-400" : ""}`}
-    >
-      <Globe className="h-3 w-3" /> {guiMut.isPending ? "…" : "WebUI"}
-    </button>
-  );
-}
-
 /** Push-mode platform + agent version (+ update indicator), or an "API" badge. */
 function AgentBadge({ inst, agent }: { inst: Instance; agent?: ConnectedAgent }) {
   if (!inst.agent_mode) {
@@ -155,10 +134,10 @@ function Tags({ tags }: { tags: string[] | null }) {
   );
 }
 
-/** Shared action cluster: Test, then the two box links (primary URL + tunneled
- *  WebUI), then Edit/Delete. The status badge and name already link to Details,
- *  so a separate Details button is redundant. The tunneled WebUI shows only for
- *  agent/NAT'd boxes (reached via the GUI proxy). */
+/** Shared action cluster: Test, then the primary box URL, then Edit/Delete. The
+ *  status badge and name already link to Details, so a separate Details button is
+ *  redundant; the tunneled WebUI lives as a globe icon next to the name (see the
+ *  card/row), matching the global overview lists. */
 function InstanceActions({
   instance: inst,
   onEdit,
@@ -181,7 +160,6 @@ function InstanceActions({
           <ExternalLink className="h-3 w-3" /> URL
         </a>
       )}
-      {inst.agent_mode && <TunneledGuiLink inst={inst} className={linkCls} />}
       <button onClick={onEdit} className={linkCls}>
         Edit
       </button>
@@ -221,6 +199,12 @@ export function InstanceCard({
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
           </Link>
+          <WebUiIconLink
+            instanceId={inst.id}
+            instanceName={inst.name}
+            agentMode={inst.agent_mode}
+            iconClassName="h-3 w-3"
+          />
         </div>
         <Tags tags={inst.tags} />
       </div>
@@ -279,12 +263,20 @@ export function InstanceRow({
         <StatusBadge inst={inst} />
       </td>
       <td className="px-3 py-2">
-        <Link
-          to={`/instances/${inst.id}`}
-          className="font-medium text-slate-100 hover:text-emerald-400"
-        >
-          {inst.name}
-        </Link>
+        <span className="inline-flex items-center gap-1.5">
+          <Link
+            to={`/instances/${inst.id}`}
+            className="font-medium text-slate-100 hover:text-emerald-400"
+          >
+            {inst.name}
+          </Link>
+          <WebUiIconLink
+            instanceId={inst.id}
+            instanceName={inst.name}
+            agentMode={inst.agent_mode}
+            iconClassName="h-3 w-3"
+          />
+        </span>
         {inst.last_error_message && (
           <p className="mt-0.5 max-w-xs truncate text-xs text-red-400">{inst.last_error_message}</p>
         )}
