@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.connectivity import service as conn_service
 from app.connectivity.schemas import (
     ConnMonitorCreate,
@@ -86,7 +86,7 @@ async def test_monitor(
     instance_id: int,
     body: ConnPingTestRequest,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_write),
 ) -> ConnPingTestResult:
     """Run a one-off ping via the agent so the user can validate source/dest before saving.
 
@@ -124,7 +124,7 @@ async def create_monitor(
     body: ConnMonitorCreate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ConnMonitorRead:
     """Create a connectivity monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)
@@ -159,7 +159,7 @@ async def update_monitor(
     body: ConnMonitorUpdate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ConnMonitorRead:
     """Update a connectivity monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)
@@ -196,7 +196,7 @@ async def delete_monitor(
     monitor_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> None:
     """Delete a connectivity monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)

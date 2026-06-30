@@ -36,7 +36,7 @@ from app.agent_hub.gui_session import gui_sessions
 from app.agent_hub.gui_tunnel import gui_tunnels
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.auth.security import limiter
 from app.config import get_settings
 from app.connectivity import service as conn_service
@@ -309,7 +309,7 @@ async def enable_agent(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> AgentTokenResponse:
     """Enable agent mode for an instance. Generates a unique token."""
     inst = await session.get(Instance, instance_id)
@@ -338,7 +338,7 @@ async def disable_agent(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Disable agent mode, revoke token, fall back to polling."""
     inst = await session.get(Instance, instance_id)
@@ -438,7 +438,7 @@ async def send_agent_command(
     body: dict,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Send a command to a connected agent."""
     action = body.get("action", "")
@@ -476,7 +476,7 @@ async def update_agent(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Push the container's agent code to one connected agent (self-update).
 
@@ -547,7 +547,7 @@ async def list_connected_agents(
 async def update_all_agents(
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Push the container's agent code to every connected agent that is out of date.
 
@@ -633,7 +633,7 @@ async def enable_relay(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Enable the local API relay on a connected agent (idempotent).
 
@@ -684,7 +684,7 @@ _RELAY_PROBE_PATHS = {
 
 
 @router.post("/instances/{instance_id}/relay/test", response_model=RelayTestResponse)
-async def test_relay(instance_id: int, _user: User = Depends(current_user)) -> RelayTestResponse:
+async def test_relay(instance_id: int, _user: User = Depends(require_write)) -> RelayTestResponse:
     """Make a real authenticated API call to the firewall through the agent relay.
 
     Picks a platform-appropriate API endpoint and reports whether it answered 2xx
@@ -729,7 +729,7 @@ async def relay_to_agent(
     instance_id: int,
     path: str,
     request: Request,
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_write),
 ) -> Response:
     """Proxy ``{method} /relay/<path>`` to the firewall's local API via its agent."""
     agent = hub.get(instance_id)
@@ -788,7 +788,7 @@ async def gui_open(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> GuiOpenResponse:
     """Mint a short-lived handoff URL that logs the browser into the GUI proxy origin."""
     if not get_settings().gui_proxy_enabled:
@@ -892,7 +892,7 @@ async def uninstall_agent(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> dict:
     """Tell the connected agent to remove itself, then drop agent mode.
 
@@ -953,7 +953,7 @@ async def create_enroll_code(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> EnrollCodeResponse:
     """Mint a one-time, 1-hour enrollment code for an instance (admin only).
 

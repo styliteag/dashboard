@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_hub import gui_caddy
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Instance, User
@@ -90,7 +90,7 @@ async def create(
     payload: InstanceCreate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> Instance:
     try:
         inst = await service.create_instance(session, payload)
@@ -150,7 +150,7 @@ async def update(
     payload: InstanceUpdate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> Instance:
     inst = await service.get_instance(session, instance_id)
     if inst is None:
@@ -194,7 +194,7 @@ async def delete(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> None:
     inst = await service.get_instance(session, instance_id)
     if inst is None:
@@ -219,7 +219,7 @@ async def test(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> TestConnectionResponse:
     inst = await service.get_instance(session, instance_id)
     if inst is None:

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances import service as inst_service
@@ -55,7 +55,7 @@ async def firmware_check(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ActionResult:
     """Trigger a firmware update check. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
@@ -139,7 +139,7 @@ async def firmware_update(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ActionResult:
     """Trigger firmware update. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)

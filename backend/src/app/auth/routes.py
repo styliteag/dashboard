@@ -37,6 +37,7 @@ class PasswordChangeRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     username: str
+    role: str
     is_admin: bool
     session_token: str | None = None
 
@@ -100,7 +101,11 @@ async def login(
     await session.commit()
     token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
     return UserResponse(
-        id=user.id, username=user.username, is_admin=user.is_admin, session_token=token
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        is_admin=user.is_admin,
+        session_token=token,
     )
 
 
@@ -119,7 +124,7 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
-    return UserResponse(id=user.id, username=user.username, is_admin=user.is_admin)
+    return UserResponse(id=user.id, username=user.username, role=user.role, is_admin=user.is_admin)
 
 
 @router.post("/password", response_model=UserResponse)
@@ -157,4 +162,4 @@ async def change_password(
         source_ip=client_ip(request),
     )
     await session.commit()
-    return UserResponse(id=user.id, username=user.username, is_admin=user.is_admin)
+    return UserResponse(id=user.id, username=user.username, role=user.role, is_admin=user.is_admin)

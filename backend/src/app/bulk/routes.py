@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.net import client_ip
@@ -51,7 +51,7 @@ async def bulk_action(
     payload: BulkActionRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> BulkActionResponse:
     """Run an action on multiple instances in parallel."""
     instances = (

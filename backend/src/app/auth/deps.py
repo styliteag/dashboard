@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.apikey import API_KEY_PREFIX, hash_key
 from app.auth.dev_token import read_dev_token
+from app.auth.roles import WRITE_ROLES
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import ApiKey, User
@@ -41,14 +42,27 @@ async def current_user(
     return user
 
 
+async def require_write(
+    user: Annotated[User, Depends(current_user)],
+) -> User:
+    """Like ``current_user`` but rejects the read-only ``view_only`` role.
+
+    Guards every mutating human action (firewall instance CRUD, firmware apply,
+    bulk push, connectivity, agent ops, system, ipsec, check-ack). ``view_only``
+    accounts pass ``current_user`` for reads but are blocked here.
+    """
+    if user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="read-only role")
+    return user
+
+
 async def require_admin(
     user: Annotated[User, Depends(current_user)],
 ) -> User:
-    """Like ``current_user`` but also requires the ``is_admin`` flag.
+    """Like ``current_user`` but also requires the ``admin`` role.
 
-    Guards admin-only surfaces (Settings: API keys, Checkmk export config). Today
-    the only seeded user is admin; this keeps the door shut for future non-admin
-    accounts.
+    Guards admin-only surfaces: config (Settings, API keys, LLM, log config,
+    notification selection rules) and user management.
     """
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin only")

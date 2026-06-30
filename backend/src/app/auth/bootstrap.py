@@ -10,6 +10,7 @@ from __future__ import annotations
 import structlog
 from sqlalchemy import select
 
+from app.auth.roles import ROLE_ADMIN
 from app.auth.security import hash_password
 from app.config import get_settings
 from app.db.base import get_sessionmaker
@@ -36,7 +37,7 @@ async def ensure_admin() -> None:
             username="admin",
             password_hash=hash_password(settings.admin_password),
             password_version=1,
-            is_admin=True,
+            role=ROLE_ADMIN,
         )
         session.add(admin)
         await session.commit()

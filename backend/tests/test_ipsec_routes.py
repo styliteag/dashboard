@@ -78,7 +78,9 @@ def _app(monkeypatch, inst: object, client: object) -> object:
     monkeypatch.setattr(ipsec_mod.inst_service, "get_instance", _get_instance)
     monkeypatch.setattr(ipsec_mod.registry, "get", _get_client)
     app = main_mod.create_app()
-    app.dependency_overrides[current_user] = lambda: SimpleNamespace(id=1)
+    app.dependency_overrides[current_user] = lambda: SimpleNamespace(
+        id=1, role="admin", is_admin=True
+    )
     app.dependency_overrides[get_session] = lambda: _Sess()
     return app
 

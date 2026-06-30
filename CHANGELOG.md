@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **User roles: Admin / User / View-Only.** Each account now has a fixed role.
+  *Admin* keeps full access incl. configuration (settings, API keys, LLM, log
+  config, notification rules) and user management; *User* can perform every
+  operational action (firewall instance CRUD, firmware apply, bulk push,
+  connectivity, agent ops, system, IPsec) but no configuration; *View-Only*
+  reads everything and cannot mutate. Existing admins are unaffected — they map
+  to *Admin* on upgrade.
+
 ### Changed
 
 - **Alerts page defaults to the "Exported" Checkmk filter.** The service-checks

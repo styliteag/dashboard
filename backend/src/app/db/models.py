@@ -34,12 +34,19 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     # Bumped on every password change to invalidate all existing sessions (US-1.2)
     password_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    is_admin: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Fixed taxonomy: "admin" | "user" | "view_only" (see app.auth.roles). Default is
+    # least-privilege; bootstrap and the user-management API set it explicitly.
+    role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="view_only")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     audit_entries: Mapped[list[AuditLog]] = relationship(back_populates="user")
+
+    @property
+    def is_admin(self) -> bool:
+        """Derived flag kept for the admin-only guard and API responses."""
+        return self.role == "admin"
 
 
 class Instance(Base):

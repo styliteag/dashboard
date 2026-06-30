@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.devices.protocol import SupportsDiagnose, SupportsIPsec
@@ -170,7 +170,7 @@ async def ipsec_connect(
     tunnel_id: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> TunnelActionResponse:
     """Connect a single IPsec tunnel. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
@@ -235,7 +235,7 @@ async def ipsec_disconnect(
     tunnel_id: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> TunnelActionResponse:
     """Disconnect a single IPsec tunnel. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
@@ -299,7 +299,7 @@ async def ipsec_restart(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ActionResult:
     """Restart the IPsec service. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
@@ -375,7 +375,7 @@ async def test_ping_monitor(
     instance_id: int,
     body: PingTestRequest,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_write),
 ) -> PingTestResult:
     """Run a one-off ping via the agent so the user can validate source/dest before saving.
 
@@ -413,7 +413,7 @@ async def create_ping_monitor(
     body: PingMonitorCreate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> PingMonitorRead:
     """Create a Phase-2 ping monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)
@@ -448,7 +448,7 @@ async def update_ping_monitor(
     body: PingMonitorUpdate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> PingMonitorRead:
     """Update a Phase-2 ping monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)
@@ -478,7 +478,7 @@ async def delete_ping_monitor(
     monitor_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> None:
     """Delete a Phase-2 ping monitor and push the updated set to the agent."""
     await _get_instance(instance_id, session)

@@ -8,6 +8,7 @@ so the test needs no MariaDB, no WebSocket, and no real firewall.
 from __future__ import annotations
 
 import base64
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -38,7 +39,10 @@ def _client(monkeypatch, agent_obj) -> TestClient:
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
     app = main_mod.create_app()
-    app.dependency_overrides[current_user] = lambda: object()  # bypass session auth
+    # bypass session auth with a write-capable principal so require_write passes
+    app.dependency_overrides[current_user] = lambda: SimpleNamespace(
+        id=1, role="admin", is_admin=True
+    )
     return TestClient(app)
 
 

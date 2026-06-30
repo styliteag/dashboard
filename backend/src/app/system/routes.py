@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user
+from app.auth.deps import current_user, require_write
 from app.db.base import get_session
 from app.db.models import AuditLog, User
 from app.instances import service as inst_service
@@ -191,7 +191,7 @@ async def reboot(
     instance_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
+    user: User = Depends(require_write),
 ) -> ActionResult:
     inst = await inst_service.get_instance(session, instance_id)
     if inst is None:

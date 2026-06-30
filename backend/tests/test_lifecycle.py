@@ -85,7 +85,9 @@ def _app(monkeypatch, session, *, agent=None, limiter=None):
     if limiter is not None:
         monkeypatch.setattr(routes_mod, "limiter", limiter)
     app = main_mod.create_app()
-    app.dependency_overrides[current_user] = lambda: SimpleNamespace(id=1)
+    app.dependency_overrides[current_user] = lambda: SimpleNamespace(
+        id=1, role="admin", is_admin=True
+    )
     app.dependency_overrides[get_session] = lambda: session
     return app
 
