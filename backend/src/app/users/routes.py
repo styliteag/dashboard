@@ -27,13 +27,13 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=12)
+    password: str = Field(min_length=8)
     role: Role
 
 
 class UserUpdate(BaseModel):
     role: Role | None = None
-    new_password: str | None = Field(default=None, min_length=12)
+    new_password: str | None = Field(default=None, min_length=8)
 
 
 class UserOut(BaseModel):

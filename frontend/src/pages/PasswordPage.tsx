@@ -17,8 +17,8 @@ export default function PasswordPage() {
       setMessage({ ok: false, text: "New passwords do not match." });
       return;
     }
-    if (newPassword.length < 12) {
-      setMessage({ ok: false, text: "New password must be at least 12 characters long." });
+    if (newPassword.length < 8) {
+      setMessage({ ok: false, text: "New password must be at least 8 characters long." });
       return;
     }
 
@@ -64,7 +64,7 @@ export default function PasswordPage() {
           onChange={setOldPassword}
         />
         <Field
-          label="New password (min. 12 characters)"
+          label="New password (min. 8 characters)"
           type="password"
           autoComplete="new-password"
           value={newPassword}

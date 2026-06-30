@@ -13,7 +13,7 @@ const ROLES: { value: UserRole; label: string; hint: string }[] = [
   { value: "view_only", label: "View-Only", hint: "Reads everything, cannot change anything" },
 ];
 
-const MIN_PW = 12;
+const MIN_PW = 8;
 
 export default function UsersPage() {
   const qc = useQueryClient();

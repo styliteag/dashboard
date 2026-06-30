@@ -31,7 +31,7 @@ class LoginRequest(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     old_password: str
-    new_password: str = Field(min_length=12)
+    new_password: str = Field(min_length=8)
 
 
 class UserResponse(BaseModel):
