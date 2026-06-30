@@ -16,6 +16,7 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select, update
 
+from app.checks.event_store import record_availability_event
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
@@ -64,6 +65,10 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None
+            if was_offline:
+                await record_availability_event(
+                    session, instance_id, ts, online=True, summary=f"{instance_name} recovered"
+                )
             await session.commit()
 
         if was_offline:
@@ -88,6 +93,14 @@ async def _poll_instance(instance_id: int, instance_name: str) -> None:
                     )
                     inst.last_error_at = ts
                     inst.last_error_message = str(exc)[:500]
+                    if was_online:
+                        await record_availability_event(
+                            session,
+                            instance_id,
+                            ts,
+                            online=False,
+                            summary=str(exc)[:200],
+                        )
                     await session.commit()
                     if was_online:
                         dispatch_async(
@@ -211,6 +224,16 @@ async def _check_stale_agents() -> None:
                     last_error_message=f"agent silent for >{threshold}s",
                 )
             )
+            if result.rowcount:
+                # Same transaction as the flip: only persist when the guarded update
+                # actually won (no fresher push landed since our snapshot).
+                await record_availability_event(
+                    session,
+                    inst.id,
+                    now,
+                    online=False,
+                    summary=f"agent silent for >{threshold}s",
+                )
             await session.commit()
             if result.rowcount:
                 log.warning("agent.stale", instance=inst.name, instance_id=inst.id)

@@ -16,7 +16,7 @@ from fastapi import WebSocket
 from sqlalchemy import select
 
 from app.checks.evaluate import evaluate_checks
-from app.checks.event_store import record_check_events
+from app.checks.event_store import record_availability_event, record_check_events
 from app.checks.history import current_states, diff_checks
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
@@ -549,7 +549,20 @@ class AgentHub:
                     GatewayStatus.model_validate(g) for g in snapshot["gateways"]
                 ]
             if snapshot.get("ipsec"):
-                self._last_ipsec[instance_id] = IPsecServiceStatus.model_validate(snapshot["ipsec"])
+                ipsec = IPsecServiceStatus.model_validate(snapshot["ipsec"])
+                self._last_ipsec[instance_id] = ipsec
+                # Re-seed the per-selector dup streak so a restart with an active
+                # *persistent* duplicate Phase-2 doesn't reset to 0 and re-derive
+                # False on the next push — which would emit a spurious phase2_dup_off
+                # then phase2_dup_on flap (and drop the UI note for a few polls).
+                seeded = {
+                    f"{t.id}|{c.local_ts}|{c.remote_ts}": _DUP_PERSIST_POLLS
+                    for t in ipsec.tunnels
+                    for c in t.children
+                    if c.phase2_dup_persistent
+                }
+                if seeded:
+                    self._ipsec_dup_streak[instance_id] = seeded
             if snapshot.get("connectivity"):
                 self._last_connectivity[instance_id] = [
                     ConnectivityResult.model_validate(c) for c in snapshot["connectivity"]
@@ -707,6 +720,10 @@ class AgentHub:
             # If so, this push is a recovery — notify once.
             if not is_online(inst.last_success_at, inst.last_error_at) and inst.last_error_at:
                 recovered_name = inst.name
+                # Persist the offline→online edge into availability history (same commit).
+                await record_availability_event(
+                    session, instance_id, ts, online=True, summary="agent resumed pushing metrics"
+                )
             await write_poll_metrics(session, instance_id, ts, status)
             # Append any IPsec tunnel state transitions (same commit as the push).
             await record_tunnel_events(session, instance_id, ts, tunnel_events)

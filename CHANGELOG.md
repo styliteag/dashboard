@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connectivity, agent ops, system, IPsec) but no configuration; *View-Only*
   reads everything and cannot mutate. Existing admins are unaffected — they map
   to *Admin* on upgrade.
+- **More state history.** Building on the IPsec tunnel-history timeline, the
+  agent-push ingest now records two more kinds of transition: **duplicate Phase-2**
+  appearing/clearing (as `phase2_dup_on`/`phase2_dup_off` events on the tunnel, so
+  they show in the existing tunnel-history dialog) and **instance online/offline**
+  (recorded under the `availability` check key — the one surface that also covers
+  direct-API instances, since the scheduler records its flips too). **Connectivity**
+  history is reachable from a per-monitor History button on the overview and the
+  per-instance tab; the check-history endpoint takes a `key` (exact, one entity) or
+  `key_prefix` (whole category) filter so one timeline renders a single surface. A
+  backend restart with an active persistent duplicate Phase-2 no longer emits a
+  spurious resolve/re-appear flap (the dup streak is re-seeded on rehydrate). All
+  push-mode history stays push-only; availability also covers direct.
 
 ### Changed
 

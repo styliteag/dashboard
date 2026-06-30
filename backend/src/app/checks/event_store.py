@@ -15,7 +15,37 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.checks.history import CheckTransition
+from app.checks.models import CheckState
 from app.db.models import CheckEvent
+
+# Synthetic check key for instance online/offline transitions. Availability is not
+# part of evaluate_checks (a push can't observe the offline edge), so it is recorded
+# directly at the scheduler/hub flip sites — but into the same check_events table, so
+# it shares the history route, pruning, and frontend timeline.
+AVAILABILITY_KEY = "availability"
+
+
+async def record_availability_event(
+    session: AsyncSession,
+    instance_id: int,
+    ts: datetime,
+    *,
+    online: bool,
+    summary: str,
+) -> int:
+    """Record an instance online/offline transition (online → OK, offline → CRIT).
+
+    ``online`` is the *new* state. Recorded at the four flip sites (push recover,
+    push stale, direct recover, direct fail); each is already guarded to fire only
+    on a real transition, so this inherits one-row-per-change.
+    """
+    transition = CheckTransition(
+        check_key=AVAILABILITY_KEY,
+        old_state=int(CheckState.CRIT if online else CheckState.OK),
+        new_state=int(CheckState.OK if online else CheckState.CRIT),
+        summary=summary,
+    )
+    return await record_check_events(session, instance_id, ts, [transition])
 
 
 async def record_check_events(
@@ -50,12 +80,24 @@ async def read_check_events(
     session: AsyncSession,
     instance_id: int,
     limit: int = 100,
+    key: str | None = None,
+    key_prefix: str | None = None,
 ) -> list[CheckEvent]:
-    """Most-recent-first check history for one instance (capped)."""
-    result = await session.execute(
-        select(CheckEvent)
-        .where(CheckEvent.instance_id == instance_id)
-        .order_by(CheckEvent.ts.desc(), CheckEvent.id.desc())
-        .limit(limit)
-    )
+    """Most-recent-first check history for one instance (capped).
+
+    Two narrowing modes for a single-surface timeline:
+    - ``key`` — exact match on one entity (``connectivity:5``, ``availability``).
+      Use this for a specific monitor/tunnel/etc.: a prefix would over-match
+      (``connectivity:5`` LIKE would also catch ``connectivity:50``).
+    - ``key_prefix`` — every key under a category (``gateway:``, ``cert:``).
+
+    ``key`` wins when both are given.
+    """
+    stmt = select(CheckEvent).where(CheckEvent.instance_id == instance_id)
+    if key:
+        stmt = stmt.where(CheckEvent.check_key == key)
+    elif key_prefix:
+        stmt = stmt.where(CheckEvent.check_key.startswith(key_prefix))
+    stmt = stmt.order_by(CheckEvent.ts.desc(), CheckEvent.id.desc()).limit(limit)
+    result = await session.execute(stmt)
     return list(result.scalars().all())

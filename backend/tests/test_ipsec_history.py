@@ -160,6 +160,47 @@ def test_two_tunnels_diff_independently() -> None:
     ]
 
 
+# --- duplicate Phase-2 note appearing / clearing -----------------------------
+
+
+def _dup_child(persistent: bool, dup_count: int = 2) -> IPsecChild:
+    return IPsecChild(
+        name="c1",
+        local_ts="10.1.1.0/24",
+        remote_ts="10.2.2.0/24",
+        state="INSTALLED",
+        dup_count=dup_count,
+        phase2_dup_persistent=persistent,
+    )
+
+
+def test_dup_persistent_false_to_true_emits_on() -> None:
+    prev = _status(_tunnel(children=[_dup_child(False, dup_count=1)]))
+    new = _status(_tunnel(children=[_dup_child(True, dup_count=2)]))
+    events = diff_ipsec(prev, new)
+    assert [e.event_type for e in events] == ["phase2_dup_on"]
+    e = events[0]
+    assert e.child_name == "c1"
+    assert e.old_value == "10.1.1.0/24 → 10.2.2.0/24"  # selector pair
+    assert e.new_value == "2× SAs"
+
+
+def test_dup_persistent_true_to_false_emits_off() -> None:
+    prev = _status(_tunnel(children=[_dup_child(True)]))
+    new = _status(_tunnel(children=[_dup_child(False, dup_count=1)]))
+    events = diff_ipsec(prev, new)
+    assert [e.event_type for e in events] == ["phase2_dup_off"]
+    assert events[0].new_value == "resolved"
+
+
+def test_dup_persistent_unchanged_emits_nothing() -> None:
+    # both True (still duplicated) and both False (never duplicated) → no event
+    on = _status(_tunnel(children=[_dup_child(True)]))
+    assert diff_ipsec(on, _status(_tunnel(children=[_dup_child(True)]))) == []
+    off = _status(_tunnel(children=[_dup_child(False, dup_count=1)]))
+    assert diff_ipsec(off, _status(_tunnel(children=[_dup_child(False, dup_count=1)]))) == []
+
+
 # --- writer (record_tunnel_events) -------------------------------------------
 
 

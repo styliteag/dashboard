@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link2, Unlink, Activity, ArrowRight, Clock } from "lucide-react";
+import { Link2, Unlink, Activity, ArrowRight, Clock, Layers } from "lucide-react";
 import {
   CartesianGrid,
   Legend,
@@ -84,6 +84,22 @@ function metaFor(ev: IPsecTunnelEvent): EventMeta {
       };
     case "ping_fail":
       return { icon: Activity, cls: "text-red-400", color: "#f87171", label: "Ping fail", lane: 0 };
+    case "phase2_dup_on":
+      return {
+        icon: Layers,
+        cls: "text-amber-400",
+        color: "#fbbf24",
+        label: "Phase-2 duplicate",
+        lane: 1,
+      };
+    case "phase2_dup_off":
+      return {
+        icon: Layers,
+        cls: "text-emerald-400",
+        color: "#34d399",
+        label: "Phase-2 dup cleared",
+        lane: 1,
+      };
     default:
       return {
         icon: Activity,
