@@ -477,3 +477,12 @@ export interface NotificationTestResult {
   detail: string;
 }
 
+export type UserRole = "admin" | "user" | "view_only";
+
+export interface DashUser {
+  id: number;
+  username: string;
+  role: UserRole;
+  created_at: string;
+}
+

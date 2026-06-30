@@ -9,6 +9,7 @@ import {
   Settings,
   AlertTriangle,
   Radio,
+  Users,
 } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
@@ -78,8 +79,23 @@ export default function Layout() {
               <Settings className="h-4 w-4" /> Settings
             </Link>
           )}
+          {user?.is_admin && (
+            <Link
+              to="/users"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <Users className="h-4 w-4" /> Users
+            </Link>
+          )}
           <span className="text-slate-600">|</span>
-          <span className="text-slate-500">{user?.username}</span>
+          <span className="text-slate-500">
+            {user?.username}
+            {user && (
+              <span className="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400">
+                {user.role === "view_only" ? "view-only" : user.role}
+              </span>
+            )}
+          </span>
           <button
             onClick={handleLogout}
             className="flex items-center gap-1 text-slate-400 hover:text-red-400"

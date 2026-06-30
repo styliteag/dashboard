@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Download, ArrowUpCircle, List, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
+import { useAuth, canWrite } from "../lib/use-auth";
 import type { ConnectedAgent, Instance, Overview } from "../lib/types";
 import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
@@ -28,6 +29,8 @@ const INST_ACCESSORS: Accessors<Instance> = {
 
 export default function InstancesPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const canWr = canWrite(user);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Instance | null>(null);
@@ -147,12 +150,14 @@ export default function InstancesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Instances</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-        >
-          <Plus className="h-4 w-4" /> Add
-        </button>
+        {canWr && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            <Plus className="h-4 w-4" /> Add
+          </button>
+        )}
       </div>
 
       {/* KPI Tiles (US-3.4) */}
@@ -187,13 +192,15 @@ export default function InstancesPage() {
             {outdated.length} agent{outdated.length > 1 ? "s" : ""} can be updated
             {servedVersion ? ` → ${servedVersion}` : ""}
           </span>
-          <button
-            onClick={() => updateAllMut.mutate()}
-            disabled={updateAllMut.isPending}
-            className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-          >
-            {updateAllMut.isPending ? "Updating…" : "Update all agents"}
-          </button>
+          {canWr && (
+            <button
+              onClick={() => updateAllMut.mutate()}
+              disabled={updateAllMut.isPending}
+              className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {updateAllMut.isPending ? "Updating…" : "Update all agents"}
+            </button>
+          )}
         </div>
       )}
       {updateMsg && (
@@ -251,20 +258,24 @@ export default function InstancesPage() {
       {selected.size > 0 && (
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-2">
           <span className="text-sm text-emerald-300">{selected.size} selected</span>
-          <button
-            onClick={() => bulkMut.mutate("firmware_check")}
-            disabled={bulkMut.isPending}
-            className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
-          >
-            Firmware check
-          </button>
-          <button
-            onClick={() => bulkMut.mutate("ipsec_restart")}
-            disabled={bulkMut.isPending}
-            className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
-          >
-            IPsec Restart
-          </button>
+          {canWr && (
+            <>
+              <button
+                onClick={() => bulkMut.mutate("firmware_check")}
+                disabled={bulkMut.isPending}
+                className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
+              >
+                Firmware check
+              </button>
+              <button
+                onClick={() => bulkMut.mutate("ipsec_restart")}
+                disabled={bulkMut.isPending}
+                className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
+              >
+                IPsec Restart
+              </button>
+            </>
+          )}
           <button
             onClick={selectAll}
             className="ml-auto text-xs text-slate-400 hover:text-slate-200"

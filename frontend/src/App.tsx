@@ -10,6 +10,7 @@ import FirmwareCompliancePage from "./pages/FirmwareCompliancePage";
 import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
 import SettingsPage from "./pages/SettingsPage";
+import UsersPage from "./pages/UsersPage";
 import AlertsPage from "./pages/AlertsPage";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="audit" element={<AuditPage />} />
           <Route path="password" element={<PasswordPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="users" element={<UsersPage />} />
         </Route>
       </Route>
 
