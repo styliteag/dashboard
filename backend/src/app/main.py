@@ -36,6 +36,7 @@ from app.selection.store import load_rules
 from app.settings.routes import router as settings_router
 from app.settings.store import effective_settings, load_overrides
 from app.system.routes import router as system_router
+from app.users.routes import router as users_router
 from app.views.routes import router as views_router
 from app.xsense.registry import registry
 
@@ -206,6 +207,7 @@ def create_app() -> FastAPI:
     app.include_router(connectivity_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
+    app.include_router(users_router, prefix="/api")
     app.include_router(selection_router, prefix="/api")
     app.include_router(llm_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
