@@ -17,7 +17,7 @@ const STATE: Record<number, { label: string; dot: string; text: string; row: str
 export default function AlertsPage() {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(true);
-  const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">("all");
+  const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">("exported");
   const agentMode = useAgentModeMap();
 
   const { data, isLoading, refetch, isFetching } = useQuery({

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Alerts page defaults to the "Exported" Checkmk filter.** The service-checks
+  view now opens showing only checks exported to Checkmk instead of "All";
+  switch back to "All" or "Excluded" with the filter as before.
+
 ## [2.1.7] - 2026-06-30
 
 ### Fixed
