@@ -18,11 +18,12 @@ export function canWrite(user: User | null): boolean {
   return user?.role === "admin" || user?.role === "user";
 }
 
-/** Step-1 login result: password accepted, second factor still required. */
+/** Step-1 login result. `done` = already authenticated (password-only bootstrap admin). */
 export interface LoginChallenge {
-  stage: "enroll" | "verify";
+  stage: "enroll" | "verify" | "done";
   totp: boolean;
   webauthn: boolean;
+  user?: User | null;
 }
 
 export interface AuthContextValue {

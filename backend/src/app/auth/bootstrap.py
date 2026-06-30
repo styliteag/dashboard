@@ -1,41 +1,53 @@
-"""Bootstrap-admin lifecycle, driven by ``DASH_ADMIN_DISABLED`` (US-1.1 + 2FA).
+"""Bootstrap-admin lifecycle.
 
-The seed ``admin`` account (created from ``DASH_ADMIN_PASSWORD``) is the operator's
-way in and the break-glass for a 2FA lockout. Its state is reconciled on every
-startup against ``DASH_ADMIN_DISABLED``:
+The seed ``admin`` account (created from ``DASH_ADMIN_PASSWORD``) is a temporary
+break-glass: it logs in with a password only (**no 2FA**) and is meant to be
+retired once a real admin exists. Its enabled/disabled state is *derived* on every
+startup, never forced into 2FA:
 
-- **first start** (no users) → create it, enabled, forced to enroll 2FA on login.
-- **=1, currently enabled** → retire it (the operator now has their own admin).
-- **=0, currently disabled** → break-glass: re-enable, reset the password from the
-  env, wipe its 2FA so the operator can log back in and re-enroll.
-- **=0, currently enabled** → no-op (a normal restart never wipes enrolled 2FA).
-- **row missing + no enabled admin left** → recreate it (so there is always a way
-  back in), unless retired via ``=1``.
+- **first start** (no users) → create it, enabled, password-only.
+- **another (non-bootstrap) admin exists** → auto-disable it. This is the normal
+  end state: as soon as you have your own 2FA-protected admin, the seed is off.
+- **no other enabled admin left** → re-enable it and reset its password from the
+  env (break-glass back in), unless explicitly retired with ``DASH_ADMIN_DISABLED=1``.
+
+``DASH_ADMIN_DISABLED=1`` forces the seed off regardless. The seed is also disabled
+the moment a non-bootstrap admin is created/promoted (see app.users.routes), so a
+restart isn't required.
 """
 
 from __future__ import annotations
 
 import structlog
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 
 from app.auth.roles import ROLE_ADMIN
 from app.auth.security import hash_password
 from app.config import get_settings
 from app.db.base import get_sessionmaker
-from app.db.models import User, WebauthnCredential
+from app.db.models import User
 
 log = structlog.get_logger("app.auth.bootstrap")
 
 
-async def _clear_factors(session, user: User) -> None:
-    user.totp_enabled = False
-    user.totp_secret_enc = None
-    await session.execute(delete(WebauthnCredential).where(WebauthnCredential.user_id == user.id))
+async def _other_enabled_admins(session, exclude_id: int | None = None) -> int:
+    """Count enabled, non-bootstrap admins (optionally excluding one id)."""
+    stmt = (
+        select(func.count())
+        .select_from(User)
+        .where(
+            User.role == ROLE_ADMIN,
+            User.disabled.is_(False),
+            User.is_bootstrap.is_(False),
+        )
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(User.id != exclude_id)
+    return await session.scalar(stmt)
 
 
 async def ensure_admin() -> None:
     settings = get_settings()
-    want_disabled = settings.admin_disabled
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         boot = (
@@ -43,13 +55,18 @@ async def ensure_admin() -> None:
         ).scalar_one_or_none()
 
         if boot is None:
-            await _maybe_create(session, settings, want_disabled)
+            await _maybe_create(session, settings)
             return
+
+        # Derive the target state: disabled when retired by env or supplanted by a
+        # real admin; enabled (break-glass) when it's the only way back in.
+        others = await _other_enabled_admins(session)
+        want_disabled = settings.admin_disabled or others > 0
 
         if want_disabled and not boot.disabled:
             boot.disabled = True
             await session.commit()
-            log.info("admin_bootstrap.retired", username=boot.username)
+            log.info("admin_bootstrap.disabled", username=boot.username, others=others)
             return
 
         if not want_disabled and boot.disabled:
@@ -57,7 +74,6 @@ async def ensure_admin() -> None:
             if settings.admin_password:
                 boot.password_hash = hash_password(settings.admin_password)
                 boot.password_version += 1
-            await _clear_factors(session, boot)
             await session.commit()
             log.warning("admin_bootstrap.breakglass", username=boot.username)
             return
@@ -65,9 +81,9 @@ async def ensure_admin() -> None:
         log.info("admin_bootstrap.unchanged", username=boot.username, disabled=boot.disabled)
 
 
-async def _maybe_create(session, settings, want_disabled: bool) -> None:
-    """Create the bootstrap admin on first start, or as Löschschutz when no
-    enabled admin remains and it has not been retired via ``DASH_ADMIN_DISABLED=1``."""
+async def _maybe_create(session, settings) -> None:
+    """Create the seed admin on first start, or as Löschschutz when no enabled
+    admin remains at all (and it has not been retired via ``DASH_ADMIN_DISABLED=1``)."""
     if not settings.admin_password:
         log.warning("admin_bootstrap.skip", reason="DASH_ADMIN_PASSWORD not set")
         return
@@ -79,7 +95,7 @@ async def _maybe_create(session, settings, want_disabled: bool) -> None:
         .where(User.role == ROLE_ADMIN, User.disabled.is_(False))
     )
     first_start = total_users == 0
-    lockout = enabled_admins == 0 and not want_disabled
+    lockout = enabled_admins == 0 and not settings.admin_disabled
     if not (first_start or lockout):
         log.info("admin_bootstrap.skip", reason="admin already present")
         return
@@ -90,8 +106,8 @@ async def _maybe_create(session, settings, want_disabled: bool) -> None:
         password_version=1,
         role=ROLE_ADMIN,
         is_bootstrap=True,
-        disabled=want_disabled,
+        disabled=settings.admin_disabled,
     )
     session.add(admin)
     await session.commit()
-    log.info("admin_bootstrap.created", username="admin", disabled=want_disabled)
+    log.info("admin_bootstrap.created", username="admin", disabled=settings.admin_disabled)

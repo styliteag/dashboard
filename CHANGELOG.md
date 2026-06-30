@@ -14,11 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is now two-phase: password, then the factor; a session is minted only after it
   passes. New accounts (and any session predating 2FA) are forced through
   enrollment on next login — scan the QR or register a passkey. Manage your
-  passkeys on the new **Security** page. The bootstrap admin is no exception. An
-  admin can clear another user's 2FA from the Users page to recover a lost
-  authenticator. The seed admin is governed by `DASH_ADMIN_DISABLED` (`0` =
-  enabled/break-glass, `1` = retired). Passkeys need `DASH_WEBAUTHN_RP_ID` /
-  `DASH_WEBAUTHN_ORIGIN` set to your domain in production.
+  passkeys on the new **Security** page. An admin can clear another user's 2FA
+  from the Users page to recover a lost authenticator. Passkeys need
+  `DASH_WEBAUTHN_RP_ID` / `DASH_WEBAUTHN_ORIGIN` set to your domain in production.
+- **Bootstrap admin is a password-only break-glass seed.** The `admin` account
+  created from `DASH_ADMIN_PASSWORD` logs in with a password only (exempt from
+  mandatory 2FA) and is **disabled automatically as soon as a second admin
+  exists** — so the only password-only account never outlives setup. If no other
+  enabled admin remains it is re-enabled (password reset from the env) as a way
+  back in; `DASH_ADMIN_DISABLED=1` forces it off regardless.
 
 ### Changed
 

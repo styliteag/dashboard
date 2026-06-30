@@ -45,6 +45,10 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const ch = await login(username, password);
+      if (ch.stage === "done" && ch.user) {
+        finish(ch.user); // password-only bootstrap admin
+        return;
+      }
       setChallenge(ch);
       if (ch.stage === "enroll") {
         const s = await api.post<TotpSetup>("/api/auth/mfa/setup/totp");

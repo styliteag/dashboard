@@ -43,15 +43,18 @@ class UserResponse(BaseModel):
 
 
 class LoginChallenge(BaseModel):
-    """Step-1 result: password accepted, second factor still required.
+    """Step-1 result.
 
-    ``stage`` is ``"verify"`` when the account already has a factor enrolled, or
-    ``"enroll"`` when mandatory 2FA setup must happen before a session is minted.
+    ``stage`` is ``"verify"`` when the account already has a factor enrolled,
+    ``"enroll"`` when mandatory 2FA setup must happen first, or ``"done"`` when the
+    session is already minted — the password-only bootstrap admin, which is exempt
+    from 2FA. On ``"done"`` the user is attached.
     """
 
     stage: str
     totp: bool
     webauthn: bool
+    user: UserResponse | None = None
 
 
 async def user_factor_state(session: AsyncSession, user: User) -> tuple[bool, bool]:
@@ -147,6 +150,11 @@ async def login(
         )
         await session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="account disabled")
+
+    # The bootstrap seed admin is password-only (no 2FA) — mint the session now.
+    if user.is_bootstrap:
+        me = await complete_login(request, session, user, ip)
+        return LoginChallenge(stage="done", totp=False, webauthn=False, user=me)
 
     # Password OK → enter the pending-MFA state (no real session yet).
     request.session.clear()

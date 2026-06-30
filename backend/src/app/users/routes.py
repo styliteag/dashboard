@@ -53,6 +53,17 @@ async def _admin_count(session: AsyncSession) -> int:
     ).scalar_one()
 
 
+async def _retire_bootstrap_if_supplanted(session: AsyncSession) -> None:
+    """Disable the password-only seed admin once a real admin exists."""
+    boot = (
+        await session.execute(
+            select(User).where(User.is_bootstrap.is_(True), User.disabled.is_(False))
+        )
+    ).scalar_one_or_none()
+    if boot is not None:
+        boot.disabled = True
+
+
 @router.get("", response_model=list[UserOut])
 async def list_users(
     session: AsyncSession = Depends(get_session),
@@ -83,6 +94,8 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="username already exists"
         ) from exc
+    if payload.role == ROLE_ADMIN:
+        await _retire_bootstrap_if_supplanted(session)
     await write_audit(
         session,
         action="user.create",
@@ -127,6 +140,8 @@ async def update_user(
     if payload.role is not None:
         detail["role"] = payload.role
         target.role = payload.role
+        if payload.role == ROLE_ADMIN and not target.is_bootstrap:
+            await _retire_bootstrap_if_supplanted(session)
     if payload.new_password is not None:
         target.password_hash = hash_password(payload.new_password)
         # Bump so the target's existing sessions are invalidated after an admin reset.
