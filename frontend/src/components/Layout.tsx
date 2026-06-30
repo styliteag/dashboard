@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Radio,
   Users,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
@@ -70,6 +71,12 @@ export default function Layout() {
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
           >
             <KeyRound className="h-4 w-4" /> Password
+          </Link>
+          <Link
+            to="/security"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <ShieldCheck className="h-4 w-4" /> Security
           </Link>
           {user?.is_admin && (
             <Link

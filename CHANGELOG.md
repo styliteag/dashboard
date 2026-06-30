@@ -9,13 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Mandatory two-factor authentication (TOTP).** Every account must have a second
-  factor. Login is now two-phase: password, then a 6-digit authenticator code; a
-  session is minted only after the factor passes. New accounts (and any session
-  predating 2FA) are forced through enrollment — scan the QR, confirm a code — on
-  next login. The bootstrap admin is no exception. An admin can clear another
-  user's 2FA from the Users page to recover a lost authenticator. The seed admin
-  is governed by `DASH_ADMIN_DISABLED` (`0` = enabled/break-glass, `1` = retired).
+- **Mandatory two-factor authentication (TOTP + passkeys).** Every account must
+  have a second factor — a TOTP authenticator app *or* a WebAuthn passkey. Login
+  is now two-phase: password, then the factor; a session is minted only after it
+  passes. New accounts (and any session predating 2FA) are forced through
+  enrollment on next login — scan the QR or register a passkey. Manage your
+  passkeys on the new **Security** page. The bootstrap admin is no exception. An
+  admin can clear another user's 2FA from the Users page to recover a lost
+  authenticator. The seed admin is governed by `DASH_ADMIN_DISABLED` (`0` =
+  enabled/break-glass, `1` = retired). Passkeys need `DASH_WEBAUTHN_RP_ID` /
+  `DASH_WEBAUTHN_ORIGIN` set to your domain in production.
 
 ### Changed
 

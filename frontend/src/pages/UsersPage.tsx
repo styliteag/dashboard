@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Plus, Trash2, Users as UsersIcon } from "lucide-react";
+import { KeyRound, Plus, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/use-auth";
 import type { DashUser, UserRole } from "../lib/types";
@@ -76,6 +76,15 @@ export default function UsersPage() {
       invalidate();
     },
     onError: (e) => fail(e, "Failed to delete user"),
+  });
+
+  const reset2faMut = useMutation({
+    mutationFn: (id: number) => api.post(`/api/users/${id}/reset-2fa`),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: (e) => fail(e, "Failed to reset 2FA"),
   });
 
   if (!me?.is_admin) {
@@ -166,6 +175,7 @@ export default function UsersPage() {
           <tr>
             <th className="py-1">User</th>
             <th className="py-1">Role</th>
+            <th className="py-1">2FA</th>
             <th className="py-1">Created</th>
             <th className="py-1 text-right">Actions</th>
           </tr>
@@ -194,6 +204,13 @@ export default function UsersPage() {
                     ))}
                   </select>
                 </td>
+                <td className="py-2 text-xs">
+                  {u.totp_enabled ? (
+                    <span className="text-emerald-400">TOTP</span>
+                  ) : (
+                    <span className="text-slate-500">passkey/none</span>
+                  )}
+                </td>
                 <td className="py-2 text-xs text-slate-400">
                   {new Date(u.created_at).toLocaleDateString()}
                 </td>
@@ -208,6 +225,16 @@ export default function UsersPage() {
                       className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
                     >
                       <KeyRound className="h-3 w-3" /> Reset password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Reset 2FA for “${u.username}”? They must re-enroll.`))
+                          reset2faMut.mutate(u.id);
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-400 hover:bg-slate-800"
+                    >
+                      <ShieldOff className="h-3 w-3" /> Reset 2FA
                     </button>
                     {!isSelf && (
                       <button

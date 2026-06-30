@@ -484,5 +484,7 @@ export interface DashUser {
   username: string;
   role: UserRole;
   created_at: string;
+  disabled: boolean;
+  totp_enabled: boolean;
 }
 

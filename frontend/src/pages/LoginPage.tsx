@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { Shield } from "lucide-react";
+import { Fingerprint, Shield } from "lucide-react";
 import { useAuth, type LoginChallenge, type User } from "../lib/use-auth";
 import { api, ApiError } from "../lib/api";
+import { passkeyAuthenticate, passkeyEnroll } from "../lib/webauthn";
 
 type Stage = "password" | "enroll" | "verify";
 interface TotpSetup {
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const { login, completeLogin } = useAuth();
   const navigate = useNavigate();
   const [stage, setStage] = useState<Stage>("password");
+  const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -25,9 +27,16 @@ export default function LoginPage() {
   const showError = (err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
       setError(err.status === 429 ? "Too many attempts. Please wait." : err.message || fallback);
+    } else if (err instanceof Error && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+      setError("Passkey prompt was dismissed.");
     } else {
       setError("Cannot connect to the backend.");
     }
+  };
+
+  const finish = (me: User) => {
+    completeLogin(me);
+    navigate("/", { replace: true });
   };
 
   const onPassword = async (e: FormEvent) => {
@@ -35,8 +44,9 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      const challenge: LoginChallenge = await login(username, password);
-      if (challenge.stage === "enroll") {
+      const ch = await login(username, password);
+      setChallenge(ch);
+      if (ch.stage === "enroll") {
         const s = await api.post<TotpSetup>("/api/auth/mfa/setup/totp");
         setSetup(s);
         setStage("enroll");
@@ -58,15 +68,36 @@ export default function LoginPage() {
     try {
       const path =
         stage === "enroll" ? "/api/auth/mfa/confirm/totp" : "/api/auth/mfa/verify/totp";
-      const me = await api.post<User>(path, { code: code.trim() });
-      completeLogin(me);
-      navigate("/", { replace: true });
+      finish(await api.post<User>(path, { code: code.trim() }));
     } catch (err) {
       showError(err, "Invalid code.");
     } finally {
       setBusy(false);
     }
   };
+
+  const runPasskey = async (fn: () => Promise<User>) => {
+    setError(null);
+    setBusy(true);
+    try {
+      finish(await fn());
+    } catch (err) {
+      showError(err, "Passkey failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const PasskeyButton = ({ label, fn }: { label: string; fn: () => Promise<User> }) => (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => runPasskey(fn)}
+      className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+    >
+      <Fingerprint className="h-4 w-4" /> {label}
+    </button>
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
@@ -120,52 +151,78 @@ export default function LoginPage() {
           </form>
         )}
 
-        {(stage === "enroll" || stage === "verify") && (
-          <form onSubmit={onCode} className="space-y-5">
-            {stage === "enroll" && setup && (
-              <div className="space-y-3">
-                <p className="text-sm text-slate-300">
-                  Two-factor authentication is required. Scan this with an authenticator app, then
-                  enter the 6-digit code.
-                </p>
+        {stage === "enroll" && (
+          <div className="space-y-5">
+            <p className="text-sm text-slate-300">
+              Two-factor authentication is required. Set up an authenticator app, or register a
+              passkey.
+            </p>
+            {setup && (
+              <form onSubmit={onCode} className="space-y-4">
                 <div className="flex justify-center rounded-lg bg-white p-3">
                   <QRCodeSVG value={setup.otpauth_uri} size={172} />
                 </div>
                 <p className="break-all text-center text-xs text-slate-500">
                   Manual key: <code className="text-slate-400">{setup.secret}</code>
                 </p>
-              </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  maxLength={8}
+                  placeholder="6-digit code"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-lg tracking-[0.3em] focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || code.length < 6}
+                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {busy ? "…" : "Enable & sign in"}
+                </button>
+              </form>
             )}
-            {stage === "verify" && (
-              <p className="text-sm text-slate-300">
-                Enter the 6-digit code from your authenticator app.
-              </p>
-            )}
-            <div className="space-y-1">
-              <label className="text-sm text-slate-400" htmlFor="code">
-                Authenticator code
-              </label>
-              <input
-                id="code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                maxLength={8}
-                required
-                autoFocus
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-lg tracking-[0.3em] focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-              />
+            <div className="flex items-center gap-3 text-xs text-slate-600">
+              <div className="h-px flex-1 bg-slate-800" /> or <div className="h-px flex-1 bg-slate-800" />
             </div>
-            <button
-              type="submit"
-              disabled={busy || code.length < 6}
-              className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {busy ? "…" : stage === "enroll" ? "Enable & sign in" : "Verify"}
-            </button>
-          </form>
+            <PasskeyButton label="Register a passkey" fn={() => passkeyEnroll()} />
+          </div>
+        )}
+
+        {stage === "verify" && (
+          <div className="space-y-5">
+            {challenge?.webauthn && (
+              <PasskeyButton label="Sign in with passkey" fn={passkeyAuthenticate} />
+            )}
+            {challenge?.totp && (
+              <form onSubmit={onCode} className="space-y-4">
+                <label className="text-sm text-slate-400" htmlFor="code">
+                  Authenticator code
+                </label>
+                <input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  maxLength={8}
+                  required
+                  autoFocus
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-lg tracking-[0.3em] focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || code.length < 6}
+                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {busy ? "…" : "Verify"}
+                </button>
+              </form>
+            )}
+          </div>
         )}
       </div>
     </div>

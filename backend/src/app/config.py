@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     admin_disabled: bool = Field(default=False, description="Retire the bootstrap admin")
     # Issuer label shown in the user's authenticator app for TOTP enrollment.
     mfa_issuer: str = Field(default="Orbit Dashboard", description="TOTP issuer label")
+    # WebAuthn / passkeys. ``rp_id`` is the registrable domain (no scheme/port);
+    # ``origin`` is the EXACT scheme+host+port the browser shows. Dev defaults match
+    # the Vite dev server (which proxies /api). In prod set both to the real domain,
+    # e.g. DASH_WEBAUTHN_RP_ID=dash.example.com,
+    # DASH_WEBAUTHN_ORIGIN=https://dash.example.com — a mismatch silently refuses.
+    webauthn_rp_id: str = Field(default="localhost", description="WebAuthn relying-party id")
+    webauthn_rp_name: str = Field(default="Orbit Dashboard", description="WebAuthn RP name")
+    webauthn_origin: str = Field(
+        default="http://localhost:5173", description="WebAuthn expected origin"
+    )
 
     # Polling. ``poll_interval_seconds`` is the *default* per-instance poll cadence
     # for direct-API devices; an instance may override it (instances.poll_interval_

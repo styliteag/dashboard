@@ -23,6 +23,10 @@ SELF_SERVICE_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
     {
         ("POST", "/api/auth/logout"),
         ("POST", "/api/auth/password"),
+        # Every signed-in account manages its own 2FA regardless of role.
+        ("POST", "/api/auth/mfa/webauthn/manage/options"),
+        ("POST", "/api/auth/mfa/webauthn/manage/verify"),
+        ("DELETE", "/api/auth/mfa/passkeys/{cred_id}"),
     }
 )
 
