@@ -44,6 +44,13 @@ class Settings(BaseSettings):
 
     # Initial admin password (used only on first start when no admin exists yet)
     admin_password: str = Field(default="", description="Initial admin password")
+    # Bootstrap-admin lifecycle (see app.auth.bootstrap). 0 = enabled (default), 1 =
+    # retired. Flipping back to 0 from a disabled state is the deliberate break-glass:
+    # the seed admin is re-enabled, its password reset from DASH_ADMIN_PASSWORD and its
+    # 2FA cleared so the operator can log back in and re-enroll.
+    admin_disabled: bool = Field(default=False, description="Retire the bootstrap admin")
+    # Issuer label shown in the user's authenticator app for TOTP enrollment.
+    mfa_issuer: str = Field(default="Orbit Dashboard", description="TOTP issuer label")
 
     # Polling. ``poll_interval_seconds`` is the *default* per-instance poll cadence
     # for direct-API devices; an instance may override it (instances.poll_interval_

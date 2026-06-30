@@ -37,16 +37,59 @@ class User(Base):
     # Fixed taxonomy: "admin" | "user" | "view_only" (see app.auth.roles). Default is
     # least-privilege; bootstrap and the user-management API set it explicitly.
     role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="view_only")
+    # --- Mandatory 2FA (≥1 factor: TOTP or a WebAuthn passkey) ---
+    # TOTP shared secret (base32), Fernet-encrypted at rest. NULL until enrolled.
+    totp_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # Flipped True only after the user echoes a valid code (confirm-before-enable).
+    totp_enabled: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
+    # The seed account created from DASH_ADMIN_PASSWORD; its enabled/disabled state
+    # is driven by DASH_ADMIN_DISABLED at startup (see app.auth.bootstrap).
+    is_bootstrap: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
+    # Disabled accounts cannot log in and any live session dies on the next request.
+    disabled: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     audit_entries: Mapped[list[AuditLog]] = relationship(back_populates="user")
+    webauthn_credentials: Mapped[list[WebauthnCredential]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     @property
     def is_admin(self) -> bool:
         """Derived flag kept for the admin-only guard and API responses."""
         return self.role == "admin"
+
+
+class WebauthnCredential(Base):
+    """A registered WebAuthn/passkey credential (one user may have several)."""
+
+    __tablename__ = "webauthn_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Base64url credential id from the authenticator (unique per credential).
+    credential_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # COSE public key bytes returned at registration.
+    public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Signature counter for clone/replay detection; updated on each assertion.
+    sign_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # Optional user-facing label and the authenticator's reported transports.
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    transports: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="webauthn_credentials")
 
 
 class Instance(Base):

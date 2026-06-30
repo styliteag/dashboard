@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setAuthToken, unauthorizedEvent } from "./api";
-import { AuthContext, type User } from "./use-auth";
+import { AuthContext, type LoginChallenge, type User } from "./use-auth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -39,8 +39,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (username: string, password: string) => {
-    const me = await api.post<User>("/api/auth/login", { username, password });
+  const login = async (username: string, password: string): Promise<LoginChallenge> => {
+    // Step 1: password only. Never yields a session — returns the 2FA challenge.
+    return api.post<LoginChallenge>("/api/auth/login", { username, password });
+  };
+
+  const completeLogin = (me: User) => {
     setAuthToken(me.session_token ?? null);
     setUser(me);
   };
@@ -55,6 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, login, completeLogin, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
 }

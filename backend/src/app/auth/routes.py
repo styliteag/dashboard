@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
@@ -18,7 +18,7 @@ from app.auth.dev_token import issue_dev_token
 from app.auth.security import hash_password, limiter, verify_password, verify_password_constant_time
 from app.config import get_settings
 from app.db.base import get_session
-from app.db.models import User
+from app.db.models import User, WebauthnCredential
 from app.net import client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -42,12 +42,62 @@ class UserResponse(BaseModel):
     session_token: str | None = None
 
 
-@router.post("/login", response_model=UserResponse)
+class LoginChallenge(BaseModel):
+    """Step-1 result: password accepted, second factor still required.
+
+    ``stage`` is ``"verify"`` when the account already has a factor enrolled, or
+    ``"enroll"`` when mandatory 2FA setup must happen before a session is minted.
+    """
+
+    stage: str
+    totp: bool
+    webauthn: bool
+
+
+async def user_factor_state(session: AsyncSession, user: User) -> tuple[bool, bool]:
+    """(totp_enrolled, has_passkey) for the given user."""
+    totp_on = bool(user.totp_enabled and user.totp_secret_enc is not None)
+    passkeys = await session.scalar(
+        select(func.count())
+        .select_from(WebauthnCredential)
+        .where(WebauthnCredential.user_id == user.id)
+    )
+    return totp_on, bool(passkeys)
+
+
+async def complete_login(
+    request: Request, session: AsyncSession, user: User, ip: str
+) -> UserResponse:
+    """Mint a fully-authenticated session once the second factor has passed."""
+    limiter.record_success(ip)
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["password_version"] = user.password_version
+    request.session["mfa_passed"] = True
+    await write_audit(session, action="auth.login", result="ok", user_id=user.id, source_ip=ip)
+    await session.commit()
+    token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        is_admin=user.is_admin,
+        session_token=token,
+    )
+
+
+@router.post("/login", response_model=LoginChallenge)
 async def login(
     payload: LoginRequest,
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> UserResponse:
+) -> LoginChallenge:
+    """Step 1 of login: verify the password, then hand off to the second factor.
+
+    A correct password never mints a session on its own — it stores a *pending*
+    state and returns a challenge. The session is minted only by the matching
+    ``/auth/mfa/*`` endpoint once TOTP or a passkey passes.
+    """
     ip = client_ip(request)
 
     if limiter.is_locked(ip):
@@ -86,27 +136,35 @@ async def login(
         await session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
-    limiter.record_success(ip)
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["password_version"] = user.password_version
+    if user.disabled:
+        await write_audit(
+            session,
+            action="auth.login",
+            result="denied",
+            user_id=user.id,
+            detail={"reason": "account_disabled"},
+            source_ip=ip,
+        )
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="account disabled")
 
+    # Password OK → enter the pending-MFA state (no real session yet).
+    request.session.clear()
+    request.session["mfa_user_id"] = user.id
+    request.session["mfa_pw_version"] = user.password_version
+
+    totp_on, webauthn_on = await user_factor_state(session, user)
+    stage = "verify" if (totp_on or webauthn_on) else "enroll"
     await write_audit(
         session,
         action="auth.login",
-        result="ok",
+        result="pending",
         user_id=user.id,
+        detail={"stage": stage},
         source_ip=ip,
     )
     await session.commit()
-    token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        role=user.role,
-        is_admin=user.is_admin,
-        session_token=token,
-    )
+    return LoginChallenge(stage=stage, totp=totp_on, webauthn=webauthn_on)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

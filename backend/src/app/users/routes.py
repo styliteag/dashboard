@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ from app.auth.deps import require_admin
 from app.auth.roles import ROLE_ADMIN, Role
 from app.auth.security import hash_password
 from app.db.base import get_session
-from app.db.models import User
+from app.db.models import User, WebauthnCredential
 from app.net import client_ip
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -43,6 +43,8 @@ class UserOut(BaseModel):
     username: str
     role: str
     created_at: datetime
+    disabled: bool
+    totp_enabled: bool
 
 
 async def _admin_count(session: AsyncSession) -> int:
@@ -177,3 +179,36 @@ async def delete_user(
         detail={"username": target.username},
     )
     await session.commit()
+
+
+@router.post("/{user_id}/reset-2fa", response_model=UserOut)
+async def reset_2fa(
+    user_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(require_admin),
+) -> User:
+    """Clear a user's second factor (recovery for a lost authenticator/passkey).
+
+    Wipes TOTP + all passkeys and bumps ``password_version`` so any live session
+    dies; the user is forced to re-enroll 2FA on their next login.
+    """
+    target = await session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    target.totp_enabled = False
+    target.totp_secret_enc = None
+    target.password_version += 1
+    await session.execute(delete(WebauthnCredential).where(WebauthnCredential.user_id == target.id))
+    await write_audit(
+        session,
+        action="user.reset_2fa",
+        result="ok",
+        user_id=admin.id,
+        target_type="user",
+        target_id=str(target.id),
+        source_ip=client_ip(request),
+    )
+    await session.commit()
+    await session.refresh(target)
+    return target

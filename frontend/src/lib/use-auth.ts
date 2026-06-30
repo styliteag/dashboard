@@ -18,10 +18,20 @@ export function canWrite(user: User | null): boolean {
   return user?.role === "admin" || user?.role === "user";
 }
 
+/** Step-1 login result: password accepted, second factor still required. */
+export interface LoginChallenge {
+  stage: "enroll" | "verify";
+  totp: boolean;
+  webauthn: boolean;
+}
+
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  /** Step 1 — verify password; resolves to the 2FA challenge (no session yet). */
+  login: (username: string, password: string) => Promise<LoginChallenge>;
+  /** Step 2 — adopt the user returned by an /auth/mfa/* completion. */
+  completeLogin: (user: User) => void;
   logout: () => Promise<void>;
 }
 

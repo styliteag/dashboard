@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Mandatory two-factor authentication (TOTP).** Every account must have a second
+  factor. Login is now two-phase: password, then a 6-digit authenticator code; a
+  session is minted only after the factor passes. New accounts (and any session
+  predating 2FA) are forced through enrollment — scan the QR, confirm a code — on
+  next login. The bootstrap admin is no exception. An admin can clear another
+  user's 2FA from the Users page to recover a lost authenticator. The seed admin
+  is governed by `DASH_ADMIN_DISABLED` (`0` = enabled/break-glass, `1` = retired).
+
+### Changed
+
+- **Tunneled-WebUI link icon is now a boxed-arrow (external-link) everywhere.**
+  The tunneled-WebUI quick-link next to an instance name switched from the globe
+  to the boxed-arrow icon across every list that shows it (the global overview
+  lists and the instance list/card views).
+- **Tunneled-WebUI link next to the instance name in the list views.** The
+  instance list and card views now show that link right beside the instance name
+  (agent boxes only), matching the global overview lists — sized a touch smaller
+  — and drop the separate grey "WebUI" action button from the row's button
+  cluster.
+
 ## [2.2.0] - 2026-06-30
 
 ### Added

@@ -17,6 +17,7 @@ from app.agent_hub.routes import router as agent_router
 from app.apikeys.routes import router as apikeys_router
 from app.audit.routes import router as audit_router
 from app.auth.bootstrap import ensure_admin
+from app.auth.mfa_routes import router as mfa_router
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
 from app.checks.routes import router as checks_router
@@ -194,6 +195,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(mfa_router, prefix="/api")
     app.include_router(instances_router, prefix="/api")
     app.include_router(metrics_router, prefix="/api")
     app.include_router(ipsec_router, prefix="/api")
