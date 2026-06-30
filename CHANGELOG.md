@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-06-30
+
 ### Added
 
 - **Per-instance comment field** — a free-text **Comment** box on the instance
