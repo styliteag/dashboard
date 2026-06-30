@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Add instance dialog hides TLS options in Agent mode.** The "CA bundle (PEM)"
+  field and "Skip SSL verification" checkbox now only show for the Polling (API
+  key) path, where the dashboard makes the outbound HTTPS API call. In Agent
+  mode the on-box agent collects locally and pushes via the hub, so these had no
+  runtime effect and only added noise.
+
 ### Fixed
 
 - **Garbled Securepoint VPN tunnel names under SSH enrichment.** With SSH

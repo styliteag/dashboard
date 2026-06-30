@@ -250,25 +250,30 @@ export default function AddInstanceDialog({ onClose }: Props) {
           min={5}
           placeholder={defaultInterval ? `global default: ${defaultInterval}s` : "global default"}
         />
-        <div className="space-y-1">
-          <label className="text-xs text-slate-400">CA bundle (PEM)</label>
-          <textarea
-            value={form.ca_bundle}
-            onChange={set("ca_bundle")}
-            rows={3}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-            placeholder="-----BEGIN CERTIFICATE-----"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-slate-400">
-          <input
-            type="checkbox"
-            checked={!form.ssl_verify}
-            onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
-            className="rounded border-slate-600"
-          />
-          Skip SSL verification (self-signed certs)
-        </label>
+        {/* TLS options only affect the direct-poll path; agent mode pushes from the box. */}
+        {!form.agent_mode && (
+          <>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">CA bundle (PEM)</label>
+              <textarea
+                value={form.ca_bundle}
+                onChange={set("ca_bundle")}
+                rows={3}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                placeholder="-----BEGIN CERTIFICATE-----"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-400">
+              <input
+                type="checkbox"
+                checked={!form.ssl_verify}
+                onChange={(e) => setForm((f) => ({ ...f, ssl_verify: !e.target.checked }))}
+                className="rounded border-slate-600"
+              />
+              Skip SSL verification (self-signed certs)
+            </label>
+          </>
+        )}
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Notes</label>
           <textarea
