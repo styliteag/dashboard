@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from fastapi.routing import APIRoute
 
-from app.auth.deps import current_user, require_admin, require_write
+from app.auth.deps import current_user, read_principal, require_admin, require_write
 from app.main import create_app
 
 # Self-service routes a logged-in account of ANY role may call on itself — these
@@ -63,13 +63,18 @@ def test_mutating_routes_block_view_only() -> None:
     A route is acceptable if it requires ``require_write``/``require_admin`` (human
     write gate), is on the self-service allowlist, or is machine-authed (uses
     neither ``current_user`` nor a human gate — e.g. agent enrollment, login).
+
+    ``read_principal`` counts as authed-but-ungated: it admits any logged-in user
+    (incl. ``view_only``) and only rejects API keys on non-GET, so a mutating route
+    guarded by it would let ``view_only`` write through.
     """
     offenders: list[str] = []
     for method, path, calls in _mutating_routes():
         if (method, path) in SELF_SERVICE_ALLOWLIST:
             continue
         gated = require_write in calls or require_admin in calls
-        if current_user in calls and not gated:
+        authed = current_user in calls or read_principal in calls
+        if authed and not gated:
             offenders.append(f"{method} {path}")
 
     assert not offenders, (
