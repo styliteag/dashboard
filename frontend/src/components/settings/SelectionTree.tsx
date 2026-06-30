@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bell, ChevronDown, ChevronRight, ListChecks, RefreshCw } from "lucide-react";
 import { api } from "../../lib/api";
+import { resolveClient } from "../../lib/selection";
 import type {
   NotificationTestResult,
   SelectionConfig,
@@ -48,38 +49,6 @@ const STATUS_CLS: Record<string, string> = {
   skipped: "text-slate-500",
   failed: "text-red-400",
 };
-
-// The part before the first ":" — JS split limit truncates the array, [0] is the
-// prefix. Mirrors app/selection/model.py category().
-const categoryOf = (key: string): string => key.split(":", 1)[0];
-
-type Resolved = { on: boolean; by: string };
-
-// Mirror of the backend resolve() so a toggle only refetches the cheap /config
-// instead of re-polling every instance. Precedence: instance+key > instance+cat >
-// global+key > global+cat > default(off).
-function resolveClient(key: string, instanceId: number, rules: SelectionRule[]): Resolved {
-  const cat = categoryOf(key);
-  let bestRank = 0;
-  let bestMode = "";
-  for (const r of rules) {
-    const isInstance = r.instance_id === instanceId;
-    if (!(isInstance || r.instance_id === null)) continue;
-    let rank = 0;
-    if (r.selector === key) rank = isInstance ? 4 : 2;
-    else if (r.selector === cat) rank = isInstance ? 3 : 1;
-    else continue;
-    if (rank > bestRank) {
-      bestRank = rank;
-      bestMode = r.mode;
-    }
-  }
-  if (bestRank === 0) return { on: false, by: "default" };
-  const reason = { 4: "instance", 3: "instance_category", 2: "global", 1: "global_category" }[
-    bestRank
-  ]!;
-  return { on: bestMode === "include", by: reason };
-}
 
 const BY_NOTE: Record<string, string> = {
   instance: "forced on (this box)",

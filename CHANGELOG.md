@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-service notify/export toggles on the instance page.** Each row in a single
+  instance's **Service Checks** now carries four checkboxes — Mattermost, Telegram,
+  Email, Checkmk — to turn that exact service on/off for that box without leaving the
+  instance. They edit the same per-instance selection the Settings tree does (shared
+  rules/cache); a box-level choice overrides the global category defaults.
+
 ## [2.1.0] - 2026-06-30
 
 ### Changed
