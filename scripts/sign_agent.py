@@ -25,13 +25,34 @@ from cryptography.hazmat.primitives import serialization as ser
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
+def _key_from_dotenv() -> str | None:
+    """Read DASH_AGENT_SIGNING_KEY from the gitignored repo-root .env (None if absent).
+
+    Lets ``just sign-agent`` / a bare ``python scripts/sign_agent.py`` work without
+    exporting the key by hand — the offline private key already lives in .env.
+    """
+    env = Path(".env")
+    if not env.exists():
+        return None
+    for line in env.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("DASH_AGENT_SIGNING_KEY="):
+            val = line.split("=", 1)[1].strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            return val or None
+    return None
+
+
 def _load_private_key(key_file: str | None) -> Ed25519PrivateKey:
     if key_file:
         raw = base64.b64decode(Path(key_file).read_text().strip())
     elif os.environ.get("DASH_AGENT_SIGNING_KEY"):
         raw = base64.b64decode(os.environ["DASH_AGENT_SIGNING_KEY"])
+    elif _key_from_dotenv():
+        raw = base64.b64decode(_key_from_dotenv())
     else:
-        sys.exit("no key: set DASH_AGENT_SIGNING_KEY (base64) or pass --key-file")
+        sys.exit("no key: set DASH_AGENT_SIGNING_KEY (base64), pass --key-file, or add it to .env")
     return Ed25519PrivateKey.from_private_bytes(raw)
 
 
