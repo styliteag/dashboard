@@ -4,19 +4,23 @@
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Radio, Plus, Pencil } from "lucide-react";
+import { Radio, Plus, Pencil, History } from "lucide-react";
 import { api } from "../lib/api";
 import type { ConnectivityState } from "../lib/types";
 import ConnectivityMonitorDialog from "./ConnectivityMonitorDialog";
+import CheckHistoryDialog from "./CheckHistoryDialog";
 
 function PingPill({ m }: { m: ConnectivityState }) {
   const ps = m.ping_state;
   if (ps === "ok") {
-    const rtt = m.ping_rtt_ms != null ? `${m.ping_rtt_ms.toFixed(m.ping_rtt_ms < 10 ? 2 : 0)} ms` : "ok";
+    const rtt =
+      m.ping_rtt_ms != null ? `${m.ping_rtt_ms.toFixed(m.ping_rtt_ms < 10 ? 2 : 0)} ms` : "ok";
     return (
       <span
         className="rounded bg-emerald-600/20 px-2 py-0.5 text-xs text-emerald-400"
-        title={m.ping_loss_pct != null ? `${m.ping_loss_pct}% loss · ${m.ping_ts ?? ""}` : undefined}
+        title={
+          m.ping_loss_pct != null ? `${m.ping_loss_pct}% loss · ${m.ping_ts ?? ""}` : undefined
+        }
       >
         ping {rtt}
       </span>
@@ -48,6 +52,7 @@ export default function ConnectivitySection({
   pingSupported: boolean;
 }) {
   const [dialog, setDialog] = useState<{ existing: ConnectivityState | null } | null>(null);
+  const [hist, setHist] = useState<ConnectivityState | null>(null);
 
   const { data } = useQuery({
     queryKey: ["connectivity-status", instanceId],
@@ -113,9 +118,19 @@ export default function ConnectivitySection({
                     {m.source || "auto"} → {m.destination}
                   </td>
                   <td className="px-3 py-2">
-                    {m.enabled ? <PingPill m={m} /> : <span className="text-xs text-slate-600">—</span>}
+                    {m.enabled ? (
+                      <PingPill m={m} />
+                    ) : (
+                      <span className="text-xs text-slate-600">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right">
+                    <button
+                      onClick={() => setHist(m)}
+                      className="mr-1 inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    >
+                      <History className="h-3.5 w-3.5" /> History
+                    </button>
                     <button
                       onClick={() => setDialog({ existing: m })}
                       className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
@@ -135,6 +150,16 @@ export default function ConnectivitySection({
           instanceId={instanceId}
           existing={dialog.existing}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {hist && (
+        <CheckHistoryDialog
+          instanceId={instanceId}
+          keyPrefix={`connectivity:${hist.id}`}
+          title={`History — ${hist.name}`}
+          hideKeyColumn
+          onClose={() => setHist(null)}
         />
       )}
     </section>
