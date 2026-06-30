@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tunneled-WebGUI icon in the global list views.** Each instance row in the
+  **VPN**, **Connectivity**, **Alerts** and **Firmware** overviews now carries a
+  small globe icon next to the instance name that opens that box's WebGUI through
+  the agent's GUI proxy (the same one-shot handoff as the per-instance "WebUI"
+  button) in a new tab. Shown only for agent-mode boxes; proxy-disabled/offline
+  errors surface in the icon's tooltip.
+
 ## [2.1.3] - 2026-06-30
 
 ## [2.1.2] - 2026-06-30

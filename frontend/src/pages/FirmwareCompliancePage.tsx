@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Package, AlertTriangle, CheckCircle, HelpCircle, Search } from "lucide-react";
 import { api } from "../lib/api";
+import { useAgentModeMap } from "../lib/instances";
+import { WebUiIconLink } from "../components/WebUiIconLink";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
 
@@ -42,6 +44,7 @@ interface FirmwareComplianceResponse {
 export default function FirmwareCompliancePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "outdated" | "current" | "unknown">("all");
+  const agentMode = useAgentModeMap();
 
   const { data, isLoading } = useQuery({
     queryKey: ["firmware-compliance"],
@@ -136,12 +139,19 @@ export default function FirmwareCompliancePage() {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <Link
-                      to={`/instances/${e.instance_id}`}
-                      className="text-emerald-400 hover:underline"
-                    >
-                      {e.instance_name}
-                    </Link>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Link
+                        to={`/instances/${e.instance_id}`}
+                        className="text-emerald-400 hover:underline"
+                      >
+                        {e.instance_name}
+                      </Link>
+                      <WebUiIconLink
+                        instanceId={e.instance_id}
+                        instanceName={e.instance_name}
+                        agentMode={agentMode.get(e.instance_id) ?? false}
+                      />
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-slate-400">{e.location || "—"}</td>
                   <td className="px-3 py-2 font-mono text-xs">{e.product_version}</td>

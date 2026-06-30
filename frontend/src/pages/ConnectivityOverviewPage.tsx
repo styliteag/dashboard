@@ -7,6 +7,8 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Radio } from "lucide-react";
 import { api } from "../lib/api";
+import { useAgentModeMap } from "../lib/instances";
+import { WebUiIconLink } from "../components/WebUiIconLink";
 import type { GlobalConnMonitor, GlobalConnectivityResponse } from "../lib/types";
 
 function PingPill({ m }: { m: GlobalConnMonitor }) {
@@ -49,6 +51,7 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
 
 export default function ConnectivityOverviewPage() {
   const navigate = useNavigate();
+  const agentMode = useAgentModeMap();
   const { data } = useQuery({
     queryKey: ["connectivity-overview"],
     queryFn: () => api.get<GlobalConnectivityResponse>("/api/connectivity/overview"),
@@ -102,7 +105,16 @@ export default function ConnectivityOverviewPage() {
                     m.stale ? "opacity-60" : ""
                   }`}
                 >
-                  <td className="px-3 py-2 font-medium text-emerald-400">{m.instance_name}</td>
+                  <td className="px-3 py-2 font-medium text-emerald-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      {m.instance_name}
+                      <WebUiIconLink
+                        instanceId={m.instance_id}
+                        instanceName={m.instance_name}
+                        agentMode={agentMode.get(m.instance_id) ?? false}
+                      />
+                    </span>
+                  </td>
                   <td className="px-3 py-2">{m.name}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">
                     {m.source || "auto"} → {m.destination}

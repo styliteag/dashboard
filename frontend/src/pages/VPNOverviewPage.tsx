@@ -19,6 +19,7 @@ import type {
   TunnelActionResponse,
 } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "../components/IPsecPhase2";
+import { WebUiIconLink } from "../components/WebUiIconLink";
 import { worstPing } from "../lib/ipsec-ping";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
@@ -341,12 +342,19 @@ export default function VPNOverviewPage() {
       <Fragment key={k}>
         <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
           <td className={`px-3 py-2 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
-            <Link
-              to={`/instances/${t.instance_id}`}
-              className={`hover:underline ${inGroup ? "pl-4 text-emerald-400" : "text-emerald-400"}`}
-            >
-              {t.instance_name}
-            </Link>
+            <span className={`inline-flex items-center gap-1.5 ${inGroup ? "pl-4" : ""}`}>
+              <Link
+                to={`/instances/${t.instance_id}`}
+                className="text-emerald-400 hover:underline"
+              >
+                {t.instance_name}
+              </Link>
+              <WebUiIconLink
+                instanceId={t.instance_id}
+                instanceName={t.instance_name}
+                agentMode={t.agent_mode ?? false}
+              />
+            </span>
           </td>
           <td className="px-3 py-2">
             <button

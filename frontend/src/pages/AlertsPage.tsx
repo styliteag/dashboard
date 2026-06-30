@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Link as LinkIcon, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { useAgentModeMap } from "../lib/instances";
+import { WebUiIconLink } from "../components/WebUiIconLink";
 import type { ServiceAlert } from "../lib/types";
 
 const STATE: Record<number, { label: string; dot: string; text: string; row: string }> = {
@@ -16,6 +18,7 @@ export default function AlertsPage() {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(true);
   const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">("all");
+  const agentMode = useAgentModeMap();
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["alerts"],
@@ -166,13 +169,20 @@ export default function AlertsPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <Link
-                        to={`/instances/${a.instance_id}`}
-                        className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
-                      >
-                        {a.instance_name}
-                        <LinkIcon className="h-3 w-3" />
-                      </Link>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Link
+                          to={`/instances/${a.instance_id}`}
+                          className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
+                        >
+                          {a.instance_name}
+                          <LinkIcon className="h-3 w-3" />
+                        </Link>
+                        <WebUiIconLink
+                          instanceId={a.instance_id}
+                          instanceName={a.instance_name}
+                          agentMode={agentMode.get(a.instance_id) ?? false}
+                        />
+                      </span>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-400">{a.key}</td>
                     <td className="px-3 py-2 text-slate-300">{a.summary}</td>
