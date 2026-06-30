@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-instance comment field** — a free-text **Comment** box on the instance
+  Overview tab (saved to the existing `notes` field via PATCH; no schema change).
 - **Per-service notify/export toggles on the instance page.** Each row in a single
   instance's **Service Checks** now carries four checkboxes — Mattermost, Telegram,
   Email, Checkmk — to turn that exact service on/off for that box without leaving the

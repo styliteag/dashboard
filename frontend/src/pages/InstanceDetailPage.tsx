@@ -17,6 +17,7 @@ import InstanceHeader from "../components/InstanceHeader";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import AgentSection from "../components/AgentSection";
 import ChecksSection from "../components/ChecksSection";
+import NotesSection from "../components/NotesSection";
 import CheckHistorySection from "../components/CheckHistorySection";
 import SystemHealthSection from "../components/SystemHealthSection";
 import ServicesSection from "../components/ServicesSection";
@@ -162,6 +163,8 @@ export default function InstanceDetailPage() {
           ) : (
             <p className="mt-6 text-red-400">Status not available.</p>
           )}
+
+          <NotesSection instanceId={nid} />
 
           <section className="mt-8">
             <div className="flex items-center justify-between">
