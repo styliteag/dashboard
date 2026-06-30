@@ -43,6 +43,12 @@ services:
       DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD:-devpassword}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-admin}
+      DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-0}
+      DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
+      # Dev: browser is at localhost:5173 (Vite proxies /api), so rp_id=localhost.
+      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
+      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
+      DASH_WEBAUTHN_RP_NAME: ${DASH_WEBAUTHN_RP_NAME:-Orbit Dashboard}
       DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}
       DASH_POLL_TICK_SECONDS: ${DASH_POLL_TICK_SECONDS:-10}
       DASH_PUSH_INTERVAL_SECONDS: ${DASH_PUSH_INTERVAL_SECONDS:-30}
