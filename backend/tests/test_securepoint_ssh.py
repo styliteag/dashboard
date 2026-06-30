@@ -146,3 +146,17 @@ def test_scope_sections_missing_conn_notes_absence() -> None:
     sections = [DiagnosisSection(title=_PLAIN_TITLE, content=_PLAIN_TWO)]
     out = _scope_sections(sections, "no-such-tunnel")
     assert out[0].content == "(connection not found)"
+
+
+def test_safe_name_allows_dollar_escaped_conn_but_rejects_shell_metachars() -> None:
+    from app.securepoint.ssh import _SAFE_NAME
+
+    # Securepoint hex-escapes spaces as `$20` — the id must pass the guard so Diagnose
+    # works on those tunnels ($ is inert inside the single-quoted N='{name}').
+    assert _SAFE_NAME.fullmatch("Broken$20Connection")
+    assert _SAFE_NAME.fullmatch("Vendor$20Tunnel$20IKEv2")
+    # but a single quote (single-quote breakout) or other metachars stay rejected
+    assert not _SAFE_NAME.fullmatch("a'b")
+    assert not _SAFE_NAME.fullmatch("a;b")
+    assert not _SAFE_NAME.fullmatch("a b")  # literal space (the decoded form) is not an id
+    assert not _SAFE_NAME.fullmatch("a`b")

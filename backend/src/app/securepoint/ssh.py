@@ -27,7 +27,11 @@ from app.xsense.schemas import DiagnosisSection, IPsecServiceStatus
 _DIAG_TIMEOUT = 25.0
 _SEC = "@@SEC@@"
 # Connection names are safe shell tokens; reject anything else before interpolating.
-_SAFE_NAME = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+# `$` is allowed because Securepoint hex-escapes spaces in swanctl connection names
+# (`Broken$20Connection`); it is inert in the single-quoted `N='{name}'` assignment
+# (the only place `name` is interpolated — everywhere else uses "$N"), and `'` is
+# still excluded so the single-quoted string can't be broken out of.
+_SAFE_NAME = re.compile(r"[A-Za-z0-9._:$-]{1,128}")
 
 # Budget: the global VPN overview wraps ipsec_status() in a wait_for(_FETCH_TIMEOUT)
 # (views/routes.py, 8s) and silently drops the instance on timeout. Keep the whole

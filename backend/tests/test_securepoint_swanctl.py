@@ -7,7 +7,7 @@ into a Frankenstein record without the disambiguation fix.
 
 from __future__ import annotations
 
-from app.securepoint.swanctl import parse_ipsec
+from app.securepoint.swanctl import _unescape_conn_name, parse_ipsec
 
 # Two `list-sa event {bonis-test {...}}` envelopes: uniqueid=3 ESTABLISHED (real)
 # and uniqueid=1 CREATED/%any (half-open). Plus the trailing `reply {}`.
@@ -60,3 +60,44 @@ def test_parse_drops_half_open_and_keeps_established_with_spis() -> None:
 def test_empty_input_yields_no_tunnels() -> None:
     assert parse_ipsec("", "") == []
     assert parse_ipsec("list-sas reply {}\n", "list-conns reply {}\n") == []
+
+
+# --- Securepoint $XX connection-name unescaping (display name) -----------------
+# Securepoint hex-escapes characters invalid in a strongSwan section id; the swanctl
+# name `Broken$20Connection` must show as "Broken Connection" while the raw form
+# stays the tunnel id (swanctl --ike expects it). Confirmed live on the bensheim box.
+
+
+def test_unescape_decodes_space() -> None:
+    assert _unescape_conn_name("Broken$20Connection") == "Broken Connection"
+    assert _unescape_conn_name("Vendor$20Tunnel$20IKEv2") == "Vendor Tunnel IKEv2"
+    assert _unescape_conn_name("KC$20RM$20OPNSE") == "KC RM OPNSE"
+
+
+def test_unescape_passthrough_when_no_escape() -> None:
+    assert _unescape_conn_name("bonis-test") == "bonis-test"
+    assert _unescape_conn_name("TI") == "TI"
+    assert _unescape_conn_name("") == ""
+
+
+def test_unescape_multibyte_utf8_roundtrips() -> None:
+    # an umlaut escaped as its UTF-8 bytes ($C3$BC = ü) must reassemble, not split
+    assert _unescape_conn_name("M$C3$BCller$20VPN") == "Müller VPN"
+
+
+def test_unescape_leaves_non_hex_and_partial_dollar_literal() -> None:
+    assert _unescape_conn_name("cost$ZZplan") == "cost$ZZplan"  # $ZZ is not hex
+    assert _unescape_conn_name("trailing$2") == "trailing$2"  # only one hex digit
+    assert _unescape_conn_name("bare$") == "bare$"
+
+
+def test_to_tunnel_keeps_raw_id_and_decodes_description() -> None:
+    conns = (
+        "list-conn event {Broken$20Connection {local_addrs=[%any] remote_addrs=[1.2.3.4] "
+        "children {c1 {mode=TUNNEL local-ts=[10.0.0.0/24] remote-ts=[10.1.0.0/24]}}}}"
+    )
+    tunnels = parse_ipsec("", conns)
+    assert len(tunnels) == 1
+    t = tunnels[0]
+    assert t.id == "Broken$20Connection"  # raw — swanctl --ike / slicing need it verbatim
+    assert t.description == "Broken Connection"  # decoded — what the UI shows

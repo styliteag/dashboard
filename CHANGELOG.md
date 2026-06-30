@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Garbled Securepoint VPN tunnel names under SSH enrichment.** With SSH
+  enrichment enabled, tunnel names came from `swanctl --list-conns`, where
+  Securepoint hex-escapes characters invalid in a strongSwan section id — a space
+  becomes `$20`, so "Broken Connection" showed as `Broken$20Connection`. The
+  display name is now decoded (`$XX` → byte, UTF-8 reassembled for umlauts) while
+  the raw escaped form is kept as the tunnel id (swanctl `--ike` and the diagnose
+  slicing need it verbatim). Also allows `$` in the diagnose tunnel-id guard so
+  Diagnose works on these tunnels — it stays inert inside the single-quoted shell
+  assignment, and `'` remains rejected. Verified live on the bensheim box.
+
 ## [2.1.4] - 2026-06-30
 
 ### Changed

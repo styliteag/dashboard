@@ -284,6 +284,33 @@ def _index_best(sas: list[dict], key: Any) -> dict:
     return best
 
 
+_HEXDIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _unescape_conn_name(name: str) -> str:
+    """Decode Securepoint's ``$XX`` hex escaping in a swanctl connection name.
+
+    Securepoint turns characters that aren't valid in a strongSwan section id
+    (notably the space) into ``$`` + two hex digits — ``Vendor$20Tunnel`` is
+    ``Vendor Tunnel``. The encoded form stays the tunnel ``id`` (swanctl
+    ``--ike`` expects the section name verbatim); only the human ``description``
+    is decoded. Bytes are reassembled and UTF-8 decoded so a multi-byte escape
+    (an umlaut as ``$C3$BC``) round-trips instead of splitting into mojibake.
+    """
+    if "$" not in name:
+        return name
+    out = bytearray()
+    i, n = 0, len(name)
+    while i < n:
+        if name[i] == "$" and i + 2 < n and name[i + 1] in _HEXDIGITS and name[i + 2] in _HEXDIGITS:
+            out.append(int(name[i + 1 : i + 3], 16))
+            i += 3
+        else:
+            out.extend(name[i].encode("utf-8"))
+            i += 1
+    return out.decode("utf-8", errors="replace")
+
+
 def _to_tunnel(name: str, conn: dict | None, sa: dict | None) -> IPsecTunnel:
     conn = conn or {}
     children = [
@@ -293,7 +320,7 @@ def _to_tunnel(name: str, conn: dict | None, sa: dict | None) -> IPsecTunnel:
     if sa is not None:
         return IPsecTunnel(
             id=name,
-            description=name,
+            description=_unescape_conn_name(name),
             remote=sa["remote"] or conn.get("remote", ""),
             local=sa["local"] or conn.get("local", ""),
             phase1_status=sa["status"],
@@ -311,7 +338,7 @@ def _to_tunnel(name: str, conn: dict | None, sa: dict | None) -> IPsecTunnel:
         )
     return IPsecTunnel(
         id=name,
-        description=name,
+        description=_unescape_conn_name(name),
         remote=conn.get("remote", ""),
         local=conn.get("local", ""),
         phase1_status="down",
