@@ -92,6 +92,9 @@ async def create_user(
         detail={"username": payload.username, "role": payload.role},
     )
     await session.commit()
+    # Re-populate server-defaults (created_at) expired by the commit before the
+    # response_model serializes the row — async sessions can't lazy-load here.
+    await session.refresh(user)
     return user
 
 
