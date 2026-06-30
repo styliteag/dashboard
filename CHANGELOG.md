@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-06-30
+
 ### Added
 
 - **Duplicate Phase-2 note on IPsec tunnels.** When the same traffic-selector pair
