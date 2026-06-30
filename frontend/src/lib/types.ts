@@ -387,42 +387,47 @@ export interface ApiKeyRevealed {
   key: string;
 }
 
-// --- Settings: Checkmk export config ----------------------------------------
+// --- Settings: service selection (Checkmk export + notification channels) ---
+// One model for every consumer ("checkmk" + the channels). Base default is OFF;
+// an include rule turns a category/service on, an exclude rule mutes it.
 
-export interface CheckmkCategoryState {
+export interface SelectionCategoryState {
   key: string;
-  excluded: boolean;
+  included: boolean; // a global include rule exists for this category
 }
 
-export interface CheckmkExclusionRule {
+export interface SelectionRule {
   id: number;
-  instance_id: number | null;
-  target: string;
+  instance_id: number | null; // null = global (every instance)
+  selector: string; // category token or full check key
+  mode: "include" | "exclude";
 }
 
-export interface CheckmkConfig {
-  categories: CheckmkCategoryState[];
-  rules: CheckmkExclusionRule[];
+export interface SelectionConfig {
+  consumer: string;
+  configured: boolean | null; // channel send-config status; null for checkmk
+  categories: SelectionCategoryState[];
+  rules: SelectionRule[];
 }
 
-export interface CheckmkPreviewCheck {
+export interface SelectionPreviewCheck {
   key: string;
   category: string;
   state: number;
   summary: string;
-  excluded: boolean;
-  excluded_by: "category" | "specific" | null;
+  on: boolean; // is this consumer interested in the check for this instance?
+  by: string; // "instance" | "instance_category" | "global" | "global_category" | "default"
 }
 
-export interface CheckmkPreviewInstance {
+export interface SelectionPreviewInstance {
   instance_id: number;
   name: string;
   device_type: string;
-  checks: CheckmkPreviewCheck[];
+  checks: SelectionPreviewCheck[];
 }
 
-export interface CheckmkPreview {
-  instances: CheckmkPreviewInstance[];
+export interface SelectionPreview {
+  instances: SelectionPreviewInstance[];
 }
 
 // ----- Alerts / Service Checks (global) ------------------------------------
@@ -442,8 +447,8 @@ export interface ServiceAlert {
   state: number; // 0 OK, 1 WARN, 2 CRIT, 3 UNKNOWN
   summary: string;
   metrics: PerfMetric[];
-  excluded: boolean;
-  excluded_by: "category" | "specific" | null;
+  excluded: boolean; // true when the Checkmk export does not include it
+  excluded_by: string | null; // selection level that decided, or null
 }
 
 // --- Settings: editable application settings ---------------------------------
@@ -470,29 +475,3 @@ export interface NotificationTestResult {
   detail: string;
 }
 
-// --- Notifications: per-channel alert-category routing -----------------------
-
-export interface NotificationChannelInfo {
-  key: string;
-  configured: boolean;
-}
-
-export interface NotificationRoute {
-  instance_id: number | null; // null = global (every instance)
-  channel: string;
-  category: string;
-  enabled: boolean; // false = a per-instance off-override (global rows are always true)
-}
-
-export interface NotificationRoutingInstance {
-  id: number;
-  name: string;
-  device_type: string;
-}
-
-export interface NotificationRoutingMatrix {
-  channels: NotificationChannelInfo[];
-  categories: string[];
-  instances: NotificationRoutingInstance[];
-  routes: NotificationRoute[];
-}

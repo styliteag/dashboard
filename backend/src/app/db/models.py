@@ -233,65 +233,37 @@ class ApiKey(Base):
     key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
-class CheckmkExportExclusion(Base):
-    """A rule that hides service checks from the Checkmk export.
+class SelectionRule(Base):
+    """One service-selection rule, shared by the Checkmk export and the channels.
 
-    Affects **only** the export (`/api/export/checkmk`) — the dashboard's
-    green/red layer and `/instances/{id}/checks` still show everything.
+    ``consumer`` is ``checkmk`` (the export) or a notification channel
+    (``mattermost`` / ``telegram`` / ``email``). ``selector`` is either a *category*
+    token (the part before the first ``:`` in a check key — ``cpu``, ``gateway`` …)
+    or a *full* check key (``gateway:WAN``). ``instance_id`` NULL applies the rule to
+    every instance (global); a value scopes it to one. ``mode`` is ``include`` (turn
+    on) or ``exclude`` (mute / override).
 
-    ``target`` is either a *category* token (the part before the first ``:`` in a
-    check key — ``cpu``, ``gateway``, ``ipsec.tunnel_ping`` …) or a *full* check
-    key (``gateway:WAN``). ``instance_id`` NULL applies the rule to every
-    instance. A check is excluded when a rule matches its instance (or is global)
-    AND matches its full key OR its category.
+    The base default is OFF for every consumer — nothing is selected until a rule
+    includes it. Resolution is *most-specific-wins* (instance beats global, full key
+    beats category) — see ``app.selection.model``. ``UNIQUE(consumer, instance_id,
+    selector)`` guarantees one rule per precedence level.
     """
 
-    __tablename__ = "checkmk_export_exclusions"
+    __tablename__ = "selection_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    consumer: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     instance_id: Mapped[int | None] = mapped_column(
         ForeignKey("instances.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    target: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    __table_args__ = (UniqueConstraint("instance_id", "target", name="uq_checkmk_exclusion"),)
-
-
-class NotificationRoute(Base):
-    """Subscription: notification ``channel`` receives alerts of ``category``.
-
-    Presence = subscribed (opt-in); absence = that channel does not get that
-    category. ``category`` is ``availability`` (instance offline/recovered) or a
-    Checkmk check category (``cpu``, ``cert``, ``gateway`` …). ``instance_id`` NULL
-    is a **global** route (every instance); a value scopes it to one instance.
-    Matching is override/precedence — a per-instance route wins over the global one,
-    its ``enabled`` flag deciding (so a global-on category can be switched off for a
-    single box) — see ``app.notifications.routing``. Global routes are pure presence
-    (always ``enabled``); ``enabled=False`` only ever appears on a per-instance row.
-    The ``availability`` rows are seeded globally for every channel by the migration
-    so up/down alerts work out of the box; the noisier check categories are opt-in.
-    """
-
-    __tablename__ = "notification_routes"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    instance_id: Mapped[int | None] = mapped_column(
-        ForeignKey("instances.id", ondelete="CASCADE"), nullable=True, index=True
-    )
-    channel: Mapped[str] = mapped_column(String(32), nullable=False)
-    category: Mapped[str] = mapped_column(String(64), nullable=False)
-    # Per-instance override toggle: False = explicitly suppress this category for the
-    # scoped instance even though a global route is on. Global rows are always True.
-    enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
+    selector: Mapped[str] = mapped_column(String(255), nullable=False)
+    mode: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     __table_args__ = (
-        UniqueConstraint("instance_id", "channel", "category", name="uq_notification_route"),
+        UniqueConstraint("consumer", "instance_id", "selector", name="uq_selection_rule"),
     )
 
 

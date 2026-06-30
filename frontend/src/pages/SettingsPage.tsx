@@ -1,9 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { MessageSquare, Send, Mail, Bot, Settings as SettingsIcon } from "lucide-react";
 import GeneralSettings from "../components/settings/GeneralSettings";
-import ChannelAlertSelection from "../components/settings/ChannelAlertSelection";
+import SelectionTree from "../components/settings/SelectionTree";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
-import CheckmkExport from "../components/settings/CheckmkExport";
 import LlmProviderTests from "../components/settings/LlmProviderTests";
 
 /**
@@ -112,7 +111,7 @@ export default function SettingsPage() {
             icon={channel.icon}
             intro={channel.intro}
           />
-          <ChannelAlertSelection channel={channel.channel} />
+          <SelectionTree consumer={channel.channel} />
         </section>
       )}
 
@@ -125,7 +124,7 @@ export default function SettingsPage() {
           </p>
           <div className="mt-4 space-y-6">
             <CheckmkApiKeys />
-            <CheckmkExport />
+            <SelectionTree consumer="checkmk" />
           </div>
         </section>
       )}

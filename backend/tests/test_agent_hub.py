@@ -22,10 +22,11 @@ from app.checks.history import CheckTransition
 from app.xsense.schemas import InterfaceStats, SystemStatus
 
 
-def test_check_alert_maps_state_to_level_and_category() -> None:
+def test_check_alert_maps_state_to_level_and_check_key() -> None:
     crit = CheckTransition(check_key="cert:abc", old_state=0, new_state=2, summary="Certificate x")
-    title, message, level, category = _check_alert("opn1", crit)
-    assert level == "error" and category == "cert"  # category() strips the ":abc"
+    title, message, level, check_key = _check_alert("opn1", crit)
+    # The full check key is passed so selection can route per service, not per category.
+    assert level == "error" and check_key == "cert:abc"
     assert "opn1" in title and message == "Certificate x"
     # WARN → warning, OK (recovery) → info.
     assert _check_alert("opn1", CheckTransition("cpu", 0, 1, "CPU high"))[2] == "warning"

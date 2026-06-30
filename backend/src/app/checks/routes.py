@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.auth.deps import current_user, read_principal
-from app.checkmk.exclusions import excluded_reason, is_excluded
 from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
 from app.checks.event_store import read_check_events
 from app.checks.overlay import overlay_checks
 from app.db.base import get_session
-from app.db.models import CheckmkExportExclusion, Instance, User
+from app.db.models import Instance, User
+from app.selection.model import CHECKMK, resolve
+from app.selection.store import fetch_rules
 from app.settings.store import effective_settings
 from app.xsense.registry import registry
 from app.xsense.schemas import (
@@ -180,8 +181,7 @@ async def export_checkmk(
         .all()
     )
 
-    rule_rows = (await session.execute(select(CheckmkExportExclusion))).scalars().all()
-    rules = [(r.instance_id, r.target) for r in rule_rows]
+    rules = await fetch_rules(session)
 
     settings = effective_settings()
     now = datetime.now(UTC)
@@ -201,7 +201,7 @@ async def export_checkmk(
             settings,
             now,
         )
-        checks = [c for c in evaluated if not is_excluded(c.key, inst.id, rules)]
+        checks = [c for c in evaluated if resolve(CHECKMK, c.key, inst.id, rules)[0]]
         instances.append(
             {
                 "instance_id": inst.id,
@@ -226,12 +226,12 @@ async def all_checks(
 ) -> list[ServiceAlert]:
     """All evaluated service checks across instances (the data Checkmk receives).
 
-    Each entry is annotated with whether it is currently excluded from the
-    Checkmk export (by category or specific rule). The Alerts page consumes this.
-    Direct-poll instances are polled live here (same as the export and preview).
+    Each entry is annotated with whether it is currently exported to Checkmk. The
+    export is opt-in (base default off): ``excluded`` is true for any check no
+    selection rule has included. The Alerts page consumes this. Direct-poll
+    instances are polled live here (same as the export and preview).
     """
-    rule_rows = (await session.execute(select(CheckmkExportExclusion))).scalars().all()
-    rules = [(r.instance_id, r.target) for r in rule_rows]
+    rules = await fetch_rules(session)
 
     rows = (
         (
@@ -262,7 +262,7 @@ async def all_checks(
             now,
         )
         for c in evaluated:
-            reason = excluded_reason(c.key, inst.id, rules)
+            on, by = resolve(CHECKMK, c.key, inst.id, rules)
             alerts.append(
                 ServiceAlert(
                     instance_id=inst.id,
@@ -271,8 +271,8 @@ async def all_checks(
                     state=c.state,
                     summary=c.summary,
                     metrics=c.metrics,
-                    excluded=reason is not None,
-                    excluded_by=reason,
+                    excluded=not on,
+                    excluded_by=None if on or by == "default" else by,
                 )
             )
 

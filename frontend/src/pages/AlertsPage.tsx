@@ -66,7 +66,8 @@ export default function AlertsPage() {
       </div>
 
       <p className="mt-1 text-sm text-slate-400">
-        Live service checks (same as sent to Checkmk). Exclusions only affect the Checkmk export.
+        Live service checks. The Checkmk column shows whether each is exported — export is opt-in,
+        picked in Settings → Checkmk; the dashboard always shows everything.
       </p>
 
       {/* Summary */}
@@ -82,7 +83,7 @@ export default function AlertsPage() {
         <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-400">{totalOk} OK</span>
         {totalExcluded > 0 && (
           <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-400">
-            {totalExcluded} excluded from Checkmk
+            {totalExcluded} not exported to Checkmk
           </span>
         )}
       </div>

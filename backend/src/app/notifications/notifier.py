@@ -2,9 +2,10 @@
 
 Channels (each optional): Mattermost, Telegram, Email. All three are configurable
 in the Settings UI; config values are read through ``effective_settings()`` so a DB
-override applies live. Each alert carries a *category* (``availability`` or a check
-category); a channel only receives it when it is subscribed to that category
-(``app.notifications.store``). Failures are logged, never raised.
+override applies live. Each alert carries a *check key* (``availability`` or a full
+check key like ``gateway:WAN``); a channel only receives it when its selection
+resolves on for that key + instance (``app.selection``). Failures are logged,
+never raised.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
-from app.notifications.routing import AVAILABILITY
-from app.notifications.store import is_subscribed_live
+from app.selection.model import AVAILABILITY
+from app.selection.store import is_on_live
 from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.notifications")
@@ -228,19 +229,20 @@ async def _dispatch(
     title: str,
     message: str,
     level: str,
-    category: str,
+    check_key: str,
     instance_id: int | None,
     *,
     respect_routes: bool,
 ) -> list[ChannelResult]:
-    """Send to each channel. When ``respect_routes`` is on, a channel not subscribed
-    to ``category`` for ``instance_id`` is reported as skipped without attempting a
+    """Send to each channel. When ``respect_routes`` is on, a channel not selected
+    for ``check_key`` on ``instance_id`` is reported as skipped without attempting a
     send (the test path turns it off — and passes ``instance_id=None`` — to reach
-    every configured channel)."""
+    every configured channel). ``check_key`` is the full check key (``gateway:WAN``)
+    or ``availability``; selection resolves it per channel (see ``app.selection``)."""
     s = effective_settings()
     results: list[ChannelResult] = []
     for channel, sender in _CHANNEL_SENDERS:
-        if respect_routes and not is_subscribed_live(channel, category, instance_id):
+        if respect_routes and not is_on_live(channel, check_key, instance_id):
             results.append(ChannelResult(channel, "skipped", "not subscribed"))
             continue
         results.append(await sender(s, title, message, level))
@@ -248,16 +250,15 @@ async def _dispatch(
 
 
 async def send_notification(
-    title: str, message: str, instance_id: int, level: str = "info", category: str = AVAILABILITY
+    title: str, message: str, instance_id: int, level: str = "info", check_key: str = AVAILABILITY
 ) -> None:
-    """Send an alert of ``category`` for ``instance_id`` to every subscribed channel.
+    """Send an alert about ``check_key`` for ``instance_id`` to every selected channel.
 
-    ``instance_id`` is required (not defaulted): routing resolves per instance (a
-    per-instance route overrides the global one), so a missing id would silently
-    match only global routes and ignore every per-instance override — a forgotten
-    call site must fail loudly, not degrade to global-only. Failures are logged,
-    not raised."""
-    await _dispatch(title, message, level, category, instance_id, respect_routes=True)
+    ``instance_id`` is required (not defaulted): selection resolves per instance (a
+    per-instance rule overrides the global one), so a missing id would silently match
+    only global rules and ignore every per-instance override — a forgotten call site
+    must fail loudly, not degrade to global-only. Failures are logged, not raised."""
+    await _dispatch(title, message, level, check_key, instance_id, respect_routes=True)
 
 
 # Strong refs to in-flight fire-and-forget sends, so the event loop doesn't GC a
@@ -266,14 +267,14 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 def dispatch_async(
-    title: str, message: str, instance_id: int, level: str = "info", category: str = AVAILABILITY
+    title: str, message: str, instance_id: int, level: str = "info", check_key: str = AVAILABILITY
 ) -> None:
     """Fire-and-forget ``send_notification`` for ``instance_id``: schedule the send as
     a background task so a caller on a latency-sensitive path (the agent WS ingest,
     the poll cycle) is never blocked by channel send latency (~10s/HTTP channel,
     SMTP). Delivery is best-effort — ``send_notification`` already logs every failure
     and never raises, so the task needs no result handling."""
-    task = asyncio.create_task(send_notification(title, message, instance_id, level, category))
+    task = asyncio.create_task(send_notification(title, message, instance_id, level, check_key))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 

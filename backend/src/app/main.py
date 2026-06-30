@@ -19,7 +19,6 @@ from app.audit.routes import router as audit_router
 from app.auth.bootstrap import ensure_admin
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
-from app.checkmk.routes import router as checkmk_router
 from app.checks.routes import router as checks_router
 from app.config import Settings, get_settings
 from app.connectivity.routes import router as connectivity_router
@@ -30,10 +29,10 @@ from app.ipsec.routes import router as ipsec_router
 from app.llm.routes import router as llm_router
 from app.logs.routes import router as logs_router
 from app.metrics.routes import router as metrics_router
-from app.notifications.routes import router as notifications_router
-from app.notifications.store import load_routes
 from app.poller.scheduler import start_scheduler, stop_scheduler
 from app.routes import health
+from app.selection.routes import router as selection_router
+from app.selection.store import load_rules
 from app.settings.routes import router as settings_router
 from app.settings.store import effective_settings, load_overrides
 from app.system.routes import router as system_router
@@ -67,8 +66,8 @@ async def lifespan(app: FastAPI):
     try:
         async with get_sessionmaker()() as session:
             count = await load_overrides(session)
-            routes = await load_routes(session)
-        log.info("settings.loaded", overrides=count, notification_routes=routes)
+            rules = await load_rules(session)
+        log.info("settings.loaded", overrides=count, selection_rules=rules)
     except Exception as exc:  # noqa: BLE001 — never block startup on settings load
         log.error("settings.load_failed", error=str(exc))
     _configure_logging(effective_settings().log_level)
@@ -204,11 +203,10 @@ def create_app() -> FastAPI:
     app.include_router(bulk_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
     app.include_router(checks_router, prefix="/api")
-    app.include_router(checkmk_router, prefix="/api")
     app.include_router(connectivity_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
-    app.include_router(notifications_router, prefix="/api")
+    app.include_router(selection_router, prefix="/api")
     app.include_router(llm_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
     return app

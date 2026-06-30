@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Unified, per-host/per-service selection for every notification channel.**
+  Mattermost, Telegram and Email now use the **same selection model as the Checkmk
+  export**: a per-instance tree where you turn on a whole category globally and then
+  add or mute **individual services on individual firewalls** (e.g. alert only on
+  `gateway:WAN` of `opn1`). This replaces the old coarse per-category routing. The
+  Checkmk export gains the missing direction too — you can now **include a single
+  service even when its category is off** (and mute one service inside an included
+  category). One shared engine (`app.selection`), one shared UI (`SelectionTree`),
+  one table (`selection_rules`), identical behaviour across all four consumers.
+- **Selection is now opt-in (base default OFF) everywhere — including the Checkmk
+  export.** Nothing is selected until you include it. **Operational note on upgrade:**
+  the old `checkmk_export_exclusions` and `notification_routes` tables (and their
+  rows) are dropped — after migrating, the Checkmk export emits **nothing** and the
+  channels send **nothing** (including instance up/down) until you re-pick what you
+  want in **Settings → Checkmk** and each channel tab. This is intentional (a clean,
+  consistent slate); re-select your services after deploying.
+- Notification alerts now carry the **full check key** (`gateway:WAN`) instead of
+  only its category, so channels can be routed per service.
+
+### Removed
+
+- The `availability` notification route is **no longer seeded** — instance up/down
+  alerts are off until you enable them per channel (see the opt-in note above).
+- Old API endpoints `/api/checkmk/{config,exclusions,preview}` and
+  `/api/notifications/{routing,routes,test}` — replaced by
+  `/api/selection/{consumer}/{config,rules,preview,test}`.
+
 ## [2.0.5] - 2026-06-29
 
 ### Added

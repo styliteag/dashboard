@@ -15,7 +15,6 @@ import structlog
 from fastapi import WebSocket
 from sqlalchemy import select
 
-from app.checkmk.exclusions import category as _check_category
 from app.checks.evaluate import evaluate_checks
 from app.checks.event_store import record_check_events
 from app.checks.history import current_states, diff_checks
@@ -136,13 +135,13 @@ _STATE_ICON = {0: "✅", 1: "⚠️", 2: "🔴", 3: "❔"}
 
 
 def _check_alert(instance_name: str, transition) -> tuple[str, str, str, str]:  # noqa: ANN001
-    """Build ``(title, message, level, category)`` for one check state transition.
-    Category mirrors the Checkmk check category so it lands in the same routing
-    bucket the admin subscribes a channel to."""
+    """Build ``(title, message, level, check_key)`` for one check state transition.
+    The full check key is passed to selection so a channel can be routed per service
+    (``gateway:WAN``), not just per category."""
     icon = _STATE_ICON.get(transition.new_state, "❔")
     title = f"{icon} {instance_name}: {transition.summary}"
     level = _STATE_LEVEL.get(transition.new_state, "warning")
-    return title, transition.summary, level, _check_category(transition.check_key)
+    return title, transition.summary, level, transition.check_key
 
 
 def annotate_iface_error_rates(
@@ -694,7 +693,7 @@ class AgentHub:
                 f"{instance_name} reported in again — maintenance flag cleared.",
                 instance_id,
                 level="info",
-                category="availability",
+                check_key="availability",
             )
         if recovered_name:
             dispatch_async(
@@ -702,15 +701,15 @@ class AgentHub:
                 f"Agent for {recovered_name} resumed pushing metrics.",
                 instance_id,
                 level="info",
-                category="availability",
+                check_key="availability",
             )
         # Fire a per-check alert for every state transition. Each is routed by its
         # category, so a channel only gets it when subscribed (history is recorded
         # regardless, above). Transitions are sparse — one per actual state change.
         # Sends are fire-and-forget so channel send latency never blocks ingest.
         for transition in check_transitions:
-            title, msg, level, cat = _check_alert(instance_name, transition)
-            dispatch_async(title, msg, instance_id, level=level, category=cat)
+            title, msg, level, key = _check_alert(instance_name, transition)
+            dispatch_async(title, msg, instance_id, level=level, check_key=key)
         log.debug("agent.metrics", instance_id=instance_id, cpu=status.cpu.total)
 
 

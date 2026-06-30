@@ -96,8 +96,8 @@ class Settings(BaseSettings):
 
     # Notifications (all optional). Three channels — Mattermost, Telegram, Email —
     # all editable (and overridable) in the Settings UI; env defaults here for
-    # first-boot/ops parity. Per-channel alert-category routing lives in the
-    # ``notification_routes`` table (see app.notifications.routing).
+    # first-boot/ops parity. Per-channel service selection lives in the
+    # ``selection_rules`` table (see app.selection).
     # Mattermost incoming-webhook URL (contains a secret token; stored encrypted).
     notify_mattermost_url: str = ""
     # Telegram bot token (secret) + target chat id. Configured when both are set.

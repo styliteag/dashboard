@@ -48,10 +48,11 @@ Checkmk site                              Dashboard
 ## What gets exposed
 
 One `<<<local>>>` service per row below, per firewall host. Source of truth:
-`backend/src/app/checks/evaluate.py`. **All of these are exported by default**;
-under **Settings → Checkmk** an admin can switch off a whole category globally or
-exclude a single service on one instance (export-only — the dashboard still shows
-everything).
+`backend/src/app/checks/evaluate.py`. **Nothing is exported by default** (opt-in);
+under **Settings → Checkmk** an admin turns on a whole category globally, then
+(optionally) adds or mutes a single service on one instance — include even works
+inside an otherwise-off category. Selection is export-only; the dashboard still
+shows everything.
 
 | Service key | When | State logic | Perfdata |
 |---|---|---|---|
@@ -111,8 +112,8 @@ page (*Reveal*) and revocable there.
 The key is **read-only** (`orbit_…` Bearer, rejected on any non-GET request), so
 it's safe to drop into the Checkmk datasource config.
 
-On the same page you also choose **what gets exported**: everything is on by
-default — switch off a whole category globally, or exclude a single service on
+On the same page you also choose **what gets exported**: nothing is on by default
+(opt-in) — turn on a whole category globally, then add or mute a single service on
 one instance (export-only; the dashboard keeps showing all checks).
 
 ### 2. Install the special agent on the Checkmk site

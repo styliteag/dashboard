@@ -57,7 +57,7 @@ async def test_dispatch_skips_channels_not_subscribed(monkeypatch) -> None:
     # Everything configured, but no channel is subscribed to the category → all
     # skipped as "not subscribed", and no network call is attempted.
     monkeypatch.setattr(notifier, "effective_settings", lambda: _all_configured())
-    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat, iid: False)
+    monkeypatch.setattr(notifier, "is_on_live", lambda consumer, key, iid: False)
     results = await notifier._dispatch("t", "m", "info", "cpu", 1, respect_routes=True)
     assert {r.channel for r in results} == {"mattermost", "telegram", "email"}
     assert all(r.status == "skipped" and r.detail == "not subscribed" for r in results)
@@ -68,8 +68,8 @@ async def test_dispatch_sends_only_to_subscribed_channel(monkeypatch) -> None:
     monkeypatch.setattr(notifier, "effective_settings", lambda: _all_configured())
     monkeypatch.setattr(notifier, "_resolve", _resolve_public)
     monkeypatch.setattr(notifier.httpx, "AsyncClient", _Client)
-    # Only mattermost is subscribed to "cpu".
-    monkeypatch.setattr(notifier, "is_subscribed_live", lambda ch, cat, iid: ch == "mattermost")
+    # Only mattermost is selected for "cpu".
+    monkeypatch.setattr(notifier, "is_on_live", lambda consumer, key, iid: consumer == "mattermost")
     results = {
         r.channel: r
         for r in await notifier._dispatch("t", "m", "info", "cpu", 1, respect_routes=True)

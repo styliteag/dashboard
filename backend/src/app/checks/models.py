@@ -35,13 +35,16 @@ class ServiceCheck(BaseModel):
 
 
 class ServiceAlert(ServiceCheck):
-    """A ServiceCheck with its instance and Checkmk export exclusion status.
+    """A ServiceCheck with its instance and Checkmk export selection status.
 
-    Used by the /checks aggregate (Alerts page) so consumers see exactly the
-    same checks Checkmk receives plus which ones are filtered out of the export.
+    Used by the /checks aggregate (Alerts page) so consumers see every evaluated
+    check plus whether it is currently exported to Checkmk (opt-in, base default
+    off).
     """
 
     instance_id: int
     instance_name: str
-    excluded: bool = False
-    excluded_by: str | None = None  # "category" | "specific" | None
+    excluded: bool = False  # true when the Checkmk export does not include it
+    # The selection level that decided when excluded by a rule (else None):
+    # "global" | "global_category" | "instance" | "instance_category".
+    excluded_by: str | None = None
