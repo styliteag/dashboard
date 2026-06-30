@@ -52,7 +52,7 @@ export function Phase2DupNote({ entries }: { entries: IPsecChild[] }) {
       className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-sky-600/20 px-1.5 py-0.5 text-xs text-sky-300"
     >
       <Copy className="h-3 w-3" />
-      duplicate phase-2
+      dup phase2
     </span>
   );
 }
