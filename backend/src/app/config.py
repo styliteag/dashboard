@@ -44,11 +44,12 @@ class Settings(BaseSettings):
 
     # Initial admin password (used only on first start when no admin exists yet)
     admin_password: str = Field(default="", description="Initial admin password")
-    # Bootstrap-admin lifecycle (see app.auth.bootstrap). 0 = enabled (default), 1 =
-    # retired. Flipping back to 0 from a disabled state is the deliberate break-glass:
-    # the seed admin is re-enabled, its password reset from DASH_ADMIN_PASSWORD and its
-    # 2FA cleared so the operator can log back in and re-enroll.
-    admin_disabled: bool = Field(default=False, description="Retire the bootstrap admin")
+    # Bootstrap-admin lifecycle (see app.auth.bootstrap). Three values:
+    #   "auto" (default) — disable the seed admin automatically once another admin
+    #                      exists; re-enable it when none remains.
+    #   "0"              — force the seed admin ENABLED (manual break-glass / keep on).
+    #   "1"              — force the seed admin DISABLED.
+    admin_disabled: str = Field(default="auto", description="Bootstrap admin: auto|0|1")
     # Issuer label shown in the user's authenticator app for TOTP enrollment.
     mfa_issuer: str = Field(default="Orbit Dashboard", description="TOTP issuer label")
     # WebAuthn / passkeys. ``rp_id`` is the registrable domain (no scheme/port);

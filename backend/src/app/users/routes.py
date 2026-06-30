@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
+from app.auth.bootstrap import admin_mode
 from app.auth.deps import require_admin
 from app.auth.roles import ROLE_ADMIN, Role
 from app.auth.security import hash_password
@@ -54,7 +55,11 @@ async def _admin_count(session: AsyncSession) -> int:
 
 
 async def _retire_bootstrap_if_supplanted(session: AsyncSession) -> None:
-    """Disable the password-only seed admin once a real admin exists."""
+    """Disable the password-only seed admin once a real admin exists.
+
+    Skipped when the operator forces the seed on (DASH_ADMIN_DISABLED=0)."""
+    if admin_mode() == "enabled":
+        return
     boot = (
         await session.execute(
             select(User).where(User.is_bootstrap.is_(True), User.disabled.is_(False))

@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mandatory 2FA) and is **disabled automatically as soon as a second admin
   exists** — so the only password-only account never outlives setup. If no other
   enabled admin remains it is re-enabled (password reset from the env) as a way
-  back in; `DASH_ADMIN_DISABLED=1` forces it off regardless.
+  back in. `DASH_ADMIN_DISABLED` overrides this: `auto` (default) = the lifecycle
+  above, `0` = force the seed enabled, `1` = force it disabled.
 
 ### Changed
 

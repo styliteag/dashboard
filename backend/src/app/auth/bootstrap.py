@@ -30,6 +30,16 @@ from app.db.models import User
 log = structlog.get_logger("app.auth.bootstrap")
 
 
+def admin_mode() -> str:
+    """Resolve DASH_ADMIN_DISABLED to "auto" | "enabled" | "disabled"."""
+    v = get_settings().admin_disabled.strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return "disabled"
+    if v in ("0", "false", "no", "off"):
+        return "enabled"
+    return "auto"
+
+
 async def _other_enabled_admins(session, exclude_id: int | None = None) -> int:
     """Count enabled, non-bootstrap admins (optionally excluding one id)."""
     stmt = (
@@ -58,15 +68,19 @@ async def ensure_admin() -> None:
             await _maybe_create(session, settings)
             return
 
-        # Derive the target state: disabled when retired by env or supplanted by a
-        # real admin; enabled (break-glass) when it's the only way back in.
-        others = await _other_enabled_admins(session)
-        want_disabled = settings.admin_disabled or others > 0
+        # Derive the target enabled/disabled state from the mode.
+        mode = admin_mode()
+        if mode == "disabled":
+            want_disabled = True
+        elif mode == "enabled":
+            want_disabled = False
+        else:  # auto: off once another admin exists, on when none remain
+            want_disabled = await _other_enabled_admins(session) > 0
 
         if want_disabled and not boot.disabled:
             boot.disabled = True
             await session.commit()
-            log.info("admin_bootstrap.disabled", username=boot.username, others=others)
+            log.info("admin_bootstrap.disabled", username=boot.username, mode=mode)
             return
 
         if not want_disabled and boot.disabled:
@@ -75,7 +89,7 @@ async def ensure_admin() -> None:
                 boot.password_hash = hash_password(settings.admin_password)
                 boot.password_version += 1
             await session.commit()
-            log.warning("admin_bootstrap.breakglass", username=boot.username)
+            log.warning("admin_bootstrap.breakglass", username=boot.username, mode=mode)
             return
 
         log.info("admin_bootstrap.unchanged", username=boot.username, disabled=boot.disabled)
@@ -88,6 +102,7 @@ async def _maybe_create(session, settings) -> None:
         log.warning("admin_bootstrap.skip", reason="DASH_ADMIN_PASSWORD not set")
         return
 
+    mode = admin_mode()
     total_users = await session.scalar(select(func.count()).select_from(User))
     enabled_admins = await session.scalar(
         select(func.count())
@@ -95,19 +110,20 @@ async def _maybe_create(session, settings) -> None:
         .where(User.role == ROLE_ADMIN, User.disabled.is_(False))
     )
     first_start = total_users == 0
-    lockout = enabled_admins == 0 and not settings.admin_disabled
+    lockout = enabled_admins == 0 and mode != "disabled"
     if not (first_start or lockout):
         log.info("admin_bootstrap.skip", reason="admin already present")
         return
 
+    disabled = mode == "disabled"
     admin = User(
         username="admin",
         password_hash=hash_password(settings.admin_password),
         password_version=1,
         role=ROLE_ADMIN,
         is_bootstrap=True,
-        disabled=settings.admin_disabled,
+        disabled=disabled,
     )
     session.add(admin)
     await session.commit()
-    log.info("admin_bootstrap.created", username="admin", disabled=settings.admin_disabled)
+    log.info("admin_bootstrap.created", username="admin", disabled=disabled)
