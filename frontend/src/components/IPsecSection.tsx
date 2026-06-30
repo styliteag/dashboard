@@ -12,7 +12,7 @@ import type {
   TunnelActionResponse,
   ActionResult,
 } from "../lib/types";
-import { Phase2Badge, Phase2ChildList, PingSummary } from "./IPsecPhase2";
+import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
 import PingMonitorDialog from "./PingMonitorDialog";
 import DiagnoseDialog from "./DiagnoseDialog";
 
@@ -266,6 +266,7 @@ export default function IPsecSection({
                         <div className="flex items-center gap-2">
                           <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
                           <PingSummary entries={t.children ?? []} />
+                          <Phase2DupNote entries={t.children ?? []} />
                         </div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-xs">

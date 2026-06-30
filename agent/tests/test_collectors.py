@@ -488,6 +488,78 @@ def test_tunnel_multinet_single_sa_membership_no_double_count() -> None:
     assert (t["bytes_in"], t["bytes_out"]) == (1, 2)  # counted once, not doubled
 
 
+# --- Duplicate Phase-2 detection -------------------------------------------
+# A customer-reported failure mode: more than one INSTALLED child SA exists for
+# the SAME traffic-selector pair of one connection. It shows up two ways — both
+# children under a single IKE_SA, or one child each across two IKE_SAs to the
+# same peer (duplicate phase1). _dedupe_children collapses the display row, so
+# the duplicate count is carried separately (installed_n → dup_count) and the
+# cross-IKE flavor is aggregated before _merge_ipsec picks the single best SA.
+
+# Two INSTALLED children, identical selector pair, under ONE IKE_SA.
+_SWANCTL_SAS_DUP_WITHIN = (
+    "conn-d {uniqueid=7 state=ESTABLISHED remote-host=2.2.2.2 local-host=1.1.1.1 established=50 "
+    "child-sas {d-1 {name=d state=INSTALLED bytes-in=1 bytes-out=2 "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]} "
+    "d-2 {name=d state=INSTALLED bytes-in=3 bytes-out=4 "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}"
+)
+# Two separate IKE_SAs (same name + endpoint), one INSTALLED child each, same pair.
+_SWANCTL_SAS_DUP_CROSS = (
+    "conn-x {uniqueid=8 state=ESTABLISHED remote-host=2.2.2.2 local-host=1.1.1.1 established=60 "
+    "initiator-spi=aaaa1111bbbb2222 responder-spi=cccc3333dddd4444 "
+    "child-sas {x-1 {name=x state=INSTALLED bytes-in=1 bytes-out=2 "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}\n"
+    "conn-x {uniqueid=9 state=ESTABLISHED remote-host=2.2.2.2 local-host=1.1.1.1 established=20 "
+    "initiator-spi=eeee5555ffff6666 responder-spi=7777aaaa8888bbbb "
+    "child-sas {x-9 {name=x state=INSTALLED bytes-in=5 bytes-out=6 "
+    "local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}"
+)
+
+
+def test_dedupe_children_records_installed_count() -> None:
+    # The surviving row carries how many INSTALLED SAs collapsed into it.
+    rows = agent._dedupe_children([
+        {"local_ts": "a", "remote_ts": "b", "state": "INSTALLED"},
+        {"local_ts": "a", "remote_ts": "b", "state": "INSTALLED"},
+        {"local_ts": "c", "remote_ts": "d", "state": "INSTALLED"},
+    ])
+    by_sel = {(r["local_ts"], r["remote_ts"]): r for r in rows}
+    assert by_sel[("a", "b")]["installed_n"] == 2
+    assert by_sel[("c", "d")]["installed_n"] == 1
+
+
+def test_merge_ipsec_flags_duplicate_phase2_within_ike() -> None:
+    sas = agent._parse_swanctl_sas(_SWANCTL_SAS_DUP_WITHIN)
+    tuns = agent._merge_ipsec([], sas, {})
+    ch = tuns[0]["children"]
+    assert len(ch) == 1  # still one display row (the duplicate is collapsed)
+    assert ch[0]["dup_count"] == 2  # but the duplicate is reported
+    assert (tuns[0]["phase2_up"], tuns[0]["phase2_total"]) == (1, 1)  # x/n unaffected
+
+
+def test_merge_ipsec_flags_duplicate_phase2_across_ikes() -> None:
+    sas = agent._parse_swanctl_sas(_SWANCTL_SAS_DUP_CROSS)
+    assert len(sas) == 2  # two IKE_SAs kept separate (not merged)
+    tuns = agent._merge_ipsec([], sas, {})
+    up = [t for t in tuns if t["status"] == "ESTABLISHED"]
+    assert len(up) == 1  # best-SA collapse → one tunnel row
+    dup = [
+        c for c in up[0]["children"]
+        if (c["local_ts"], c["remote_ts"]) == ("10.1.1.0/24", "10.2.2.0/24")
+    ]
+    assert dup and dup[0]["dup_count"] == 2
+
+
+def test_merge_ipsec_no_dup_flag_for_single_phase2() -> None:
+    # The healthy single-child case must never carry a duplicate count.
+    sas = agent._parse_swanctl_sas(_SWANCTL_SAS)
+    tuns = agent._merge_ipsec([], sas, {})
+    for t in tuns:
+        for c in t["children"]:
+            assert c.get("dup_count", 1) <= 1
+
+
 def test_parse_swanctl_sas_sums_child_bytes() -> None:
     raw = (
         "conn-a {uniqueid=1 state=ESTABLISHED remote-host=1.1.1.1 local-host=9.9.9.9 "

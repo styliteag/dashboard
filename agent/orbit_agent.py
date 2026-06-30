@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.0.6"
+__version__ = "2.0.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -712,9 +712,14 @@ def _dedupe_children(children: list[dict]) -> list[dict]:
     (old INSTALLED + new), which would otherwise double the phase-2 count and
     bytes (e.g. "4/2"). Keep the best (INSTALLED, then most traffic) per selector
     pair. Children with no selectors can't be told apart, so they pass through.
+
+    Each surviving row carries ``installed_n`` — how many INSTALLED SAs collapsed
+    into it — so duplicate Phase-2 (>1 INSTALLED for one pair) can be surfaced
+    downstream even though only one display row survives the collapse.
     """
     best: dict = {}
     order: list = []
+    installed: dict = {}
     passthrough: list[dict] = []
     for c in children:
         sel = (c.get("local_ts"), c.get("remote_ts"))
@@ -723,10 +728,38 @@ def _dedupe_children(children: list[dict]) -> list[dict]:
             continue
         if sel not in best:
             order.append(sel)
+        if str(c.get("state", "")).upper() == "INSTALLED":
+            installed[sel] = installed.get(sel, 0) + 1
         cur = best.get(sel)
         if cur is None or _child_rank(c) > _child_rank(cur):
             best[sel] = c
-    return [best[k] for k in order] + passthrough
+    return [{**best[k], "installed_n": installed.get(k, 0)} for k in order] + passthrough
+
+
+def _installed_per_selector(sas: list[dict]) -> dict:
+    """Total INSTALLED child SAs per (local_ts, remote_ts) across several IKE_SAs.
+
+    Sums each SA's ``installed_n`` so a duplicate Phase-2 is caught whether the
+    extra SAs sit under one IKE_SA (within-SA dups already folded into
+    installed_n) or split across two IKE_SAs to the same peer. Selector-less
+    children are skipped — they can't be matched to a pair.
+    """
+    counts: dict = {}
+    for s in sas:
+        for ch in s.get("children", []):
+            if str(ch.get("state", "")).upper() != "INSTALLED":
+                continue
+            sel = (ch.get("local_ts"), ch.get("remote_ts"))
+            if not (sel[0] or sel[1]):
+                continue
+            counts[sel] = counts.get(sel, 0) + ch.get("installed_n", 1)
+    return counts
+
+
+def _with_dup(child: dict, dup_map: dict) -> dict:
+    """Tag a merged child row with ``dup_count`` when its pair has >1 INSTALLED SA."""
+    n = dup_map.get((child.get("local_ts"), child.get("remote_ts")), 0)
+    return {**child, "dup_count": n} if n > 1 else child
 
 
 def _parse_swanctl_sas(out: str) -> list[dict]:
@@ -934,10 +967,18 @@ def _merge_children(conn_children: list[dict], sa_children: list[dict]) -> list[
     return out
 
 
-def _tunnel(name: str, conn: dict | None, sa: dict | None, descriptions: dict[str, str]) -> dict:
+def _tunnel(
+    name: str,
+    conn: dict | None,
+    sa: dict | None,
+    descriptions: dict[str, str],
+    dup_map: dict | None = None,
+) -> dict:
     """Build one dashboard tunnel row, preferring live SA data when present."""
     conn = conn or {}
     children = _merge_children(conn.get("children", []), (sa or {}).get("children", []))
+    if dup_map:
+        children = [_with_dup(c, dup_map) for c in children]
     base = {
         "id": name,  # connection name → `swanctl --initiate --ike <id>`
         "description": descriptions.get(name) or name,  # human name, else the UUID
@@ -1003,6 +1044,25 @@ def _index_best(sas: list[dict], key) -> dict:
     return best
 
 
+def _index_all(sas: list[dict], key) -> dict:
+    """Build a {key: [sa, ...]} index keeping ALL SAs per key (for dup counting)."""
+    out: dict = {}
+    for s in sas:
+        out.setdefault(key(s), []).append(s)
+    return out
+
+
+def _dup_selectors(name: str, ep: tuple, by_name: dict, by_ep: dict) -> dict:
+    """INSTALLED-per-selector counts across every SA of one tunnel (by name or endpoint)."""
+    subset: list[dict] = []
+    seen: set = set()
+    for s in by_name.get(name, []) + by_ep.get(ep, []):
+        if id(s) not in seen:
+            seen.add(id(s))
+            subset.append(s)
+    return _installed_per_selector(subset)
+
+
 def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str]) -> list[dict]:
     """Overlay live SA status onto the configured connections.
 
@@ -1012,6 +1072,11 @@ def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str
     """
     sa_by_name = _index_best(sas, lambda s: s["name"])
     sa_by_ep = _index_best(sas, lambda s: (s["local"], s["remote"]))
+    # Keep ALL SAs per name/endpoint (not just the best) so a duplicate Phase-2
+    # split across two IKE_SAs to the same peer is counted before the best-SA
+    # collapse below hides the second one.
+    all_by_name = _index_all(sas, lambda s: s["name"])
+    all_by_ep = _index_all(sas, lambda s: (s["local"], s["remote"]))
 
     tunnels = []
     used_names: set[str] = set()
@@ -1021,7 +1086,9 @@ def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str
         if sa is not None:
             used_names.add(sa["name"])
             used_eps.add((sa["local"], sa["remote"]))
-        tunnels.append(_tunnel(c["name"], c, sa, descriptions))
+        ep = (sa["local"], sa["remote"]) if sa else (c["local"], c["remote"])
+        dup = _dup_selectors(c["name"], ep, all_by_name, all_by_ep)
+        tunnels.append(_tunnel(c["name"], c, sa, descriptions, dup))
     # Surface orphan SAs (no matching conn) so nothing disappears — but only the
     # best SA per name/endpoint, and never one already consumed above (a rekey
     # dup shares the matched SA's endpoint even when its name drifted).
@@ -1032,7 +1099,8 @@ def _merge_ipsec(conns: list[dict], sas: list[dict], descriptions: dict[str, str
         used_names.add(s["name"])
         used_eps.add(ep)
         best = sa_by_name.get(s["name"], s)
-        tunnels.append(_tunnel(best["name"], None, best, descriptions))
+        dup = _dup_selectors(best["name"], ep, all_by_name, all_by_ep)
+        tunnels.append(_tunnel(best["name"], None, best, descriptions, dup))
     return tunnels
 
 

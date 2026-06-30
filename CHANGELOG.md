@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Duplicate Phase-2 note on IPsec tunnels.** When the same traffic-selector pair
+  carries more than one installed child SA — whether both sit under one IKE_SA or
+  split across two IKE_SAs to the same peer — and the duplicate **persists across
+  several consecutive polls**, a neutral "duplicate phase-2" note is shown on the
+  tunnel row (and per selector when expanded) in both the **VPN overview** and the
+  **instance** IPsec view. It is informational only: no warning, no notification,
+  no Checkmk state. Transient make-before-break rekey blips are filtered out, so
+  the note marks stuck/orphaned SAs, not routine rekeys. Agent-managed
+  OPNsense/pfSense only. Requires agent ≥ 2.0.7.
+
 ## [2.1.1] - 2026-06-30
 
 ### Added

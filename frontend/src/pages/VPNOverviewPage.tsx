@@ -18,7 +18,7 @@ import type {
   IPsecServiceStatus,
   TunnelActionResponse,
 } from "../lib/types";
-import { Phase2Badge, Phase2ChildList, PingSummary } from "../components/IPsecPhase2";
+import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "../components/IPsecPhase2";
 import { worstPing } from "../lib/ipsec-ping";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
@@ -383,6 +383,7 @@ export default function VPNOverviewPage() {
             <div className="flex items-center gap-2">
               <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
               <PingSummary entries={t.children ?? []} />
+              <Phase2DupNote entries={t.children ?? []} />
             </div>
           </td>
           <td className="px-3 py-2 font-mono text-xs text-slate-400">

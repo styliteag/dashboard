@@ -54,6 +54,12 @@ log = structlog.get_logger("app.agent_hub")
 # down instead of buffered.
 _TUNNEL_QUEUE_MAX = 1000
 
+# A duplicate Phase-2 (more than one INSTALLED child SA for one selector pair) is
+# only surfaced as a note after it has been seen this many consecutive pushes —
+# a make-before-break rekey shows two INSTALLED SAs for at most a poll or two, so
+# this filters the routine churn and keeps only the stuck/orphaned duplicates.
+_DUP_PERSIST_POLLS = 3
+
 
 # --- Agent → domain conversion (pure; testable without a DB) ------------------
 # These map the agent's push payload (see agent/orbit_agent.py collect_all)
@@ -214,6 +220,7 @@ def _child_from_agent(c: dict) -> IPsecChild:
         bytes_out=int(c.get("bytes_out", 0)),
         spi_in=c.get("spi_in", ""),
         spi_out=c.get("spi_out", ""),
+        dup_count=int(c.get("dup_count", 1) or 1),
         suggested_source=c.get("suggested_source", ""),
         ping_state=c.get("ping_state", "none"),
         ping_rtt_ms=c.get("ping_rtt_ms"),
@@ -360,6 +367,10 @@ class AgentHub:
         self._last_firmware: dict[int, FirmwareStatus] = {}
         self._last_gateways: dict[int, list[GatewayStatus]] = {}
         self._last_ipsec: dict[int, IPsecServiceStatus] = {}
+        # Per-instance consecutive-poll counter for duplicate Phase-2 selectors
+        # ({"tunnel|local_ts|remote_ts": polls}). In-memory only: a restart just
+        # re-accrues the streak, so the note reappears after a few pushes.
+        self._ipsec_dup_streak: dict[int, dict[str, int]] = {}
         self._last_connectivity: dict[int, list[ConnectivityResult]] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
@@ -580,6 +591,37 @@ class AgentHub:
             self.hydrate_instance(inst.id, inst.status_snapshot)
         return len(rows)
 
+    def _annotate_dup_persistence(
+        self, instance_id: int, status: IPsecServiceStatus
+    ) -> IPsecServiceStatus:
+        """Set ``phase2_dup_persistent`` on children whose duplicate Phase-2 has
+        survived ``_DUP_PERSIST_POLLS`` consecutive pushes.
+
+        The agent reports an instantaneous ``dup_count`` (>1 = duplicated this
+        poll). We keep a per-selector streak: a selector duplicated this poll
+        increments its counter, anything else drops out (resets to 0). Only once a
+        streak reaches the threshold is the note shown — so a transient rekey blip
+        never lights it. Returns a copy with the flag applied (no mutation)."""
+        prev = self._ipsec_dup_streak.get(instance_id, {})
+        streaks: dict[str, int] = {}
+        tunnels = []
+        for t in status.tunnels:
+            children = []
+            for c in t.children:
+                persistent = False
+                if c.dup_count > 1:
+                    key = f"{t.id}|{c.local_ts}|{c.remote_ts}"
+                    streaks[key] = prev.get(key, 0) + 1
+                    persistent = streaks[key] >= _DUP_PERSIST_POLLS
+                children.append(
+                    c
+                    if persistent == c.phase2_dup_persistent
+                    else c.model_copy(update={"phase2_dup_persistent": persistent})
+                )
+            tunnels.append(t.model_copy(update={"children": children}))
+        self._ipsec_dup_streak[instance_id] = streaks
+        return status.model_copy(update={"tunnels": tunnels})
+
     async def handle_metrics(self, instance_id: int, data: dict) -> None:
         """Process a metrics push from an agent."""
         sessionmaker = get_sessionmaker()
@@ -608,7 +650,7 @@ class AgentHub:
         tunnel_events = []
         if data.get("ipsec"):
             prev_ipsec = self._last_ipsec.get(instance_id)
-            new_ipsec = ipsec_from_agent(data)
+            new_ipsec = self._annotate_dup_persistence(instance_id, ipsec_from_agent(data))
             self._last_ipsec[instance_id] = new_ipsec
             tunnel_events = diff_ipsec(prev_ipsec, new_ipsec)
 

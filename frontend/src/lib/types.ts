@@ -203,6 +203,8 @@ export interface IPsecChild {
   bytes_out: number;
   spi_in?: string; // ESP SPIs (shared across ends) — for tunnel pairing
   spi_out?: string;
+  dup_count?: number; // INSTALLED child SAs sharing this selector pair (>1 = duplicate Phase-2)
+  phase2_dup_persistent?: boolean; // duplicate has persisted across polls — show the note
   suggested_source: string; // agent-suggested local source IP for the ping
   ping_state: PingState | string; // none | ok | fail | error
   ping_rtt_ms: number | null;

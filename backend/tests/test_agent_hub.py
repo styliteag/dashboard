@@ -10,8 +10,10 @@ from __future__ import annotations
 import pytest
 
 from app.agent_hub.hub import (
+    _DUP_PERSIST_POLLS,
     AgentHub,
     _check_alert,
+    _child_from_agent,
     annotate_iface_error_rates,
     firmware_from_agent,
     gateways_from_agent,
@@ -19,7 +21,13 @@ from app.agent_hub.hub import (
     status_from_agent,
 )
 from app.checks.history import CheckTransition
-from app.xsense.schemas import InterfaceStats, SystemStatus
+from app.xsense.schemas import (
+    InterfaceStats,
+    IPsecChild,
+    IPsecServiceStatus,
+    IPsecTunnel,
+    SystemStatus,
+)
 
 
 def test_check_alert_maps_state_to_level_and_check_key() -> None:
@@ -298,3 +306,65 @@ def test_tunnel_queue_overflow_tears_down_stream() -> None:
     # Delivering to the now-closed stream is a no-op (no exception, no growth).
     h.deliver_tunnel("s1", {"op": "data", "data": "late"})
     assert q.empty()
+
+
+# --- Duplicate Phase-2 persistence (note, not a warning) --------------------
+# The agent reports an instantaneous dup_count per child; the hub only lights the
+# note once the duplicate has survived _DUP_PERSIST_POLLS consecutive pushes, so a
+# transient make-before-break rekey blip never shows.
+
+
+def _ipsec_with_dup(dup_count: int) -> IPsecServiceStatus:
+    return IPsecServiceStatus(
+        running=True,
+        tunnels=[
+            IPsecTunnel(
+                id="t1",
+                children=[
+                    IPsecChild(
+                        local_ts="10.1.1.0/24",
+                        remote_ts="10.2.2.0/24",
+                        state="INSTALLED",
+                        dup_count=dup_count,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def _dup_flag(status: IPsecServiceStatus) -> bool:
+    return status.tunnels[0].children[0].phase2_dup_persistent
+
+
+def test_child_from_agent_carries_dup_count() -> None:
+    assert _child_from_agent({"dup_count": 3}).dup_count == 3
+    assert _child_from_agent({}).dup_count == 1  # default: not a duplicate
+
+
+def test_dup_persistence_lights_only_after_threshold() -> None:
+    hub = AgentHub()
+    # Below threshold the duplicate is present but not yet flagged persistent.
+    for _ in range(_DUP_PERSIST_POLLS - 1):
+        assert _dup_flag(hub._annotate_dup_persistence(1, _ipsec_with_dup(2))) is False
+    # The Nth consecutive duplicate poll flips the note on.
+    assert _dup_flag(hub._annotate_dup_persistence(1, _ipsec_with_dup(2))) is True
+
+
+def test_dup_persistence_resets_on_a_clean_poll() -> None:
+    hub = AgentHub()
+    for _ in range(_DUP_PERSIST_POLLS + 2):
+        hub._annotate_dup_persistence(1, _ipsec_with_dup(2))
+    assert _dup_flag(hub._annotate_dup_persistence(1, _ipsec_with_dup(2))) is True
+    # A single poll without the duplicate clears the streak...
+    assert _dup_flag(hub._annotate_dup_persistence(1, _ipsec_with_dup(1))) is False
+    # ...and the counter starts over (one dup poll is not yet persistent).
+    assert _dup_flag(hub._annotate_dup_persistence(1, _ipsec_with_dup(2))) is False
+
+
+def test_dup_persistence_is_isolated_per_instance() -> None:
+    hub = AgentHub()
+    for _ in range(_DUP_PERSIST_POLLS):
+        hub._annotate_dup_persistence(1, _ipsec_with_dup(2))
+    # A different instance keeps its own streak — one dup poll is not persistent.
+    assert _dup_flag(hub._annotate_dup_persistence(2, _ipsec_with_dup(2))) is False

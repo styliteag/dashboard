@@ -3,9 +3,14 @@
  * the ping-monitor affordance. Used by both the instance IPsec view and the
  * global VPN overview so Phase 2 + its ping status look identical everywhere.
  */
-import { Activity, Settings2 } from "lucide-react";
+import { Activity, Copy, Settings2 } from "lucide-react";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
 import { findMonitor, worstPing } from "../lib/ipsec-ping";
+
+/** A child whose duplicate Phase-2 has persisted across polls (note, not a warning). */
+function isDup(ch: IPsecChild): boolean {
+  return Boolean(ch.phase2_dup_persistent);
+}
 
 /**
  * Always-visible per-tunnel ping rollup, so a failing probe shows RED on the row
@@ -28,6 +33,26 @@ export function PingSummary({ entries }: { entries: IPsecChild[] }) {
     >
       <Activity className="h-3 w-3" />
       {m.label}
+    </span>
+  );
+}
+
+/**
+ * Always-visible note when one or more Phase-2 selectors carry a persistent
+ * duplicate (more than one INSTALLED child SA for the same selector pair).
+ * Neutral/info styling on purpose — it is a note, not a warning. Null when none.
+ */
+export function Phase2DupNote({ entries }: { entries: IPsecChild[] }) {
+  const dups = entries.filter(isDup);
+  if (dups.length === 0) return null;
+  const noun = dups.length > 1 ? "selectors have" : "selector has";
+  return (
+    <span
+      title={`${dups.length} Phase-2 ${noun} more than one installed child SA (duplicate), persisting across polls — expand for detail`}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-sky-600/20 px-1.5 py-0.5 text-xs text-sky-300"
+    >
+      <Copy className="h-3 w-3" />
+      duplicate phase-2
     </span>
   );
 }
@@ -123,6 +148,15 @@ export function Phase2ChildList({
           >
             <span className="font-mono text-slate-300">{selector}</span>
             <StateBadge state={ch.state} />
+            {isDup(ch) && (
+              <span
+                title="Duplicate Phase-2: more than one installed child SA for this selector, persisting across polls"
+                className="inline-flex items-center gap-1 rounded bg-sky-600/20 px-1.5 py-0.5 text-sky-300"
+              >
+                <Copy className="h-3 w-3" />
+                {ch.dup_count && ch.dup_count > 1 ? `${ch.dup_count}× ` : ""}duplicate
+              </span>
+            )}
             {pingSupported && <PingBadge child={ch} />}
             {pingSupported && (
               <div className="ml-auto flex items-center gap-2">

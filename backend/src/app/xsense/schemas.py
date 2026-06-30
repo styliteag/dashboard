@@ -195,6 +195,13 @@ class IPsecChild(BaseModel):
     # ESP SPIs — shared across both ends (A.spi_out == B.spi_in); for tunnel pairing.
     spi_in: str = ""
     spi_out: str = ""
+    # Duplicate Phase-2 (note, not a warning): how many INSTALLED child SAs share
+    # this selector pair this poll (1 = normal). >1 means the same Phase-2 is
+    # installed more than once — under one IKE_SA or split across two.
+    dup_count: int = 1
+    # Set by the hub once dup_count>1 has persisted across several consecutive
+    # polls — a transient make-before-break rekey blip stays False.
+    phase2_dup_persistent: bool = False
     # Agent-suggested local source IP (box-owned, inside local_ts) for the monitor.
     suggested_source: str = ""
     # Ping monitor result: none (unconfigured) | ok | fail (no reply) | error (misconfig).
