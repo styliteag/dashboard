@@ -381,6 +381,7 @@ class IPsecTunnelEvent(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     # phase1_up | phase1_down | phase1_changed | phase2_changed | ping_ok | ping_fail
+    # | phase2_dup_on | phase2_dup_off
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     old_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
     new_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")

@@ -18,6 +18,8 @@ from app.agent_hub.hub import (
     ipsec_from_agent,
     status_from_agent,
 )
+from app.ipsec.history import diff_ipsec
+from app.xsense.schemas import IPsecChild, IPsecServiceStatus, IPsecTunnel
 
 SAMPLE = {
     "system": {"hostname": "fw7", "platform": "opnsense"},
@@ -97,6 +99,51 @@ def test_hydrate_ignores_empty() -> None:
     h.hydrate_instance(7, None)
     h.hydrate_instance(7, {})
     assert h.get_last_status(7) is None
+
+
+def _ipsec_with_dup(persistent: bool) -> IPsecServiceStatus:
+    child = IPsecChild(
+        name="c1",
+        local_ts="10.1.1.0/24",
+        remote_ts="10.2.2.0/24",
+        state="INSTALLED",
+        dup_count=2,
+        phase2_dup_persistent=persistent,
+    )
+    return IPsecServiceStatus(
+        running=True,
+        tunnels=[
+            IPsecTunnel(
+                id="con1",
+                phase1_status="established",
+                phase2_up=2,
+                phase2_total=1,
+                children=[child],
+            )
+        ],
+    )
+
+
+def test_hydrate_reseeds_dup_streak_no_restart_flap() -> None:
+    """A restart with an active *persistent* duplicate Phase-2 must not emit a
+    spurious dup-off/on flap: the in-memory streak is re-seeded from the snapshot
+    so the next push re-derives persistent=True instead of resetting to 0."""
+    src = AgentHub()
+    src._last_status[7] = status_from_agent(SAMPLE)  # so the snapshot isn't None
+    src._last_ipsec[7] = _ipsec_with_dup(True)
+    snap = src._snapshot_for(7)
+
+    h = AgentHub()  # fresh process after restart
+    h.hydrate_instance(7, snap)
+    prev = h.get_last_ipsec(7)
+    assert prev.tunnels[0].children[0].phase2_dup_persistent is True
+    assert h._ipsec_dup_streak[7]["con1|10.1.1.0/24|10.2.2.0/24"] >= 3  # re-seeded
+
+    # Next push: the dup is still present but the agent's flag starts False; the
+    # re-seeded streak must carry it straight back to persistent=True.
+    new = h._annotate_dup_persistence(7, _ipsec_with_dup(False))
+    assert new.tunnels[0].children[0].phase2_dup_persistent is True
+    assert diff_ipsec(prev, new) == []  # no flap event
 
 
 class _FakeScalars:

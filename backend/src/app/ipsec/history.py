@@ -31,7 +31,9 @@ class TunnelEvent:
 
     tunnel_id: str
     child_name: str  # "" for tunnel-level (phase1/phase2) events
-    event_type: str  # phase1_up|phase1_down|phase1_changed|phase2_changed|ping_ok|ping_fail
+    # phase1_up|phase1_down|phase1_changed|phase2_changed|ping_ok|ping_fail
+    # |phase2_dup_on|phase2_dup_off
+    event_type: str
     old_value: str
     new_value: str
 
@@ -69,6 +71,18 @@ def _ping_event(tunnel_id: str, prev: IPsecChild, new: IPsecChild) -> TunnelEven
     return None
 
 
+def _dup_event(tunnel_id: str, prev: IPsecChild, new: IPsecChild) -> TunnelEvent | None:
+    """Phase-2 duplicate note appearing/clearing (the debounced ``phase2_dup_persistent``
+    the hub sets once a duplicate selector survives several consecutive polls). The
+    selector pair rides in ``old_value``/``new_value`` so the timeline reads on its own."""
+    if prev.phase2_dup_persistent == new.phase2_dup_persistent:
+        return None
+    selector = f"{new.local_ts or prev.local_ts} → {new.remote_ts or prev.remote_ts}".strip()
+    if new.phase2_dup_persistent:
+        return TunnelEvent(tunnel_id, new.name, "phase2_dup_on", selector, f"{new.dup_count}× SAs")
+    return TunnelEvent(tunnel_id, new.name, "phase2_dup_off", selector, "resolved")
+
+
 def _tunnel_events(prev: IPsecTunnel, new: IPsecTunnel) -> list[TunnelEvent]:
     events: list[TunnelEvent] = []
     if (p1 := _phase1_event(prev, new)) is not None:
@@ -82,6 +96,8 @@ def _tunnel_events(prev: IPsecTunnel, new: IPsecTunnel) -> list[TunnelEvent]:
             continue
         if (pe := _ping_event(new.id, pc, child)) is not None:
             events.append(pe)
+        if (de := _dup_event(new.id, pc, child)) is not None:
+            events.append(de)
     return events
 
 

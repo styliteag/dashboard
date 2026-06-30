@@ -137,18 +137,21 @@ class CheckHistoryEvent(BaseModel):
 async def instance_check_history(
     instance_id: int,
     limit: int = 100,
+    key_prefix: str | None = None,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> list[CheckHistoryEvent]:
     """Recorded check state-change history for one instance, most recent first.
 
-    Populated by the agent-push ingest; direct-API instances have no history yet.
+    ``key_prefix`` narrows to one surface (e.g. ``connectivity:``, ``availability``,
+    ``gateway:``). Populated by the agent-push ingest (plus availability from the
+    scheduler); direct-API instances have only availability history.
     """
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     limit = max(1, min(limit, 500))
-    rows = await read_check_events(session, instance_id, limit)
+    rows = await read_check_events(session, instance_id, limit, key_prefix=key_prefix)
     return [
         CheckHistoryEvent(
             ts=row.ts.isoformat(),
