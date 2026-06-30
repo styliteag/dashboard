@@ -27,8 +27,12 @@ function StateBadge({ state }: { state: number }) {
 
 interface Props {
   instanceId: number;
-  /** Restrict to one surface, e.g. `connectivity:42` or `availability`. */
-  keyPrefix: string;
+  /** Exact entity key, e.g. `connectivity:42` or `availability`. Use for one
+   * specific monitor/tunnel — a prefix would over-match (`connectivity:4` also
+   * catches `connectivity:42`). Exactly one of checkKey / keyPrefix is given. */
+  checkKey?: string;
+  /** Whole-category prefix, e.g. `gateway:` or `cert:`. */
+  keyPrefix?: string;
   title: string;
   /** Hide the per-row Check column when every row shares the same key. */
   hideKeyColumn?: boolean;
@@ -37,18 +41,20 @@ interface Props {
 
 export default function CheckHistoryDialog({
   instanceId,
+  checkKey,
   keyPrefix,
   title,
   hideKeyColumn = false,
   onClose,
 }: Props) {
+  const filter = checkKey
+    ? `key=${encodeURIComponent(checkKey)}`
+    : `key_prefix=${encodeURIComponent(keyPrefix ?? "")}`;
   const { data, isLoading } = useQuery({
-    queryKey: ["check-history", instanceId, keyPrefix],
+    queryKey: ["check-history", instanceId, checkKey ?? "", keyPrefix ?? ""],
     queryFn: () =>
       api.get<CheckHistoryEvent[]>(
-        `/api/instances/${instanceId}/checks/history?limit=200&key_prefix=${encodeURIComponent(
-          keyPrefix,
-        )}`,
+        `/api/instances/${instanceId}/checks/history?limit=200&${filter}`,
       ),
     refetchOnWindowFocus: false,
   });

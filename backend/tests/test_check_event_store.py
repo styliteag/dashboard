@@ -75,15 +75,34 @@ class _EmptyResult:
 
 
 @pytest.mark.asyncio
-async def test_read_check_events_applies_key_prefix_filter() -> None:
+async def test_read_check_events_category_prefix_uses_like() -> None:
     session = _CaptureSelect()
-    await read_check_events(session, 7, limit=50, key_prefix="connectivity:")
+    await read_check_events(session, 7, limit=50, key_prefix="gateway:")
     sql = str(session.stmt.compile())
-    assert "LIKE" in sql.upper()  # prefix → a LIKE 'connectivity:%' clause
+    assert "LIKE" in sql.upper()  # category → a LIKE 'gateway:%' clause
 
 
 @pytest.mark.asyncio
-async def test_read_check_events_without_prefix_has_no_like() -> None:
+async def test_read_check_events_exact_key_uses_equality_not_like() -> None:
+    # The bug guard: an entity key must be EXACT, never a prefix — otherwise
+    # `connectivity:5` would also match `connectivity:50`, `connectivity:512`, …
+    session = _CaptureSelect()
+    await read_check_events(session, 7, limit=50, key="connectivity:5")
+    sql = str(session.stmt.compile())
+    assert "LIKE" not in sql.upper()  # exact → check_key = :key, no prefix bleed
+    assert "check_key" in sql.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_check_events_key_wins_over_prefix() -> None:
+    session = _CaptureSelect()
+    await read_check_events(session, 7, key="availability", key_prefix="avail")
+    sql = str(session.stmt.compile())
+    assert "LIKE" not in sql.upper()  # exact key takes precedence
+
+
+@pytest.mark.asyncio
+async def test_read_check_events_without_filter_has_no_like() -> None:
     session = _CaptureSelect()
     await read_check_events(session, 7, limit=50)
     sql = str(session.stmt.compile())

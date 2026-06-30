@@ -149,7 +149,7 @@ export default function ConnectivityOverviewPage() {
       {hist && (
         <CheckHistoryDialog
           instanceId={hist.instance_id}
-          keyPrefix={`connectivity:${hist.id}`}
+          checkKey={`connectivity:${hist.id}`}
           title={`History — ${hist.instance_name} · ${hist.name}`}
           hideKeyColumn
           onClose={() => setHist(null)}

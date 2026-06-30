@@ -80,16 +80,23 @@ async def read_check_events(
     session: AsyncSession,
     instance_id: int,
     limit: int = 100,
+    key: str | None = None,
     key_prefix: str | None = None,
 ) -> list[CheckEvent]:
     """Most-recent-first check history for one instance (capped).
 
-    ``key_prefix`` restricts to keys starting with it (e.g. ``connectivity:`` for one
-    surface, ``availability`` for online/offline) so one generic timeline can render
-    a single surface.
+    Two narrowing modes for a single-surface timeline:
+    - ``key`` — exact match on one entity (``connectivity:5``, ``availability``).
+      Use this for a specific monitor/tunnel/etc.: a prefix would over-match
+      (``connectivity:5`` LIKE would also catch ``connectivity:50``).
+    - ``key_prefix`` — every key under a category (``gateway:``, ``cert:``).
+
+    ``key`` wins when both are given.
     """
     stmt = select(CheckEvent).where(CheckEvent.instance_id == instance_id)
-    if key_prefix:
+    if key:
+        stmt = stmt.where(CheckEvent.check_key == key)
+    elif key_prefix:
         stmt = stmt.where(CheckEvent.check_key.startswith(key_prefix))
     stmt = stmt.order_by(CheckEvent.ts.desc(), CheckEvent.id.desc()).limit(limit)
     result = await session.execute(stmt)
