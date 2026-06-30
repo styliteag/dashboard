@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Connectivity monitors stuck on "no data yet" after an agent reconnect.** On
+  every agent (re)connect the backend re-pushed only the IPsec ping-monitor
+  config, never the standalone connectivity monitors. Since the agent's monitor
+  set starts empty and is only populated by a `config_update`, a reconnect (e.g.
+  after a backend restart) left connectivity checks unprobed — every row showed
+  "no data yet" with OK/Down/Error all 0. The hello handler now also pushes the
+  connectivity monitor set, so probing resumes immediately on reconnect.
+
 ## [2.1.6] - 2026-06-30
 
 ### Fixed

@@ -39,6 +39,7 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.auth.security import limiter
 from app.config import get_settings
+from app.connectivity import service as conn_service
 from app.db.base import get_session, get_sessionmaker
 from app.db.models import EnrollmentCode, Instance, User
 from app.devices.types import Transport
@@ -145,12 +146,17 @@ async def agent_websocket(ws: WebSocket):
                     "push_interval": push_interval,
                 }
             )
-            # Push the instance's IPsec ping-monitor config so the agent starts
-            # probing immediately on (re)connect. Best-effort: a failure here must
-            # never tear down the agent connection.
+            # Push the instance's IPsec ping-monitor + standalone connectivity
+            # config so the agent starts probing immediately on (re)connect. The
+            # agent's monitor sets start empty and are only populated by a
+            # config_update, so without this re-push a reconnect (e.g. after a
+            # backend restart) leaves connectivity monitors unprobed ("no data
+            # yet"). Best-effort: a failure here must never tear down the agent
+            # connection.
             try:
                 async with get_sessionmaker()() as cfg_session:
                     await ping_service.push_to_agent(cfg_session, instance_id)
+                    await conn_service.push_to_agent(cfg_session, instance_id)
             except Exception:
                 log.warning("agent.ping_config_push_failed", instance_id=instance_id)
 
