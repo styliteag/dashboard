@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.1.3"
+__version__ = "2.1.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2520,13 +2520,134 @@ def _ipsec_log_raw(lines: int = 3000) -> str:
     return ""
 
 
+def _slice_plain_conn(text: str, name: str) -> str:
+    """Keep only the `swanctl --list-conns` block for connection `name`.
+
+    Plain output starts each connection at column 0 (`<name>: IKEv2, …`) with its
+    Phase-2 children indented beneath; capture from our header to the next
+    column-0 line so the bundle shows one tunnel, not every tunnel on the box.
+    """
+    kept: list[str] = []
+    capturing = False
+    for line in text.splitlines():
+        is_header = bool(line.strip()) and line[:1] not in (" ", "\t")
+        if is_header:
+            capturing = line.startswith(name + ":") or line.startswith(name + " ")
+        if capturing:
+            kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def _slice_raw_conn(raw: str, name: str) -> str:
+    """Extract the single `name { … }` block from `swanctl --list-conns --raw`.
+
+    Balanced-brace slice on the raw VICI stream — keeps the configured crypto
+    proposals (encr/integ/dh/esp), which the plain listing omits when they are
+    left at the strongSwan default. Returns "" when the connection is absent or
+    the stream is unbalanced.
+    """
+    if not name:
+        return ""  # empty needle would match at every offset and never advance
+    pos = 0
+    while True:
+        idx = raw.find(name, pos)
+        if idx < 0:
+            return ""
+        boundary = idx == 0 or raw[idx - 1] in "{ \t\n"
+        rest = raw[idx + len(name):]
+        body = rest.lstrip()
+        if boundary and body[:1] == "{":
+            start = idx + len(name) + (len(rest) - len(body))
+            depth = 0
+            for j in range(start, len(raw)):
+                if raw[j] == "{":
+                    depth += 1
+                elif raw[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return name + " " + raw[start : j + 1]
+            return ""  # unbalanced — give up rather than emit garbage
+        pos = idx + len(name)
+
+
+# config.xml elements whose text is a secret — blanked before the snippet leaves
+# the box. Exact tag names (not substrings) so diagnostic siblings like <keylen>
+# and <keyingtries> survive; the keyword pass still catches any *psk*/*secret*/
+# *password* tag a future firmware adds. `key`/`presharedkey` are defense-in-depth
+# for OPNsense's <preSharedKeys><Key> — that section is never serialized here (PSK
+# safety is scoping-by-construction), but redact it too should scoping ever regress.
+_SECRET_TAGS = frozenset({"pre-shared-key", "private-key", "pkcs11pin", "key", "presharedkey"})
+
+
+def _redact_secrets(elem: ElementTree.Element) -> None:
+    """Blank every secret-bearing element text in place (fresh-parsed tree only)."""
+    for node in elem.iter():
+        tag = node.tag.lower()
+        secret = tag in _SECRET_TAGS or any(s in tag for s in ("psk", "secret", "password"))
+        if secret and node.text and node.text.strip():
+            node.text = "***REDACTED***"
+
+
+def _ipsec_config_snippet(name: str, config_path: str = _CONFIG_XML) -> str:
+    """Redacted config.xml fragment for one tunnel — the user-intent source config.
+
+    swanctl shows the *resolved* config (proposals=default expands to every algo);
+    config.xml shows what the operator actually set. OPNsense keys the tunnel by
+    Connection UUID (its PSK lives in a separate <preSharedKeys> that is never
+    serialized here, so that path is secret-free by construction); pfSense names
+    it `con<ikeid>` and stores the PSK inline in <phase1>, so that path is
+    redacted. Returns "" when nothing matches.
+    """
+    try:
+        root = ElementTree.parse(config_path).getroot()
+    except (OSError, ElementTree.ParseError):
+        return ""
+    parts: list[ElementTree.Element] = []
+    # OPNsense: <Swanctl> Connection + its locals/remotes/children, matched by UUID.
+    swanctl = root.find(".//Swanctl")
+    if swanctl is not None:
+        conn = next((c for c in swanctl.iter("Connection") if c.get("uuid") == name), None)
+        if conn is not None:
+            parts.append(conn)
+            for group, item in (("locals", "local"), ("remotes", "remote"), ("children", "child")):
+                grp = swanctl.find(group)
+                if grp is None:
+                    continue
+                parts.extend(
+                    it for it in grp.findall(item) if (it.findtext("connection") or "") == name
+                )
+    # pfSense: <ipsec> phase1 + phase2 sharing the ikeid behind `con<ikeid>`.
+    if not parts and name.startswith("con") and name[3:].isdigit():
+        ikeid = name[3:]
+        ipsec = root.find(".//ipsec")
+        if ipsec is not None:
+            parts.extend(p for p in ipsec.findall("phase1") if (p.findtext("ikeid") or "") == ikeid)
+            parts.extend(p for p in ipsec.findall("phase2") if (p.findtext("ikeid") or "") == ikeid)
+    rendered: list[str] = []
+    for elem in parts:
+        _redact_secrets(elem)
+        rendered.append(ElementTree.tostring(elem, encoding="unicode").strip())
+    return "\n".join(rendered).strip()
+
+
 def _diagnose_ipsec(name: str) -> list[dict]:
     """Readable per-tunnel diagnostic sections gathered on-box (matches the
-    Securepoint SSH bundle): config, live SAs, recent log, peer ping."""
+    Securepoint SSH bundle). Every section is scoped to the selected tunnel
+    `name`: filtered config, configured crypto, live SAs, recent log, peer ping."""
+    raw_conns = _run(["swanctl", "--list-conns", "--raw"], timeout=10)
     sections = [
         {
             "title": "Connection config (swanctl --list-conns)",
-            "content": _run(["swanctl", "--list-conns"], timeout=10).strip(),
+            "content": _slice_plain_conn(_run(["swanctl", "--list-conns"], timeout=10), name)
+            or "(connection not found in swanctl --list-conns)",
+        },
+        {
+            "title": "Configured crypto proposals (swanctl --list-conns --raw)",
+            "content": _slice_raw_conn(raw_conns, name) or "(connection not found)",
+        },
+        {
+            "title": "Configured tunnel (config.xml, secrets redacted)",
+            "content": _ipsec_config_snippet(name) or "(no matching config.xml section)",
         },
         {
             "title": "Live IKE / CHILD SAs (swanctl --list-sas)",
@@ -2536,7 +2657,7 @@ def _diagnose_ipsec(name: str) -> list[dict]:
     # Resolve the peer IP from the conn config (reused for log-filtering + ping).
     remote = ""
     try:
-        conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
+        conns = _parse_swanctl_conns(raw_conns)
         remote = next(
             (
                 c["remote"]

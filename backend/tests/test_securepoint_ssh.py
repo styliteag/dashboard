@@ -9,12 +9,33 @@ from __future__ import annotations
 import pytest
 
 from app.securepoint.ssh import (
+    _PLAIN_TITLE,
+    _RAW_TITLE,
     SecurepointSSHError,
     SSHConfig,
     _connect,
+    _diag_script,
     _key_blob,
     _parse_sections,
+    _scope_sections,
     fetch_ipsec_status,
+)
+from app.xsense.schemas import DiagnosisSection
+
+# Two-tunnel swanctl output: the box has no per-connection filter, so the diagnose
+# bundle scopes these down to the selected tunnel before returning.
+_PLAIN_TWO = (
+    "tunA: IKEv2, no reauthentication, rekeying every 14400s, dpd delay 10s\n"
+    "  local:  1.1.1.1[500]\n"
+    "  remote: 2.2.2.2[500]\n"
+    "tunB: IKEv2, no reauthentication, rekeying every 14400s, dpd delay 10s\n"
+    "  local:  1.1.1.1[500]\n"
+    "  remote: 3.3.3.3[500]\n"
+)
+_RAW_TWO = (
+    "list-conn event {tunA {remote_addrs=[2.2.2.2] "
+    "proposals {0 {encr=[AES_CBC_256] ke=[MODP_2048]}}} "
+    "tunB {remote_addrs=[3.3.3.3] proposals {0 {encr=[AES_CBC_128]}}}}"
 )
 
 
@@ -87,3 +108,41 @@ async def test_connect_unpinned_allowed_on_probe_path() -> None:
     # private key makes it fail on the NEXT check, proving it got past the guard.
     with pytest.raises(SecurepointSSHError, match="no SSH private key"):
         await _connect("h", 9922, "root", "  ", host_key=None, require_host_key=False)
+
+
+# --- per-tunnel scoping of the diagnose bundle --------------------------------
+
+
+def test_diag_script_emits_plain_and_raw_conns() -> None:
+    script = _diag_script("tunA")
+    assert "swanctl --list-conns 2>&1" in script
+    assert "swanctl --list-conns --raw 2>&1" in script
+    assert _RAW_TITLE in script
+    # the SAs block stays scoped on the box with --ike
+    assert 'swanctl --list-sas --ike "$N"' in script
+
+
+def test_scope_sections_slices_both_config_blocks_to_selected() -> None:
+    sections = [
+        DiagnosisSection(title=_PLAIN_TITLE, content=_PLAIN_TWO),
+        DiagnosisSection(title=_RAW_TITLE, content=_RAW_TWO),
+        DiagnosisSection(title="Peer reachability", content="ping 2.2.2.2"),
+    ]
+    out = {s.title: s.content for s in _scope_sections(sections, "tunA")}
+    # plain block: only tunA survives
+    assert out[_PLAIN_TITLE].startswith("tunA: IKEv2")
+    assert "tunB" not in out[_PLAIN_TITLE]
+    assert "3.3.3.3" not in out[_PLAIN_TITLE]
+    # raw block: only tunA, with its proposals
+    assert out[_RAW_TITLE].startswith("tunA {")
+    assert "AES_CBC_256" in out[_RAW_TITLE]
+    assert "AES_CBC_128" not in out[_RAW_TITLE]
+    assert "tunB" not in out[_RAW_TITLE]
+    # unrelated section untouched
+    assert out["Peer reachability"] == "ping 2.2.2.2"
+
+
+def test_scope_sections_missing_conn_notes_absence() -> None:
+    sections = [DiagnosisSection(title=_PLAIN_TITLE, content=_PLAIN_TWO)]
+    out = _scope_sections(sections, "no-such-tunnel")
+    assert out[0].content == "(connection not found)"

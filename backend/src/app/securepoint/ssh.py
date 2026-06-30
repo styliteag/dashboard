@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import asyncssh
 
-from app.securepoint.swanctl import ipsec_status_from_swanctl
+from app.securepoint.swanctl import ipsec_status_from_swanctl, slice_plain_conn, slice_raw_conn
 from app.xsense.schemas import DiagnosisSection, IPsecServiceStatus
 
 # Diagnose runs several commands + a ping + a syslog dump; it's a user-triggered
@@ -146,18 +146,29 @@ async def fetch_ipsec_status(
     )
 
 
+_PLAIN_TITLE = "Connection config (swanctl --list-conns)"
+_RAW_TITLE = "Configured crypto proposals (swanctl --list-conns --raw)"
+
+
 def _diag_script(name: str) -> str:
     """Shell run over one SSH session that emits ``@@SEC@@<title>``-delimited blocks.
 
-    Gathers as much as the box exposes: the connection config, live SAs, installed
-    policies, the recent charon log (vici-poll noise stripped — failure lines like
+    Gathers as much as the box exposes: the connection config, configured crypto
+    proposals (raw — the plain listing omits them at the strongSwan default), live
+    SAs, the recent charon log (vici-poll noise stripped — failure lines like
     NO_PROPOSAL_CHOSEN / AUTHENTICATION_FAILED / 'giving up' live here regardless of
     whether they carry the conn name), and a one-shot peer-reachability ping.
+
+    ``swanctl --list-conns`` has no per-connection filter, so the two config blocks
+    come back with every tunnel; ``_scope_sections`` slices them to ``name`` before
+    the bundle is returned (the SAs block is already scoped with ``--ike``).
     """
     return (
         f"N='{name}'\n"
-        f"echo '{_SEC}Connection config (swanctl --list-conns)'\n"
+        f"echo '{_SEC}{_PLAIN_TITLE}'\n"
         "swanctl --list-conns 2>&1\n"
+        f"echo '{_SEC}{_RAW_TITLE}'\n"
+        "swanctl --list-conns --raw 2>&1\n"
         f"echo '{_SEC}Live IKE / CHILD SAs (swanctl --list-sas)'\n"
         'swanctl --list-sas --ike "$N" 2>&1\n'
         f"echo '{_SEC}Recent IPsec log (charon)'\n"
@@ -193,6 +204,24 @@ def _parse_sections(out: str) -> list[DiagnosisSection]:
     return sections
 
 
+def _scope_sections(sections: list[DiagnosisSection], tunnel_id: str) -> list[DiagnosisSection]:
+    """Slice the two whole-box ``--list-conns`` blocks down to ``tunnel_id``.
+
+    New section objects (DiagnosisSection is frozen); other blocks pass through.
+    """
+    scoped: list[DiagnosisSection] = []
+    for s in sections:
+        if s.title == _PLAIN_TITLE:
+            content = slice_plain_conn(s.content, tunnel_id) or "(connection not found)"
+            scoped.append(DiagnosisSection(title=s.title, content=content))
+        elif s.title == _RAW_TITLE:
+            content = slice_raw_conn(s.content, tunnel_id) or "(connection not found)"
+            scoped.append(DiagnosisSection(title=s.title, content=content))
+        else:
+            scoped.append(s)
+    return scoped
+
+
 async def fetch_diagnosis(
     host: str,
     port: int,
@@ -212,4 +241,4 @@ async def fetch_diagnosis(
     finally:
         conn.close()
         await conn.wait_closed()
-    return _parse_sections(str(res.stdout or ""))
+    return _scope_sections(_parse_sections(str(res.stdout or "")), tunnel_id)

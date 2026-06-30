@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **VPN "Diagnose with AI" now scopes every section to the selected tunnel.** The
+  on-box diagnostic bundle previously dumped `swanctl --list-conns` for **all**
+  tunnels into the AI context; it now filters config + crypto + live SAs + log +
+  ping to the one tunnel under inspection. Two sources were added so the AI can
+  catch crypto-proposal mismatches (the most common Phase-1/Phase-2 negotiation
+  failure): the configured **crypto proposals** from `swanctl --list-conns --raw`
+  (the plain listing omits them when left at the strongSwan default), and the
+  **user-intent config.xml fragment** for that tunnel. The config.xml snippet is
+  redacted on-box — pfSense stores the pre-shared key inline in `<phase1>`, so
+  `<pre-shared-key>`/`<private-key>`/`<pkcs11pin>` (and any `*psk*`/`*secret*`/
+  `*password*` tag) are blanked before it leaves the box; OPNsense keeps its PSK
+  in a separate `<preSharedKeys>` section that is never serialized. (agent
+  `__version__` 2.1.4)
+- **Securepoint SSH diagnose aligned with the same scoping.** The SSH-based
+  diagnose path (`securepoint/ssh.py`) likewise dumped all tunnels' config; it now
+  slices the `swanctl --list-conns` block to the selected tunnel and adds the raw
+  crypto-proposals block, scoped the same way. Securepoint has no config.xml, so
+  no config snippet applies there.
+
 ### Added
 
 - **Tunneled-WebGUI icon in the global list views.** Each instance row in the

@@ -349,3 +349,60 @@ def parse_ipsec(sas_raw: str, conns_raw: str) -> list[IPsecTunnel]:
 
 def ipsec_status_from_swanctl(sas_raw: str, conns_raw: str, *, running: bool) -> IPsecServiceStatus:
     return IPsecServiceStatus(running=running, tunnels=parse_ipsec(sas_raw, conns_raw))
+
+
+# --- per-tunnel scoping for the diagnose bundle -------------------------------
+# Mirrors ``_slice_plain_conn`` / ``_slice_raw_conn`` in ``agent/orbit_agent.py``
+# (separate app, can't import). ``swanctl --list-conns`` has no per-connection
+# filter, so the box returns every tunnel and we slice to the selected one here —
+# before the bundle reaches the LLM context — so the AI sees one tunnel, not all.
+
+
+def slice_plain_conn(text: str, name: str) -> str:
+    """Keep only the ``swanctl --list-conns`` block for connection ``name``.
+
+    Plain output starts each connection at column 0 (``<name>: IKEv2, …``) with
+    its Phase-2 children indented beneath; capture from our header to the next
+    column-0 line.
+    """
+    kept: list[str] = []
+    capturing = False
+    for line in text.splitlines():
+        is_header = bool(line.strip()) and line[:1] not in (" ", "\t")
+        if is_header:
+            capturing = line.startswith(name + ":") or line.startswith(name + " ")
+        if capturing:
+            kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def slice_raw_conn(raw: str, name: str) -> str:
+    """Extract the single ``name { … }`` block from ``swanctl --list-conns --raw``.
+
+    Balanced-brace slice on the raw vici stream — keeps the configured crypto
+    proposals (encr/integ/dh/esp) the plain listing omits when left at the
+    strongSwan default. Returns "" when the connection is absent or the stream
+    is unbalanced.
+    """
+    if not name:
+        return ""  # empty needle would match at every offset and never advance
+    pos = 0
+    while True:
+        idx = raw.find(name, pos)
+        if idx < 0:
+            return ""
+        boundary = idx == 0 or raw[idx - 1] in "{ \t\n"
+        rest = raw[idx + len(name) :]
+        body = rest.lstrip()
+        if boundary and body[:1] == "{":
+            start = idx + len(name) + (len(rest) - len(body))
+            depth = 0
+            for j in range(start, len(raw)):
+                if raw[j] == "{":
+                    depth += 1
+                elif raw[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return name + " " + raw[start : j + 1]
+            return ""  # unbalanced — give up rather than emit garbage
+        pos = idx + len(name)
