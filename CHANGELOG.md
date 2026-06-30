@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-06-30
+
 ### Fixed
 
 - **Connectivity monitors stuck on "no data yet" after an agent reconnect.** On
