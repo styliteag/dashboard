@@ -100,7 +100,10 @@ function pairHealth(a: GlobalTunnel, b: GlobalTunnel): { cls: string; label: str
   const pb = worstPing(b.children ?? []);
   const worst = worstPing([...(a.children ?? []), ...(b.children ?? [])]);
   if (worst === "fail") return { cls: "bg-red-600/20 text-red-400", label: "ping fail" };
-  if (pa !== pb) return { cls: "bg-amber-600/20 text-amber-400", label: "ping mismatch" };
+  // Only a genuine mismatch when *both* ends actually monitor. A one-sided probe
+  // (the other end is "none") is not a mismatch — it just means one side pings.
+  if (pa !== "none" && pb !== "none" && pa !== pb)
+    return { cls: "bg-amber-600/20 text-amber-400", label: "ping mismatch" };
   if (worst === "error") return { cls: "bg-amber-600/20 text-amber-400", label: "ping error" };
   return { cls: "bg-emerald-600/20 text-emerald-400", label: "both up" };
 }

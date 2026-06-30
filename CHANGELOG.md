@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **False "ping mismatch" badge on one-sided VPN ping probes.** A paired tunnel
+  flagged "ping mismatch" whenever one end had a reachability probe and the other
+  had none, because the comparison treated the unconfigured side (`"none"`) as a
+  differing state. The badge now only appears when *both* ends actually monitor
+  and their ping states differ; a one-sided probe no longer trips it.
+
 ## [2.1.5] - 2026-06-30
 
 ### Changed
