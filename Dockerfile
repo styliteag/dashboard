@@ -45,15 +45,20 @@ FROM python:3.12-slim AS runtime
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     TZ=UTC
 
-# Install nginx + wget (for healthcheck) + bash + tzdata
+# Install nginx + wget (for healthcheck) + bash + tzdata + gosu (drop uvicorn to
+# non-root). nginx keeps its root master (needed to bind :80; workers run as
+# www-data), but uvicorn — which parses all untrusted API/agent input — must not
+# run as container root, so start.sh execs it under an unprivileged account.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx wget bash tzdata && \
+    apt-get install -y --no-install-recommends nginx wget bash tzdata gosu && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --system --no-create-home --shell /usr/sbin/nologin --uid 10001 orbit
 
 # Copy backend venv + source + alembic migrations
 COPY --from=backend-builder /app/.venv /app/.venv

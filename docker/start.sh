@@ -32,9 +32,11 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# Start backend in background
+# Start backend in background, dropped to the unprivileged 'orbit' user (migrations
+# above ran as root; the long-lived server that parses untrusted input must not).
+# gosu execs (no fork), so BACKEND_PID is the uvicorn process the trap kills.
 echo "Starting backend..."
-uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+gosu orbit uvicorn app.main:app --host 127.0.0.1 --port 8000 &
 BACKEND_PID=$!
 
 # Wait for backend health

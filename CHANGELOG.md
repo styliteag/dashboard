@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Agent token endpoint is now write-gated.** `GET /instances/{id}/agent/token`
+  previously required only a logged-in session, so a read-only user could read an
+  instance's agent bearer token, evict the real agent, and push forged metrics. It
+  now requires the write role, matching agent enable/rotate.
+- **Privileged agent actions can no longer ride the generic command passthrough.**
+  `agent.update`, `relay.enable`, `http.relay` and `agent.uninstall` are rejected by
+  `POST /instances/{id}/agent/command` and must go through their dedicated,
+  parameter-curated endpoints — closing a defense-in-depth gap at the agent trust
+  boundary.
+- **Backend runs as a non-root user in the production container.** uvicorn (which
+  parses all untrusted API and agent input) now drops to an unprivileged `orbit`
+  account via `gosu`; migrations still run as root, nginx keeps its root master.
+- **Agent pfRest install is version-pinned and SHA-256 verified.** The pfSense relay
+  bootstrap previously fetched `pfSense-pkg-RESTAPI` from the GitHub `latest` release
+  and installed it unverified. It now pins an exact release, verifies each per-version
+  asset against a baked hash over TLS, and fails closed on an unpinned version or
+  hash mismatch.
+
 ## [2.4.3] - 2026-07-02
 
 ### Fixed

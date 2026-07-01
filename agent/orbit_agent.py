@@ -31,6 +31,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+import urllib.error
+import urllib.request
 from urllib.parse import urlencode, urlsplit
 from xml.etree import ElementTree
 
@@ -42,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.4.0"
+__version__ = "2.4.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2095,10 +2097,23 @@ write_config("orbit relay user");
 echo json_encode(["key"=>"orbit","secret"=>$pw]);
 """
 
-# pfRest release assets are per-pfSense-version (pfSense-<ver>-pkg-RESTAPI.pkg). We
-# track `latest` — the project ships an asset per supported version; pin instead if
-# reproducibility matters (it then needs bumping per pfSense release).
-_PFREST_RELEASE_BASE = "https://github.com/pfrest/pfSense-pkg-RESTAPI/releases/latest/download"
+# pfRest release assets are per-pfSense-version (pfSense-<ver>-pkg-RESTAPI.pkg). The
+# release is PINNED (not `latest`) so a compromised future `latest` can't be
+# auto-pulled and installed as root on every managed box, and each per-version asset
+# is verified against a baked SHA-256 before install — an unpinned pfSense version
+# fails closed instead of installing unverified code. Supporting a newer pfSense
+# release means bumping _PFREST_VERSION + adding the asset's hash below, then
+# re-signing the agent (`just sign-agent`).
+_PFREST_VERSION = "v2.8.2"
+_PFREST_RELEASE_BASE = (
+    f"https://github.com/pfrest/pfSense-pkg-RESTAPI/releases/download/{_PFREST_VERSION}"
+)
+_PFREST_SHA256 = {
+    "2.8.1": "488399fa52dc937ef30f358fc7e9cd198b08bcfd87c226a3c5ceec5324262f7e",
+    "25.11.1": "28625d689ff0971ce9ba45ac8f11e6f3efb144ab01621a759e2e21b0f39a4405",
+    "26.03": "5afc0ed21e62a9f39d99b14eef02ef552857d51197c8c8a214f55fa44d662fcb",
+    "26.03.1": "d69252afcfc936e8501f40ac01754cd45bb68b1d3c2ce8627a49a19667f08b5c",
+}
 _PFREST_CLI = "/usr/local/bin/pfsense-restapi"
 
 
@@ -2107,16 +2122,64 @@ def _pfrest_installed() -> bool:
     return Path(_PFREST_CLI).exists()
 
 
+def _download_verified(url: str, dest: str, expected_sha256: str) -> bool:
+    """Fetch ``url`` to ``dest`` over verified TLS; True only if its sha256 matches.
+
+    Follows redirects (GitHub release downloads 302 to a CDN host) and streams to
+    disk while hashing. On any error or hash mismatch the partial file is removed
+    and False is returned so the caller installs nothing.
+    """
+    ctx = ssl.create_default_context()
+    digest = hashlib.sha256()
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "orbit-agent"})
+        with urllib.request.urlopen(req, timeout=120, context=ctx) as resp, open(dest, "wb") as fh:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                fh.write(chunk)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        log.error("relay: pfRest download failed: %s", exc)
+        with contextlib.suppress(OSError):
+            os.remove(dest)
+        return False
+    got = digest.hexdigest()
+    if got != expected_sha256:
+        log.error("relay: pfRest hash mismatch for %s (want %s, got %s)", url, expected_sha256, got)
+        with contextlib.suppress(OSError):
+            os.remove(dest)
+        return False
+    return True
+
+
 def _install_pfrest() -> bool:
-    """Install the pfRest package from its GitHub release (pfSense only, needs egress)."""
+    """Install the pinned, hash-verified pfRest package (pfSense only, needs egress)."""
     if _pfrest_installed():
         return True
     version = _read_pfsense_version().split("-")[0]  # "2.8.1-RELEASE" -> "2.8.1"
     if not version:
         return False
+    expected = _PFREST_SHA256.get(version)
+    if not expected:
+        log.error(
+            "relay: no pinned pfRest hash for pfSense %s (pin %s); refusing install",
+            version,
+            _PFREST_VERSION,
+        )
+        return False
     url = f"{_PFREST_RELEASE_BASE}/pfSense-{version}-pkg-RESTAPI.pkg"
-    log.warning("relay: installing pfRest package from %s", url)
-    _run(["pkg-static", "add", url], timeout=180)
+    fd, tmp = tempfile.mkstemp(prefix="orbit-pfrest-", suffix=".pkg", dir="/tmp")
+    os.close(fd)
+    try:
+        if not _download_verified(url, tmp, expected):
+            return False
+        log.warning("relay: installing verified pfRest %s from %s", _PFREST_VERSION, url)
+        _run(["pkg-static", "add", tmp], timeout=180)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
     return _pfrest_installed()
 
 

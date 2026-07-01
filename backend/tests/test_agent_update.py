@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.agent_hub import routes
+from app.auth.deps import require_write
 
 
 def test_iso_utc_tags_naive_as_utc() -> None:
@@ -199,3 +202,35 @@ async def test_update_single_pushes_when_outdated(
     assert [a for a, _ in live.sent] == ["agent.update"]
     assert result["sent"] is True
     assert result["result"]["success"] is True
+
+
+# --- Trust-boundary gates ------------------------------------------------------
+#
+# Privileged actions must not be reachable through the generic command passthrough
+# (they carry firewall-admin authority or curated params that bind agent.update to
+# the container's signed .sig), and the agent token — a bearer credential to the
+# agent WebSocket — must not be readable by a read-only session.
+
+
+@pytest.mark.parametrize(
+    "action", ["agent.update", "relay.enable", "http.relay", "agent.uninstall", "gui.login"]
+)
+async def test_send_command_rejects_internal_actions(action: str) -> None:
+    # The denylist is checked before the hub lookup, so no agent needs to be wired.
+    with pytest.raises(HTTPException) as exc:
+        await routes.send_agent_command(
+            instance_id=1,
+            body={"action": action, "params": {}},
+            request=SimpleNamespace(),
+            session=FakeSession(),
+            user=SimpleNamespace(id=1),
+        )
+    assert exc.value.status_code == 400
+    assert "internal" in exc.value.detail
+
+
+def test_get_agent_token_is_write_gated() -> None:
+    # Regression guard: the token endpoint must stay require_write, not the looser
+    # current_user (which would let a view_only session read the agent bearer token).
+    dep = inspect.signature(routes.get_agent_token).parameters["_user"].default
+    assert dep.dependency is require_write

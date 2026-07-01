@@ -417,10 +417,15 @@ async def agent_status(
     )
 
 
-# Actions that return live credentials and must only run via their dedicated,
-# purpose-built routes — never through this generic passthrough (which echoes the
-# result to the caller and the audit log).
-_INTERNAL_AGENT_ACTIONS = frozenset({"gui.login"})
+# Privileged actions that must only run via their dedicated, purpose-built routes —
+# never through this generic passthrough. Either they return live credentials (echoed
+# to the caller and audit log), or they take curated params the passthrough would let
+# a caller forge: `agent.update` binds the pushed code to the container's signed `.sig`
+# in `_agent_update_params()`, and `relay.enable`/`http.relay`/`agent.uninstall` carry
+# firewall-admin authority. Letting them ride the raw passthrough bypasses that curation.
+_INTERNAL_AGENT_ACTIONS = frozenset(
+    {"gui.login", "agent.update", "relay.enable", "http.relay", "agent.uninstall"}
+)
 
 # Result keys that may carry a live credential (firewall session cookie, API key,
 # password) — masked before a command result is written to the audit log.
@@ -1069,9 +1074,14 @@ async def enroll_agent(
 async def get_agent_token(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_write),
 ) -> dict:
-    """Return the stored agent token for an instance (agent mode must be enabled)."""
+    """Return the stored agent token for an instance (agent mode must be enabled).
+
+    Write-gated (not just authenticated): the token is a bearer credential to the
+    agent WebSocket — anyone holding it can evict the real agent and push forged
+    metrics — so a read-only session must not be able to read it.
+    """
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")

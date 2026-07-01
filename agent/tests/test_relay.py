@@ -317,16 +317,51 @@ def test_install_pfrest_skips_when_present(monkeypatch):
     assert called["n"] == 0  # already installed → no download
 
 
-def test_install_pfrest_derives_versioned_url(monkeypatch):
+def test_install_pfrest_downloads_pinned_verified_asset(monkeypatch):
     captured = {}
     states = iter([False, True])  # not installed before, installed after
 
+    def fake_download(url, dest, expected):
+        captured.update(url=url, dest=dest, expected=expected)
+        return True
+
     monkeypatch.setattr(agent, "_pfrest_installed", lambda: next(states))
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+    monkeypatch.setattr(agent, "_download_verified", fake_download)
     monkeypatch.setattr(agent, "_run", lambda cmd, **k: captured.update(cmd=cmd))
+
     assert agent._install_pfrest() is True
+    # Pinned release tag + per-version asset + the baked hash all feed the download.
+    assert agent._PFREST_VERSION in captured["url"]
+    assert captured["url"].endswith("/pfSense-2.8.1-pkg-RESTAPI.pkg")
+    assert captured["expected"] == agent._PFREST_SHA256["2.8.1"]
+    # Installs the verified local file, never the raw URL.
     assert captured["cmd"][0:2] == ["pkg-static", "add"]
-    assert captured["cmd"][2].endswith("/pfSense-2.8.1-pkg-RESTAPI.pkg")
+    assert captured["cmd"][2] == captured["dest"]
+
+
+def test_install_pfrest_refuses_unpinned_version(monkeypatch):
+    # A pfSense version with no baked hash must fail closed: no download, no install.
+    called = {"download": 0, "run": 0}
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: False)
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.0-RELEASE")
+    monkeypatch.setattr(
+        agent, "_download_verified", lambda *a: called.__setitem__("download", 1) or True
+    )
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: called.__setitem__("run", 1))
+    assert agent._install_pfrest() is False
+    assert called == {"download": 0, "run": 0}
+
+
+def test_install_pfrest_aborts_on_verification_failure(monkeypatch):
+    # A download that fails hash verification must install nothing.
+    called = {"run": 0}
+    monkeypatch.setattr(agent, "_pfrest_installed", lambda: False)
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+    monkeypatch.setattr(agent, "_download_verified", lambda *a: False)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: called.__setitem__("run", 1))
+    assert agent._install_pfrest() is False
+    assert called["run"] == 0
 
 
 def test_relay_enable_pfsense_installs_then_provisions(monkeypatch):
