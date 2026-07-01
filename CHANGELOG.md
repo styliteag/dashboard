@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-07-01
+
 ### Added
 
 - **Per-tunnel "Graph" popup on the VPN overview.** A new action next to History
