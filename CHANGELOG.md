@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Phase-2 duplicate history no longer repeats every poll.** A tunnel's history
+  recorded a fresh "Phase-2 duplicate" entry on every push (once per poll) for a
+  multi-subnet Phase-2 with a stuck duplicate SA. The state-change diff matched
+  Phase-2 rows by name only, but a multi-subnet Phase-2 is split into several rows
+  that share one name and differ only by selector — so a duplicated selector was
+  compared against a non-duplicate sibling and re-fired every cycle. Rows are now
+  matched by selector pair, so only genuine transitions are stored. Ping ok/fail
+  transitions on multi-subnet Phase-2s are attributed correctly for the same reason.
+
 ## [2.3.0] - 2026-06-30
 
 ### Added

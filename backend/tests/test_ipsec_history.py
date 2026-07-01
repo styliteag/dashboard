@@ -201,6 +201,64 @@ def test_dup_persistent_unchanged_emits_nothing() -> None:
     assert diff_ipsec(off, _status(_tunnel(children=[_dup_child(False, dup_count=1)]))) == []
 
 
+# --- children sharing a name but different selectors (multi-subnet Phase-2) ---
+
+
+def _sel_child(
+    local: str, remote: str, persistent: bool, dup: int, ping: str = "none"
+) -> IPsecChild:
+    """A Phase-2 selector row. strongSwan/pfSense split one multi-subnet child into
+    several CHILD_SAs that all carry the SAME name — only the selector pair differs."""
+    return IPsecChild(
+        name="con1",
+        local_ts=local,
+        remote_ts=remote,
+        state="INSTALLED",
+        dup_count=dup,
+        phase2_dup_persistent=persistent,
+        ping_state=ping,
+    )
+
+
+def test_dup_same_name_multi_selector_unchanged_emits_nothing() -> None:
+    """A multi-subnet Phase-2 lists several children sharing one name, differing only
+    by selector. Matching prev↔new by name alone collapses them last-wins, so a
+    stuck-duplicate selector gets diffed against a non-dup sibling and re-fires
+    phase2_dup_on every poll — the observed "Phase-2 duplicate" spam. Children must
+    be matched by selector pair, so an unchanged snapshot yields nothing."""
+    dup = _sel_child("10.10.87.0/24", "192.168.133.0/24", persistent=True, dup=2)
+    plain = _sel_child(
+        "10.10.88.0/24", "192.168.133.0/24", persistent=False, dup=1
+    )  # sibling, listed last
+    snap = _status(_tunnel(p2_up=2, p2_total=2, children=[dup, plain]))
+    assert diff_ipsec(snap, _status(_tunnel(p2_up=2, p2_total=2, children=[dup, plain]))) == []
+
+
+def test_dup_same_name_multi_selector_on_transition_targets_right_child() -> None:
+    """The duplicate flag flipping on one selector still fires exactly one on-event,
+    attributed to that selector — the sibling is untouched."""
+    dup_off = _sel_child("10.10.87.0/24", "192.168.133.0/24", persistent=False, dup=1)
+    plain = _sel_child("10.10.88.0/24", "192.168.133.0/24", persistent=False, dup=1)
+    dup_on = _sel_child("10.10.87.0/24", "192.168.133.0/24", persistent=True, dup=2)
+    prev = _status(_tunnel(p2_up=2, p2_total=2, children=[dup_off, plain]))
+    new = _status(_tunnel(p2_up=2, p2_total=2, children=[dup_on, plain]))
+    events = diff_ipsec(prev, new)
+    assert [e.event_type for e in events] == ["phase2_dup_on"]
+    assert events[0].old_value == "10.10.87.0/24 → 192.168.133.0/24"
+
+
+def test_ping_same_name_multi_selector_targets_right_child() -> None:
+    """Ping transitions must also key on the selector: a fail on one subnet must not
+    be masked (or duplicated) by an unchanged sibling that shares the name."""
+    a_ok = _sel_child("10.10.87.0/24", "192.168.133.0/24", persistent=False, dup=1, ping="ok")
+    b = _sel_child("10.10.88.0/24", "192.168.133.0/24", persistent=False, dup=1, ping="ok")
+    a_fail = _sel_child("10.10.87.0/24", "192.168.133.0/24", persistent=False, dup=1, ping="fail")
+    prev = _status(_tunnel(p2_up=2, p2_total=2, children=[a_ok, b]))
+    new = _status(_tunnel(p2_up=2, p2_total=2, children=[a_fail, b]))
+    events = diff_ipsec(prev, new)
+    assert [e.event_type for e in events] == ["ping_fail"]
+
+
 # --- writer (record_tunnel_events) -------------------------------------------
 
 

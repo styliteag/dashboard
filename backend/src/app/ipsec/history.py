@@ -83,15 +83,27 @@ def _dup_event(tunnel_id: str, prev: IPsecChild, new: IPsecChild) -> TunnelEvent
     return TunnelEvent(tunnel_id, new.name, "phase2_dup_off", selector, "resolved")
 
 
+def _child_key(c: IPsecChild) -> tuple[str, str, str]:
+    """Identity of a Phase-2 row across polls: name + selector pair.
+
+    A multi-subnet Phase-2 is split (by strongSwan/pfSense) into several CHILD_SAs
+    that all share one ``name`` but carry different selectors — so keying on name
+    alone collapses them last-wins, and a stuck-duplicate selector would then be
+    diffed against a non-dup sibling, re-firing ``phase2_dup_on`` every poll. The
+    selector pair disambiguates them (the same reason the agent matches SAs by
+    selector, never by name)."""
+    return (c.name, c.local_ts, c.remote_ts)
+
+
 def _tunnel_events(prev: IPsecTunnel, new: IPsecTunnel) -> list[TunnelEvent]:
     events: list[TunnelEvent] = []
     if (p1 := _phase1_event(prev, new)) is not None:
         events.append(p1)
     if (p2 := _phase2_event(prev, new)) is not None:
         events.append(p2)
-    prev_children = {c.name: c for c in prev.children if c.name}
+    prev_children = {_child_key(c): c for c in prev.children if c.name}
     for child in new.children:
-        pc = prev_children.get(child.name)
+        pc = prev_children.get(_child_key(child))
         if pc is None:
             continue
         if (pe := _ping_event(new.id, pc, child)) is not None:
