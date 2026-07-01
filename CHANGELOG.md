@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-01
+
 ### Fixed
 
 - **pfSense boot no longer hangs at the agent boot hook.** On pfSense the agent is
