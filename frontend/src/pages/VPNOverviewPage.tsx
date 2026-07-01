@@ -1,173 +1,27 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import {
-  Shield,
-  Link2,
-  Unlink,
-  RotateCw,
-  Search,
-  ChevronRight,
-  ChevronDown,
-  History,
-  LineChart,
-} from "lucide-react";
+import { Shield, Link2, Search, ChevronRight, ChevronDown, LineChart } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import type {
-  IPsecChild,
-  IPsecPingMonitor,
-  IPsecServiceStatus,
-  TunnelActionResponse,
-} from "../lib/types";
-import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "../components/IPsecPhase2";
-import { WebUiIconLink } from "../components/WebUiIconLink";
-import { worstPing } from "../lib/ipsec-ping";
-import { useSort, type Accessors } from "../lib/use-sort";
+import type { IPsecServiceStatus, TunnelActionResponse } from "../lib/types";
+import { useSort } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
 import PingMonitorDialog from "../components/PingMonitorDialog";
 import TunnelHistoryDialog from "../components/TunnelHistoryDialog";
 import TunnelGraphDialog from "../components/TunnelGraphDialog";
 import VPNOverviewGraphDialog from "../components/VPNOverviewGraphDialog";
 import KpiTile from "../components/KpiTile";
-import { fmtBytes, fmtDuration } from "../lib/format";
-
-interface GlobalTunnel {
-  instance_id: number;
-  instance_name: string;
-  tunnel_id: string;
-  unique_id: string;
-  description: string;
-  remote: string;
-  local: string;
-  phase1_status: string;
-  phase2_up: number;
-  phase2_total: number;
-  seconds_established: number;
-  bytes_in: number;
-  bytes_out: number;
-  tags?: string[];
-  agent_mode?: boolean;
-  stale?: boolean;
-  stale_seconds?: number | null;
-  children: IPsecChild[];
-  ike_init_spi?: string;
-  ike_resp_spi?: string;
-  peer_instance_id?: number | null;
-  peer_instance_name?: string | null;
-  peer_tunnel_id?: string | null;
-}
-
-interface TunnelGroup {
-  members: GlobalTunnel[];
-  paired: boolean;
-}
-
-/** Group the two ends of the same tunnel (peer pairing) so they render together. */
-function buildGroups(tunnels: GlobalTunnel[]): TunnelGroup[] {
-  const byKey = new Map<string, GlobalTunnel>();
-  for (const t of tunnels) byKey.set(`${t.instance_id}-${t.tunnel_id}`, t);
-  const seen = new Set<string>();
-  const groups: TunnelGroup[] = [];
-  for (const t of tunnels) {
-    const k = `${t.instance_id}-${t.tunnel_id}`;
-    if (seen.has(k)) continue;
-    const peerK = t.peer_instance_id != null ? `${t.peer_instance_id}-${t.peer_tunnel_id}` : null;
-    const peer = peerK ? byKey.get(peerK) : undefined;
-    if (peer && peerK && !seen.has(peerK)) {
-      groups.push({ members: [t, peer], paired: true });
-      seen.add(k);
-      seen.add(peerK);
-    } else {
-      groups.push({ members: [t], paired: false });
-      seen.add(k);
-    }
-  }
-  return groups;
-}
-
-/** Combined health of a paired link, for the group header badge. */
-function pairHealth(a: GlobalTunnel, b: GlobalTunnel): { cls: string; label: string } {
-  // Staleness wins: if either end's agent is silent, this side's status is
-  // last-known, not live — never report a stale pair as "both up" (it must stay
-  // expanded, not collapse as healthy).
-  if (a.stale || b.stale) return { cls: "bg-amber-600/20 text-amber-400", label: "stale" };
-  const aUp = isUp(a.phase1_status);
-  const bUp = isUp(b.phase1_status);
-  if (aUp !== bUp) return { cls: "bg-red-600/20 text-red-400", label: "status mismatch" };
-  if (!aUp && !bUp) return { cls: "bg-slate-700 text-slate-300", label: "both down" };
-  // Both Phase 1 up — but "established" doesn't mean traffic flows. Fold the
-  // Phase-2 ping monitor into the health so a tunnel that's up yet not passing
-  // traffic isn't reported "both up" and auto-collapsed (the whole point of the
-  // collapse is to hide *healthy* pairs). Symmetric failure (both ends fail) is
-  // the usual outage shape, so rank by the worst end across both — a plain
-  // mismatch check misses it. No monitor configured (state "none") stays green.
-  const pa = worstPing(a.children ?? []);
-  const pb = worstPing(b.children ?? []);
-  const worst = worstPing([...(a.children ?? []), ...(b.children ?? [])]);
-  if (worst === "fail") return { cls: "bg-red-600/20 text-red-400", label: "ping fail" };
-  // Only a genuine mismatch when *both* ends actually monitor. A one-sided probe
-  // (the other end is "none") is not a mismatch — it just means one side pings.
-  if (pa !== "none" && pb !== "none" && pa !== pb)
-    return { cls: "bg-amber-600/20 text-amber-400", label: "ping mismatch" };
-  if (worst === "error") return { cls: "bg-amber-600/20 text-amber-400", label: "ping error" };
-  return { cls: "bg-emerald-600/20 text-emerald-400", label: "both up" };
-}
-
-interface DialogTarget {
-  instanceId: number;
-  tunnelId: string;
-  tunnelDescription: string;
-  child: IPsecChild;
-  existing: IPsecPingMonitor | null;
-}
-
-/** Expanded Phase-2 detail for one tunnel; fetches that instance's monitors. */
-function ExpandedPhase2({
-  tunnel,
-  onConfigure,
-}: {
-  tunnel: GlobalTunnel;
-  onConfigure: (tunnel: GlobalTunnel, child: IPsecChild, existing: IPsecPingMonitor | null) => void;
-}) {
-  const { data: monitors = [] } = useQuery({
-    queryKey: ["ipsec-ping-monitors", tunnel.instance_id],
-    queryFn: () =>
-      api.get<IPsecPingMonitor[]>(`/api/instances/${tunnel.instance_id}/ipsec/ping-monitors`),
-    enabled: tunnel.agent_mode ?? false, // ping monitors are agent-only
-  });
-  return (
-    <Phase2ChildList
-      tunnelId={tunnel.tunnel_id}
-      entries={tunnel.children ?? []}
-      monitors={monitors}
-      pingSupported={tunnel.agent_mode ?? false}
-      onConfigure={(child, existing) => onConfigure(tunnel, child, existing)}
-    />
-  );
-}
-
-interface GlobalVPNResponse {
-  tunnels: GlobalTunnel[];
-  total: number;
-  up: number;
-  down: number;
-}
-
-function isUp(phase1_status: string): boolean {
-  const s = phase1_status.toLowerCase();
-  return s.includes("established") || s.includes("connected");
-}
-
-const VPN_ACCESSORS: Accessors<GlobalTunnel> = {
-  instance: (t) => t.instance_name.toLowerCase(),
-  tunnel: (t) => (t.description || t.tunnel_id).toLowerCase(),
-  remote: (t) => t.remote,
-  status: (t) => (isUp(t.phase1_status) ? 0 : 1),
-  phase2: (t) => t.phase2_up,
-  uptime: (t) => t.seconds_established,
-  in: (t) => t.bytes_in,
-  out: (t) => t.bytes_out,
-};
+import TunnelRow, { type DialogTarget } from "../components/TunnelRow";
+import { fmtDuration } from "../lib/format";
+import {
+  buildGroups,
+  isUp,
+  pairHealth,
+  rowKey,
+  VPN_ACCESSORS,
+  type GlobalTunnel,
+  type GlobalVPNResponse,
+  type TunnelGroup,
+} from "../lib/vpn-overview";
 
 export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
@@ -185,7 +39,6 @@ export default function VPNOverviewPage() {
   // Per-tunnel in-flight tracking — an action only disables ITS row, never the
   // whole list, and several tunnels can be actioned concurrently.
   const [pending, setPending] = useState<Set<string>>(new Set());
-  const rowKey = (t: GlobalTunnel) => `${t.instance_id}-${t.tunnel_id}`;
   const setBusy = (k: string, on: boolean) =>
     setPending((s) => {
       const n = new Set(s);
@@ -329,125 +182,20 @@ export default function VPNOverviewPage() {
   };
   const hasCollapsiblePairs = groups.some((g) => g.paired);
 
-  const renderRow = (t: GlobalTunnel, inGroup: boolean) => {
-    const up = isUp(t.phase1_status);
-    const k = rowKey(t);
-    const isOpen = expanded.has(k);
-    const hasChildren = (t.children?.length ?? 0) > 0;
-    return (
-      <Fragment key={k}>
-        <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
-          <td className={`px-3 py-2 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
-            <span className={`inline-flex items-center gap-1.5 ${inGroup ? "pl-4" : ""}`}>
-              <Link
-                to={`/instances/${t.instance_id}`}
-                className="text-emerald-400 hover:underline"
-              >
-                {t.instance_name}
-              </Link>
-              <WebUiIconLink
-                instanceId={t.instance_id}
-                instanceName={t.instance_name}
-                agentMode={t.agent_mode ?? false}
-              />
-            </span>
-          </td>
-          <td className="px-3 py-2">
-            <button
-              onClick={() => toggleExpand(k)}
-              disabled={!hasChildren}
-              className="inline-flex items-center gap-1 text-left hover:text-emerald-400 disabled:opacity-40"
-            >
-              {hasChildren ? (
-                isOpen ? (
-                  <ChevronDown className="h-3 w-3" />
-                ) : (
-                  <ChevronRight className="h-3 w-3" />
-                )
-              ) : (
-                <span className="inline-block w-3" />
-              )}
-              {t.description || t.tunnel_id}
-            </button>
-          </td>
-          <td className="hidden px-3 py-2 font-mono text-xs xl:table-cell">{t.remote}</td>
-          <td className="px-3 py-2">
-            <span
-              className={`inline-flex items-center gap-1 ${
-                t.stale ? "text-slate-400" : up ? "text-emerald-400" : "text-red-400"
-              }`}
-              title={t.stale ? "Agent silent — last-known status, not live" : undefined}
-            >
-              {up ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
-              {t.phase1_status}
-            </span>
-            {t.stale && <StaleChip seconds={t.stale_seconds} />}
-          </td>
-          <td className="whitespace-nowrap px-3 py-2">
-            <div className="flex items-center gap-2">
-              <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
-              <PingSummary entries={t.children ?? []} />
-              <Phase2DupNote entries={t.children ?? []} />
-            </div>
-          </td>
-          <td className="px-3 py-2 font-mono text-xs text-slate-400">
-            {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
-          </td>
-          <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_in)}</td>
-          <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
-          <td className="px-3 py-2">
-            <div className="flex items-center justify-end gap-1">
-              <button
-                onClick={() => setHistoryTarget(t)}
-                title="State-change history"
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-              >
-                <History className="h-3 w-3" /> History
-              </button>
-              <button
-                onClick={() => setGraphTarget(t)}
-                title="Up/down timeline"
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-              >
-                <LineChart className="h-3 w-3" /> Graph
-              </button>
-              <button
-                onClick={() => reconnectMut.mutate(t)}
-                disabled={pending.has(rowKey(t))}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
-              >
-                <RotateCw className={`h-3 w-3 ${pending.has(rowKey(t)) ? "animate-spin" : ""}`} />{" "}
-                Reconnect
-              </button>
-            </div>
-          </td>
-        </tr>
-        {isOpen && (
-          <tr
-            className={`border-t border-slate-800/50 ${inGroup ? "bg-emerald-500/10" : "bg-slate-900/40"}`}
-          >
-            <td
-              colSpan={9}
-              className={`px-3 py-1 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}
-            >
-              <ExpandedPhase2
-                tunnel={t}
-                onConfigure={(tn, child, existing) =>
-                  setDialog({
-                    instanceId: tn.instance_id,
-                    tunnelId: tn.tunnel_id,
-                    tunnelDescription: tn.description || tn.tunnel_id,
-                    child,
-                    existing,
-                  })
-                }
-              />
-            </td>
-          </tr>
-        )}
-      </Fragment>
-    );
-  };
+  const renderRow = (t: GlobalTunnel, inGroup: boolean) => (
+    <TunnelRow
+      key={rowKey(t)}
+      tunnel={t}
+      inGroup={inGroup}
+      expanded={expanded.has(rowKey(t))}
+      busy={pending.has(rowKey(t))}
+      onToggleExpand={toggleExpand}
+      onReconnect={(tn) => reconnectMut.mutate(tn)}
+      onHistory={setHistoryTarget}
+      onGraph={setGraphTarget}
+      onConfigure={setDialog}
+    />
+  );
 
   return (
     <div>
@@ -723,17 +471,3 @@ export default function VPNOverviewPage() {
     </div>
   );
 }
-
-/** Amber "agent silent" marker shown next to a tunnel whose owning instance is stale. */
-function StaleChip({ seconds }: { seconds?: number | null }) {
-  const age = seconds != null ? ` ${fmtDuration(seconds)}` : "";
-  return (
-    <span
-      className="ml-2 inline-flex items-center gap-1 rounded bg-amber-600/20 px-1.5 py-0.5 text-xs text-amber-400"
-      title="The owning instance's agent has gone silent — this value is the last push, not live."
-    >
-      stale · agent silent{age}
-    </span>
-  );
-}
-
