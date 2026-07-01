@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import { fmtDate } from "../lib/datetime";
 import { useAuth } from "../lib/use-auth";
 import type { DashUser, UserRole } from "../lib/types";
 
@@ -212,7 +213,7 @@ export default function UsersPage() {
                   )}
                 </td>
                 <td className="py-2 text-xs text-slate-400">
-                  {new Date(u.created_at).toLocaleDateString()}
+                  {fmtDate(u.created_at)}
                 </td>
                 <td className="py-2">
                   <div className="flex items-center justify-end gap-1">

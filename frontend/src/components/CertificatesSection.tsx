@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { api } from "../lib/api";
+import { fmtDate } from "../lib/datetime";
 import type { CertInfo } from "../lib/types";
 
 function expiryClass(days: number): string {
@@ -57,7 +58,7 @@ export default function CertificatesSection({ instanceId }: { instanceId: number
                 </td>
                 <td className="px-3 py-2 text-slate-400">{c.type.toUpperCase()}</td>
                 <td className="px-3 py-2 font-mono text-xs text-slate-400">
-                  {c.not_after ? new Date(c.not_after).toLocaleDateString() : "—"}
+                  {fmtDate(c.not_after)}
                 </td>
                 <td className={`px-3 py-2 ${expiryClass(c.days_remaining)}`}>
                   {expiryLabel(c.days_remaining)}

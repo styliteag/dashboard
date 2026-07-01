@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
+import { fmtDateTime } from "../lib/datetime";
 
 interface AuditEntry {
   id: number;
@@ -112,7 +113,7 @@ export default function AuditLogPage() {
               {data.items.map((e) => (
                 <tr key={e.id} className="border-t border-slate-800">
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">
-                    {new Date(e.ts).toLocaleString("en-US")}
+                    {fmtDateTime(e.ts)}
                   </td>
                   <td className="px-3 py-2 text-xs">{e.username ?? "—"}</td>
                   <td className="px-3 py-2">

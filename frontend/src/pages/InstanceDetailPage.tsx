@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { api } from "../lib/api";
+import { fmtTimeShort } from "../lib/datetime";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
 import InstanceHeader from "../components/InstanceHeader";
 import EditInstanceDialog from "../components/EditInstanceDialog";
@@ -352,10 +353,7 @@ function MetricChart({
 
   const points =
     data?.points.map((p) => ({
-      ts: new Date(p.ts).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      ts: fmtTimeShort(p.ts),
       value: p.value / scale,
     })) ?? [];
 

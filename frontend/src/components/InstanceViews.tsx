@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle } from "lucide-react";
 import type { ConnectedAgent, Instance } from "../lib/types";
+import { fmtDateTime } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
 import { WebUiIconLink } from "./WebUiIconLink";
 
@@ -55,10 +56,6 @@ function statusMeta(inst: Instance): StatusMeta {
     label: "Unknown",
     color: "text-slate-500",
   };
-}
-
-function fmtTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("en-US") : "—";
 }
 
 /** Status badge — links to the instance detail page, same as clicking the name. */
@@ -232,7 +229,7 @@ export function InstanceCard({
         <p className="mt-2 truncate text-xs text-red-400">{inst.last_error_message}</p>
       )}
 
-      <p className="mt-1 text-xs text-slate-600">Last poll: {fmtTime(inst.last_success_at)}</p>
+      <p className="mt-1 text-xs text-slate-600">Last poll: {fmtDateTime(inst.last_success_at)}</p>
 
       <div className="mt-3 border-t border-slate-800 pt-3">
         <InstanceActions instance={inst} onEdit={onEdit} onDelete={onDelete} />
@@ -288,7 +285,7 @@ export function InstanceRow({
       <td className="px-3 py-2">
         <Tags tags={inst.tags} />
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500">{fmtTime(inst.last_success_at)}</td>
+      <td className="px-3 py-2 text-xs text-slate-500">{fmtDateTime(inst.last_success_at)}</td>
       <td className="px-3 py-2">
         <InstanceActions instance={inst} onEdit={onEdit} onDelete={onDelete} />
       </td>

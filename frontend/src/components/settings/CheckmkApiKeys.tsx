@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, KeyRound, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
+import { fmtDate, fmtDateTime } from "../../lib/datetime";
 import type { ApiKey, ApiKeyCreated, ApiKeyRevealed } from "../../lib/types";
 
 const KEYS_QK = ["apikeys"];
@@ -162,10 +163,10 @@ export default function CheckmkApiKeys() {
               <td className="py-2">{k.name}</td>
               <td className="py-2 font-mono text-xs text-slate-400">{k.prefix}…</td>
               <td className="py-2 text-xs text-slate-400">
-                {new Date(k.created_at).toLocaleDateString()}
+                {fmtDate(k.created_at)}
               </td>
               <td className="py-2 text-xs text-slate-400">
-                {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : "never"}
+                {k.last_used_at ? fmtDateTime(k.last_used_at) : "never"}
               </td>
               <td className="py-2">
                 <div className="flex items-center justify-end gap-1">
@@ -224,7 +225,7 @@ export default function CheckmkApiKeys() {
                   <td className="py-2">{k.name}</td>
                   <td className="py-2 font-mono text-xs">{k.prefix}…</td>
                   <td className="py-2 text-xs">
-                    revoked {k.revoked_at ? new Date(k.revoked_at).toLocaleDateString() : ""}
+                    revoked {k.revoked_at ? fmtDate(k.revoked_at) : ""}
                   </td>
                   <td className="py-2">
                     <div className="flex items-center justify-end">

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Timestamps now show the correct local time, in ISO format.** MariaDB `DATETIME`
+  is timezone-naive, so the API serialized timestamps without a UTC marker and
+  browsers parsed them as local time — "Last poll", "Last seen", and the audit /
+  check-history times all read ~2h behind actual in CEST. Datetimes now serialize
+  as UTC-aware (trailing `Z`) via a `UtcDateTime` column type (storage unchanged,
+  no migration), and the UI renders them in ISO 8601 local format
+  (`YYYY-MM-DD HH:MM:SS` / `YYYY-MM-DD`) via a shared helper instead of the US
+  `M/D/YYYY, h:mm:ss AM` layout. Chart axis ticks stay in their short form.
+
 ## [2.4.0] - 2026-07-01
 
 ### Fixed

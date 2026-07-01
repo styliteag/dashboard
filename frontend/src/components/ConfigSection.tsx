@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { FileClock } from "lucide-react";
 import { api } from "../lib/api";
+import { fmtDateTime } from "../lib/datetime";
 import type { ConfigInfoResponse } from "../lib/types";
 
 function fmtWhen(iso: string | null): { abs: string; ago: string } | null {
@@ -20,7 +21,7 @@ function fmtWhen(iso: string | null): { abs: string; ago: string } | null {
       break;
     }
   }
-  return { abs: d.toLocaleString(), ago };
+  return { abs: fmtDateTime(d), ago };
 }
 
 /**

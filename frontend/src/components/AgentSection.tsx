@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Copy, Check, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import { fmtDateTime } from "../lib/datetime";
 
 interface AgentStatus {
   instance_id: number;
@@ -397,7 +398,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                     <span className="w-20 text-slate-500">Last seen</span>
                     <span
                       className="text-xs text-slate-400"
-                      title={new Date(status.agent_last_seen).toLocaleString()}
+                      title={fmtDateTime(status.agent_last_seen)}
                     >
                       {timeAgo(status.agent_last_seen)}
                     </span>

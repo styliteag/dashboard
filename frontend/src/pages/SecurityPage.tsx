@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fingerprint, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import { fmtDate } from "../lib/datetime";
 import { passkeyAdd, type Passkey } from "../lib/webauthn";
 
 interface MfaMethods {
@@ -107,7 +108,7 @@ export default function SecurityPage() {
                 <td className="py-2">{p.name || `Passkey #${p.id}`}</td>
                 <td className="py-2 text-xs text-slate-400">
                   {p.last_used_at
-                    ? `last used ${new Date(p.last_used_at).toLocaleDateString()}`
+                    ? `last used ${fmtDate(p.last_used_at)}`
                     : "never used"}
                 </td>
                 <td className="py-2 text-right">

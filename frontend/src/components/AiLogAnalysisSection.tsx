@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, ChevronDown, ChevronUp, Eye, Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import { fmtDateTime } from "../lib/datetime";
 import Markdown from "./Markdown";
 
 interface LogfileItem {
@@ -111,7 +112,7 @@ export default function AiLogAnalysisSection({ instanceId }: { instanceId: numbe
                     key={`${l.name}-${l.collected_at}`}
                     className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300"
                   >
-                    {l.name} · {new Date(l.collected_at).toLocaleString()} · {fmtBytes(l.bytes)}
+                    {l.name} · {fmtDateTime(l.collected_at)} · {fmtBytes(l.bytes)}
                   </span>
                 ))}
               </div>

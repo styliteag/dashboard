@@ -3,6 +3,7 @@
  * the component files so both dialogs use one definition (and so React Fast
  * Refresh stays happy — a component module should export only components).
  */
+import { fmtDateTime } from "./datetime";
 import type { IPsecTunnelEvent } from "./types";
 
 export interface TimeWindow {
@@ -38,10 +39,9 @@ export function autoWindowKey(events: IPsecTunnelEvent[], nowMs: number): string
   return "all";
 }
 
-/** Absolute timestamp for tooltips / list rows. */
+/** Absolute timestamp for tooltips / list rows (ISO 8601, local zone). */
 export function fmtTs(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  return fmtDateTime(iso);
 }
 
 /** recharts axis tick: time-of-day. Single-arg on purpose — recharts passes (value, index). */

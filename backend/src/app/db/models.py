@@ -7,7 +7,6 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     BigInteger,
-    DateTime,
     Double,
     ForeignKey,
     Index,
@@ -23,6 +22,7 @@ from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 from app.devices.types import DeviceType, Transport
 
 
@@ -52,7 +52,7 @@ class User(Base):
     # Disabled accounts cannot log in and any live session dies on the next request.
     disabled: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
 
     audit_entries: Mapped[list[AuditLog]] = relationship(back_populates="user")
@@ -85,9 +85,9 @@ class WebauthnCredential(Base):
     name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     transports: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="webauthn_credentials")
 
@@ -131,7 +131,7 @@ class Instance(Base):
     poll_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     push_interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     agent_token: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
-    agent_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_last_seen: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     # Opt-in: when True, "Open GUI" replays a WebUI login through the agent so the
     # browser lands authenticated (see docs/agent-architecture.md §18). The admin
     # credential is provisioned + held agent-side — nothing is stored here.
@@ -165,8 +165,8 @@ class Instance(Base):
     maintenance: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
 
     # Health/poll status (updated by the poller)
-    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Last-known live status snapshot (push mode): the hub's in-memory caches
@@ -175,13 +175,13 @@ class Instance(Base):
     status_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Soft-delete (US-2.3): keep historical metrics linked to a deleted instance.
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
@@ -223,7 +223,7 @@ class AuditLog(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        UtcDateTime, server_default=func.now(), nullable=False, index=True
     )
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -249,7 +249,7 @@ class Metric(Base):
     instance_id: Mapped[int] = mapped_column(
         ForeignKey("instances.id", ondelete="CASCADE"), primary_key=True
     )
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, primary_key=True)
     metric: Mapped[str] = mapped_column(String(128), primary_key=True)
     # Double (53-bit mantissa): single-precision FLOAT lost precision on raw
     # cumulative byte counters >2^24, flatlining/staircasing low-traffic throughput
@@ -271,10 +271,10 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     prefix: Mapped[str] = mapped_column(String(20), nullable=False)  # for display
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     # When True, the full token is also kept Fernet-encrypted in ``key_enc`` so the
     # Settings UI can re-display it (e.g. the Checkmk key). NULL/False = show-once.
     revealable: Mapped[bool] = mapped_column(
@@ -309,7 +309,7 @@ class SelectionRule(Base):
     selector: Mapped[str] = mapped_column(String(255), nullable=False)
     mode: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
 
     __table_args__ = (
@@ -349,10 +349,10 @@ class IPsecPingMonitor(Base):
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
     ping_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
@@ -393,10 +393,10 @@ class ConnectivityMonitor(Base):
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
     ping_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
@@ -427,9 +427,7 @@ class IPsecTunnelEvent(Base):
     tunnel_id: Mapped[str] = mapped_column(String(128), nullable=False)
     # Phase-2 child SA name for ping events; "" for tunnel-level (phase1/phase2).
     child_name: Mapped[str] = mapped_column(String(128), nullable=False, server_default="")
-    ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, server_default=func.now(), nullable=False)
     # phase1_up | phase1_down | phase1_changed | phase2_changed | ping_ok | ping_fail
     # | phase2_dup_on | phase2_dup_off
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -457,9 +455,7 @@ class CheckEvent(Base):
     instance_id: Mapped[int] = mapped_column(
         ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
     )
-    ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, server_default=func.now(), nullable=False)
     # Stable check key, e.g. "memory", "gateway:WAN", "cert:<refid>", "ipsec.tunnel:x".
     check_key: Mapped[str] = mapped_column(String(128), nullable=False)
     # CheckState values (0=OK, 1=WARN, 2=CRIT, 3=UNKNOWN).
@@ -488,7 +484,7 @@ class Logfile(Base):
     # Logical log name, e.g. "system", "filter", "ipsec", "gateways", "openvpn".
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     collected_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
     bytes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     content: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
@@ -511,10 +507,10 @@ class EnrollmentCode(Base):
     instance_id: Mapped[int] = mapped_column(
         ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UtcDateTime, server_default=func.now(), nullable=False
     )
 
 
@@ -536,7 +532,7 @@ class AppSetting(Base):
         default=False, nullable=False, server_default=text("false")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
