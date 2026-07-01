@@ -52,8 +52,11 @@ services:
       DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:?set in .env}
-      # Bootstrap-admin lifecycle + 2FA. Set WEBAUTHN_RP_ID/ORIGIN to your real
-      # domain for passkeys (defaults only work for localhost dev).
+      # Bootstrap-admin lifecycle + 2FA. Passkeys REQUIRE WEBAUTHN_RP_ID/ORIGIN set
+      # to your real domain — the localhost defaults make passkey registration fail
+      # behind a reverse proxy (Traefik) with a browser SecurityError. Set
+      # DASH_WEBAUTHN_RP_ID=dash.example.com and DASH_WEBAUTHN_ORIGIN=https://dash.example.com
+      # (exact https origin, no trailing slash). TOTP works regardless.
       DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
       DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
       DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}

@@ -167,6 +167,32 @@ def _validate_security(settings: Settings) -> None:
             note="X-Forwarded-For: trusting the last N entries for rate-limiting and audit IP",
         )
 
+    # --- WebAuthn / passkeys (RP id + origin) -------------------------------
+    # Not fail-closed: a broken passkey setup still leaves TOTP as a valid second
+    # factor, so we must not refuse startup. But the localhost defaults behind a
+    # real domain make passkey *registration* fail with an opaque browser
+    # SecurityError ("rp_id not a registrable suffix of <host>"), so surface it
+    # loudly. WebAuthn also needs a secure (https) context outside localhost.
+    if settings.env != "dev":
+        origin = settings.webauthn_origin or ""
+        if settings.webauthn_rp_id == "localhost" or "localhost" in origin:
+            structlog.get_logger("app.security").warning(
+                "webauthn.localhost_in_prod",
+                rp_id=settings.webauthn_rp_id,
+                origin=origin,
+                hint="passkey registration will fail behind your domain — set "
+                "DASH_WEBAUTHN_RP_ID to the public host (e.g. dash.example.com) and "
+                "DASH_WEBAUTHN_ORIGIN to the exact https origin "
+                "(e.g. https://dash.example.com), then restart. TOTP is unaffected.",
+            )
+        elif not origin.startswith("https://"):
+            structlog.get_logger("app.security").warning(
+                "webauthn.insecure_origin",
+                origin=origin,
+                hint="WebAuthn needs a secure (https) context outside localhost — "
+                "passkeys will not work when DASH_WEBAUTHN_ORIGIN is not https.",
+            )
+
 
 def create_app() -> FastAPI:
     settings = get_settings()

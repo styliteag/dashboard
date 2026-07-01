@@ -12,9 +12,21 @@ from app.config import Settings
 from app.main import _validate_security
 
 
-def _settings(env="dev", key="", hops=0):
-    """Minimal settings stub for _validate_security tests (matches real attrs used)."""
-    return types.SimpleNamespace(env=env, master_key=key, trusted_proxy_hops=hops)
+def _settings(
+    env="dev", key="", hops=0, rp_id="dash.example.com", origin="https://dash.example.com"
+):
+    """Minimal settings stub for _validate_security tests (matches real attrs used).
+
+    WebAuthn defaults to a configured prod so these master-key/hops tests never trip
+    the passkey warning branch; see test_webauthn_startup.py for that path.
+    """
+    return types.SimpleNamespace(
+        env=env,
+        master_key=key,
+        trusted_proxy_hops=hops,
+        webauthn_rp_id=rp_id,
+        webauthn_origin=origin,
+    )
 
 
 def test_non_dev_empty_key_raises():
