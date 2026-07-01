@@ -9,17 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent_hub.hub import (
-    _DUP_PERSIST_POLLS,
-    AgentHub,
-    _check_alert,
+from app.agent_hub.converters import (
     _child_from_agent,
     annotate_iface_error_rates,
+    check_alert,
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
     status_from_agent,
 )
+from app.agent_hub.hub import _DUP_PERSIST_POLLS, AgentHub
 from app.checks.history import CheckTransition
 from app.xsense.schemas import (
     InterfaceStats,
@@ -32,13 +31,13 @@ from app.xsense.schemas import (
 
 def test_check_alert_maps_state_to_level_and_check_key() -> None:
     crit = CheckTransition(check_key="cert:abc", old_state=0, new_state=2, summary="Certificate x")
-    title, message, level, check_key = _check_alert("opn1", crit)
+    title, message, level, check_key = check_alert("opn1", crit)
     # The full check key is passed so selection can route per service, not per category.
     assert level == "error" and check_key == "cert:abc"
     assert "opn1" in title and message == "Certificate x"
     # WARN → warning, OK (recovery) → info.
-    assert _check_alert("opn1", CheckTransition("cpu", 0, 1, "CPU high"))[2] == "warning"
-    assert _check_alert("opn1", CheckTransition("memory", 2, 0, "Memory ok"))[2] == "info"
+    assert check_alert("opn1", CheckTransition("cpu", 0, 1, "CPU high"))[2] == "warning"
+    assert check_alert("opn1", CheckTransition("memory", 2, 0, "Memory ok"))[2] == "info"
 
 
 def _status_with(ifaces: list[InterfaceStats]) -> SystemStatus:
