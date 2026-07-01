@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_hub.hub import hub
+from app.agent_hub.hub import ConnectedAgent, hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
 from app.db.base import get_session
@@ -61,6 +61,23 @@ def _agent_update_params() -> dict | None:
     }
 
 
+async def _push_update(agent: ConnectedAgent, params: dict) -> dict:
+    """Send agent.update to one connection and persist the outcome on it.
+
+    A rejection is pinned as ``last_update_error`` so the reason stays visible in
+    the GUI (the agent stays connected when it refuses an update). A success
+    restarts the agent → fresh connection, which clears it.
+    """
+    result = await agent.send_command("agent.update", params, timeout=30)
+    if result.get("success"):
+        agent.last_update_error = None
+        agent.last_update_version = None
+    else:
+        agent.last_update_error = result.get("output") or "update failed"
+        agent.last_update_version = params["version"]
+    return result
+
+
 @router.post("/instances/{instance_id}/agent/update")
 async def update_agent(
     instance_id: int,
@@ -99,17 +116,7 @@ async def update_agent(
             "result": {"success": True, "output": f"already at {params['version']}"},
         }
 
-    result = await agent.send_command("agent.update", params, timeout=30)
-
-    # Persist a rejection on the connection so the reason stays visible in the GUI
-    # (the agent stays connected when it refuses an update). A success restarts the
-    # agent → fresh connection, which clears this.
-    if result.get("success"):
-        agent.last_update_error = None
-        agent.last_update_version = None
-    else:
-        agent.last_update_error = result.get("output") or "update failed"
-        agent.last_update_version = params["version"]
+    result = await _push_update(agent, params)
 
     await write_audit(
         session,
@@ -172,14 +179,7 @@ async def update_all_agents(
         # the agent's anti-rollback and pin a sticky "update rejected" marker.
         if agent.agent_version == served:
             continue
-        result = await agent.send_command("agent.update", params, timeout=30)
-        # Persist a rejection so it stays visible in the list (same as single update).
-        if result.get("success"):
-            agent.last_update_error = None
-            agent.last_update_version = None
-        else:
-            agent.last_update_error = result.get("output") or "update failed"
-            agent.last_update_version = served
+        result = await _push_update(agent, params)
         results.append(
             {
                 "instance_id": a["instance_id"],
@@ -198,7 +198,6 @@ async def update_all_agents(
     )
     await session.commit()
     return {"served_version": served, "updated": results}
-
 
 
 @router.get("/agent/script", include_in_schema=False)
