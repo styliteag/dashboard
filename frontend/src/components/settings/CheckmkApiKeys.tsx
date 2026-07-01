@@ -63,6 +63,18 @@ export default function CheckmkApiKeys() {
     },
   });
 
+  const purgeMut = useMutation({
+    mutationFn: (id: number) => api.del(`/api/apikeys/${id}/purge`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS_QK }),
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to delete key"),
+  });
+
+  const purgeAllMut = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.del(`/api/apikeys/${id}/purge`))),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS_QK }),
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to delete keys"),
+  });
+
   const reveal = async (id: number) => {
     try {
       const r = await api.get<ApiKeyRevealed>(`/api/apikeys/${id}/reveal`);
@@ -191,9 +203,46 @@ export default function CheckmkApiKeys() {
       ))}
 
       {revoked.length > 0 && (
-        <p className="mt-3 text-xs text-slate-600">
-          {revoked.length} revoked key{revoked.length > 1 ? "s" : ""} hidden.
-        </p>
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Revoked ({revoked.length})
+            </h4>
+            <button
+              type="button"
+              onClick={() => purgeAllMut.mutate(revoked.map((k) => k.id))}
+              disabled={purgeAllMut.isPending}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" /> Delete all
+            </button>
+          </div>
+          <table className="mt-2 w-full text-sm">
+            <tbody>
+              {revoked.map((k) => (
+                <tr key={k.id} className="border-t border-slate-800 text-slate-500">
+                  <td className="py-2">{k.name}</td>
+                  <td className="py-2 font-mono text-xs">{k.prefix}…</td>
+                  <td className="py-2 text-xs">
+                    revoked {k.revoked_at ? new Date(k.revoked_at).toLocaleDateString() : ""}
+                  </td>
+                  <td className="py-2">
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => purgeMut.mutate(k.id)}
+                        disabled={purgeMut.isPending}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3 w-3" /> Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

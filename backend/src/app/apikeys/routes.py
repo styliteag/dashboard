@@ -120,6 +120,38 @@ async def revoke_apikey(
     return {"ok": True}
 
 
+@router.delete("/{key_id}/purge")
+async def delete_apikey(
+    key_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Hard-delete a key row. Only a revoked key can be purged — an active key
+    must be revoked first (revoke = soft, drops its recoverable copy; purge =
+    remove the row entirely so it stops cluttering the list)."""
+    key = await session.get(ApiKey, key_id)
+    if key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if key.revoked_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="revoke the key before deleting it",
+        )
+    await session.delete(key)
+    await write_audit(
+        session,
+        action="apikey.delete",
+        result="ok",
+        user_id=user.id,
+        target_type="apikey",
+        target_id=str(key_id),
+        source_ip=client_ip(request),
+    )
+    await session.commit()
+    return {"ok": True}
+
+
 @router.get("/{key_id}/reveal", response_model=ApiKeyRevealed)
 async def reveal_apikey(
     key_id: int,

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException, Request
 
-from app.apikeys.routes import reveal_apikey
+from app.apikeys.routes import delete_apikey, reveal_apikey
 from app.auth.apikey import API_KEY_PREFIX, generate_key, hash_key
 from app.auth.deps import read_principal, require_admin
 
@@ -152,3 +152,29 @@ async def test_reveal_404_when_no_ciphertext() -> None:
             user=SimpleNamespace(id=1),  # type: ignore[arg-type]
         )
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_purge_404_when_missing() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await delete_apikey(
+            key_id=1,
+            request=_request("DELETE", "x"),
+            session=_GetSession(None),  # type: ignore[arg-type]
+            user=SimpleNamespace(id=1),  # type: ignore[arg-type]
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_purge_400_when_active() -> None:
+    # An un-revoked key can't be hard-deleted — revoke first.
+    key = SimpleNamespace(revoked_at=None)
+    with pytest.raises(HTTPException) as exc:
+        await delete_apikey(
+            key_id=1,
+            request=_request("DELETE", "x"),
+            session=_GetSession(key),  # type: ignore[arg-type]
+            user=SimpleNamespace(id=1),  # type: ignore[arg-type]
+        )
+    assert exc.value.status_code == 400
