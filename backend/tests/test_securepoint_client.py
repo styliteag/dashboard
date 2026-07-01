@@ -24,8 +24,8 @@ _IPSEC_STATUS = [
         "name": "bonis-test",
         "subnet_id": 1,
         "subnet": "10.21.0.0/22 - 10.1.1.0/24",
-        "local_addr": "213.232.100.192",
-        "remote_addr": "84.180.80.50",
+        "local_addr": "203.0.113.10",
+        "remote_addr": "203.0.113.20",
         "state": "UP",
     },
     {
@@ -33,8 +33,8 @@ _IPSEC_STATUS = [
         "name": "bonis-test",
         "subnet_id": 2,
         "subnet": "10.21.0.0/22 - 10.2.2.0/24",
-        "local_addr": "213.232.100.192",
-        "remote_addr": "84.180.80.50",
+        "local_addr": "203.0.113.10",
+        "remote_addr": "203.0.113.20",
         "state": "DOWN",
     },
 ]
@@ -44,7 +44,7 @@ _APPMGMT_STATUS = [
 ]
 # Live-captured `system info`: live stats as {attribute, value} rows.
 _SYSTEM_INFO = [
-    {"attribute": "hostname", "value": "bensheim.stylite.de"},
+    {"attribute": "hostname", "value": "fw1.example.net"},
     {"attribute": "version", "value": "14.1.6"},
     {"attribute": "Idle", "value": "  98%"},
     {"attribute": "Mem Total", "value": "3887616"},
@@ -58,7 +58,7 @@ _SYSTEM_INFO = [
 ]
 _INTERFACE_ADDRS = [
     {"id": 3, "flags": ["ONLINE"], "device": "A1", "address": "10.21.0.1/22"},
-    {"id": 0, "flags": ["DYNAMIC"], "device": "wan0", "address": "213.232.100.192/32"},
+    {"id": 0, "flags": ["DYNAMIC"], "device": "wan0", "address": "203.0.113.10/32"},
 ]
 
 
@@ -136,8 +136,8 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
     assert t.id == "bonis-test"
     assert t.phase1_status == "established"  # at least one child UP
     assert (t.phase2_up, t.phase2_total) == (1, 2)
-    assert t.local == "213.232.100.192"
-    assert t.remote == "84.180.80.50"
+    assert t.local == "203.0.113.10"
+    assert t.remote == "203.0.113.20"
     assert {(c.local_ts, c.remote_ts, c.state) for c in t.children} == {
         ("10.21.0.0/22", "10.1.1.0/24", "INSTALLED"),
         ("10.21.0.0/22", "10.2.2.0/24", ""),
@@ -261,7 +261,7 @@ async def test_poll_status_maps_metrics_and_interfaces() -> None:
         async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False) as sp:
             status = await sp.poll_status()
 
-    assert status.name == "bensheim.stylite.de"
+    assert status.name == "fw1.example.net"
     assert status.version == "14.1.6"
     assert status.uptime == "01:19:44"
     assert status.cpu.total == 2.0  # 100 - 98% idle
@@ -269,7 +269,7 @@ async def test_poll_status_maps_metrics_and_interfaces() -> None:
     assert status.disks and status.disks[0].mountpoint == "/data"
     assert {(i.name, i.address, i.status) for i in status.interfaces} == {
         ("A1", "10.21.0.1/22", "up"),
-        ("wan0", "213.232.100.192/32", "up"),
+        ("wan0", "203.0.113.10/32", "up"),
     }
 
 

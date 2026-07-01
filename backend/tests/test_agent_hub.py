@@ -138,7 +138,7 @@ AGENT_PUSH = {
     "gateways": [
         {
             "name": "WAN",
-            "address": "62.156.244.38",
+            "address": "203.0.113.30",
             "status": "down",
             "delay": "0ms",
             "stddev": "0ms",
@@ -202,7 +202,7 @@ def test_gateways_from_agent() -> None:
     gws = gateways_from_agent(AGENT_PUSH)
     assert len(gws) == 1
     assert gws[0].name == "WAN"
-    assert gws[0].address == "62.156.244.38"
+    assert gws[0].address == "203.0.113.30"
     assert gws[0].status == "down"
     assert gws[0].loss == "100%"
     assert gateways_from_agent({}) == []

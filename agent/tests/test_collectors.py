@@ -234,7 +234,7 @@ def test_pfsense_update_detection() -> None:
 
 # Real return_gateways_status() sample captured on pfSense Plus 26.03.
 _PF_GW_JSON = (
-    '{"PPPOE_WAN":{"monitorip":"62.156.244.38","srcip":"87.191.183.135","name":"PPPOE_WAN",'
+    '{"PPPOE_WAN":{"monitorip":"203.0.113.30","srcip":"203.0.113.35","name":"PPPOE_WAN",'
     '"delay":"0ms","stddev":"0ms","loss":"100%","status":"down","substatus":"highloss"},'
     '"IPSec_GW":{"monitorip":"10.10.80.254","srcip":"10.10.80.254","name":"IPSec_GW",'
     '"delay":"","loss":"","status":"online","substatus":"none","monitor_disable":true}}'
@@ -247,7 +247,7 @@ def test_collect_gateways_pfsense_parses_php_json(monkeypatch: pytest.MonkeyPatc
     gws = agent.collect_gateways()
     assert {g["name"] for g in gws} == {"PPPOE_WAN", "IPSec_GW"}
     pppoe = next(g for g in gws if g["name"] == "PPPOE_WAN")
-    assert pppoe["address"] == "62.156.244.38"
+    assert pppoe["address"] == "203.0.113.30"
     assert pppoe["status"] == "down"
     assert pppoe["loss"] == "100%"
     ipsec = next(g for g in gws if g["name"] == "IPSec_GW")

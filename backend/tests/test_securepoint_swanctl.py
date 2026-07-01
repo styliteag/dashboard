@@ -13,8 +13,8 @@ from app.securepoint.swanctl import _unescape_conn_name, parse_ipsec
 # and uniqueid=1 CREATED/%any (half-open). Plus the trailing `reply {}`.
 _SAS_RAW = (
     "list-sa event {bonis-test {uniqueid=3 version=2 state=ESTABLISHED "
-    "local-host=213.232.100.192 local-port=4500 local-id=sp-bensheim.spdns.de "
-    "remote-host=84.180.80.50 remote-port=56069 remote-id=kl.bonis.de initiator=yes "
+    "local-host=203.0.113.10 local-port=4500 local-id=fw1-vpn.example.net "
+    "remote-host=203.0.113.20 remote-port=56069 remote-id=kl.bonis.de initiator=yes "
     "initiator-spi=0731875234fa6144 responder-spi=0f1186ba1485124f nat-remote=yes "
     "encr-alg=AES_CBC encr-keysize=256 established=556 rekey-time=6187 child-sas "
     "{bonis-test-7 {name=bonis-test uniqueid=7 reqid=2 state=INSTALLED mode=TUNNEL "
@@ -42,8 +42,8 @@ def test_parse_drops_half_open_and_keeps_established_with_spis() -> None:
     t = tunnels[0]
     assert t.id == "bonis-test"
     assert t.phase1_status == "ESTABLISHED"
-    assert t.local == "213.232.100.192"  # NOT clobbered to %any
-    assert t.remote == "84.180.80.50"
+    assert t.local == "203.0.113.10"  # NOT clobbered to %any
+    assert t.remote == "203.0.113.20"
     # IKE cookie pair — the NAT-proof key that pairs with the opn1 end.
     assert t.ike_init_spi == "0731875234fa6144"
     assert t.ike_resp_spi == "0f1186ba1485124f"
@@ -65,7 +65,7 @@ def test_empty_input_yields_no_tunnels() -> None:
 # --- Securepoint $XX connection-name unescaping (display name) -----------------
 # Securepoint hex-escapes characters invalid in a strongSwan section id; the swanctl
 # name `Broken$20Connection` must show as "Broken Connection" while the raw form
-# stays the tunnel id (swanctl --ike expects it). Confirmed live on the bensheim box.
+# stays the tunnel id (swanctl --ike expects it). Confirmed live on the fw1 box.
 
 
 def test_unescape_decodes_space() -> None:

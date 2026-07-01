@@ -14,7 +14,7 @@ from app.instances import service
 
 _BASE = "https://sp.example.test:11115"
 _SID = "0123456789abcdef0123456789abcdef"
-_SYSINFO = [{"attribute": "hostname", "value": "bensheim"}, {"attribute": "version", "value": "14"}]
+_SYSINFO = [{"attribute": "hostname", "value": "fw1"}, {"attribute": "version", "value": "14"}]
 
 
 @pytest.fixture(autouse=True)

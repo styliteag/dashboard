@@ -28,8 +28,8 @@ _IPSEC_STATUS = [
         "name": "bonis-test",
         "subnet_id": 1,
         "subnet": "10.21.0.0/22 - 10.1.1.0/24",
-        "local_addr": "213.232.100.192",
-        "remote_addr": "84.180.80.50",
+        "local_addr": "203.0.113.10",
+        "remote_addr": "203.0.113.20",
         "state": "UP",
     }
 ]

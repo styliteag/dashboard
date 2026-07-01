@@ -184,7 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the raw escaped form is kept as the tunnel id (swanctl `--ike` and the diagnose
   slicing need it verbatim). Also allows `$` in the diagnose tunnel-id guard so
   Diagnose works on these tunnels — it stays inert inside the single-quoted shell
-  assignment, and `'` remains rejected. Verified live on the bensheim box.
+  assignment, and `'` remains rejected. Verified live on the fw1 box.
 
 ## [2.1.4] - 2026-06-30
 

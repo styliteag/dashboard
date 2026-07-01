@@ -45,6 +45,6 @@ def test_public_ipv6_pseudonymized_internal_kept() -> None:
 
 
 def test_fqdn_pseudonymized_but_filenames_kept() -> None:
-    out = anonymize("host kc-of.stylite.de is down")
-    assert "kc-of.stylite.de" not in out and "HOST1" in out
+    out = anonymize("host host1.example.com is down")
+    assert "host1.example.com" not in out and "HOST1" in out
     assert "filter.log" in anonymize("reading filter.log")  # file ext not a hostname
