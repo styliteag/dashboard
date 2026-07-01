@@ -499,6 +499,16 @@ async def update_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="agent script not available"
         )
 
+    # Pushing the served version to an agent already running it would only trip
+    # the agent's anti-rollback ("pushed X not newer than X") and leave a sticky
+    # "update rejected" marker — answer as a no-op instead.
+    if agent.agent_version == params["version"]:
+        return {
+            "sent": False,
+            "version": params["version"],
+            "result": {"success": True, "output": f"already at {params['version']}"},
+        }
+
     result = await agent.send_command("agent.update", params, timeout=30)
 
     # Persist a rejection on the connection so the reason stays visible in the GUI
@@ -565,6 +575,12 @@ async def update_all_agents(
     for a in targets:
         agent = hub.get(a["instance_id"])
         if agent is None:
+            continue
+        # Re-check against the LIVE connection, not the snapshot above: an
+        # overlapping update run may have already updated this box, and its
+        # fresh reconnect reports the served version. Pushing anyway would trip
+        # the agent's anti-rollback and pin a sticky "update rejected" marker.
+        if agent.agent_version == served:
             continue
         result = await agent.send_command("agent.update", params, timeout=30)
         # Persist a rejection so it stays visible in the list (same as single update).

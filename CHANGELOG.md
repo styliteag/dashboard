@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent updates no longer show a spurious "update rejected" marker for
+  already-current agents.** Overlapping update runs (double "Update all", a
+  second browser tab, or a per-instance push) could send the served agent
+  version to a box that had just updated and reconnected; the agent's
+  anti-rollback then refused ("pushed X not newer than X") and the rejection
+  stuck as a persistent badge until the next reconnect. Both update endpoints
+  now re-check the live connection's version right before pushing and answer
+  "already at X" as a no-op instead.
+
 ## [2.4.2] - 2026-07-01
 
 ### Fixed

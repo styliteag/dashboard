@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -62,3 +63,139 @@ def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_agent_update_params_missing_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
     assert routes._agent_update_params() is None
+
+
+# --- Same-version push guard (update endpoints) -------------------------------
+#
+# Overlapping "Update all" runs raced: run B's stale target snapshot pushed the
+# served code to an agent that run A had already updated — the agent's
+# anti-rollback then refused ("pushed X not newer than X") and the rejection
+# stuck as a persistent "update rejected" marker. Both endpoints must re-check
+# the LIVE connection's version right before sending.
+
+
+class FakeAgent:
+    def __init__(self, version: str):
+        self.agent_version = version
+        self.last_update_error: str | None = None
+        self.last_update_version: str | None = None
+        self.sent: list[tuple[str, dict]] = []
+
+    async def send_command(self, action: str, params: dict | None = None, timeout: float = 30):
+        self.sent.append((action, params or {}))
+        return {"success": True, "output": f"update staged to {params['version']}, restarting"}
+
+
+class FakeHub:
+    def __init__(self, snapshot: list[dict], agents: dict[int, FakeAgent]):
+        self._snapshot = snapshot
+        self._agents = agents
+
+    def list_connected(self) -> list[dict]:
+        return self._snapshot
+
+    def get(self, instance_id: int) -> FakeAgent | None:
+        return self._agents.get(instance_id)
+
+
+class FakeSession:
+    def __init__(self, instance: object | None = None):
+        self._instance = instance
+
+    async def get(self, model, pk):
+        return self._instance
+
+    async def commit(self) -> None:
+        pass
+
+
+@pytest.fixture
+def update_env(monkeypatch: pytest.MonkeyPatch):
+    """Patch the module-level collaborators of the update endpoints."""
+    params = {"version": "2.4.0", "sha256": "x", "code": "eA==", "signature": ""}
+    monkeypatch.setattr(routes, "_agent_update_params", lambda: dict(params))
+
+    async def noop_audit(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(routes, "write_audit", noop_audit)
+    monkeypatch.setattr(routes, "client_ip", lambda request: "127.0.0.1")
+    return params
+
+
+def _patch_hub(monkeypatch: pytest.MonkeyPatch, hub: FakeHub) -> None:
+    monkeypatch.setattr(routes, "hub", hub)
+
+
+async def test_update_all_recheck_skips_agent_reconnected_at_served(
+    update_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Stale snapshot says 2.3.6, but the live connection (post-update reconnect)
+    # is already at the served version → must NOT push, must NOT set a marker.
+    live = FakeAgent("2.4.0")
+    snapshot = [{"instance_id": 1, "instance_name": "opn1", "agent_version": "2.3.6"}]
+    _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
+
+    result = await routes.update_all_agents(
+        request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
+    )
+
+    assert live.sent == []
+    assert live.last_update_error is None
+    assert result["updated"] == []
+
+
+async def test_update_all_pushes_outdated_agent(
+    update_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = FakeAgent("2.3.6")
+    snapshot = [{"instance_id": 1, "instance_name": "opn1", "agent_version": "2.3.6"}]
+    _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
+
+    result = await routes.update_all_agents(
+        request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
+    )
+
+    assert [a for a, _ in live.sent] == ["agent.update"]
+    assert live.last_update_error is None
+    assert len(result["updated"]) == 1 and result["updated"][0]["result"]["success"]
+
+
+async def test_update_single_skips_when_agent_current(
+    update_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = FakeAgent("2.4.0")
+    _patch_hub(monkeypatch, FakeHub([], {1: live}))
+    inst = SimpleNamespace(id=1, deleted_at=None)
+
+    result = await routes.update_agent(
+        instance_id=1,
+        request=SimpleNamespace(),
+        session=FakeSession(instance=inst),
+        user=SimpleNamespace(id=1),
+    )
+
+    assert live.sent == []
+    assert live.last_update_error is None
+    assert result["sent"] is False
+    assert result["result"]["success"] is True
+    assert "already" in result["result"]["output"]
+
+
+async def test_update_single_pushes_when_outdated(
+    update_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = FakeAgent("2.3.6")
+    _patch_hub(monkeypatch, FakeHub([], {1: live}))
+    inst = SimpleNamespace(id=1, deleted_at=None)
+
+    result = await routes.update_agent(
+        instance_id=1,
+        request=SimpleNamespace(),
+        session=FakeSession(instance=inst),
+        user=SimpleNamespace(id=1),
+    )
+
+    assert [a for a, _ in live.sent] == ["agent.update"]
+    assert result["sent"] is True
+    assert result["result"]["success"] is True
