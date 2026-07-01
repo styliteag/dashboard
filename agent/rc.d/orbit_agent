@@ -35,8 +35,15 @@ fi
 
 # Run the supervisor (run-agent.sh), not python directly: it provides the
 # respawn loop + self-update rollback (DR-5). The interpreter is passed as $1.
+#
+# -f is critical on pfSense: at boot the service is launched by the PHP boot
+# framework via afterbootupshellcmd, i.e. mwexec()/exec() which reads the child's
+# stdout to EOF. Without -f the long-lived daemon(8) SUPERVISOR keeps its inherited
+# stdout/stderr (the exec capture pipe), so EOF never arrives and rc.bootup hangs
+# forever at "Running afterbootupshellcmd ... onestart". -f sends the supervisor's
+# own fds to /dev/null; combined with -o the agent's output still lands in the log.
 command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -o ${orbit_agent_logfile} -t ${name} /bin/sh /usr/local/orbit-agent/run-agent.sh ${orbit_agent_python}"
+command_args="-f -p ${pidfile} -o ${orbit_agent_logfile} -t ${name} /bin/sh /usr/local/orbit-agent/run-agent.sh ${orbit_agent_python}"
 
 start_precmd="${name}_prestart"
 # The pidfile holds run-agent.sh's pid, not /usr/sbin/daemon's, so rc.subr's

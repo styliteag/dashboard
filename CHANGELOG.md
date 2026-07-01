@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.3.5] - 2026-07-01
+### Fixed
+
+- **pfSense boot no longer hangs at the agent boot hook.** On pfSense the agent is
+  started at boot via `afterbootupshellcmd`, which pfSense runs through
+  `mwexec()`/`exec()` — a call that reads the command's stdout to EOF. The
+  `daemon(8)` supervisor inherited that capture pipe and, being long-lived, never
+  released it, so `rc.bootup` blocked forever at "Running afterbootupshellcmd
+  /usr/local/etc/rc.d/orbit_agent onestart" and the box never finished booting.
+  The rc.d service now passes `daemon -f` (supervisor stdio → `/dev/null`, agent
+  output still logged via `-o`), and the registered boot hook now redirects its
+  own stdio (`… onestart >/dev/null 2>&1`). Already-deployed agents self-heal:
+  startup migrates a legacy un-redirected `afterbootupshellcmd` entry to the fixed
+  form. OPNsense was never affected (it starts rc.d services via normal `rc`).
 
 ### Added
 

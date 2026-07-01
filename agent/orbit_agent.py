@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.3.4"
+__version__ = "2.3.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2123,12 +2123,28 @@ def _run_provision_php(php: str) -> tuple[str, str] | None:
 # installed rc.d script + ``orbit_agent_enable=YES`` never fires after a reboot and
 # the agent stays down. Register pfSense's native ``afterbootupshellcmd`` boot hook
 # (run at the end of rc.bootup, network up) to start us. Idempotent + non-destructive.
-_PF_BOOT_CMD = "/usr/local/etc/rc.d/orbit_agent onestart"
+# The redirect is load-bearing, not cosmetic: pfSense runs afterbootupshellcmd via
+# mwexec()/exec(), which reads the child's stdout to EOF. Without it, daemon(8)'s
+# long-lived supervisor keeps the inherited exec pipe open and rc.bootup hangs
+# forever at "Running afterbootupshellcmd ... onestart". >/dev/null 2>&1 closes that
+# pipe immediately (the agent still logs to /var/log/orbit_agent.log via daemon -o).
+_PF_BOOT_CMD_BARE = "/usr/local/etc/rc.d/orbit_agent onestart"
+_PF_BOOT_CMD = _PF_BOOT_CMD_BARE + " >/dev/null 2>&1"
 _PF_PERSIST_PHP = r"""<?php
 require_once("config.inc");
 $cmd = "__CMD__";
+$bare = "__BARE__";
 $cur = (string) config_get_path("system/afterbootupshellcmd", "");
-if (strpos($cur, "orbit_agent") !== false) { echo "unchanged"; exit; }
+if (strpos($cur, $cmd) !== false) { echo "unchanged"; exit; }
+if (strpos($cur, $bare) !== false) {
+    // Heal a legacy registration missing the redirect (the boot-hang cause):
+    // replace exactly the one bare occurrence, leaving any other shellcmds intact.
+    $pos = strpos($cur, $bare);
+    $new = substr($cur, 0, $pos) . $cmd . substr($cur, $pos + strlen($bare));
+    config_set_path("system/afterbootupshellcmd", $new);
+    write_config("orbit: redirect agent boot hook stdio (fix pfSense boot hang)");
+    echo "migrated"; exit;
+}
 $new = ($cur === "") ? $cmd : ($cur . "; " . $cmd);
 config_set_path("system/afterbootupshellcmd", $new);
 write_config("orbit: persist agent autostart across reboot");
@@ -2140,13 +2156,15 @@ def _ensure_pfsense_boot_persistence() -> None:
     """Make the agent survive a pfSense reboot (idempotent, pfSense only, best-effort).
 
     Already-deployed agents self-heal on the next deploy: the self-updated code
-    runs this at startup and registers the boot hook. Skips when already present
-    and appends rather than clobbering any existing afterbootupshellcmd.
+    runs this at startup and registers the boot hook. Skips when already present,
+    migrates a legacy un-redirected entry (which hangs the pfSense boot) to the
+    fixed form, and appends rather than clobbering any existing afterbootupshellcmd.
     """
     if detect_platform() != "pfsense":
         return
     try:
-        tmp = _write_root_script(_PF_PERSIST_PHP.replace("__CMD__", _PF_BOOT_CMD), ".php")
+        php = _PF_PERSIST_PHP.replace("__CMD__", _PF_BOOT_CMD).replace("__BARE__", _PF_BOOT_CMD_BARE)
+        tmp = _write_root_script(php, ".php")
     except OSError as exc:
         log.warning("pfsense: could not write boot persistence script: %s", exc)
         return
@@ -2154,6 +2172,8 @@ def _ensure_pfsense_boot_persistence() -> None:
         out = _run(["/usr/local/bin/php", tmp], timeout=30).strip()
         if out == "set":
             log.warning("pfsense: registered afterbootupshellcmd for reboot persistence")
+        elif out == "migrated":
+            log.warning("pfsense: migrated boot hook to redirected form (fixes boot hang)")
         elif out == "unchanged":
             log.debug("pfsense: boot persistence already registered")
         else:
