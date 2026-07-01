@@ -1,6 +1,10 @@
 # TODO
 
-- Make the webgui of pfsense accessible over our agent-proxy
+- Runtime of agent (maybe its sections) as metric visibe (WARN if logner than 10s)
+- checkmk: "3 revoked keys hidden." -> delete them
+- 2FA passkey do not work
+- AI could include:
+    grep -A20 "connections {" /usr/local/etc/swanctl/swanctl.conf or the whole conf file?
 - Active backlog lives in `docs/agent-architecture.md` (§11 Offene Punkte, §14 Bekannte Lücken).
 
 
