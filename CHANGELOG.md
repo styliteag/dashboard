@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Pages use the full browser width, and the VPN overview degrades gracefully when
+  narrow.** The page container's `max-w-7xl` cap is removed, so every page (the VPN
+  overview in particular) uses the full window width minus the page padding. The
+  per-row "Down" action is removed from the VPN overview (Reconnect remains). Below
+  the `xl` breakpoint the "Remote" column is hidden to avoid horizontal scrolling,
+  and the "dup phase2" badge is shortened to "dup" (full explanation in its tooltip).
+
 ## [2.3.1] - 2026-07-01
 
 ### Fixed

@@ -269,20 +269,6 @@ export default function VPNOverviewPage() {
     refetchInterval: 30_000,
   });
 
-  const disconnectMut = useMutation({
-    mutationFn: (t: GlobalTunnel) =>
-      api.post<TunnelActionResponse>(
-        `/api/instances/${t.instance_id}/ipsec/disconnect/${t.unique_id || t.tunnel_id}`,
-      ),
-    onMutate: (t) => setBusy(rowKey(t), true),
-    onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
-    onSuccess: (r, t) => {
-      flash({ ok: r.success, text: r.success ? "Disconnected" : r.message });
-      patchInstance(t.instance_id);
-    },
-    onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
-  });
-
   // Reconnect = terminate the live SA (if up, best-effort) then re-initiate,
   // via the existing connect/disconnect endpoints (works in agent mode).
   const reconnectMut = useMutation({
@@ -377,7 +363,7 @@ export default function VPNOverviewPage() {
               {t.description || t.tunnel_id}
             </button>
           </td>
-          <td className="px-3 py-2 font-mono text-xs">{t.remote}</td>
+          <td className="hidden px-3 py-2 font-mono text-xs xl:table-cell">{t.remote}</td>
           <td className="px-3 py-2">
             <span
               className={`inline-flex items-center gap-1 ${
@@ -411,15 +397,6 @@ export default function VPNOverviewPage() {
               >
                 <History className="h-3 w-3" /> History
               </button>
-              {up && (
-                <button
-                  onClick={() => disconnectMut.mutate(t)}
-                  disabled={pending.has(rowKey(t))}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-50"
-                >
-                  <Unlink className="h-3 w-3" /> Down
-                </button>
-              )}
               <button
                 onClick={() => reconnectMut.mutate(t)}
                 disabled={pending.has(rowKey(t))}
@@ -568,14 +545,14 @@ export default function VPNOverviewPage() {
         <p className="mt-6 text-slate-500">No tunnels found.</p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
-          <table className="w-full min-w-[1080px] text-sm">
+          <table className="w-full min-w-[880px] text-sm xl:min-w-[1080px]">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
                 {grouped ? (
                   <>
                     <th className="px-3 py-2">Instance</th>
                     <th className="px-3 py-2">Tunnel</th>
-                    <th className="px-3 py-2">Remote</th>
+                    <th className="hidden px-3 py-2 xl:table-cell">Remote</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Phase 2</th>
                     <th className="px-3 py-2">Uptime</th>
@@ -591,7 +568,13 @@ export default function VPNOverviewPage() {
                       toggle={sortToggle}
                     />
                     <SortHeader label="Tunnel" colKey="tunnel" sort={sort} toggle={sortToggle} />
-                    <SortHeader label="Remote" colKey="remote" sort={sort} toggle={sortToggle} />
+                    <SortHeader
+                      label="Remote"
+                      colKey="remote"
+                      sort={sort}
+                      toggle={sortToggle}
+                      className="hidden xl:table-cell"
+                    />
                     <SortHeader label="Status" colKey="status" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Phase 2" colKey="phase2" sort={sort} toggle={sortToggle} />
                     <SortHeader label="Uptime" colKey="uptime" sort={sort} toggle={sortToggle} />

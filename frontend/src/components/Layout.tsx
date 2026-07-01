@@ -112,7 +112,7 @@ export default function Layout() {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+      <main className="w-full flex-1 px-6 py-8">
         <Outlet />
       </main>
 
