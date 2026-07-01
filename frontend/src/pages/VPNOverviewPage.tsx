@@ -27,6 +27,7 @@ import SortHeader from "../components/SortHeader";
 import PingMonitorDialog from "../components/PingMonitorDialog";
 import TunnelHistoryDialog from "../components/TunnelHistoryDialog";
 import TunnelGraphDialog from "../components/TunnelGraphDialog";
+import VPNOverviewGraphDialog from "../components/VPNOverviewGraphDialog";
 
 interface GlobalTunnel {
   instance_id: number;
@@ -206,6 +207,7 @@ export default function VPNOverviewPage() {
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<GlobalTunnel | null>(null);
   const [graphTarget, setGraphTarget] = useState<GlobalTunnel | null>(null);
+  const [showAllGraph, setShowAllGraph] = useState(false);
 
   // Paired-group collapse: healthy ("both up") pairs collapse to just their header
   // by default (problems stay expanded). Two explicit-override sets let the user
@@ -484,6 +486,14 @@ export default function VPNOverviewPage() {
           </button>
         ))}
         <button
+          onClick={() => setShowAllGraph(true)}
+          disabled={(data?.tunnels?.length ?? 0) === 0}
+          title="Up/down timeline across all tunnels"
+          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 disabled:opacity-40"
+        >
+          <LineChart className="h-3 w-3" /> Graph
+        </button>
+        <button
           onClick={() => setGroupedPersisted(!grouped)}
           title="Group the two ends of each tunnel together"
           className={`ml-auto inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs ${
@@ -699,6 +709,13 @@ export default function VPNOverviewPage() {
             children: graphTarget.children,
           }}
           onClose={() => setGraphTarget(null)}
+        />
+      )}
+
+      {showAllGraph && (
+        <VPNOverviewGraphDialog
+          tunnels={data?.tunnels ?? []}
+          onClose={() => setShowAllGraph(false)}
         />
       )}
     </div>

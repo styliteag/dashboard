@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **All-tunnels "Graph" popup on the VPN overview.** A new Graph button in the
+  toolbar opens a single step line of how many tunnels have Phase 1 up over time,
+  folded from every tunnel's transition log (same 24h/7d/30d/All window selector).
+  Each tunnel end is counted separately, so the value at "now" matches the
+  Connected KPI and the Y-axis max matches the total tunnel count.
+- **Temporarily mute notifications per channel + Checkmk blackout.** Each channel
+  tab (Mattermost / Telegram / Email) now has a manual on/off switch that pauses
+  that channel's real alerts; an explicit "Send test" still fires so muting can't
+  hide a broken config. The Checkmk tab adds a blackout switch that empties the
+  `/api/export/checkmk` output (no instances) so Checkmk sees every service go
+  stale/gone during maintenance. Toggles are runtime settings (no restart) and
+  stay until switched back.
+
+### Changed
+
+- **The per-tunnel Graph popup now plots Phase 2 as a number, not up/down.** The
+  Phase 2 lane is a numeric step line of installed child SAs (green when all up,
+  amber partial, red at none) with a 0..total Y scale; Phase 1 and Ping stay as
+  up/down state lines.
+
 ## [2.3.2] - 2026-07-01
 
 ### Added

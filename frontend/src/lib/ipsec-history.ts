@@ -52,6 +52,11 @@ export function fmtAxisTime(ms: number): string {
     : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** N+1 evenly spaced tick times across [t0, t1] (endpoints included). */
+export function axisTicks(t0: number, t1: number, n = 5): number[] {
+  return Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
+}
+
 /** Span-aware tick: date for multi-day spans, otherwise time-of-day. */
 export function fmtSpanTick(ms: number, spanMs: number): string {
   const d = new Date(ms);

@@ -9,9 +9,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { IPsecTunnelEvent } from "../lib/types";
-import { WINDOWS, autoWindowKey, fmtSpanTick, fmtTs } from "../lib/ipsec-history";
-import { LANES, buildTimeline, laneSegments, type LaneState, type TunnelLive } from "../lib/ipsec-graph";
+import { WINDOWS, autoWindowKey, axisTicks, fmtSpanTick, fmtTs } from "../lib/ipsec-history";
+import {
+  LANES,
+  buildTimeline,
+  laneNumSegments,
+  laneSegments,
+  type LaneState,
+  type TunnelLive,
+} from "../lib/ipsec-graph";
 import Dialog from "./Dialog";
+import StepLine from "./StepLine";
 
 interface Props {
   instanceId: number;
@@ -27,6 +35,15 @@ const STATE_COLOR: Record<LaneState, string> = {
   unknown: "#475569",
 };
 
+const P2_PARTIAL = "#fbbf24";
+
+/** Phase-2 numeric line colour: green when all SAs up, red at zero, amber partial. */
+function phase2Color(v: number, total: number): string {
+  if (v <= 0) return STATE_COLOR.down;
+  if (v >= total) return STATE_COLOR.up;
+  return P2_PARTIAL;
+}
+
 // SVG geometry in user units; the viewBox scales uniformly to the dialog width.
 const W = 760;
 const PAD_L = 92;
@@ -37,12 +54,6 @@ const LANE_H = 46;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = LANES.length * LANE_H;
 const H = PAD_T + PLOT_H + PAD_B;
-
-/** Six evenly spaced tick times across the domain (endpoints included). */
-function axisTicks(t0: number, t1: number): number[] {
-  const n = 5;
-  return Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
-}
 
 function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   return (
@@ -152,7 +163,59 @@ export default function TunnelGraphDialog({
             ))}
 
             {LANES.map((lane, li) => {
-              const yc = PAD_T + li * LANE_H + LANE_H / 2;
+              const laneTop = PAD_T + li * LANE_H;
+              const yc = laneTop + LANE_H / 2;
+
+              // Phase 2 is a numeric step line (installed SA count), not up/down.
+              if (lane.key === "phase2") {
+                const total = timeline.phase2Total;
+                const insetT = laneTop + 9;
+                const insetB = laneTop + LANE_H - 9;
+                const yForNum = (v: number) =>
+                  insetB - (Math.max(0, Math.min(v, total)) / total) * (insetB - insetT);
+                const numSegs = laneNumSegments(timeline.phase2Num, live.phase2_up, t0, t1);
+                return (
+                  <g key={lane.key}>
+                    <line
+                      x1={PAD_L}
+                      x2={W - PAD_R}
+                      y1={insetB}
+                      y2={insetB}
+                      stroke="#1e293b"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={PAD_L - 10}
+                      y={yc}
+                      textAnchor="end"
+                      dominantBaseline="middle"
+                      fontSize={12}
+                      fill="#94a3b8"
+                    >
+                      {lane.label}
+                    </text>
+                    <text x={PAD_L + 3} y={insetB} fontSize={9} fill="#475569">
+                      0
+                    </text>
+                    <text x={PAD_L + 3} y={insetT + 3} fontSize={9} fill="#475569">
+                      {total}
+                    </text>
+                    <StepLine
+                      segments={numSegs}
+                      xFor={x}
+                      yFor={yForNum}
+                      strokeWidth={3}
+                      colorFor={(v) => phase2Color(v, total)}
+                      title={(s) =>
+                        `Phase 2: ${s.value}/${total} · ${fmtTs(new Date(s.from).toISOString())} – ${fmtTs(
+                          new Date(s.to).toISOString(),
+                        )}`
+                      }
+                    />
+                  </g>
+                );
+              }
+
               const segs = laneSegments(timeline[lane.key], timeline.live[lane.key], t0, t1);
               return (
                 <g key={lane.key}>
@@ -199,9 +262,16 @@ export default function TunnelGraphDialog({
           </svg>
 
           <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-slate-500">Phase 1 / Ping:</span>
             <LegendItem color={STATE_COLOR.up} label="up" />
             <LegendItem color={STATE_COLOR.down} label="down" />
             <LegendItem color={STATE_COLOR.unknown} label="no data" dashed />
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-4 text-xs">
+            <span className="text-slate-500">Phase 2 (installed SAs):</span>
+            <LegendItem color={STATE_COLOR.up} label="all up" />
+            <LegendItem color={P2_PARTIAL} label="partial" />
+            <LegendItem color={STATE_COLOR.down} label="none" />
           </div>
         </div>
       )}
