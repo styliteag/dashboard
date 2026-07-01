@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Copy, Check, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 
 interface AgentStatus {
@@ -162,7 +162,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["agent-token", instanceId] });
     },
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error enabling agent" }),
+      setMsg({ ok: false, text: apiErrorText(e, "Error enabling agent") }),
   });
 
   const disableMut = useMutation({
@@ -187,7 +187,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
     },
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Update failed" }),
+      setMsg({ ok: false, text: apiErrorText(e, "Update failed") }),
   });
 
   const testApiMut = useMutation({
@@ -205,7 +205,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
           ? `Local API OK — HTTP ${r.status_code} in ${r.latency_ms} ms`
           : `Local API call failed: ${r.error ?? "no response"}`,
       }),
-    onError: (e) => setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Test failed" }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Test failed") }),
   });
 
   const guiMut = useMutation({
@@ -215,7 +215,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       window.open(data.url, "_blank", "noopener,noreferrer");
     },
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
+      setMsg({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
   });
 
   const uninstallMut = useMutation({
@@ -233,7 +233,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
     },
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Uninstall failed" }),
+      setMsg({ ok: false, text: apiErrorText(e, "Uninstall failed") }),
   });
 
   const enrollMut = useMutation({
@@ -241,7 +241,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       api.post<EnrollCodeResponse>(`/api/instances/${instanceId}/agent/enroll-code`),
     onSuccess: (data) => setEnrollCode(data.code),
     onError: (e) =>
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Could not generate code" }),
+      setMsg({ ok: false, text: apiErrorText(e, "Could not generate code") }),
   });
 
   // Pre-filled config (dashboard URL baked in). With a one-time code the agent

@@ -16,6 +16,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The server's error message when `e` is an ApiError, else the fallback. */
+export function apiErrorText(e: unknown, fallback: string): string {
+  return e instanceof ApiError ? e.message : fallback;
+}
+
 export const unauthorizedEvent = "dash:unauthorized";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

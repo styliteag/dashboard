@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ApiError } from "../lib/api";
+import { apiErrorText } from "../lib/api";
 import { api } from "../lib/api";
 
 export default function PasswordPage() {
@@ -35,7 +35,7 @@ export default function PasswordPage() {
     } catch (err) {
       setMessage({
         ok: false,
-        text: err instanceof ApiError ? err.message : "Failed to change password.",
+        text: apiErrorText(err, "Failed to change password."),
       });
     } finally {
       setSubmitting(false);

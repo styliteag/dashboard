@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, Check, ClipboardCopy, Eye, Loader2, ShieldCheck } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { IPsecDiagnosis } from "../lib/types";
 import Dialog from "./Dialog";
 import Markdown from "./Markdown";
@@ -87,7 +87,7 @@ export default function DiagnoseDialog({ instanceId, tunnelId, tunnelName, onClo
         model: "",
         findings: "",
         sent_chars: 0,
-        error: e instanceof ApiError ? e.message : "Analysis failed",
+        error: apiErrorText(e, "Analysis failed"),
       }),
   });
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, KeyRound, Plus, Trash2 } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
+import { api, apiErrorText } from "../../lib/api";
 import { fmtDate, fmtDateTime, fmtRelative } from "../../lib/datetime";
 import type { ApiKey, ApiKeyCreated, ApiKeyRevealed } from "../../lib/types";
 
@@ -48,7 +48,7 @@ export default function CheckmkApiKeys() {
       setError(null);
       qc.invalidateQueries({ queryKey: KEYS_QK });
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to create key"),
+    onError: (e) => setError(apiErrorText(e, "Failed to create key")),
   });
 
   const revokeMut = useMutation({
@@ -67,13 +67,13 @@ export default function CheckmkApiKeys() {
   const purgeMut = useMutation({
     mutationFn: (id: number) => api.del(`/api/apikeys/${id}/purge`),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS_QK }),
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to delete key"),
+    onError: (e) => setError(apiErrorText(e, "Failed to delete key")),
   });
 
   const purgeAllMut = useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.del(`/api/apikeys/${id}/purge`))),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS_QK }),
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to delete keys"),
+    onError: (e) => setError(apiErrorText(e, "Failed to delete keys")),
   });
 
   const reveal = async (id: number) => {
@@ -81,7 +81,7 @@ export default function CheckmkApiKeys() {
       const r = await api.get<ApiKeyRevealed>(`/api/apikeys/${id}/reveal`);
       setRevealed((m) => ({ ...m, [id]: r.key }));
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to reveal key");
+      setError(apiErrorText(e, "Failed to reveal key"));
     }
   };
 

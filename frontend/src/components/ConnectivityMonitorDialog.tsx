@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Activity, Trash2 } from "lucide-react";
 import Dialog from "./Dialog";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type {
   ConnectivityMonitor,
   ConnMonitorCreate,
@@ -49,7 +49,7 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
     },
     onError: (e) => {
       setTestResult(null);
-      setError(e instanceof ApiError ? e.message : "Test failed");
+      setError(apiErrorText(e, "Test failed"));
     },
   });
 
@@ -77,7 +77,7 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
       invalidate();
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Save failed"),
+    onError: (e) => setError(apiErrorText(e, "Save failed")),
   });
 
   const deleteMut = useMutation({
@@ -86,7 +86,7 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
       invalidate();
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Delete failed"),
+    onError: (e) => setError(apiErrorText(e, "Delete failed")),
   });
 
   const canSave = !!name.trim() && !!destination.trim();

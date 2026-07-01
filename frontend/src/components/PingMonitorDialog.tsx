@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Activity, Trash2 } from "lucide-react";
 import Dialog from "./Dialog";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import { firstHostFromSelector } from "../lib/ipsec-ping";
 import type {
   IPsecChild,
@@ -65,7 +65,7 @@ export default function PingMonitorDialog({
     },
     onError: (e) => {
       setTestResult(null);
-      setError(e instanceof ApiError ? e.message : "Test failed");
+      setError(apiErrorText(e, "Test failed"));
     },
   });
   const invalidate = () => {
@@ -102,7 +102,7 @@ export default function PingMonitorDialog({
       invalidate();
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Save failed"),
+    onError: (e) => setError(apiErrorText(e, "Save failed")),
   });
 
   const deleteMut = useMutation({
@@ -111,7 +111,7 @@ export default function PingMonitorDialog({
       invalidate();
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Delete failed"),
+    onError: (e) => setError(apiErrorText(e, "Delete failed")),
   });
 
   const selector =

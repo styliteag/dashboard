@@ -7,7 +7,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
+import { api, apiErrorText } from "../../lib/api";
 import type { AppSettingItem } from "../../lib/types";
 
 const QK = ["app-settings"];
@@ -97,7 +97,7 @@ export default function MuteToggle({
       )}
       {toggleMut.error && (
         <p className="mt-2 text-xs text-red-400">
-          {toggleMut.error instanceof ApiError ? toggleMut.error.message : "Failed to update"}
+          {apiErrorText(toggleMut.error, "Failed to update")}
         </p>
       )}
     </div>

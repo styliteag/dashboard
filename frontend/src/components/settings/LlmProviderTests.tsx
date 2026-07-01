@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
+import { api, apiErrorText } from "../../lib/api";
 
 interface LlmProvider {
   id: string;
@@ -36,7 +36,7 @@ export default function LlmProviderTests() {
     onError: (e, id) =>
       setResults((s) => ({
         ...s,
-        [id]: { ok: false, detail: e instanceof ApiError ? e.message : "Test failed" },
+        [id]: { ok: false, detail: apiErrorText(e, "Test failed") },
       })),
   });
 

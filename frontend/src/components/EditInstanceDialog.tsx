@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { Instance } from "../lib/types";
 import Dialog from "./Dialog";
 
@@ -101,7 +101,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Failed to save.");
+      setError(apiErrorText(err, "Failed to save."));
     },
   });
 

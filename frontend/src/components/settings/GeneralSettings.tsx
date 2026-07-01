@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, SlidersHorizontal } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
+import { api, apiErrorText } from "../../lib/api";
 import type { AppSettingItem } from "../../lib/types";
 
 const QK = ["app-settings"];
@@ -65,7 +65,7 @@ export default function GeneralSettings({
       qc.invalidateQueries({ queryKey: ["notification-routing"] });
     },
     onError: (e, v) =>
-      setError((s) => ({ ...s, [v.key]: e instanceof ApiError ? e.message : "Save failed" })),
+      setError((s) => ({ ...s, [v.key]: apiErrorText(e, "Save failed") })),
   });
 
   const resetMut = useMutation({

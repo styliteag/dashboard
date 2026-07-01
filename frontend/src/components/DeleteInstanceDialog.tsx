@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { Instance } from "../lib/types";
 import Dialog from "./Dialog";
 
@@ -21,7 +21,7 @@ export default function DeleteInstanceDialog({ instance, onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Failed to delete.");
+      setError(apiErrorText(err, "Failed to delete."));
     },
   });
 

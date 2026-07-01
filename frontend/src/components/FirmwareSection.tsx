@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw, Package, AlertTriangle } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { FirmwareStatus, ActionResult, FirmwareUpgradeStatus } from "../lib/types";
 
 interface Props {
@@ -41,7 +41,7 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
       setTimeout(() => queryClient.invalidateQueries({ queryKey: qk }), 30_000);
     },
     onError: (e) => {
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      setMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
     },
   });
@@ -60,7 +60,7 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
       setUpgrading(true);
     },
     onError: (e) => {
-      setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      setMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
     },
   });

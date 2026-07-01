@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shield, Link2, Search, ChevronRight, ChevronDown, LineChart } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { IPsecServiceStatus, TunnelActionResponse } from "../lib/types";
 import { useSort } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
@@ -148,7 +148,7 @@ export default function VPNOverviewPage() {
       flash({ ok: r.success, text: r.success ? "Reconnected" : r.message });
       patchInstance(t.instance_id);
     },
-    onError: (e) => flash({ ok: false, text: e instanceof ApiError ? e.message : "Error" }),
+    onError: (e) => flash({ ok: false, text: apiErrorText(e, "Error") }),
   });
 
   const allTags = [...new Set((data?.tunnels ?? []).flatMap((t) => t.tags ?? []))].sort();

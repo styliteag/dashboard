@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, ChevronDown, ChevronUp, Eye, Loader2, ShieldCheck } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import Markdown from "./Markdown";
 
@@ -79,7 +79,7 @@ export default function AiLogAnalysisSection({ instanceId }: { instanceId: numbe
         model: "",
         findings: "",
         sent_chars: 0,
-        error: e instanceof ApiError ? e.message : "Analysis failed",
+        error: apiErrorText(e, "Analysis failed"),
       }),
   });
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import { fmtDate } from "../lib/datetime";
 import { useAuth } from "../lib/use-auth";
 import type { DashUser, UserRole } from "../lib/types";
@@ -33,7 +33,7 @@ export default function UsersPage() {
   });
 
   const fail = (e: unknown, fallback: string) =>
-    setError(e instanceof ApiError ? e.message : fallback);
+    setError(apiErrorText(e, fallback));
   const invalidate = () => qc.invalidateQueries({ queryKey: USERS_QK });
 
   const createMut = useMutation({

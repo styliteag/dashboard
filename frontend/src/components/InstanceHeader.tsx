@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, RefreshCw, ExternalLink, Download, Pencil, Power } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { Instance, SystemStatus } from "../lib/types";
 
 interface AgentStatus {
@@ -53,7 +53,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
     mutationFn: () => api.post<{ url: string }>(`/api/instances/${id}/gui/open`),
     onSuccess: (data) => window.open(data.url, "_blank", "noopener,noreferrer"),
     onError: (e) =>
-      flash({ ok: false, text: e instanceof ApiError ? e.message : "Could not open GUI" }),
+      flash({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
   });
 
   const pill = statusPill(instance);
@@ -180,7 +180,7 @@ function RebootDialog({
       onClose();
     },
     onError: (e) => {
-      onResult({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      onResult({ ok: false, text: apiErrorText(e, "Error") });
       onClose();
     },
   });

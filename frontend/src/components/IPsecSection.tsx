@@ -4,7 +4,7 @@
 import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Unlink, RotateCw, Shield, ChevronRight, ChevronDown, Stethoscope } from "lucide-react";
-import { api, ApiError } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type {
   IPsecServiceStatus,
   IPsecChild,
@@ -101,7 +101,7 @@ export default function IPsecSection({
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      setActionMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
     },
   });
@@ -119,7 +119,7 @@ export default function IPsecSection({
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      setActionMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
     },
   });
@@ -136,7 +136,7 @@ export default function IPsecSection({
       clearMsg();
     },
     onError: (e) => {
-      setActionMsg({ ok: false, text: e instanceof ApiError ? e.message : "Error" });
+      setActionMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
     },
   });
