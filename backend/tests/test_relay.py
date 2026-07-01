@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import app.agent_hub.routes as routes_mod
+import app.agent_hub.routes.relay as routes_mod
 import app.main as main_mod
 from app.auth.deps import current_user
 

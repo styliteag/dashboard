@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 import app.agent_hub.hub as hub_mod
-import app.agent_hub.routes as routes_mod
+import app.agent_hub.routes.ws as routes_mod
 import app.main as main_mod
 from app.agent_hub.hub import hub
 

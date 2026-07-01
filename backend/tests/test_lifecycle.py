@@ -11,7 +11,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import app.agent_hub.routes as routes_mod
+import app.agent_hub.routes.enroll as enroll_mod
+import app.agent_hub.routes.gui as gui_mod
+import app.agent_hub.routes.management as mgmt_mod
+import app.agent_hub.routes.relay as relay_mod
 import app.main as main_mod
 from app.auth.deps import current_user
 from app.db.base import get_session
@@ -78,12 +81,14 @@ async def _noop(*a, **k):
 def _app(monkeypatch, session, *, agent=None, limiter=None):
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
-    monkeypatch.setattr(routes_mod, "write_audit", _noop)
-    monkeypatch.setattr(routes_mod.hub, "get", lambda iid: agent)
-    monkeypatch.setattr(routes_mod.hub, "unregister", lambda iid: None)
-    monkeypatch.setattr(routes_mod.hub, "hydrate_from_db", _noop)
+    # write_audit is imported per route module — patch every module under test.
+    for mod in (enroll_mod, gui_mod, mgmt_mod, relay_mod):
+        monkeypatch.setattr(mod, "write_audit", _noop)
+    monkeypatch.setattr(enroll_mod.hub, "get", lambda iid: agent)
+    monkeypatch.setattr(enroll_mod.hub, "unregister", lambda iid: None)
+    monkeypatch.setattr(enroll_mod.hub, "hydrate_from_db", _noop)
     if limiter is not None:
-        monkeypatch.setattr(routes_mod, "limiter", limiter)
+        monkeypatch.setattr(enroll_mod, "limiter", limiter)
     app = main_mod.create_app()
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
         id=1, role="admin", is_admin=True
@@ -137,8 +142,8 @@ def _gui_proxy_on():
 
 def _gui_open(monkeypatch, inst, agent):
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=agent)
-    monkeypatch.setattr(routes_mod, "get_settings", _gui_proxy_on)
-    monkeypatch.setattr(routes_mod.gui_tunnels, "ensure", _noop)
+    monkeypatch.setattr(gui_mod, "get_settings", _gui_proxy_on)
+    monkeypatch.setattr(gui_mod.gui_tunnels, "ensure", _noop)
     with TestClient(app) as c:
         return c.post("/api/instances/7/gui/open")
 
@@ -192,7 +197,7 @@ def test_agent_command_refuses_internal_gui_login(monkeypatch):
 
 
 def test_redact_audit_masks_credential_keys():
-    out = routes_mod._redact_audit(
+    out = mgmt_mod._redact_audit(
         {"success": True, "cookies": [{"name": "x"}], "secret": "s", "output": "ok"}
     )
     assert out["cookies"] == "<redacted>"

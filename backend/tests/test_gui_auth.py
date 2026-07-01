@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-import app.agent_hub.routes as routes_mod
+import app.agent_hub.routes.gui as routes_mod
 import app.main as main_mod
 from app.agent_hub.gui_auth import COOKIE_NAME, sign_gui_token, verify_gui_token
 

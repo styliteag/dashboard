@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.agent_hub import routes
+from app.agent_hub.routes import management, update
 from app.auth.deps import require_write
 
 
@@ -17,35 +17,35 @@ def test_iso_utc_tags_naive_as_utc() -> None:
     # MariaDB returns naive datetimes (still UTC) → must gain a +00:00 offset so
     # the browser doesn't render them as local time.
     naive = datetime(2026, 6, 24, 6, 22, 54)
-    assert routes._iso_utc(naive) == "2026-06-24T06:22:54+00:00"
+    assert management._iso_utc(naive) == "2026-06-24T06:22:54+00:00"
 
 
 def test_iso_utc_preserves_aware() -> None:
     aware = datetime(2026, 6, 24, 6, 22, 54, tzinfo=UTC)
-    assert routes._iso_utc(aware) == "2026-06-24T06:22:54+00:00"
+    assert management._iso_utc(aware) == "2026-06-24T06:22:54+00:00"
 
 
 def test_iso_utc_none() -> None:
-    assert routes._iso_utc(None) is None
+    assert management._iso_utc(None) is None
 
 
 def test_served_agent_version_parses(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "orbit_agent.py").write_text(
         '#!/usr/bin/env python3\n__version__ = "1.2.3"\n\nx = 1\n'
     )
-    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
-    assert routes._served_agent_version() == "1.2.3"
+    monkeypatch.setattr(update, "_AGENT_DIR", tmp_path)
+    assert update._served_agent_version() == "1.2.3"
 
 
 def test_served_agent_version_single_quotes(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "orbit_agent.py").write_text("__version__ = '0.3.0'\n")
-    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
-    assert routes._served_agent_version() == "0.3.0"
+    monkeypatch.setattr(update, "_AGENT_DIR", tmp_path)
+    assert update._served_agent_version() == "0.3.0"
 
 
 def test_served_agent_version_missing_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
-    assert routes._served_agent_version() is None
+    monkeypatch.setattr(update, "_AGENT_DIR", tmp_path)
+    assert update._served_agent_version() is None
 
 
 def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,9 +54,9 @@ def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     src = tmp_path / "orbit_agent.py"
     src.write_text('__version__ = "1.2.3"\nx = 1\n')
-    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
+    monkeypatch.setattr(update, "_AGENT_DIR", tmp_path)
 
-    params = routes._agent_update_params()
+    params = update._agent_update_params()
     assert params is not None
     assert params["version"] == "1.2.3"
     assert params["sha256"] == hashlib.sha256(src.read_bytes()).hexdigest()
@@ -64,8 +64,8 @@ def test_agent_update_params(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_agent_update_params_missing_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(routes, "_AGENT_DIR", tmp_path)
-    assert routes._agent_update_params() is None
+    monkeypatch.setattr(update, "_AGENT_DIR", tmp_path)
+    assert update._agent_update_params() is None
 
 
 # --- Same-version push guard (update endpoints) -------------------------------
@@ -116,18 +116,18 @@ class FakeSession:
 def update_env(monkeypatch: pytest.MonkeyPatch):
     """Patch the module-level collaborators of the update endpoints."""
     params = {"version": "2.4.0", "sha256": "x", "code": "eA==", "signature": ""}
-    monkeypatch.setattr(routes, "_agent_update_params", lambda: dict(params))
+    monkeypatch.setattr(update, "_agent_update_params", lambda: dict(params))
 
     async def noop_audit(*args, **kwargs):
         pass
 
-    monkeypatch.setattr(routes, "write_audit", noop_audit)
-    monkeypatch.setattr(routes, "client_ip", lambda request: "127.0.0.1")
+    monkeypatch.setattr(update, "write_audit", noop_audit)
+    monkeypatch.setattr(update, "client_ip", lambda request: "127.0.0.1")
     return params
 
 
 def _patch_hub(monkeypatch: pytest.MonkeyPatch, hub: FakeHub) -> None:
-    monkeypatch.setattr(routes, "hub", hub)
+    monkeypatch.setattr(update, "hub", hub)
 
 
 async def test_update_all_recheck_skips_agent_reconnected_at_served(
@@ -139,7 +139,7 @@ async def test_update_all_recheck_skips_agent_reconnected_at_served(
     snapshot = [{"instance_id": 1, "instance_name": "opn1", "agent_version": "2.3.6"}]
     _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
 
-    result = await routes.update_all_agents(
+    result = await update.update_all_agents(
         request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
     )
 
@@ -155,7 +155,7 @@ async def test_update_all_pushes_outdated_agent(
     snapshot = [{"instance_id": 1, "instance_name": "opn1", "agent_version": "2.3.6"}]
     _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
 
-    result = await routes.update_all_agents(
+    result = await update.update_all_agents(
         request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
     )
 
@@ -171,7 +171,7 @@ async def test_update_single_skips_when_agent_current(
     _patch_hub(monkeypatch, FakeHub([], {1: live}))
     inst = SimpleNamespace(id=1, deleted_at=None)
 
-    result = await routes.update_agent(
+    result = await update.update_agent(
         instance_id=1,
         request=SimpleNamespace(),
         session=FakeSession(instance=inst),
@@ -192,7 +192,7 @@ async def test_update_single_pushes_when_outdated(
     _patch_hub(monkeypatch, FakeHub([], {1: live}))
     inst = SimpleNamespace(id=1, deleted_at=None)
 
-    result = await routes.update_agent(
+    result = await update.update_agent(
         instance_id=1,
         request=SimpleNamespace(),
         session=FakeSession(instance=inst),
@@ -218,7 +218,7 @@ async def test_update_single_pushes_when_outdated(
 async def test_send_command_rejects_internal_actions(action: str) -> None:
     # The denylist is checked before the hub lookup, so no agent needs to be wired.
     with pytest.raises(HTTPException) as exc:
-        await routes.send_agent_command(
+        await management.send_agent_command(
             instance_id=1,
             body={"action": action, "params": {}},
             request=SimpleNamespace(),
@@ -232,5 +232,5 @@ async def test_send_command_rejects_internal_actions(action: str) -> None:
 def test_get_agent_token_is_write_gated() -> None:
     # Regression guard: the token endpoint must stay require_write, not the looser
     # current_user (which would let a view_only session read the agent bearer token).
-    dep = inspect.signature(routes.get_agent_token).parameters["_user"].default
+    dep = inspect.signature(management.get_agent_token).parameters["_user"].default
     assert dep.dependency is require_write
