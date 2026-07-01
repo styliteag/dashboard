@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-tunnel "Graph" popup on the VPN overview.** A new action next to History
+  opens an up/down timeline with one state line per lane — Phase 1, Phase 2 and
+  Ping — green while up, red while down, grey/dashed where there is no data. State
+  is reconstructed from the same transition log the History popup uses (with the
+  same 24h/7d/30d/All window selector); Phase-2 duplicates are left out. The line
+  before a window is seeded from the last transition preceding it (carry-in), and a
+  lane with no logged change falls back to the tunnel's current live state.
+
 ### Changed
 
 - **Pages use the full browser width, and the VPN overview degrades gracefully when

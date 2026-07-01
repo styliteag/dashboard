@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import type { IPsecTunnelEvent } from "../lib/types";
+import { WINDOWS, autoWindowKey, fmtAxisTime, fmtTs, withinWindow } from "../lib/ipsec-history";
 import Dialog from "./Dialog";
 
 interface Props {
@@ -111,18 +112,6 @@ function metaFor(ev: IPsecTunnelEvent): EventMeta {
   }
 }
 
-function fmtTs(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-
-function fmtAxisTime(ms: number): string {
-  const d = new Date(ms);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 interface ChartPoint {
   x: number;
   y: number;
@@ -165,39 +154,6 @@ function buildSeries(events: IPsecTunnelEvent[]): ChartSeries[] {
     });
   }
   return [...byType.values()];
-}
-
-interface TimeWindow {
-  key: string;
-  label: string;
-  /** Window length in ms, or null for "all". */
-  ms: number | null;
-}
-
-const WINDOWS: TimeWindow[] = [
-  { key: "24h", label: "24h", ms: 24 * 60 * 60 * 1000 },
-  { key: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
-  { key: "30d", label: "30d", ms: 30 * 24 * 60 * 60 * 1000 },
-  { key: "all", label: "All", ms: null },
-];
-
-/** Keep events newer than the window. Assumes valid timestamps (call on validEvents). */
-function withinWindow(
-  events: IPsecTunnelEvent[],
-  nowMs: number,
-  winMs: number | null,
-): IPsecTunnelEvent[] {
-  if (winMs == null) return events;
-  const from = nowMs - winMs;
-  return events.filter((ev) => new Date(ev.ts).getTime() >= from);
-}
-
-/** Narrowest window that still holds an event, so the default chart is never empty. */
-function autoWindowKey(events: IPsecTunnelEvent[], nowMs: number): string {
-  for (const w of WINDOWS) {
-    if (w.ms == null || withinWindow(events, nowMs, w.ms).length > 0) return w.key;
-  }
-  return "all";
 }
 
 function EventTooltip({

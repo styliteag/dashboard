@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronDown,
   History,
+  LineChart,
 } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import type {
@@ -25,6 +26,7 @@ import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
 import PingMonitorDialog from "../components/PingMonitorDialog";
 import TunnelHistoryDialog from "../components/TunnelHistoryDialog";
+import TunnelGraphDialog from "../components/TunnelGraphDialog";
 
 interface GlobalTunnel {
   instance_id: number;
@@ -203,6 +205,7 @@ export default function VPNOverviewPage() {
     });
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<GlobalTunnel | null>(null);
+  const [graphTarget, setGraphTarget] = useState<GlobalTunnel | null>(null);
 
   // Paired-group collapse: healthy ("both up") pairs collapse to just their header
   // by default (problems stay expanded). Two explicit-override sets let the user
@@ -396,6 +399,13 @@ export default function VPNOverviewPage() {
                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
               >
                 <History className="h-3 w-3" /> History
+              </button>
+              <button
+                onClick={() => setGraphTarget(t)}
+                title="Up/down timeline"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              >
+                <LineChart className="h-3 w-3" /> Graph
               </button>
               <button
                 onClick={() => reconnectMut.mutate(t)}
@@ -674,6 +684,21 @@ export default function VPNOverviewPage() {
           tunnelId={historyTarget.tunnel_id}
           tunnelDescription={historyTarget.description || historyTarget.tunnel_id}
           onClose={() => setHistoryTarget(null)}
+        />
+      )}
+
+      {graphTarget && (
+        <TunnelGraphDialog
+          instanceId={graphTarget.instance_id}
+          tunnelId={graphTarget.tunnel_id}
+          tunnelDescription={graphTarget.description || graphTarget.tunnel_id}
+          live={{
+            phase1_status: graphTarget.phase1_status,
+            phase2_up: graphTarget.phase2_up,
+            phase2_total: graphTarget.phase2_total,
+            children: graphTarget.children,
+          }}
+          onClose={() => setGraphTarget(null)}
         />
       )}
     </div>
