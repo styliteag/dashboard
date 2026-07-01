@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.3.3"
+__version__ = "2.3.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2652,10 +2652,104 @@ def _ipsec_config_snippet(name: str, config_path: str = _CONFIG_XML) -> str:
     return "\n".join(rendered).strip()
 
 
+# Where each platform keeps the *generated* swanctl config that charon actually
+# loads. OPNsense writes the real config straight into the main file; pfSense's
+# main file only `include`s an empty conf.d and the generated config lands under
+# /var/etc/ipsec (verified on real boxes). Both carry a top-level `secrets { }`
+# block with cleartext PSK / EAP material.
+_SWANCTL_CONF_PATHS = {
+    "opnsense": "/usr/local/etc/swanctl/swanctl.conf",
+    "pfsense": "/var/etc/ipsec/swanctl.conf",
+}
+
+# Line-level safety net: blank the *value* of any secret-bearing assignment that
+# survives block removal (e.g. a future inline key, or a brace miscount). Keeps
+# the key name so the reader still sees the auth *method*, drops only material.
+_SWANCTL_SECRET_LINE = re.compile(
+    r"(?im)^([ \t]*(?:secret|psk|[\w-]*secret|[\w-]*_key)[ \t]*=[ \t]*)\S.*$"
+)
+
+
+def _drop_brace_block(text: str, keyword: str) -> str:
+    """Remove every balanced ``<keyword> { … }`` block that starts at a token
+    boundary. Used to excise the swanctl ``secrets { }`` block wholesale."""
+    pos = 0
+    while True:
+        idx = text.find(keyword, pos)
+        if idx < 0:
+            return text
+        boundary = idx == 0 or text[idx - 1] in "{ \t\n"
+        rest = text[idx + len(keyword):]
+        body = rest.lstrip()
+        if boundary and body[:1] == "{":
+            start = idx + len(keyword) + (len(rest) - len(body))
+            depth = 0
+            end = -1
+            for j in range(start, len(text)):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = j
+                        break
+            if end >= 0:
+                text = text[:idx] + text[end + 1:]
+                pos = idx  # rescan from the cut — there may be more blocks
+                continue
+        pos = idx + len(keyword)
+
+
+def _strip_swanctl_secrets(text: str) -> str:
+    """Remove ``secrets { … }`` blocks and blank any residual secret/key values,
+    so no PSK / private-key material can leave the box in the diagnosis bundle.
+
+    Belt-and-suspenders: the block removal handles the normal (comment-free,
+    generated) file; the line pass is an independent net that blanks a
+    ``secret = …`` line even if the brace matcher ever miscounts."""
+    text = _drop_brace_block(text, "secrets")
+    return _SWANCTL_SECRET_LINE.sub(lambda m: m.group(1) + "***REDACTED***", text)
+
+
+def _read_swanctl_conf(paths: dict | None = None) -> str:
+    """Read this platform's generated swanctl.conf ("" if none / unreadable)."""
+    table = paths if paths is not None else _SWANCTL_CONF_PATHS
+    path = table.get(detect_platform())
+    if not path:
+        return ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _swanctl_conf_section(name: str, conf: str | None = None) -> str:
+    """The on-disk swanctl config for tunnel ``name``, secrets stripped on-box.
+
+    Slicing to the connection block (a sibling of ``secrets { }``) drops the PSK
+    material by construction; the strip pass is defence-in-depth. On a slice miss
+    (name never matches) we fall back to the whole file, still secret-free, with a
+    marker — better a broad-but-safe dump than silently losing the section."""
+    conf = _read_swanctl_conf() if conf is None else conf
+    if not conf.strip():
+        return ""
+    sliced = _slice_raw_conn(conf, name)
+    if sliced:
+        return _strip_swanctl_secrets(sliced).strip()
+    whole = _strip_swanctl_secrets(conf).strip()
+    return f"(connection {name} not matched — full config, secrets stripped)\n{whole}" if whole else ""
+
+
 def _diagnose_ipsec(name: str) -> list[dict]:
     """Readable per-tunnel diagnostic sections gathered on-box (matches the
     Securepoint SSH bundle). Every section is scoped to the selected tunnel
-    `name`: filtered config, configured crypto, live SAs, recent log, peer ping."""
+    `name`: filtered config, configured crypto, live SAs, recent log, peer ping.
+
+    NOTE: these sections are anonymized/redacted ON-BOX on purpose. The dashboard
+    also runs backend `anonymize()` before any LLM call, but DiagnoseDialog's
+    "Copy all" hands the raw bundle straight to the clipboard, bypassing that
+    layer — so on-box stripping is the only guarantee for every path."""
     raw_conns = _run(["swanctl", "--list-conns", "--raw"], timeout=10)
     sections = [
         {
@@ -2670,6 +2764,10 @@ def _diagnose_ipsec(name: str) -> list[dict]:
         {
             "title": "Configured tunnel (config.xml, secrets redacted)",
             "content": _ipsec_config_snippet(name) or "(no matching config.xml section)",
+        },
+        {
+            "title": "On-disk swanctl config (secrets stripped)",
+            "content": _swanctl_conf_section(name) or "(no swanctl.conf on this platform)",
         },
         {
             "title": "Live IKE / CHILD SAs (swanctl --list-sas)",

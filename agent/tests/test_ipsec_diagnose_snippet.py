@@ -221,3 +221,116 @@ def test_redact_secrets_blanks_opnsense_key_but_keeps_keylen() -> None:
     assert "<keylen>128</keylen>" in out  # not over-redacted
     assert "<keyingtries>3</keyingtries>" in out
     assert "10.0.0.1" in out  # benign id untouched
+
+
+# ---------------------------------------------- on-disk swanctl.conf strip -----
+# Mirrors the real generated file captured on the lab boxes: UUID-keyed
+# `connections { }` plus a top-level `secrets { }` with two DIFFERENT secret
+# entry types (an IKE PSK and an EAP secret) so the block-removal — not just
+# "the first psk" — is what's proven. PSK values are real base64 strings seen on
+# .198/.200; the load-bearing assertions are that none of them survive.
+_PSK_A = "0sMzIxNjQ3OTgyZThkNzY4OWZkczdhZmRzZjhkc2Y="  # ike-0 (both boxes)
+_PSK_B = "0sZHNkYXNkYXNkYXNkYXNkYXNkc2E="  # eap-1
+_SWANCTL_CONF = f"""connections {{
+    5fe62ba0-AAAA {{
+        proposals = default
+        version = 2
+        local_addrs = 10.21.7.100
+        remote_addrs = 10.21.7.101
+        local-b234 {{
+            auth = psk
+            id = 10.21.7.100
+        }}
+        children {{
+            child-4778 {{
+                esp_proposals = aes128gcm128-modp2048
+                mode = tunnel
+                local_ts = 10.3.3.0/24
+                remote_ts = 10.1.1.0/24
+            }}
+        }}
+    }}
+    OTHER-BBBB {{
+        proposals = default
+        remote_addrs = 2.2.2.2
+        children {{
+            child-x {{
+                esp_proposals = aes128-sha1
+                remote_ts = 2.2.2.0/24
+            }}
+        }}
+    }}
+}}
+secrets {{
+    ike-0 {{
+        secret = {_PSK_A}
+        id-0 = %any
+        id-1 = 10.21.7.101
+    }}
+    eap-1 {{
+        secret = {_PSK_B}
+        id-0 = user@example
+    }}
+}}
+"""
+
+
+def test_strip_swanctl_secrets_removes_every_psk() -> None:
+    out = agent._strip_swanctl_secrets(_SWANCTL_CONF)
+    # load-bearing: no PSK material of any entry type survives
+    assert _PSK_A not in out
+    assert _PSK_B not in out
+    assert "secrets {" not in out  # whole block excised, not just values
+    # the point of the feature — connection config survives intact
+    assert "5fe62ba0-AAAA" in out
+    assert "proposals = default" in out
+    assert "aes128gcm128-modp2048" in out
+    assert "auth = psk" in out  # auth *method* is kept (not material)
+
+
+def test_strip_swanctl_secrets_line_net_blanks_stray_value() -> None:
+    # Independent of brace matching: a `secret = …` outside any block must still
+    # be blanked, so a miscount can never leak the value.
+    out = agent._strip_swanctl_secrets(
+        "proposals = default\nsecret = 0sSTRAYVALUE\nauth = psk\n"
+    )
+    assert "0sSTRAYVALUE" not in out
+    assert "secret = ***REDACTED***" in out
+    assert "auth = psk" in out
+    assert "proposals = default" in out
+
+
+def test_strip_swanctl_secrets_does_not_over_redact() -> None:
+    text = "keyingtries = 3\nrekey_time = 25920s\nesp_proposals = aes128-sha256\n"
+    assert agent._strip_swanctl_secrets(text) == text  # nothing secret-shaped here
+
+
+def test_swanctl_conf_section_scopes_to_tunnel_and_drops_psk() -> None:
+    out = agent._swanctl_conf_section("5fe62ba0-AAAA", conf=_SWANCTL_CONF)
+    assert out.startswith("5fe62ba0-AAAA {")
+    assert "aes128gcm128-modp2048" in out  # this tunnel's crypto survives
+    # other tunnel excluded (sibling connection sliced out)
+    assert "OTHER-BBBB" not in out
+    assert "2.2.2.2" not in out
+    assert "aes128-sha1" not in out
+    # and the secrets sibling is gone by construction
+    assert _PSK_A not in out
+    assert _PSK_B not in out
+    assert "secrets" not in out
+
+
+def test_swanctl_conf_section_fallback_on_miss_is_secret_free() -> None:
+    out = agent._swanctl_conf_section("no-such-uuid", conf=_SWANCTL_CONF)
+    assert "full config, secrets stripped" in out  # explicit unscoped marker
+    assert "5fe62ba0-AAAA" in out  # whole file included on a miss
+    assert _PSK_A not in out  # but still no PSK material
+    assert _PSK_B not in out
+
+
+def test_swanctl_conf_section_empty_returns_empty() -> None:
+    assert agent._swanctl_conf_section("5fe62ba0-AAAA", conf="") == ""
+
+
+def test_read_swanctl_conf_missing_platform_path(tmp_path) -> None:
+    # Unknown platform (no path in the table) yields "" rather than raising.
+    assert agent._read_swanctl_conf(paths={}) == ""

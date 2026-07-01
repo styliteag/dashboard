@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Phase 2 lane is a numeric step line of installed child SAs (green when all up,
   amber partial, red at none) with a 0..total Y scale; Phase 1 and Ping stay as
   up/down state lines.
+- **The IPsec "Analyse with AI" bundle now includes the on-disk swanctl config,
+  with secrets stripped on-box.** A new "On-disk swanctl config (secrets stripped)"
+  section adds the generated strongSwan config for the tunnel (OPNsense
+  `/usr/local/etc/swanctl/swanctl.conf`, pfSense `/var/etc/ipsec/swanctl.conf`).
+  The agent slices it to the selected connection and removes the `secrets { }`
+  block (with a line-level `secret =`/`*_key` fallback), so no PSK/EAP material
+  leaves the box — the strip is on-box because "Copy all" bypasses the backend
+  anonymizer. Agent `__version__` → 2.3.4.
 
 ## [2.3.2] - 2026-07-01
 
