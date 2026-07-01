@@ -79,6 +79,8 @@ def status_from_agent(data: dict) -> SystemStatus:
         version=data.get("firmware", {}).get("product_version"),
         uptime=data.get("uptime"),
         platform=system.get("platform"),
+        collect_ms=data.get("collect_ms"),
+        section_ms=data.get("section_ms") or {},
         cpu=CpuUsage(total=cpu_data.get("total_pct", 0)),
         memory=MemoryUsage(
             used_pct=mem_data.get("used_pct", 0),

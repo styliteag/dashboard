@@ -149,6 +149,11 @@ class SystemStatus(BaseModel):
     config: ConfigInfo = ConfigInfo()
     disks: list[DiskUsage] = []
     interfaces: list[InterfaceStats] = []
+    # Agent collection runtime (push agents only; None/empty on the direct-poll
+    # path). ``collect_ms`` is the whole cycle; ``section_ms`` maps collector name
+    # -> milliseconds. Lets the dashboard flag a slow-but-alive agent.
+    collect_ms: float | None = None
+    section_ms: dict[str, float] = {}
 
 
 class ConnectivityResult(BaseModel):

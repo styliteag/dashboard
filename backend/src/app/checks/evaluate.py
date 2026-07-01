@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.checks.agent_runtime import agent_collect_check
 from app.checks.models import CheckState, PerfMetric, ServiceCheck
 from app.xsense.schemas import (
     CertInfo,
@@ -496,4 +497,8 @@ def evaluate_checks(
         checks.append(firmware_check(firmware))
     if connectivity:
         checks += connectivity_checks(connectivity)
+    # Agent collection runtime (push agents only; None on the direct-poll path).
+    agent_collect = agent_collect_check(status)
+    if agent_collect is not None:
+        checks.append(agent_collect)
     return checks

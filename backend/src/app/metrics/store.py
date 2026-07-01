@@ -95,6 +95,14 @@ async def write_poll_metrics(
         add(f"iface.{safe}.bytes_rx", float(iface.bytes_received))
         add(f"iface.{safe}.bytes_tx", float(iface.bytes_transmitted))
 
+    # Agent collection runtime — push agents only (None on the direct-poll path).
+    # Total plus per-section series so a slow collector is graphable over time.
+    if status.collect_ms is not None:
+        add("agent.collect_ms", float(status.collect_ms))
+        for name, ms in status.section_ms.items():
+            safe = name.replace(".", "_")[:40]
+            add(f"agent.section.{safe}_ms", float(ms))
+
     if rows:
         await session.execute(
             text(
