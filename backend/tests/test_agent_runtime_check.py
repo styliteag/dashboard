@@ -19,8 +19,7 @@ def test_ok_below_threshold() -> None:
     assert c.key == "agent.collect"
     assert c.state == 0  # OK
     names = [m.name for m in c.metrics]
-    assert names[0] == "collect_ms"  # total first
-    assert "section_certificates_ms" in names
+    assert names == ["collect_ms"]  # only the whole-cycle total as perfdata
 
 
 def test_warn_at_threshold_names_slowest_section() -> None:

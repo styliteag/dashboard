@@ -146,6 +146,11 @@ export interface SystemStatus {
   interfaces: InterfaceStatus[];
   uptime: string | null;
   version: string | null;
+  // Agent collection runtime from the last push (push agents only). collect_ms is
+  // the whole cycle; section_ms maps collector name -> milliseconds. Live snapshot,
+  // not history — shown on the Agent tab.
+  collect_ms?: number | null;
+  section_ms?: Record<string, number>;
 }
 
 export interface ConfigInfoResponse extends ConfigInfo {

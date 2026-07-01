@@ -17,6 +17,7 @@ import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
 import InstanceHeader from "../components/InstanceHeader";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import AgentSection from "../components/AgentSection";
+import AgentRuntimeSection from "../components/AgentRuntimeSection";
 import ChecksSection from "../components/ChecksSection";
 import NotesSection from "../components/NotesSection";
 import CheckHistorySection from "../components/CheckHistorySection";
@@ -281,7 +282,8 @@ export default function InstanceDetailPage() {
 
       {/* Agent — hidden for Securepoint (direct-only) */}
       {tab === "agent" && !isSecurepoint && (
-        <div>
+        <div className="space-y-6">
+          <AgentRuntimeSection status={status} />
           <AgentSection instanceId={nid} agentMode={instance?.agent_mode ?? false} />
         </div>
       )}

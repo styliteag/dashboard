@@ -21,16 +21,14 @@ _COLLECT_WARN_MS = 10_000.0
 
 def agent_collect_check(status: SystemStatus) -> ServiceCheck | None:
     """WARN when the agent's whole collection cycle took >= 10s. Returns None on the
-    direct-poll path (no agent runtime to report). Per-section timings ride along as
-    perfdata (slowest first) so a WARN points at the culprit collector."""
+    direct-poll path (no agent runtime to report). Only the whole-cycle total is
+    emitted as perfdata; per-section timings are shown live on the Agent tab, and
+    the slowest one is named in the WARN summary."""
     if status.collect_ms is None:
         return None
     total = float(status.collect_ms)
     sections = sorted(status.section_ms.items(), key=lambda kv: kv[1], reverse=True)
     metrics = [PerfMetric(name="collect_ms", value=total, warn=_COLLECT_WARN_MS, unit="ms")]
-    metrics += [
-        PerfMetric(name=f"section_{n}_ms", value=float(ms), unit="ms") for n, ms in sections
-    ]
 
     if total >= _COLLECT_WARN_MS:
         slow = sections[0] if sections else None
