@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_hub.hub import hub
 from app.auth.deps import current_user, read_principal
 from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
+from app.checks.aggregate import aggregate_for_checkmk
 from app.checks.event_store import read_check_events
 from app.checks.overlay import overlay_checks
 from app.db.base import get_session
@@ -213,6 +214,10 @@ async def export_checkmk(
             now,
         )
         checks = [c for c in evaluated if resolve(CHECKMK, c.key, inst.id, rules)[0]]
+        # Collapse high-fan-out categories into one aggregate service each (opt-out).
+        # After selection so aggregates reflect only the exported checks.
+        if settings.checkmk_aggregate:
+            checks = aggregate_for_checkmk(checks)
         instances.append(
             {
                 "instance_id": inst.id,

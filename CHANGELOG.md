@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Checkmk service aggregation.** High-fan-out checks (certificates, IPsec tunnels
+  and pings, services, interfaces, gateways, connectivity, disks) now collapse into
+  one aggregate service per category in the Checkmk export, cutting a busy firewall
+  from hundreds of services to a handful. Each aggregate takes the worst member
+  state and names the offenders in its summary (with `crit`/`warn`/`total` perfdata),
+  so the admin still sees exactly what is wrong. On by default (`DASH_CHECKMK_AGGREGATE`,
+  runtime-toggleable on the Checkmk settings tab); the dashboard's own checks stay
+  granular. Note: toggling this changes which services Checkmk discovers, so
+  re-inventorize the hosts afterwards.
+
 ## [2.3.4] - 2026-07-01
 
 ### Added

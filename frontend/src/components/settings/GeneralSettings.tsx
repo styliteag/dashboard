@@ -6,6 +6,10 @@ import type { AppSettingItem } from "../../lib/types";
 
 const QK = ["app-settings"];
 
+function isTrue(v: string): boolean {
+  return /^(true|1|yes|on)$/i.test(v.trim());
+}
+
 function groupOrder(items: AppSettingItem[]): string[] {
   const seen: string[] = [];
   for (const it of items) if (!seen.includes(it.group)) seen.push(it.group);
@@ -133,7 +137,20 @@ export default function GeneralSettings({
                       </div>
 
                       <div className="flex shrink-0 items-center gap-2">
-                        {it.options ? (
+                        {it.type === "bool" ? (
+                          <input
+                            type="checkbox"
+                            checked={isTrue(it.value)}
+                            disabled={saveMut.isPending}
+                            onChange={(e) =>
+                              saveMut.mutate({
+                                key: it.key,
+                                value: e.target.checked ? "true" : "false",
+                              })
+                            }
+                            className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
+                          />
+                        ) : it.options ? (
                           <select
                             value={inputValue}
                             onChange={(e) => setDraft((s) => ({ ...s, [it.key]: e.target.value }))}
@@ -162,14 +179,16 @@ export default function GeneralSettings({
                             className={`${it.is_secret ? "w-64" : "w-28"} rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600`}
                           />
                         )}
-                        <button
-                          type="button"
-                          disabled={!isDirty || saveMut.isPending}
-                          onClick={() => saveMut.mutate({ key: it.key, value: inputValue })}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40"
-                        >
-                          Save
-                        </button>
+                        {it.type !== "bool" && (
+                          <button
+                            type="button"
+                            disabled={!isDirty || saveMut.isPending}
+                            onClick={() => saveMut.mutate({ key: it.key, value: inputValue })}
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                        )}
                         <button
                           type="button"
                           disabled={it.source !== "db" || resetMut.isPending}

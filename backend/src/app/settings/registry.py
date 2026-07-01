@@ -249,6 +249,17 @@ _DEFS: tuple[SettingDef, ...] = (
         help="Return an empty Checkmk export so every service goes stale/gone. Use "
         "during maintenance to suppress Checkmk alerting. Toggle off to resume.",
     ),
+    SettingDef(
+        "checkmk_aggregate",
+        "bool",
+        "Aggregate services",
+        "Checkmk",
+        help="Collapse high-fan-out checks (certificates, IPsec tunnels, services, "
+        "interfaces, gateways, connectivity, disks) into one aggregate service per "
+        "category — the worst member state wins and the offenders are named in the "
+        "summary. Cuts a box from hundreds of Checkmk services to a handful. Turning "
+        "this off (or on) changes which services Checkmk discovers.",
+    ),
 )
 
 

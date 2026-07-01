@@ -151,6 +151,17 @@ export default function SettingsPage() {
               activeBadge="Blackout — export empty"
               hint="Manual toggle — stays until you switch it back. Use during maintenance to silence Checkmk."
             />
+            <GeneralSettings
+              include={["Checkmk"]}
+              title="Checkmk export"
+              intro={
+                <>
+                  Collapse high-fan-out checks (certificates, IPsec tunnels, services…) into one
+                  aggregate service per category. Changing this alters which services Checkmk
+                  discovers — re-inventorize the hosts afterwards.
+                </>
+              }
+            />
             <CheckmkApiKeys />
             <SelectionTree consumer="checkmk" />
           </div>

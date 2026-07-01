@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     notify_telegram_muted: bool = False
     notify_email_muted: bool = False
     checkmk_blackout: bool = False
+    # Collapse high-fan-out checks (certs, IPsec tunnels, services, …) into one
+    # aggregate service per category in the Checkmk export, so a box shows a handful
+    # of services instead of hundreds. On by default; turn off for per-item services.
+    checkmk_aggregate: bool = True
 
 
 @lru_cache(maxsize=1)
