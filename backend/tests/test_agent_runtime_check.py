@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.agent_hub.hub import status_from_agent
+from app.agent_hub.converters import status_from_agent
 from app.checks.agent_runtime import agent_collect_check
 from app.xsense.schemas import SystemStatus
 

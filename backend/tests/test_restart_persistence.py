@@ -11,13 +11,13 @@ import json
 from types import SimpleNamespace
 
 import app.agent_hub.hub as hub_mod
-from app.agent_hub.hub import (
-    AgentHub,
+from app.agent_hub.converters import (
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
     status_from_agent,
 )
+from app.agent_hub.hub import AgentHub
 from app.ipsec.history import diff_ipsec
 from app.xsense.schemas import IPsecChild, IPsecServiceStatus, IPsecTunnel
 

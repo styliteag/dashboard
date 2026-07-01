@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.agent_hub.hub import ipsec_from_agent
+from app.agent_hub.converters import ipsec_from_agent
 from app.checks import CheckState
 from app.checks.evaluate import ipsec_checks
 from app.xsense.schemas import IPsecChild, IPsecServiceStatus, IPsecTunnel
