@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-07-01
+
 ### Fixed
 
 - **Phase-2 duplicate history no longer repeats every poll.** A tunnel's history
