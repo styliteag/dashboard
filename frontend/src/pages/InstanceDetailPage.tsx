@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import { api } from "../lib/api";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
@@ -197,6 +198,18 @@ export default function InstanceDetailPage() {
                   range={range}
                 />
               ))}
+              {/* Agent collection runtime (push agents only; ms -> s, WARN line at 10s).
+                  Empty for direct-poll instances, like the load/pf charts above. */}
+              <MetricChart
+                instanceId={nid}
+                metric="agent.collect_ms"
+                label="Agent collect (s)"
+                color="#f472b6"
+                range={range}
+                domain={[0, "auto"]}
+                scale={1000}
+                refY={10}
+              />
             </div>
           </section>
 
@@ -310,12 +323,21 @@ function MetricChart({
   label,
   color,
   range,
+  domain = [0, 100],
+  scale = 1,
+  refY,
 }: {
   instanceId: number;
   metric: string;
   label: string;
   color: string;
   range: Range;
+  /** Y-axis domain. Defaults to [0, 100] for percentage metrics. */
+  domain?: [number | string, number | string];
+  /** Divide raw values by this before plotting (e.g. 1000 for ms -> s). */
+  scale?: number;
+  /** Optional dashed reference line (in plotted/scaled units), e.g. a WARN threshold. */
+  refY?: number;
 }) {
   const { data } = useQuery({
     queryKey: ["metrics", instanceId, metric, range],
@@ -332,7 +354,7 @@ function MetricChart({
         hour: "2-digit",
         minute: "2-digit",
       }),
-      value: p.value,
+      value: p.value / scale,
     })) ?? [];
 
   return (
@@ -355,7 +377,7 @@ function MetricChart({
               tick={{ fontSize: 10, fill: "#64748b" }}
               interval="preserveStartEnd"
             />
-            <YAxis tick={{ fontSize: 10, fill: "#64748b" }} domain={[0, 100]} width={35} />
+            <YAxis tick={{ fontSize: 10, fill: "#64748b" }} domain={domain} width={35} />
             <Tooltip
               contentStyle={{
                 backgroundColor: "#0f172a",
@@ -363,6 +385,14 @@ function MetricChart({
                 fontSize: 12,
               }}
             />
+            {refY != null && (
+              <ReferenceLine
+                y={refY}
+                stroke="#f59e0b"
+                strokeDasharray="4 4"
+                strokeOpacity={0.7}
+              />
+            )}
             <Area
               type="monotone"
               dataKey="value"
