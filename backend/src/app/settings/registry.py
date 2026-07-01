@@ -213,6 +213,42 @@ _DEFS: tuple[SettingDef, ...] = (
         help="SMTP auth password. Stored encrypted.",
         is_secret=True,
     ),
+    # --- Temporary mute / maintenance. Manual on/off toggles rendered as switches
+    # by the Settings UI (not the generic key/value list). A muted channel is
+    # skipped for real alerts; an explicit "Send test" still fires. Blackout empties
+    # the Checkmk export so every service goes stale/gone during maintenance.
+    SettingDef(
+        "notify_mattermost_muted",
+        "bool",
+        "Mute Mattermost alerts",
+        "Maintenance",
+        help="Pause Mattermost alert delivery. Real alerts are skipped while muted; "
+        "an explicit Send test still fires. Toggle off to resume.",
+    ),
+    SettingDef(
+        "notify_telegram_muted",
+        "bool",
+        "Mute Telegram alerts",
+        "Maintenance",
+        help="Pause Telegram alert delivery. Real alerts are skipped while muted; "
+        "an explicit Send test still fires. Toggle off to resume.",
+    ),
+    SettingDef(
+        "notify_email_muted",
+        "bool",
+        "Mute Email alerts",
+        "Maintenance",
+        help="Pause Email alert delivery. Real alerts are skipped while muted; "
+        "an explicit Send test still fires. Toggle off to resume.",
+    ),
+    SettingDef(
+        "checkmk_blackout",
+        "bool",
+        "Checkmk blackout",
+        "Maintenance",
+        help="Return an empty Checkmk export so every service goes stale/gone. Use "
+        "during maintenance to suppress Checkmk alerting. Toggle off to resume.",
+    ),
 )
 
 

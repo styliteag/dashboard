@@ -1,9 +1,17 @@
 import { useState, type ReactNode } from "react";
-import { MessageSquare, Send, Mail, Bot, Settings as SettingsIcon } from "lucide-react";
+import { MessageSquare, Send, Mail, Bot, Settings as SettingsIcon, BellOff, EyeOff } from "lucide-react";
 import GeneralSettings from "../components/settings/GeneralSettings";
 import SelectionTree from "../components/settings/SelectionTree";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
 import LlmProviderTests from "../components/settings/LlmProviderTests";
+import MuteToggle from "../components/settings/MuteToggle";
+
+// Per-channel temporary-mute setting keys (registry "Maintenance" group).
+const MUTE_KEY: Record<string, string> = {
+  mattermost: "notify_mattermost_muted",
+  telegram: "notify_telegram_muted",
+  email: "notify_email_muted",
+};
 
 /**
  * Settings hub, split into tabs to keep each section short:
@@ -82,7 +90,9 @@ export default function SettingsPage() {
 
       {tab === "general" && (
         <section className="mt-6">
-          <GeneralSettings exclude={["Mattermost", "Telegram", "Email", "LLM"]} />
+          {/* "Maintenance" excluded: its bool toggles render as switches on their own
+              tabs (MuteToggle), not as text fields in the generic settings list. */}
+          <GeneralSettings exclude={["Mattermost", "Telegram", "Email", "LLM", "Maintenance"]} />
         </section>
       )}
 
@@ -105,6 +115,15 @@ export default function SettingsPage() {
 
       {channel && (
         <section className="mt-6 space-y-6">
+          <MuteToggle
+            settingKey={MUTE_KEY[channel.channel]}
+            icon={BellOff}
+            title={`Temporarily mute ${channel.group} alerts`}
+            idleNote={`${channel.group} alerts are delivered normally.`}
+            activeNote={`${channel.group} alerts are paused — real alerts are not sent.`}
+            activeBadge={`Muted — no ${channel.group} alerts sent`}
+            hint="Manual toggle — stays until you switch it back. An explicit “Send test” below still fires."
+          />
           <GeneralSettings
             include={[channel.group]}
             title={`${channel.group} connection`}
@@ -123,6 +142,15 @@ export default function SettingsPage() {
             full integration guide.
           </p>
           <div className="mt-4 space-y-6">
+            <MuteToggle
+              settingKey="checkmk_blackout"
+              icon={EyeOff}
+              title="Checkmk blackout"
+              idleNote="The Checkmk export includes all instances and their checks."
+              activeNote="The Checkmk export is empty — Checkmk sees every service as stale/gone."
+              activeBadge="Blackout — export empty"
+              hint="Manual toggle — stays until you switch it back. Use during maintenance to silence Checkmk."
+            />
             <CheckmkApiKeys />
             <SelectionTree consumer="checkmk" />
           </div>

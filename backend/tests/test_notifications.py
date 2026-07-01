@@ -260,6 +260,70 @@ async def test_single_channel_test_filters(monkeypatch) -> None:
     assert {r.channel for r in results} == {"email"}
 
 
+def _spy_senders(calls: list[str]):
+    """Replacement _CHANNEL_SENDERS whose senders only record that they ran."""
+
+    def make(name: str):
+        async def _s(_s_settings, _title, _message, _level):
+            calls.append(name)
+            return notifier.ChannelResult(name, "sent")
+
+        return _s
+
+    return tuple((n, make(n)) for n in ("mattermost", "telegram", "email"))
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_muted_channel_without_calling_sender(monkeypatch) -> None:
+    # Everything configured + subscribed, but Mattermost is muted → it is skipped
+    # as "muted" and its sender is never invoked; the other channels still send.
+    calls: list[str] = []
+    cfg = _all_configured()
+    cfg.notify_mattermost_muted = True
+    cfg.notify_telegram_muted = False
+    cfg.notify_email_muted = False
+    monkeypatch.setattr(notifier, "effective_settings", lambda: cfg)
+    monkeypatch.setattr(notifier, "is_on_live", lambda consumer, key, iid: True)
+    monkeypatch.setattr(notifier, "_CHANNEL_SENDERS", _spy_senders(calls))
+
+    results = {
+        r.channel: r
+        for r in await notifier._dispatch("t", "m", "info", "cpu", 1, respect_routes=True)
+    }
+    assert results["mattermost"].status == "skipped"
+    assert results["mattermost"].detail == "muted"
+    assert "mattermost" not in calls  # the real contract: sender not invoked
+    assert results["telegram"].status == "sent"
+    assert results["email"].status == "sent"
+    assert set(calls) == {"telegram", "email"}
+
+
+@pytest.mark.asyncio
+async def test_test_path_bypasses_mute(monkeypatch) -> None:
+    # An explicit "Send test" (respect_routes=False) is a connectivity check and
+    # fires even a muted channel — so muting can never hide a broken config.
+    calls: list[str] = []
+    cfg = _all_configured()
+    cfg.notify_mattermost_muted = True
+    monkeypatch.setattr(notifier, "effective_settings", lambda: cfg)
+    monkeypatch.setattr(notifier, "_CHANNEL_SENDERS", _spy_senders(calls))
+
+    results = {r.channel: r for r in await notifier.send_test_notification()}
+    assert results["mattermost"].status == "sent"
+    assert "mattermost" in calls  # mute did not suppress the test
+
+
+def test_mute_and_blackout_are_editable_bools() -> None:
+    for key in (
+        "notify_mattermost_muted",
+        "notify_telegram_muted",
+        "notify_email_muted",
+        "checkmk_blackout",
+    ):
+        assert EDITABLE[key].type == "bool"
+        assert EDITABLE[key].group == "Maintenance"
+
+
 @pytest.mark.asyncio
 async def test_dispatch_async_is_fire_and_forget(monkeypatch) -> None:
     import asyncio

@@ -224,6 +224,20 @@ _CHANNEL_SENDERS = (
     ("email", _send_email),
 )
 
+# channel name -> the "muted" toggle in settings (Maintenance group). A muted
+# channel is skipped for real alerts; the test path (respect_routes=False) is a
+# deliberate connectivity check and bypasses the mute.
+_MUTE_KEY = {
+    "mattermost": "notify_mattermost_muted",
+    "telegram": "notify_telegram_muted",
+    "email": "notify_email_muted",
+}
+
+
+def _channel_muted(channel: str, s) -> bool:  # noqa: ANN001
+    key = _MUTE_KEY.get(channel)
+    return bool(key and getattr(s, key, False))
+
 
 async def _dispatch(
     title: str,
@@ -244,6 +258,9 @@ async def _dispatch(
     for channel, sender in _CHANNEL_SENDERS:
         if respect_routes and not is_on_live(channel, check_key, instance_id):
             results.append(ChannelResult(channel, "skipped", "not subscribed"))
+            continue
+        if respect_routes and _channel_muted(channel, s):
+            results.append(ChannelResult(channel, "skipped", "muted"))
             continue
         results.append(await sender(s, title, message, level))
     return results

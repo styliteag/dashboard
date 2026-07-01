@@ -176,6 +176,13 @@ async def export_checkmk(
     Push instances use the hub cache (cheap); direct instances are polled live,
     which can be slow with many of them (caching direct status is a follow-up).
     """
+    settings = effective_settings()
+    # Maintenance blackout: return no instances so Checkmk sees every service go
+    # stale/gone. Checked first — during a blackout we skip the (potentially slow,
+    # firewall-hammering) live polls below entirely.
+    if getattr(settings, "checkmk_blackout", False):
+        return {"version": 1, "instances": []}
+
     rows = (
         (
             await session.execute(
@@ -188,7 +195,6 @@ async def export_checkmk(
 
     rules = await fetch_rules(session)
 
-    settings = effective_settings()
     now = datetime.now(UTC)
     instances = []
     for inst, (

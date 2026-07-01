@@ -131,6 +131,15 @@ class Settings(BaseSettings):
     notify_email_username: str = ""
     notify_email_password: str = ""
 
+    # Temporary per-channel mute + Checkmk blackout (Settings UI, group "Maintenance").
+    # Manual on/off toggles: a muted channel is skipped for real alerts (explicit
+    # "Send test" still fires); checkmk_blackout makes the export return no instances
+    # so Checkmk sees every service go stale/gone. Runtime overrides via app_settings.
+    notify_mattermost_muted: bool = False
+    notify_telegram_muted: bool = False
+    notify_email_muted: bool = False
+    checkmk_blackout: bool = False
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
