@@ -47,8 +47,7 @@ export default function LlmProviderTests() {
       </h3>
       <p className="mt-1 text-xs text-slate-400">
         Validate a stored key against the provider — it calls the provider&apos;s models endpoint; a
-        200
-        means the key authenticates. Save the key above first.
+        200 means the key authenticates. Save the key above first.
       </p>
 
       <div className="mt-3 divide-y divide-slate-800/60">

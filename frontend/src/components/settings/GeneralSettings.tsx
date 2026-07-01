@@ -64,8 +64,7 @@ export default function GeneralSettings({
       // A channel's config drives its "configured" badge in the routing matrix.
       qc.invalidateQueries({ queryKey: ["notification-routing"] });
     },
-    onError: (e, v) =>
-      setError((s) => ({ ...s, [v.key]: apiErrorText(e, "Save failed") })),
+    onError: (e, v) => setError((s) => ({ ...s, [v.key]: apiErrorText(e, "Save failed") })),
   });
 
   const resetMut = useMutation({

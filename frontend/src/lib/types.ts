@@ -492,4 +492,3 @@ export interface DashUser {
   disabled: boolean;
   totp_enabled: boolean;
 }
-

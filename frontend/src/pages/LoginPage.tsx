@@ -27,7 +27,10 @@ export default function LoginPage() {
   const showError = (err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
       setError(err.status === 429 ? "Too many attempts. Please wait." : err.message || fallback);
-    } else if (err instanceof Error && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+    } else if (
+      err instanceof Error &&
+      (err.name === "NotAllowedError" || err.name === "AbortError")
+    ) {
       setError("Passkey prompt was dismissed.");
     } else {
       setError("Cannot connect to the backend.");
@@ -70,8 +73,7 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      const path =
-        stage === "enroll" ? "/api/auth/mfa/confirm/totp" : "/api/auth/mfa/verify/totp";
+      const path = stage === "enroll" ? "/api/auth/mfa/confirm/totp" : "/api/auth/mfa/verify/totp";
       finish(await api.post<User>(path, { code: code.trim() }));
     } catch (err) {
       showError(err, "Invalid code.");
@@ -189,7 +191,8 @@ export default function LoginPage() {
               </form>
             )}
             <div className="flex items-center gap-3 text-xs text-slate-600">
-              <div className="h-px flex-1 bg-slate-800" /> or <div className="h-px flex-1 bg-slate-800" />
+              <div className="h-px flex-1 bg-slate-800" /> or{" "}
+              <div className="h-px flex-1 bg-slate-800" />
             </div>
             <PasskeyButton label="Register a passkey" fn={() => passkeyEnroll()} />
           </div>

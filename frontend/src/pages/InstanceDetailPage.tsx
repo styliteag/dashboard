@@ -255,10 +255,7 @@ export default function InstanceDetailPage() {
       {/* Connectivity: standalone (tunnel-independent) ping monitors */}
       {tab === "connectivity" && (
         <div>
-          <ConnectivitySection
-            instanceId={nid}
-            pingSupported={instance?.agent_mode ?? false}
-          />
+          <ConnectivitySection instanceId={nid} pingSupported={instance?.agent_mode ?? false} />
         </div>
       )}
 
@@ -386,12 +383,7 @@ function MetricChart({
               }}
             />
             {refY != null && (
-              <ReferenceLine
-                y={refY}
-                stroke="#f59e0b"
-                strokeDasharray="4 4"
-                strokeOpacity={0.7}
-              />
+              <ReferenceLine y={refY} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.7} />
             )}
             <Area
               type="monotone"

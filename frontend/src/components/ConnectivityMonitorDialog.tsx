@@ -61,7 +61,13 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
   const saveMut = useMutation({
     mutationFn: () => {
       if (existing) {
-        const body: ConnMonitorUpdate = { name, source, destination, enabled, ping_count: pingCount };
+        const body: ConnMonitorUpdate = {
+          name,
+          source,
+          destination,
+          enabled,
+          ping_count: pingCount,
+        };
         return api.patch<ConnectivityMonitor>(`${base}/${existing.id}`, body);
       }
       const body: ConnMonitorCreate = {
@@ -92,7 +98,10 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
   const canSave = !!name.trim() && !!destination.trim();
 
   return (
-    <Dialog title={existing ? "Edit connectivity check" : "New connectivity check"} onClose={onClose}>
+    <Dialog
+      title={existing ? "Edit connectivity check" : "New connectivity check"}
+      onClose={onClose}
+    >
       <div className="mt-1 space-y-3">
         <label className="block">
           <span className="text-xs text-slate-400">Name</span>

@@ -22,11 +22,7 @@ export type Resolved = { on: boolean; by: string };
 
 // Mirror of the backend resolve(): most-specific-wins, base default OFF.
 // Precedence: instance+key > instance+cat > global+key > global+cat > default.
-export function resolveClient(
-  key: string,
-  instanceId: number,
-  rules: SelectionRule[],
-): Resolved {
+export function resolveClient(key: string, instanceId: number, rules: SelectionRule[]): Resolved {
   const cat = categoryOf(key);
   let bestRank = 0;
   let bestMode = "";
@@ -51,10 +47,6 @@ export function resolveClient(
 
 // True when an explicit per-instance rule exists for this exact key — i.e. a
 // box-level override that a toggle would clear (back to inherit) rather than add.
-export function hasInstanceRule(
-  key: string,
-  instanceId: number,
-  rules: SelectionRule[],
-): boolean {
+export function hasInstanceRule(key: string, instanceId: number, rules: SelectionRule[]): boolean {
   return rules.some((r) => r.instance_id === instanceId && r.selector === key);
 }

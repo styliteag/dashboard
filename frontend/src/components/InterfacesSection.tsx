@@ -40,8 +40,7 @@ const ERR_SKIP_PREFIXES = [
   "wg",
 ];
 
-const isErrSkipped = (name: string): boolean =>
-  ERR_SKIP_PREFIXES.some((p) => name.startsWith(p));
+const isErrSkipped = (name: string): boolean => ERR_SKIP_PREFIXES.some((p) => name.startsWith(p));
 
 function fmtRate(bps: number | null): string {
   if (bps === null) return "…";

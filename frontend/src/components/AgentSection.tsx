@@ -161,8 +161,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
       queryClient.invalidateQueries({ queryKey: ["agent-token", instanceId] });
     },
-    onError: (e) =>
-      setMsg({ ok: false, text: apiErrorText(e, "Error enabling agent") }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Error enabling agent") }),
   });
 
   const disableMut = useMutation({
@@ -186,8 +185,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       });
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
     },
-    onError: (e) =>
-      setMsg({ ok: false, text: apiErrorText(e, "Update failed") }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Update failed") }),
   });
 
   const testApiMut = useMutation({
@@ -214,8 +212,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       // The URL is a one-time auth handoff; open it in a new tab (dev cert may warn).
       window.open(data.url, "_blank", "noopener,noreferrer");
     },
-    onError: (e) =>
-      setMsg({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
   });
 
   const uninstallMut = useMutation({
@@ -232,16 +229,14 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ["instances"] });
       queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
     },
-    onError: (e) =>
-      setMsg({ ok: false, text: apiErrorText(e, "Uninstall failed") }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Uninstall failed") }),
   });
 
   const enrollMut = useMutation({
     mutationFn: () =>
       api.post<EnrollCodeResponse>(`/api/instances/${instanceId}/agent/enroll-code`),
     onSuccess: (data) => setEnrollCode(data.code),
-    onError: (e) =>
-      setMsg({ ok: false, text: apiErrorText(e, "Could not generate code") }),
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Could not generate code") }),
   });
 
   // Pre-filled config (dashboard URL baked in). With a one-time code the agent

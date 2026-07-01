@@ -53,7 +53,9 @@ export default function AgentRuntimeSection({ status }: { status?: SystemStatus 
                 <div className="h-1.5 flex-1 rounded bg-slate-800">
                   <div
                     className={`h-1.5 rounded ${ms >= WARN_MS ? "bg-amber-500" : "bg-emerald-500/70"}`}
-                    style={{ width: `${total ? Math.max(2, Math.min(100, (ms / total) * 100)) : 0}%` }}
+                    style={{
+                      width: `${total ? Math.max(2, Math.min(100, (ms / total) * 100)) : 0}%`,
+                    }}
                   />
                 </div>
                 <span className="w-14 shrink-0 text-right font-mono text-slate-400">{fmt(ms)}</span>

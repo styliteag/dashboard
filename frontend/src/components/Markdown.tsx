@@ -8,10 +8,18 @@ import remarkGfm from "remark-gfm";
  * element is styled explicitly.
  */
 const components: Components = {
-  h1: ({ children }) => <h3 className="mb-1 mt-3 text-base font-semibold text-slate-100">{children}</h3>,
-  h2: ({ children }) => <h4 className="mb-1 mt-3 text-sm font-semibold text-slate-100">{children}</h4>,
-  h3: ({ children }) => <h4 className="mb-1 mt-2 text-sm font-semibold text-slate-200">{children}</h4>,
-  h4: ({ children }) => <h5 className="mb-1 mt-2 text-sm font-semibold text-slate-300">{children}</h5>,
+  h1: ({ children }) => (
+    <h3 className="mb-1 mt-3 text-base font-semibold text-slate-100">{children}</h3>
+  ),
+  h2: ({ children }) => (
+    <h4 className="mb-1 mt-3 text-sm font-semibold text-slate-100">{children}</h4>
+  ),
+  h3: ({ children }) => (
+    <h4 className="mb-1 mt-2 text-sm font-semibold text-slate-200">{children}</h4>
+  ),
+  h4: ({ children }) => (
+    <h5 className="mb-1 mt-2 text-sm font-semibold text-slate-300">{children}</h5>
+  ),
   p: ({ children }) => <p className="my-1.5 leading-relaxed">{children}</p>,
   ul: ({ children }) => <ul className="my-1.5 ml-4 list-disc space-y-1">{children}</ul>,
   ol: ({ children }) => <ol className="my-1.5 ml-4 list-decimal space-y-1">{children}</ol>,
@@ -44,9 +52,7 @@ const components: Components = {
       {children}
     </th>
   ),
-  td: ({ children }) => (
-    <td className="border border-slate-800 px-2 py-1 align-top">{children}</td>
-  ),
+  td: ({ children }) => <td className="border border-slate-800 px-2 py-1 align-top">{children}</td>,
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-slate-700 pl-3 text-slate-400">
       {children}

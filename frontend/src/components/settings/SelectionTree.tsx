@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bell, ChevronDown, ChevronRight, ListChecks, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  ListChecks,
+  RefreshCw,
+} from "lucide-react";
 import { api } from "../../lib/api";
 import { resolveClient } from "../../lib/selection";
 import type {
@@ -83,8 +90,11 @@ export default function SelectionTree({ consumer }: { consumer: string }) {
   const rules = config?.rules ?? [];
 
   const addMut = useMutation({
-    mutationFn: (body: { instance_id: number | null; selector: string; mode: "include" | "exclude" }) =>
-      api.post(`/api/selection/${consumer}/rules`, body),
+    mutationFn: (body: {
+      instance_id: number | null;
+      selector: string;
+      mode: "include" | "exclude";
+    }) => api.post(`/api/selection/${consumer}/rules`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: CONFIG_QK }),
   });
   const removeMut = useMutation({
@@ -215,9 +225,7 @@ export default function SelectionTree({ consumer }: { consumer: string }) {
         <div className="mt-2 space-y-2">
           {preview?.instances.map((inst) => {
             const isOpen = open.has(inst.instance_id);
-            const states = inst.checks.map((c) =>
-              resolveClient(c.key, inst.instance_id, rules),
-            );
+            const states = inst.checks.map((c) => resolveClient(c.key, inst.instance_id, rules));
             const onCount = states.filter((s) => s.on).length;
             return (
               <div
@@ -264,7 +272,9 @@ export default function SelectionTree({ consumer }: { consumer: string }) {
                             title="Toggle this service for this instance"
                             className="h-3.5 w-3.5 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
                           />
-                          <span className={`rounded px-1.5 py-0.5 ${badge.cls}`}>{badge.label}</span>
+                          <span className={`rounded px-1.5 py-0.5 ${badge.cls}`}>
+                            {badge.label}
+                          </span>
                           <span className="font-mono text-slate-300">{c.key}</span>
                           <span className="truncate text-slate-500">{c.summary}</span>
                           <span className="ml-auto flex items-center gap-2 whitespace-nowrap">
@@ -273,7 +283,10 @@ export default function SelectionTree({ consumer }: { consumer: string }) {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  removeMut.mutate({ selector: c.key, instance_id: inst.instance_id })
+                                  removeMut.mutate({
+                                    selector: c.key,
+                                    instance_id: inst.instance_id,
+                                  })
                                 }
                                 disabled={pending}
                                 title="Clear this box-level override and inherit"

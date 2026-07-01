@@ -28,8 +28,9 @@ export function findMonitor(
   );
   if (pinned) return pinned;
   return (
-    avail.find((m) => !m.local_ts && !m.remote_ts && !!m.child_name && m.child_name === child.name) ??
-    null
+    avail.find(
+      (m) => !m.local_ts && !m.remote_ts && !!m.child_name && m.child_name === child.name,
+    ) ?? null
   );
 }
 

@@ -93,10 +93,7 @@ export default function TunnelRow({
       <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
         <td className={`px-3 py-2 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
           <span className={`inline-flex items-center gap-1.5 ${inGroup ? "pl-4" : ""}`}>
-            <Link
-              to={`/instances/${t.instance_id}`}
-              className="text-emerald-400 hover:underline"
-            >
+            <Link to={`/instances/${t.instance_id}`} className="text-emerald-400 hover:underline">
               {t.instance_name}
             </Link>
             <WebUiIconLink
@@ -179,10 +176,7 @@ export default function TunnelRow({
         <tr
           className={`border-t border-slate-800/50 ${inGroup ? "bg-emerald-500/10" : "bg-slate-900/40"}`}
         >
-          <td
-            colSpan={9}
-            className={`px-3 py-1 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}
-          >
+          <td colSpan={9} className={`px-3 py-1 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
             <ExpandedPhase2
               tunnel={t}
               onConfigure={(tn, child, existing) =>

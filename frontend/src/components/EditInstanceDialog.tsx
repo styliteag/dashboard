@@ -158,8 +158,8 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             onChange={(e) => setForm((f) => ({ ...f, maintenance: e.target.checked }))}
             className="rounded border-slate-600"
           />
-          Maintenance — cap all checks at WARN (yellow, never red); auto-clears when it
-          reports healthy again
+          Maintenance — cap all checks at WARN (yellow, never red); auto-clears when it reports
+          healthy again
         </label>
         <Input
           label={`${agentMode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}

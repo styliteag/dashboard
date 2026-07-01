@@ -75,9 +75,7 @@ export default function VPNOverviewGraphDialog({ tunnels, onClose }: Props) {
 
   // Fold each tunnel's Phase-1 transitions; keep its events for window sizing.
   const perTunnel = tunnels.map((t, i) => {
-    const events = (results[i].data ?? []).filter(
-      (ev) => !Number.isNaN(new Date(ev.ts).getTime()),
-    );
+    const events = (results[i].data ?? []).filter((ev) => !Number.isNaN(new Date(ev.ts).getTime()));
     const tl = buildTimeline(events, {
       phase1_status: t.phase1_status,
       phase2_up: t.phase2_up,

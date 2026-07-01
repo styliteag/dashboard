@@ -32,8 +32,7 @@ export default function UsersPage() {
     enabled: !!me?.is_admin,
   });
 
-  const fail = (e: unknown, fallback: string) =>
-    setError(apiErrorText(e, fallback));
+  const fail = (e: unknown, fallback: string) => setError(apiErrorText(e, fallback));
   const invalidate = () => qc.invalidateQueries({ queryKey: USERS_QK });
 
   const createMut = useMutation({
@@ -212,9 +211,7 @@ export default function UsersPage() {
                     <span className="text-slate-500">passkey/none</span>
                   )}
                 </td>
-                <td className="py-2 text-xs text-slate-400">
-                  {fmtDate(u.created_at)}
-                </td>
+                <td className="py-2 text-xs text-slate-400">{fmtDate(u.created_at)}</td>
                 <td className="py-2">
                   <div className="flex items-center justify-end gap-1">
                     <button
@@ -241,7 +238,8 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm(`Delete user “${u.username}”?`)) deleteMut.mutate(u.id);
+                          if (window.confirm(`Delete user “${u.username}”?`))
+                            deleteMut.mutate(u.id);
                         }}
                         className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800"
                       >

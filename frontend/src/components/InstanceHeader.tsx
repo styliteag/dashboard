@@ -52,8 +52,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const guiMut = useMutation({
     mutationFn: () => api.post<{ url: string }>(`/api/instances/${id}/gui/open`),
     onSuccess: (data) => window.open(data.url, "_blank", "noopener,noreferrer"),
-    onError: (e) =>
-      flash({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
+    onError: (e) => flash({ ok: false, text: apiErrorText(e, "Could not open GUI") }),
   });
 
   const pill = statusPill(instance);

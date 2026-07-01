@@ -107,9 +107,7 @@ export default function SecurityPage() {
               <tr key={p.id} className="border-t border-slate-800">
                 <td className="py-2">{p.name || `Passkey #${p.id}`}</td>
                 <td className="py-2 text-xs text-slate-400">
-                  {p.last_used_at
-                    ? `last used ${fmtDate(p.last_used_at)}`
-                    : "never used"}
+                  {p.last_used_at ? `last used ${fmtDate(p.last_used_at)}` : "never used"}
                 </td>
                 <td className="py-2 text-right">
                   <button

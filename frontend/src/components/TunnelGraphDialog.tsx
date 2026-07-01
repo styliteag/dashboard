@@ -62,7 +62,9 @@ function LegendItem({ color, label, dashed }: { color: string; label: string; da
         className="inline-block h-1 w-5 rounded-full"
         style={
           dashed
-            ? { backgroundImage: `repeating-linear-gradient(90deg, ${color} 0 3px, transparent 3px 7px)` }
+            ? {
+                backgroundImage: `repeating-linear-gradient(90deg, ${color} 0 3px, transparent 3px 7px)`,
+              }
             : { backgroundColor: color }
         }
       />

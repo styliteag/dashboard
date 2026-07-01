@@ -231,9 +231,7 @@ export function InstanceCard({
 
       <p className="mt-1 text-xs text-slate-600">
         Last poll:{" "}
-        <span title={fmtDateTime(inst.last_success_at)}>
-          {fmtRelative(inst.last_success_at)}
-        </span>
+        <span title={fmtDateTime(inst.last_success_at)}>{fmtRelative(inst.last_success_at)}</span>
       </p>
 
       <div className="mt-3 border-t border-slate-800 pt-3">
@@ -290,10 +288,7 @@ export function InstanceRow({
       <td className="px-3 py-2">
         <Tags tags={inst.tags} />
       </td>
-      <td
-        className="px-3 py-2 text-xs text-slate-500"
-        title={fmtDateTime(inst.last_success_at)}
-      >
+      <td className="px-3 py-2 text-xs text-slate-500" title={fmtDateTime(inst.last_success_at)}>
         {fmtRelative(inst.last_success_at)}
       </td>
       <td className="px-3 py-2">

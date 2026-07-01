@@ -71,7 +71,8 @@ export default function CheckmkApiKeys() {
   });
 
   const purgeAllMut = useMutation({
-    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.del(`/api/apikeys/${id}/purge`))),
+    mutationFn: (ids: number[]) =>
+      Promise.all(ids.map((id) => api.del(`/api/apikeys/${id}/purge`))),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS_QK }),
     onError: (e) => setError(apiErrorText(e, "Failed to delete keys")),
   });
@@ -162,9 +163,7 @@ export default function CheckmkApiKeys() {
             <tr key={k.id} className="border-t border-slate-800">
               <td className="py-2">{k.name}</td>
               <td className="py-2 font-mono text-xs text-slate-400">{k.prefix}…</td>
-              <td className="py-2 text-xs text-slate-400">
-                {fmtDate(k.created_at)}
-              </td>
+              <td className="py-2 text-xs text-slate-400">{fmtDate(k.created_at)}</td>
               <td className="py-2 text-xs text-slate-400">
                 {k.last_used_at ? (
                   <span title={fmtDateTime(k.last_used_at)}>{fmtRelative(k.last_used_at)}</span>
