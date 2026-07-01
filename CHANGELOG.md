@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/export/checkmk` output (no instances) so Checkmk sees every service go
   stale/gone during maintenance. Toggles are runtime settings (no restart) and
   stay until switched back.
+- **Agent collection runtime is now measured and visible.** The push agent times
+  each metrics cycle — the whole collection and each section — so a slow-but-alive
+  agent is caught before it goes silent (a degrading collector shows as rising time
+  first). A new `agent.collect` check WARNs when a cycle takes ≥ 10s (naming the
+  slowest section), the whole-cycle total is graphed under the instance Overview
+  tab with a 10s reference line, and the last per-section timings are listed on the
+  Agent tab (live snapshot, not stored as history).
 
 ### Changed
 
