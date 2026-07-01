@@ -266,4 +266,3 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
         status_msg=fw_data.get("update_check_output", ""),
         last_check=last_check,
     )
-

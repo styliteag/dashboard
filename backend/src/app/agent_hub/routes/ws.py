@@ -213,4 +213,3 @@ async def tunnel_websocket(ws: WebSocket, instance_id: int):
             await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
         with contextlib.suppress(Exception):
             await ws.close()
-

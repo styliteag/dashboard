@@ -62,8 +62,6 @@ _TUNNEL_QUEUE_MAX = 1000
 _DUP_PERSIST_POLLS = 3
 
 
-
-
 class ConnectedAgent:
     def __init__(self, ws: WebSocket, instance_id: int, instance_name: str):
         self.ws = ws
