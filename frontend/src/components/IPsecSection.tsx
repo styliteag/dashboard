@@ -15,6 +15,7 @@ import type {
 import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
 import PingMonitorDialog from "./PingMonitorDialog";
 import DiagnoseDialog from "./DiagnoseDialog";
+import { fmtBytes } from "../lib/format";
 
 interface Props {
   instanceId: number;
@@ -366,9 +367,3 @@ export default function IPsecSection({
   );
 }
 
-function fmtBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 ** 3) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

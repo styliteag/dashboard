@@ -10,6 +10,7 @@ import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
 import { InstanceCard, InstanceRow } from "../components/InstanceViews";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
+import KpiTile from "../components/KpiTile";
 
 const INST_ACCESSORS: Accessors<Instance> = {
   status: (i) =>
@@ -393,11 +394,3 @@ export default function InstancesPage() {
   );
 }
 
-function KpiTile({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-    </div>
-  );
-}
