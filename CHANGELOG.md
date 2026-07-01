@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Recency timestamps render as compact relative time.** "Last poll", agent
+  "Last seen", config change/backup age, AI-log collection, check-history entries
+  and the Checkmk key's last use now show German relative time ("vor 30s",
+  "vor 3min", "vor 2h", "vor 4d"; "gerade eben" under 5s), with the absolute ISO
+  time on hover. Log/compliance timestamps (audit trail, created/revoked dates,
+  certificate expiry) keep their absolute form. Consolidated three ad-hoc
+  relative-time helpers into one shared `fmtRelative`.
+
 ### Fixed
 
 - **Timestamps now show the correct local time, in ISO format.** MariaDB `DATETIME`

@@ -8,7 +8,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { fmtDateTime } from "../lib/datetime";
+import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import type { CheckHistoryEvent } from "../lib/types";
 import Dialog from "./Dialog";
 
@@ -83,8 +83,11 @@ export default function CheckHistoryDialog({
             <tbody>
               {data.map((e, i) => (
                 <tr key={`${e.ts}:${e.check_key}:${i}`} className="border-t border-slate-800">
-                  <td className="px-3 py-2 font-mono text-xs text-slate-400">
-                    {fmtDateTime(e.ts)}
+                  <td
+                    className="px-3 py-2 font-mono text-xs text-slate-400"
+                    title={fmtDateTime(e.ts)}
+                  >
+                    {fmtRelative(e.ts)}
                   </td>
                   {!hideKeyColumn && <td className="px-3 py-2 font-mono text-xs">{e.check_key}</td>}
                   <td className="px-3 py-2 text-xs">

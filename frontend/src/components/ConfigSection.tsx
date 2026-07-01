@@ -1,27 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { FileClock } from "lucide-react";
 import { api } from "../lib/api";
-import { fmtDateTime } from "../lib/datetime";
+import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import type { ConfigInfoResponse } from "../lib/types";
 
 function fmtWhen(iso: string | null): { abs: string; ago: string } | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  const units: [number, string][] = [
-    [86400, "d"],
-    [3600, "h"],
-    [60, "m"],
-  ];
-  let ago = "just now";
-  for (const [s, label] of units) {
-    if (secs >= s) {
-      ago = `${Math.floor(secs / s)}${label} ago`;
-      break;
-    }
-  }
-  return { abs: fmtDateTime(d), ago };
+  return { abs: fmtDateTime(d), ago: fmtRelative(d) };
 }
 
 /**

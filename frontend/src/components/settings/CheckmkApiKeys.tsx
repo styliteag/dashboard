@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, KeyRound, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
-import { fmtDate, fmtDateTime } from "../../lib/datetime";
+import { fmtDate, fmtDateTime, fmtRelative } from "../../lib/datetime";
 import type { ApiKey, ApiKeyCreated, ApiKeyRevealed } from "../../lib/types";
 
 const KEYS_QK = ["apikeys"];
@@ -166,7 +166,11 @@ export default function CheckmkApiKeys() {
                 {fmtDate(k.created_at)}
               </td>
               <td className="py-2 text-xs text-slate-400">
-                {k.last_used_at ? fmtDateTime(k.last_used_at) : "never"}
+                {k.last_used_at ? (
+                  <span title={fmtDateTime(k.last_used_at)}>{fmtRelative(k.last_used_at)}</span>
+                ) : (
+                  "never"
+                )}
               </td>
               <td className="py-2">
                 <div className="flex items-center justify-end gap-1">

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio, Copy, Check, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import { fmtDateTime } from "../lib/datetime";
+import { fmtDateTime, fmtRelative } from "../lib/datetime";
 
 interface AgentStatus {
   instance_id: number;
@@ -50,26 +50,6 @@ interface EnrollCodeResponse {
 interface Props {
   instanceId: number;
   agentMode: boolean;
-}
-
-/** Human "2 minutes ago" using the browser locale; falls back to the raw string. */
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const sec = Math.round((then - Date.now()) / 1000); // negative = past
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-    ["second", 1],
-  ];
-  for (const [unit, secs] of units) {
-    if (Math.abs(sec) >= secs || unit === "second") {
-      return rtf.format(Math.round(sec / secs), unit);
-    }
-  }
-  return rtf.format(sec, "second");
 }
 
 // ----- Shared primitives ----------------------------------------------------
@@ -400,7 +380,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                       className="text-xs text-slate-400"
                       title={fmtDateTime(status.agent_last_seen)}
                     >
-                      {timeAgo(status.agent_last_seen)}
+                      {fmtRelative(status.agent_last_seen)}
                     </span>
                   </div>
                 )}

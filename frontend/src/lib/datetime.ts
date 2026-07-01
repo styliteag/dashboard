@@ -32,3 +32,30 @@ export function fmtTimeShort(value: string | Date | null | undefined): string {
   if (Number.isNaN(d.getTime())) return typeof value === "string" ? value : "";
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/**
+ * German compact relative time: "vor 30s", "vor 3min", "vor 2h", "vor 4d".
+ * "gerade eben" under 5s; future spans use "in …"; beyond ~30d falls back to an
+ * absolute local date. Value is static per render — refetching views re-run it, so
+ * pair it with an absolute `fmtDateTime` tooltip where the exact time still matters.
+ */
+export function fmtRelative(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return typeof value === "string" ? value : "—";
+  const secs = Math.round((Date.now() - d.getTime()) / 1000);
+  const a = Math.abs(secs);
+  if (a < 5) return "gerade eben";
+  const stamp =
+    a < 60
+      ? `${a}s`
+      : a < 3600
+        ? `${Math.floor(a / 60)}min`
+        : a < 86400
+          ? `${Math.floor(a / 3600)}h`
+          : a < 2592000
+            ? `${Math.floor(a / 86400)}d`
+            : "";
+  if (!stamp) return fmtDate(d);
+  return secs >= 0 ? `vor ${stamp}` : `in ${stamp}`;
+}

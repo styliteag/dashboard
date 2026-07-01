@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle } from "lucide-react";
 import type { ConnectedAgent, Instance } from "../lib/types";
-import { fmtDateTime } from "../lib/datetime";
+import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
 import { WebUiIconLink } from "./WebUiIconLink";
 
@@ -229,7 +229,12 @@ export function InstanceCard({
         <p className="mt-2 truncate text-xs text-red-400">{inst.last_error_message}</p>
       )}
 
-      <p className="mt-1 text-xs text-slate-600">Last poll: {fmtDateTime(inst.last_success_at)}</p>
+      <p className="mt-1 text-xs text-slate-600">
+        Last poll:{" "}
+        <span title={fmtDateTime(inst.last_success_at)}>
+          {fmtRelative(inst.last_success_at)}
+        </span>
+      </p>
 
       <div className="mt-3 border-t border-slate-800 pt-3">
         <InstanceActions instance={inst} onEdit={onEdit} onDelete={onDelete} />
@@ -285,7 +290,12 @@ export function InstanceRow({
       <td className="px-3 py-2">
         <Tags tags={inst.tags} />
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500">{fmtDateTime(inst.last_success_at)}</td>
+      <td
+        className="px-3 py-2 text-xs text-slate-500"
+        title={fmtDateTime(inst.last_success_at)}
+      >
+        {fmtRelative(inst.last_success_at)}
+      </td>
       <td className="px-3 py-2">
         <InstanceActions instance={inst} onEdit={onEdit} onDelete={onDelete} />
       </td>
