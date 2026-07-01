@@ -36,6 +36,50 @@ def test_ipsec_connect_failure_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["success"] is False
 
 
+# Verbatim `swanctl --list-conns --raw`: connection 34595782… with one child
+# 0d68b529… (same shape as the real OPNsense boxes).
+_CONNS_RAW = (
+    "list-conn event {34595782-ae4a-41b8-8722-2d52eb487475 "
+    "{local_addrs=[10.21.7.100] remote_addrs=[10.21.7.101] version=IKEv2 "
+    "children {0d68b529-eeca-4db4-9e17-5d6a008f9164 "
+    "{mode=TUNNEL local-ts=[10.1.1.0/24] remote-ts=[10.2.2.0/24]}}}}\n"
+    "list-conns reply {}"
+)
+
+
+def test_connection_child_names_parses_children(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _CONNS_RAW)
+    assert agent._connection_child_names("34595782-ae4a-41b8-8722-2d52eb487475") == [
+        "0d68b529-eeca-4db4-9e17-5d6a008f9164"
+    ]
+    assert agent._connection_child_names("no-such-conn") == []
+    assert agent._connection_child_names("") == []
+
+
+def test_ipsec_connect_also_initiates_children(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], *a: object, **k: object) -> str:
+        calls.append(cmd)
+        if "--list-conns" in cmd:
+            return _CONNS_RAW
+        return "initiate completed successfully"
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.execute_command(
+        "ipsec.connect", {"tunnel_id": "34595782-ae4a-41b8-8722-2d52eb487475"}
+    )
+    assert result["success"] is True
+    # Phase 1 first, then the configured Phase-2 child.
+    assert ["swanctl", "--initiate", "--ike", "34595782-ae4a-41b8-8722-2d52eb487475"] in calls
+    assert [
+        "swanctl",
+        "--initiate",
+        "--child",
+        "0d68b529-eeca-4db4-9e17-5d6a008f9164",
+    ] in calls
+
+
 def test_ipsec_diagnose_gathers_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
     monkeypatch.setattr(agent.os.path, "exists", lambda p: p == "/var/log/ipsec/latest.log")

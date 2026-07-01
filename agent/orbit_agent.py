@@ -42,7 +42,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.3.6"
+__version__ = "2.4.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -861,6 +861,29 @@ def _parse_swanctl_conns(out: str) -> list[dict]:
             "children": child_rows,  # configured Phase-2 selectors (up or down)
         })
     return conns
+
+
+def _connection_child_names(conn_name: str) -> list[str]:
+    """Configured CHILD_SA names for one connection, for ``--initiate --child``.
+
+    ``swanctl --initiate --ike <conn>`` establishes only the IKE_SA (Phase 1); the
+    Phase-2 CHILD_SAs stay down until traffic. To (re)connect a whole tunnel we
+    initiate each child too — this returns their names, deduped (a child repeats
+    once per traffic-selector pair in the parsed rows). Empty on unknown conn.
+    """
+    if not conn_name:
+        return []
+    conns = _parse_swanctl_conns(_run(["swanctl", "--list-conns", "--raw"], timeout=10))
+    for conn in conns:
+        if conn.get("name") != conn_name:
+            continue
+        names: list[str] = []
+        for child in conn.get("children", []):
+            cn = child.get("name")
+            if cn and cn not in names:
+                names.append(cn)
+        return names
+    return []
 
 
 def _ipsec_descriptions(config_path: str = "/conf/config.xml") -> dict[str, str]:
@@ -2846,7 +2869,18 @@ def execute_command(action: str, params: dict) -> dict:
     if action == "ipsec.connect":
         tunnel_id = params.get("tunnel_id", "")
         out = _run(["swanctl", "--initiate", "--ike", tunnel_id], timeout=15)
-        return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
+        ok = "successfully" in out.lower()
+        # `--initiate --ike` brings up only the IKE_SA; the configured CHILD_SAs
+        # (Phase 2) stay down until traffic. A user-driven (re)connect expects the
+        # whole tunnel, so initiate each configured child of this connection too.
+        child_results = []
+        for child in _connection_child_names(tunnel_id):
+            cout = _run(["swanctl", "--initiate", "--child", child], timeout=15)
+            child_results.append(f"{child}: {'ok' if 'successfully' in cout.lower() else 'failed'}")
+        msg = out.strip()
+        if child_results:
+            msg += "\nchildren: " + ", ".join(child_results)
+        return {"success": ok, "output": msg[:500]}
 
     elif action == "ipsec.disconnect":
         # tunnel_id is the active IKE_SA's unique id — stable even if the SA's

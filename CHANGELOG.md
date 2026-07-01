@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reconnecting an IPsec tunnel now restores Phase 2, not just Phase 1.** The
+  agent's `ipsec.connect` ran only `swanctl --initiate --ike`, which establishes
+  the IKE_SA but leaves the configured CHILD_SAs down until traffic — so the
+  "Restart tunnel" / connect button left tunnels at Phase 1 up / Phase 2 0/N
+  (verified on OPNsense). It now also initiates each configured child of the
+  connection, bringing the whole tunnel back.
+
 ## [2.4.1] - 2026-07-01
 
 ### Changed
