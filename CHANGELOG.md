@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-07-02
+
 ### Fixed
 
 - **pfSense release updates in a newer train are now detected (agent 2.5.1).**
