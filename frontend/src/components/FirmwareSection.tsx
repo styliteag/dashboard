@@ -3,18 +3,27 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Download, RefreshCw, Package, AlertTriangle } from "lucide-react";
+import { Download, RefreshCw, Package, AlertTriangle, Lock } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
-import type { FirmwareStatus, ActionResult, FirmwareUpgradeStatus } from "../lib/types";
+import { useAuth, canWrite } from "../lib/use-auth";
+import type { FirmwareStatus, ActionResult, FirmwareUpgradeStatus, Instance } from "../lib/types";
 
 interface Props {
   instanceId: number;
   instanceName: string;
   agentMode?: boolean;
+  firmwareLocked?: boolean;
 }
 
-export default function FirmwareSection({ instanceId, instanceName, agentMode }: Props) {
+export default function FirmwareSection({
+  instanceId,
+  instanceName,
+  agentMode,
+  firmwareLocked,
+}: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const canWr = canWrite(user);
   const qk = ["firmware", instanceId];
 
   const {
@@ -42,6 +51,19 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
     },
     onError: (e) => {
       setMsg({ ok: false, text: apiErrorText(e, "Error") });
+      clearMsg();
+    },
+  });
+
+  const lockMut = useMutation({
+    mutationFn: (locked: boolean) =>
+      api.patch<Instance>(`/api/instances/${instanceId}`, { firmware_locked: locked }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instance", String(instanceId)] });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
+    },
+    onError: (e) => {
+      setMsg({ ok: false, text: apiErrorText(e, "Failed to update firmware lock") });
       clearMsg();
     },
   });
@@ -84,9 +106,33 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
 
   return (
     <section className="mt-8">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-400">
-        <Package className="h-4 w-4" /> Firmware
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-400">
+          <Package className="h-4 w-4" /> Firmware
+        </h2>
+        {canWr ? (
+          <label className="flex items-center gap-1.5 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={!!firmwareLocked}
+              onChange={(e) => lockMut.mutate(e.target.checked)}
+              disabled={lockMut.isPending}
+              className="rounded border-slate-600"
+            />
+            <Lock className="h-3 w-3" />
+            Lock firmware updates for this instance
+          </label>
+        ) : (
+          firmwareLocked && (
+            <span
+              className="flex items-center gap-1 rounded bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-300"
+              title="Firmware updates are locked for this instance"
+            >
+              <Lock className="h-3 w-3" /> Locked
+            </span>
+          )
+        )}
+      </div>
 
       {msg && (
         <div
@@ -182,7 +228,7 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
               {checkMut.isPending ? "…" : "Check"}
             </button>
 
-            {fw.upgrade_available && !upgrading && (
+            {fw.upgrade_available && !upgrading && !firmwareLocked && (
               <button
                 onClick={() => setConfirmUpdate(true)}
                 className="flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
@@ -191,6 +237,12 @@ export default function FirmwareSection({ instanceId, instanceName, agentMode }:
               </button>
             )}
           </div>
+          {fw.upgrade_available && firmwareLocked && (
+            <p className="mt-2 flex items-center gap-1 text-xs text-red-400">
+              <Lock className="h-3 w-3" /> Update available but locked
+              {canWr ? " — uncheck the lock above to update." : "."}
+            </p>
+          )}
 
           {/* Update confirmation dialog */}
           {confirmUpdate && (

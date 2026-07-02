@@ -138,6 +138,8 @@ class InstanceUpdate(BaseModel):
     ping_url: str | None = None
     # Maintenance flag (yellow ceiling). Admin-toggled; auto-cleared on recovery.
     maintenance: bool | None = None
+    # Firmware update lock: blocks single-instance + bulk firmware updates.
+    firmware_locked: bool | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -185,6 +187,7 @@ class InstanceResponse(BaseModel):
     # Out-of-band probe target + maintenance ceiling (P2 availability).
     ping_url: str | None = None
     maintenance: bool = False
+    firmware_locked: bool = False
     # Agent-staleness overlay (push mode): True once the agent has been silent past
     # its scaled threshold, so the UI can flag last-known sub-states as stale rather
     # than trust them as live. Always False for direct-poll instances.

@@ -190,6 +190,8 @@ async def update_instance(
         inst.ping_url = payload.ping_url
     if payload.maintenance is not None:
         inst.maintenance = payload.maintenance
+    if payload.firmware_locked is not None:
+        inst.firmware_locked = payload.firmware_locked
     # Capture the box's SSH host key (TOFU) when enrichment is on but unpinned —
     # e.g. right after a new key was uploaded above (which reset ssh_host_key).
     await _maybe_pin_host_key(inst)

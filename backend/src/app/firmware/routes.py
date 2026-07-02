@@ -144,6 +144,12 @@ async def firmware_update(
     """Trigger firmware update. Agent mode: send command to agent."""
     inst = await _get_instance(instance_id, session)
 
+    if inst.firmware_locked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="firmware updates are locked for this instance",
+        )
+
     if inst.agent_mode:
         agent = hub.get(instance_id)
         if agent is None:

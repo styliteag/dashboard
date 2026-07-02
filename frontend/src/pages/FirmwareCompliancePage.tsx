@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Package, AlertTriangle, CheckCircle, HelpCircle, Search, Download } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle, HelpCircle, Search, Download, Lock } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { useAgentModeMap } from "../lib/instances";
 import { useAuth, canWrite } from "../lib/use-auth";
@@ -22,6 +22,7 @@ interface FirmwareEntry {
   status_msg: string;
   needs_reboot: boolean;
   last_check: string;
+  firmware_locked: boolean;
 }
 
 const FW_ACCESSORS: Accessors<FirmwareEntry> = {
@@ -127,7 +128,7 @@ export default function FirmwareCompliancePage() {
 
   // "Update all" acts on the intersection of selection and currently visible
   // rows, so filtering down never fires updates on hidden instances.
-  const eligible = sorted.filter((e) => e.upgrade_available);
+  const eligible = sorted.filter((e) => e.upgrade_available && !e.firmware_locked);
   const selectedEligible = eligible.filter((e) => selected.has(e.instance_id));
   const allEligibleSelected = eligible.length > 0 && selectedEligible.length === eligible.length;
   const toggleSelectAll = () =>
@@ -288,8 +289,14 @@ export default function FirmwareCompliancePage() {
                         type="checkbox"
                         checked={selected.has(e.instance_id)}
                         onChange={() => toggleSelect(e.instance_id)}
-                        disabled={!e.upgrade_available}
-                        title={e.upgrade_available ? "Select for update" : "No update pending"}
+                        disabled={!e.upgrade_available || e.firmware_locked}
+                        title={
+                          e.firmware_locked
+                            ? "Firmware updates locked for this instance"
+                            : e.upgrade_available
+                              ? "Select for update"
+                              : "No update pending"
+                        }
                       />
                     </td>
                   )}
@@ -315,6 +322,12 @@ export default function FirmwareCompliancePage() {
                         instanceName={e.instance_name}
                         agentMode={agentMode.get(e.instance_id) ?? false}
                       />
+                      {e.firmware_locked && (
+                        <Lock
+                          className="h-3.5 w-3.5 text-red-400"
+                          aria-label="Firmware updates locked"
+                        />
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-slate-400">{e.location || "—"}</td>

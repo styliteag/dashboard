@@ -274,6 +274,7 @@ export default function InstanceDetailPage() {
             instanceId={nid}
             instanceName={instance?.name ?? ""}
             agentMode={instance?.agent_mode ?? false}
+            firmwareLocked={instance?.firmware_locked ?? false}
           />
         </div>
       )}

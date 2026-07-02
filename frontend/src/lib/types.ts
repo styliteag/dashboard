@@ -30,6 +30,8 @@ export interface Instance {
   ping_url: string | null;
   /** Maintenance ceiling: while true, all checks cap at WARN (yellow, never red). */
   maintenance: boolean;
+  /** While true, single-instance and bulk firmware updates are blocked. */
+  firmware_locked: boolean;
   /** Push mode: agent silent past its threshold — last-known sub-states are stale. */
   stale: boolean;
   stale_seconds: number | null;

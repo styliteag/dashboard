@@ -76,6 +76,7 @@ def _inst(iid: int, name: str, agent_mode: bool = False) -> SimpleNamespace:
         agent_mode=agent_mode,
         device_type="opnsense",
         transport="direct",
+        firmware_locked=False,
     )
 
 

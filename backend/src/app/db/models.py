@@ -163,6 +163,12 @@ class Instance(Base):
     # (yellow, never red). Set by an admin; auto-cleared the moment the agent/probe
     # reports healthy again. Avoids paging on a box that's down on purpose.
     maintenance: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    # Firmware update lock: while True, both the single-instance "Start update"
+    # action and the bulk "Update all" action refuse to run for this instance.
+    # Admin-toggled; no auto-clear (unlike maintenance).
+    firmware_locked: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
 
     # Health/poll status (updated by the poller)
     last_success_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

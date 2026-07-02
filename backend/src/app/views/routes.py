@@ -288,6 +288,7 @@ class FirmwareEntry(BaseModel):
     status_msg: str
     needs_reboot: bool
     last_check: str
+    firmware_locked: bool = False
 
 
 class FirmwareComplianceResponse(BaseModel):
@@ -334,6 +335,7 @@ async def firmware_compliance(
                 status_msg=fw.status_msg,
                 needs_reboot=fw.needs_reboot,
                 last_check=fw.last_check,
+                firmware_locked=inst.firmware_locked,
             )
         except (OPNsenseError, Exception):
             return FirmwareEntry(
@@ -348,6 +350,7 @@ async def firmware_compliance(
                 status_msg="unreachable",
                 needs_reboot=False,
                 last_check="",
+                firmware_locked=inst.firmware_locked,
             )
 
     results = await asyncio.gather(*(fetch_fw(i) for i in instances))

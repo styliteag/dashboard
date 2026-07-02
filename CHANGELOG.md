@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Firmware update lock per instance.** A new "Lock firmware updates"
+  toggle on the instance's Firmware tab (also settable from Edit instance)
+  blocks both the single-instance "Start update" action and the bulk
+  "Update all" action for that instance, preventing accidental upgrades on
+  boxes pinned to a firmware version. Locked instances show a lock badge on
+  the instance list and the Firmware compliance page (excluded from bulk
+  selection there).
+
 ## [2.5.5] - 2026-07-02
 
 ### Added

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle, Lock } from "lucide-react";
 import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/types";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
@@ -76,6 +76,15 @@ function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
           title="In maintenance — alerts capped at WARN (yellow, never red)"
         >
           Maint
+        </span>
+      )}
+      {inst.firmware_locked && (
+        <span
+          className="flex items-center gap-0.5 rounded bg-red-600/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-400"
+          title="Firmware updates locked"
+        >
+          <Lock className="h-2.5 w-2.5" />
+          Locked
         </span>
       )}
     </span>

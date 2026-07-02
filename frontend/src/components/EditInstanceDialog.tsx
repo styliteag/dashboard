@@ -51,6 +51,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     notes: instance.notes ?? "",
     ping_url: instance.ping_url ?? "",
     maintenance: instance.maintenance,
+    firmware_locked: instance.firmware_locked,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +77,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         // Out-of-band probe target; empty clears it. Maintenance is a direct toggle.
         ping_url: form.ping_url.trim(),
         maintenance: form.maintenance,
+        firmware_locked: form.firmware_locked,
       };
       if (agentMode) {
         body.gui_login_enabled = form.gui_login_enabled;
@@ -160,6 +162,16 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
           />
           Maintenance — cap all checks at WARN (yellow, never red); auto-clears when it reports
           healthy again
+        </label>
+        <label className="flex items-center gap-2 text-sm text-red-300">
+          <input
+            type="checkbox"
+            checked={form.firmware_locked}
+            onChange={(e) => setForm((f) => ({ ...f, firmware_locked: e.target.checked }))}
+            className="rounded border-slate-600"
+          />
+          Lock firmware updates — blocks both the single-instance update and bulk &quot;Update
+          all&quot; for this instance
         </label>
         <Input
           label={`${agentMode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}

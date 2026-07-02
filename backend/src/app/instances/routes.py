@@ -52,6 +52,7 @@ _SAFE_AUDIT_FIELDS = {
     "tags",
     "ping_url",
     "maintenance",
+    "firmware_locked",
 }
 # Secret-bearing fields: never logged by value, only recorded by name when rotated.
 # (ca_bundle is a public cert but is kept out of the detail to stay small/uniform.)

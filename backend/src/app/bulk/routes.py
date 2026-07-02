@@ -105,6 +105,13 @@ async def bulk_action(
                 success=False,
                 message=f"unknown action: {payload.action}",
             )
+        if payload.action == "firmware_update" and inst.firmware_locked:
+            return BulkResult(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=False,
+                message="firmware updates are locked for this instance",
+            )
         try:
             if inst.agent_mode:
                 return await run_agent(inst)
