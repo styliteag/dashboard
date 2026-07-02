@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Firmware-locked instances can no longer be checkbox-selected on the
+  Instances page.** The bulk-select checkbox (both list and grid view, plus
+  the header "select all") is now disabled for a locked instance, matching
+  the same restriction already in place on the Firmware compliance page.
+
 ## [2.5.7] - 2026-07-02
 
 ### Changed

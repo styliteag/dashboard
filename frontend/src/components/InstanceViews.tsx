@@ -199,6 +199,8 @@ export function InstanceCard({
             type="checkbox"
             checked={selected}
             onChange={onToggleSelect}
+            disabled={inst.firmware_locked}
+            title={inst.firmware_locked ? "Firmware updates locked" : undefined}
             className="rounded border-slate-600"
           />
           <StatusBadge inst={inst} compact />
@@ -265,6 +267,8 @@ export function InstanceRow({
           type="checkbox"
           checked={selected}
           onChange={onToggleSelect}
+          disabled={inst.firmware_locked}
+          title={inst.firmware_locked ? "Firmware updates locked" : undefined}
           className="rounded border-slate-600"
         />
       </td>

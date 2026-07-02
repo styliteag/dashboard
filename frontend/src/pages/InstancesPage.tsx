@@ -108,6 +108,7 @@ export default function InstancesPage() {
   const maintenanceCount = instances.filter((i) => i.maintenance).length;
 
   const toggleSelect = (id: number) => {
+    if (instances.find((i) => i.id === id)?.firmware_locked) return;
     setSelected((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -115,7 +116,6 @@ export default function InstancesPage() {
       return next;
     });
   };
-  const selectAll = () => setSelected(new Set(filtered.map((i) => i.id)));
   const selectNone = () => setSelected(new Set());
 
   const bulkMut = useMutation({
@@ -143,6 +143,13 @@ export default function InstancesPage() {
     const matchMaintenance = !maintenanceOnly || i.maintenance;
     return matchSearch && matchTag && matchMaintenance;
   });
+
+  // Firmware-locked instances are never selectable — the bulk bar's only
+  // firmware-adjacent action is "Firmware check", but keeping selection
+  // consistent everywhere avoids surprising a user who expects a "LOCKED"
+  // row to be inert.
+  const selectableFiltered = filtered.filter((i) => !i.firmware_locked);
+  const selectAll = () => setSelected(new Set(selectableFiltered.map((i) => i.id)));
 
   const { sorted, sort, toggle } = useSort(filtered, INST_ACCESSORS);
 
@@ -348,10 +355,11 @@ export default function InstancesPage() {
                 <th className="px-3 py-2">
                   <input
                     type="checkbox"
-                    checked={selected.size > 0 && selected.size === filtered.length}
+                    checked={selected.size > 0 && selected.size === selectableFiltered.length}
                     onChange={() =>
-                      selected.size === filtered.length ? selectNone() : selectAll()
+                      selected.size === selectableFiltered.length ? selectNone() : selectAll()
                     }
+                    disabled={selectableFiltered.length === 0}
                     className="rounded border-slate-600"
                     aria-label="Select all"
                   />
