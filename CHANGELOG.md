@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent offline floor raised from 120s to 300s.** A plain backend restart
+  (all agents briefly drop their websocket and reconnect) was enough to trip
+  every connected agent's "offline" alert and then immediately "back online"
+  it once reconnected, flooding notification channels. 300s comfortably
+  covers a restart's reconnect window while still catching a genuinely dead
+  agent quickly. Existing deployments that explicitly set `agent_stale_seconds`
+  via Settings keep their stored value — this only changes the default floor.
+
 ## [2.5.6] - 2026-07-02
 
 ### Added

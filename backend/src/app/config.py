@@ -80,8 +80,10 @@ class Settings(BaseSettings):
     # Agent push staleness floor: mark a push-mode instance offline if no metrics
     # push arrives for this long. The real per-instance threshold scales up with a
     # slower push interval (~4 missed pushes), so this is just the floor — generous
-    # enough to tolerate the brief reconnect during a self-update restart.
-    agent_stale_seconds: int = 120
+    # enough to tolerate the brief reconnect during a backend restart or self-update
+    # (120s proved too tight in practice: a backend restart alone flapped every
+    # connected agent to offline/back-online within the same minute).
+    agent_stale_seconds: int = 300
 
     # Out-of-band reachability probe (instances.ping_url, opt-in per instance). The
     # probe job runs every ``probe_interval_seconds``; an axis (ICMP/HTTP) only flips
