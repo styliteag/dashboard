@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
 from app.db.base import get_session
@@ -26,10 +27,21 @@ router = APIRouter(tags=["bulk"])
 
 # --- Bulk Actions -----------------------------------------------------------
 
+# Agent-mode instances take commands over the hub, not the HTTP API.
+# Maps bulk action name → (agent command, wait timeout). firmware.check runs a
+# full repo sync on the box (90s, same as the single-instance route); the others
+# just spawn a background process and return immediately.
+_AGENT_COMMANDS: dict[str, tuple[str, float]] = {
+    "firmware_check": ("firmware.check", 90),
+    "firmware_update": ("firmware.update", 30),
+    "ipsec_restart": ("ipsec.restart", 30),
+    "reboot": ("reboot", 30),
+}
+
 
 class BulkActionRequest(BaseModel):
     instance_ids: list[int]
-    action: str  # "firmware_check" | "ipsec_restart"
+    action: str  # "firmware_check" | "firmware_update" | "ipsec_restart" | "reboot"
 
 
 class BulkResult(BaseModel):
@@ -67,22 +79,44 @@ async def bulk_action(
         .all()
     )
 
+    async def run_agent(inst: Instance) -> BulkResult:
+        agent = hub.get(inst.id)
+        if agent is None:
+            return BulkResult(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=False,
+                message="agent not connected",
+            )
+        command, timeout = _AGENT_COMMANDS[payload.action]
+        raw = await agent.send_command(command, timeout=timeout)
+        return BulkResult(
+            instance_id=inst.id,
+            instance_name=inst.name,
+            success=raw.get("success", False),
+            message=raw.get("output", "")[:200],
+        )
+
     async def run_one(inst: Instance) -> BulkResult:
+        if payload.action not in _AGENT_COMMANDS:
+            return BulkResult(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=False,
+                message=f"unknown action: {payload.action}",
+            )
         try:
+            if inst.agent_mode:
+                return await run_agent(inst)
             client = await registry.get(inst)
             if payload.action == "firmware_check":
                 result = await client.firmware_check()
+            elif payload.action == "firmware_update":
+                result = await client.firmware_update()
             elif payload.action == "ipsec_restart":
                 result = await client.ipsec_restart()
-            elif payload.action == "reboot":
+            else:  # "reboot"
                 result = await client.reboot()
-            else:
-                return BulkResult(
-                    instance_id=inst.id,
-                    instance_name=inst.name,
-                    success=False,
-                    message=f"unknown action: {payload.action}",
-                )
             return BulkResult(
                 instance_id=inst.id,
                 instance_name=inst.name,

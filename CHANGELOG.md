@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Bulk firmware update ("Update all") on the Firmware compliance page.**
+  Rows with a pending update can be selected (individually or all visible at
+  once); a type-to-confirm dialog then starts the update on every selected
+  instance via the new `firmware_update` bulk action, with a per-instance
+  started/failed result list.
+
+### Changed
+
+- **Firmware updates now reboot the box when required (agent 2.5.4).** The
+  agent previously only staged updates (`opnsense-update -bkp` /
+  `pfSense-upgrade -R`), leaving the new base/kernel inactive until a manual
+  reboot. It now runs the vendor's own update path — `configctl firmware
+  update` on OPNsense (same as the GUI), `pfSense-upgrade -y` on pfSense —
+  which reboots automatically when the update includes base/kernel changes.
+
+### Fixed
+
+- **Bulk actions now work on agent-mode instances.** `/api/bulk/action`
+  previously always went through the HTTP API client and silently failed for
+  instances managed by the push agent; commands (`firmware_check`,
+  `firmware_update`, `ipsec_restart`, `reboot`) are now dispatched over the
+  agent hub, with a clear "agent not connected" per-instance error.
+
 ## [2.5.4] - 2026-07-02
 
 ### Fixed

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Package, AlertTriangle, CheckCircle, HelpCircle, Search } from "lucide-react";
-import { api } from "../lib/api";
+import { Package, AlertTriangle, CheckCircle, HelpCircle, Search, Download } from "lucide-react";
+import { api, apiErrorText } from "../lib/api";
 import { useAgentModeMap } from "../lib/instances";
+import { useAuth, canWrite } from "../lib/use-auth";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
@@ -42,15 +43,70 @@ interface FirmwareComplianceResponse {
   unknown: number;
 }
 
+interface BulkResult {
+  instance_id: number;
+  instance_name: string;
+  success: boolean;
+  message: string;
+}
+
+interface BulkActionResponse {
+  results: BulkResult[];
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
 export default function FirmwareCompliancePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "outdated" | "current" | "unknown">("all");
   const agentMode = useAgentModeMap();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const canWr = canWrite(user);
 
   const { data, isLoading } = useQuery({
     queryKey: ["firmware-compliance"],
     queryFn: () => api.get<FirmwareComplianceResponse>("/api/firmware/compliance"),
     refetchInterval: 300_000,
+  });
+
+  // Bulk update selection — only rows with a pending upgrade are eligible.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [bulkResult, setBulkResult] = useState<BulkActionResponse | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const toggleSelect = (id: number) => {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkUpdateMut = useMutation({
+    mutationFn: (ids: number[]) =>
+      api.post<BulkActionResponse>("/api/bulk/action", {
+        instance_ids: ids,
+        action: "firmware_update",
+      }),
+    onSuccess: (res) => {
+      setBulkResult(res);
+      setBulkError(null);
+      setConfirmBulk(false);
+      setConfirmText("");
+      setSelected(new Set());
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: ["firmware-compliance"] }),
+        30_000,
+      );
+    },
+    onError: (e) => {
+      setBulkError(apiErrorText(e, "Bulk update failed"));
+    },
   });
 
   const filtered = (data?.instances ?? []).filter((e) => {
@@ -68,6 +124,14 @@ export default function FirmwareCompliancePage() {
   const { sorted, sort, toggle } = useSort(filtered, FW_ACCESSORS);
 
   const hasBranch = sorted.some((e) => !!e.branch);
+
+  // "Update all" acts on the intersection of selection and currently visible
+  // rows, so filtering down never fires updates on hidden instances.
+  const eligible = sorted.filter((e) => e.upgrade_available);
+  const selectedEligible = eligible.filter((e) => selected.has(e.instance_id));
+  const allEligibleSelected = eligible.length > 0 && selectedEligible.length === eligible.length;
+  const toggleSelectAll = () =>
+    setSelected(allEligibleSelected ? new Set() : new Set(eligible.map((e) => e.instance_id)));
 
   return (
     <div>
@@ -106,7 +170,84 @@ export default function FirmwareCompliancePage() {
             {{ all: "All", outdated: "Outdated", current: "Up to date", unknown: "Unknown" }[f]}
           </button>
         ))}
+        {canWr && selectedEligible.length > 0 && !confirmBulk && (
+          <button
+            onClick={() => setConfirmBulk(true)}
+            className="ml-auto flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
+          >
+            <Download className="h-3.5 w-3.5" /> Update {selectedEligible.length} selected
+          </button>
+        )}
       </div>
+
+      {/* Bulk update confirmation */}
+      {confirmBulk && (
+        <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
+          <p className="text-sm text-red-300">
+            This starts a firmware update on {selectedEligible.length} instance
+            {selectedEligible.length > 1 ? "s" : ""} — each box reboots when its update requires
+            it. Type <span className="font-mono font-semibold">UPDATE</span> to confirm:
+          </p>
+          <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
+            {selectedEligible.map((e) => (
+              <li key={e.instance_id}>
+                {e.instance_name}: {e.product_version} → {e.product_latest}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
+              placeholder="UPDATE"
+            />
+            <button
+              onClick={() => bulkUpdateMut.mutate(selectedEligible.map((e) => e.instance_id))}
+              disabled={confirmText !== "UPDATE" || bulkUpdateMut.isPending}
+              className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {bulkUpdateMut.isPending ? "Starting…" : "Start updates"}
+            </button>
+            <button
+              onClick={() => {
+                setConfirmBulk(false);
+                setConfirmText("");
+              }}
+              className="text-sm text-slate-400"
+            >
+              Cancel
+            </button>
+          </div>
+          {bulkError && <p className="mt-2 text-sm text-red-400">{bulkError}</p>}
+        </div>
+      )}
+
+      {/* Bulk update result */}
+      {bulkResult && (
+        <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+          <p className="text-sm">
+            <span className="text-emerald-400">{bulkResult.succeeded} started</span>
+            {bulkResult.failed > 0 && (
+              <span className="text-red-400">, {bulkResult.failed} failed</span>
+            )}
+            <button
+              onClick={() => setBulkResult(null)}
+              className="ml-3 text-xs text-slate-500 hover:text-slate-300"
+            >
+              Dismiss
+            </button>
+          </p>
+          <ul className="mt-1 text-xs text-slate-400">
+            {bulkResult.results.map((r) => (
+              <li key={r.instance_id}>
+                {r.success ? "✓" : "✗"} {r.instance_name}
+                {!r.success && <span className="text-red-400"> — {r.message}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="mt-6 text-slate-500">Loading firmware status of all instances…</p>
@@ -115,6 +256,17 @@ export default function FirmwareCompliancePage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left text-xs text-slate-500">
               <tr>
+                {canWr && (
+                  <th className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allEligibleSelected}
+                      onChange={toggleSelectAll}
+                      disabled={eligible.length === 0}
+                      title="Select all visible with pending update"
+                    />
+                  </th>
+                )}
                 <SortHeader label="Status" colKey="status" sort={sort} toggle={toggle} />
                 <SortHeader label="Instance" colKey="instance" sort={sort} toggle={toggle} />
                 <SortHeader label="Location" colKey="location" sort={sort} toggle={toggle} />
@@ -130,6 +282,17 @@ export default function FirmwareCompliancePage() {
             <tbody>
               {sorted.map((e) => (
                 <tr key={e.instance_id} className="border-t border-slate-800">
+                  {canWr && (
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(e.instance_id)}
+                        onChange={() => toggleSelect(e.instance_id)}
+                        disabled={!e.upgrade_available}
+                        title={e.upgrade_available ? "Select for update" : "No update pending"}
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     {e.product_version === "?" ? (
                       <HelpCircle className="h-4 w-4 text-slate-500" />

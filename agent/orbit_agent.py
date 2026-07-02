@@ -44,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.5.3"
+__version__ = "2.5.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3097,13 +3097,14 @@ def execute_command(action: str, params: dict) -> dict:
         }
 
     elif action == "firmware.update":
-        # Non-blocking: start in background. -R keeps pfSense-upgrade from
-        # rebooting automatically (admin reboots manually), matching the
-        # stage-without-reboot behaviour of opnsense-update -bkp.
+        # Non-blocking: start in background. The vendor updater handles the
+        # reboot itself when the update requires one (new base/kernel).
         if detect_platform() == "pfsense":
-            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y", "-R"]
+            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
         else:
-            cmd = ["/usr/local/sbin/opnsense-update", "-bkp"]
+            # Same path as the OPNsense GUI (configd "firmware update"):
+            # daemonized launcher.sh installs pkg+base+kernel, then reboots.
+            cmd = ["configctl", "firmware", "update"]
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {"success": True, "output": "update started in background"}
 
