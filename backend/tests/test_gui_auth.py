@@ -84,6 +84,31 @@ def test_handoff_invalid_token_is_403(monkeypatch) -> None:
     assert r.status_code == 403
 
 
+def test_handoff_redirects_to_safe_next(monkeypatch) -> None:
+    # Deep link: a same-origin absolute path lands the browser directly there.
+    with _client(monkeypatch) as client:
+        r = client.get(
+            "/api/gui/handoff",
+            params={"t": sign_gui_token(3, 60), "next": "/ui/ipsec/sessions"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 302
+    assert r.headers["location"] == "/ui/ipsec/sessions"
+
+
+def test_handoff_rejects_unsafe_next(monkeypatch) -> None:
+    # Open-redirect defense: anything but a same-origin absolute path falls back to "/".
+    for bad in ("https://evil.example/", "//evil.example/x", "status.php", "/a\\b", ""):
+        with _client(monkeypatch) as client:
+            r = client.get(
+                "/api/gui/handoff",
+                params={"t": sign_gui_token(3, 60), "next": bad},
+                follow_redirects=False,
+            )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/", f"next={bad!r} must clamp to /"
+
+
 def test_handoff_sets_firewall_session_cookie_from_stash(monkeypatch) -> None:
     # Opt-in auto-login: a cookie stashed by gui/open is set onto the proxy origin.
     from app.agent_hub.gui_session import gui_sessions

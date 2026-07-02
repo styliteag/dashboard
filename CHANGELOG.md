@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **VPN overview: deep link to the firewall's own IPsec status page.** The
+  external-link icon next to an instance name now lands directly on
+  `/status_ipsec.php` (pfSense) / `/ui/ipsec/sessions` (OPNsense). Agent-mode
+  boxes go through the GUI-proxy handoff (with the optional auto-login);
+  direct-mode boxes get a plain link to their configured web UI and log in on
+  the firewall itself. The GUI handoff accepts a `next` deep-link path, clamped
+  to same-origin absolute paths (no open redirect).
+
 ## [2.5.0] - 2026-07-02
 
 ### Security

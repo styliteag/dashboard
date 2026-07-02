@@ -21,6 +21,8 @@ export interface GlobalTunnel {
   bytes_out: number;
   tags?: string[];
   agent_mode?: boolean;
+  device_type?: string;
+  base_url?: string;
   stale?: boolean;
   stale_seconds?: number | null;
   children: IPsecChild[];
@@ -49,6 +51,20 @@ export function isUp(phase1_status: string): boolean {
 }
 
 export const rowKey = (t: GlobalTunnel) => `${t.instance_id}-${t.tunnel_id}`;
+
+/** The firewall's own IPsec status page, per device type ("" for unknown types → GUI root). */
+export function ipsecUiPath(deviceType?: string): string {
+  if (deviceType === "pfsense") return "/status_ipsec.php";
+  if (deviceType === "opnsense") return "/ui/ipsec/sessions";
+  return ""; // e.g. securepoint — no known deep link, land on the GUI root
+}
+
+/** Direct (non-proxied) deep link to the firewall's IPsec page, if a base URL is known. */
+export function ipsecDirectUrl(t: GlobalTunnel): string | undefined {
+  // base_url may hold several comma-separated web-UI URLs; use the first.
+  const base = (t.base_url ?? "").split(",")[0]?.trim().replace(/\/+$/, "");
+  return base ? base + (ipsecUiPath(t.device_type) || "/") : undefined;
+}
 
 /** Group the two ends of the same tunnel (peer pairing) so they render together. */
 export function buildGroups(tunnels: GlobalTunnel[]): TunnelGroup[] {

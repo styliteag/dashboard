@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,17 @@ router = APIRouter(tags=["agent"])
 # --- GUI proxy auth gate (token handoff + forward_auth, see §18) -------------
 
 
+def _safe_next(path: str | None) -> str:
+    """Clamp a handoff deep-link to a same-origin absolute path (open-redirect defense).
+
+    Accepts only "/..." — rejects absolute URLs, protocol-relative "//host", and
+    backslash variants some browsers normalize to "//". Anything else → "/".
+    """
+    if path and path.startswith("/") and not path.startswith("//") and "\\" not in path:
+        return path
+    return "/"
+
+
 def _gui_base_url(inst: Instance) -> str:
     """The per-instance GUI origin: a prod ``{slug}`` subdomain, else the dev port.
 
@@ -48,6 +60,9 @@ class GuiOpenResponse(BaseModel):
 async def gui_open(
     instance_id: int,
     request: Request,
+    path: str | None = Query(
+        None, description="Deep-link path inside the GUI, e.g. /ui/ipsec/sessions"
+    ),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> GuiOpenResponse:
@@ -91,16 +106,22 @@ async def gui_open(
         source_ip=client_ip(request),
     )
     await session.commit()
-    return GuiOpenResponse(url=f"{_gui_base_url(inst)}/__orbit/auth?t={token}")
+    url = f"{_gui_base_url(inst)}/__orbit/auth?t={token}"
+    nxt = _safe_next(path)
+    if nxt != "/":
+        url += f"&next={quote(nxt, safe='/')}"
+    return GuiOpenResponse(url=url)
 
 
 @router.get("/gui/handoff")
-async def gui_handoff(t: str) -> RedirectResponse:
+async def gui_handoff(
+    t: str, next_path: str | None = Query(None, alias="next")
+) -> RedirectResponse:
     """Exchange a valid handoff token for an origin-scoped orbit_gui cookie (via Caddy)."""
     instance_id = verify_gui_token(t)
     if instance_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid handoff token")
-    resp = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    resp = RedirectResponse(url=_safe_next(next_path), status_code=status.HTTP_302_FOUND)
     resp.set_cookie(
         COOKIE_NAME,
         sign_gui_token(instance_id, ttl_seconds=8 * 3600),  # browsing session

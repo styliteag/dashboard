@@ -14,7 +14,7 @@ import { api } from "../lib/api";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
 import { WebUiIconLink } from "./WebUiIconLink";
-import { isUp, rowKey, type GlobalTunnel } from "../lib/vpn-overview";
+import { ipsecDirectUrl, ipsecUiPath, isUp, rowKey, type GlobalTunnel } from "../lib/vpn-overview";
 import { fmtBytes, fmtDuration } from "../lib/format";
 
 export interface DialogTarget {
@@ -100,6 +100,9 @@ export default function TunnelRow({
               instanceId={t.instance_id}
               instanceName={t.instance_name}
               agentMode={t.agent_mode ?? false}
+              path={ipsecUiPath(t.device_type) || undefined}
+              directUrl={ipsecDirectUrl(t)}
+              title={`Open IPsec status on ${t.instance_name}`}
             />
           </span>
         </td>

@@ -47,6 +47,10 @@ class GlobalTunnel(BaseModel):
     bytes_out: int
     tags: list[str] = []  # the owning instance's tags — for filtering the overview
     agent_mode: bool = False  # ping monitors are agent-only; UI hides the affordance otherwise
+    # Deep-link support: the UI builds a "open IPsec status on the firewall" link
+    # from these — /status_ipsec.php (pfSense) vs /ui/ipsec/sessions (OPNsense).
+    device_type: str = ""
+    base_url: str = ""
     # Agent-staleness overlay: when True the owning instance's agent has gone
     # silent, so phase1_status/children here are last-known, not live — the UI
     # mutes the row and flags it rather than trusting a stale "established".
@@ -150,6 +154,8 @@ async def global_vpn_overview(
                     bytes_out=t.bytes_out,
                     tags=inst.tags or [],
                     agent_mode=inst.agent_mode,
+                    device_type=inst.device_type or "",
+                    base_url=inst.base_url or "",
                     stale=bool(s and s.stale),
                     stale_seconds=s.age_seconds if s else None,
                     children=t.children,
