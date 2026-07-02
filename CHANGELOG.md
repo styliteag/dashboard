@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Product names render with proper spelling everywhere in the UI.** Raw
+  `device_type`/platform values (and a CSS `capitalize`) produced "Opnsense" /
+  "Pfsense"; all UI badges now show "OPNsense" / "pfSense" via a shared label
+  helper.
+
 ## [2.5.3] - 2026-07-02
 
 ### Fixed

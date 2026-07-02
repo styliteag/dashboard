@@ -44,6 +44,10 @@ export const DEVICE_TYPES = [
   { value: "securepoint", label: "Securepoint UTM" },
 ] as const;
 
+/** Proper product spelling for a device_type / agent platform value ("opnsense" → "OPNsense"). */
+export const deviceTypeLabel = (value?: string): string =>
+  DEVICE_TYPES.find((d) => d.value === value)?.label ?? value ?? "";
+
 export interface Overview {
   total: number;
   online: number;

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, RefreshCw, ExternalLink, Download, Pencil, Power } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
-import type { Instance, SystemStatus } from "../lib/types";
+import { deviceTypeLabel, type Instance, type SystemStatus } from "../lib/types";
 
 interface AgentStatus {
   agent_connected: boolean;
@@ -56,7 +56,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   });
 
   const pill = statusPill(instance);
-  const platform = agent?.platform?.trim();
+  const platform = deviceTypeLabel(agent?.platform?.trim());
   const version = status?.version?.trim();
   const showGui = agentMode && agent?.gui_proxy_enabled && agent?.agent_connected;
 

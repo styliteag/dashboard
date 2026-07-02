@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle } from "lucide-react";
-import type { ConnectedAgent, Instance } from "../lib/types";
+import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/types";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
 import { WebUiIconLink } from "./WebUiIconLink";
@@ -96,8 +96,8 @@ function AgentBadge({ inst, agent }: { inst: Instance; agent?: ConnectedAgent })
   }
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className="rounded bg-sky-900/40 px-1.5 py-0.5 text-xs capitalize text-sky-300">
-        {agent.platform || "agent"}
+      <span className="rounded bg-sky-900/40 px-1.5 py-0.5 text-xs text-sky-300">
+        {deviceTypeLabel(agent.platform) || "Agent"}
       </span>
       <span className="font-mono text-xs text-slate-500">{agent.agent_version}</span>
       {agent.update_available && (

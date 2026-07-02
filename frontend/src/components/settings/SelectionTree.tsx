@@ -10,11 +10,12 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { resolveClient } from "../../lib/selection";
-import type {
-  NotificationTestResult,
-  SelectionConfig,
-  SelectionPreview,
-  SelectionRule,
+import {
+  deviceTypeLabel,
+  type NotificationTestResult,
+  type SelectionConfig,
+  type SelectionPreview,
+  type SelectionRule,
 } from "../../lib/types";
 
 // Display labels for every selectable category. "availability" (instance up/down)
@@ -244,7 +245,9 @@ export default function SelectionTree({ consumer }: { consumer: string }) {
                       <ChevronRight className="h-3 w-3 text-slate-500" />
                     )}
                     {inst.name}
-                    <span className="text-xs text-slate-500">{inst.device_type}</span>
+                    <span className="text-xs text-slate-500">
+                      {deviceTypeLabel(inst.device_type)}
+                    </span>
                   </span>
                   <span className="text-xs text-slate-500">
                     {onCount}/{inst.checks.length} selected
