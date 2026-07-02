@@ -17,12 +17,46 @@ from app.config import get_settings
 from app.connectivity import service as conn_service
 from app.db.base import get_sessionmaker
 from app.db.models import Instance, User
-from app.devices.types import Transport
+from app.devices.types import DeviceType, Transport
 from app.ipsec import ping_service
 
 log = structlog.get_logger("app.agent_hub.routes")
 
 router = APIRouter(tags=["agent"])
+
+# The two firewall kinds the agent's detect_platform() can report. Only these
+# may self-heal below — other device types must never flip on an agent's word.
+_AGENT_PLATFORMS = {DeviceType.OPNSENSE.value, DeviceType.PFSENSE.value}
+
+
+async def _sync_device_type(instance_id: int, platform: str) -> None:
+    """Self-heal a misconfigured device kind from the agent's platform detection.
+
+    Instances default to OPNsense on creation, so a pfSense (Plus) box enrolled
+    without correcting the type dropdown is stored wrong — mislabeling the UI
+    and building OPNsense deep links to pfSense pages. The agent runs on the
+    box and knows better; trust it, but only within the opnsense↔pfsense pair.
+    Best-effort: a failure here must never tear down the agent connection.
+    """
+    if platform not in _AGENT_PLATFORMS:
+        return
+    try:
+        async with get_sessionmaker()() as session:
+            inst = await session.get(Instance, instance_id)
+            if inst is None or inst.device_type not in _AGENT_PLATFORMS:
+                return
+            if inst.device_type == platform:
+                return
+            log.info(
+                "agent.device_type_corrected",
+                instance_id=instance_id,
+                old=inst.device_type,
+                new=platform,
+            )
+            inst.device_type = platform
+            await session.commit()
+    except Exception:
+        log.warning("agent.device_type_sync_failed", instance_id=instance_id)
 
 
 # --- WebSocket endpoint (no session auth — uses agent_token) -----------------
@@ -76,6 +110,7 @@ async def agent_websocket(ws: WebSocket):
         if hello.get("type") == "hello":
             agent.agent_version = hello.get("agent_version", "")
             agent.platform = hello.get("platform", "")
+            await _sync_device_type(instance_id, agent.platform)
             await ws.send_json(
                 {
                     "type": "welcome",

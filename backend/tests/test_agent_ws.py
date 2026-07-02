@@ -59,10 +59,11 @@ async def _noop(*a, **k):
     return None
 
 
-def _instance():
+def _instance(device_type: str = "opnsense"):
     return SimpleNamespace(
         id=7,
         name="fw7",
+        device_type=device_type,
         last_success_at=None,
         last_error_at=None,
         last_error_message=None,
@@ -96,6 +97,52 @@ def test_valid_token_handshake_registers_and_unregisters(monkeypatch) -> None:
         assert agent.agent_version == "9.9"
         assert agent.platform == "opnsense"
     assert not hub.is_connected(7)  # finally: unregister on disconnect
+
+
+def _handshake(client, platform: str) -> None:
+    with client.websocket_connect("/api/ws/agent", headers={"Authorization": "Bearer good"}) as ws:
+        ws.send_json({"type": "hello", "agent_version": "9.9", "platform": platform})
+        assert ws.receive_json()["type"] == "welcome"
+
+
+def test_hello_platform_corrects_wrong_device_type(monkeypatch) -> None:
+    # A pfSense (Plus) box enrolled with the OPNsense creation default: the
+    # agent's platform detection must self-heal the stored device kind.
+    committed = []
+    inst = _instance(device_type="opnsense")
+    _patch(monkeypatch, inst, on_commit=lambda: committed.append(True))
+    with TestClient(main_mod.create_app()) as client:
+        _handshake(client, "pfsense")
+    assert inst.device_type == "pfsense"
+    assert committed
+
+
+def test_hello_matching_platform_leaves_device_type_alone(monkeypatch) -> None:
+    committed = []
+    inst = _instance(device_type="pfsense")
+    _patch(monkeypatch, inst, on_commit=lambda: committed.append(True))
+    with TestClient(main_mod.create_app()) as client:
+        _handshake(client, "pfsense")
+    assert inst.device_type == "pfsense"
+    assert not committed  # no needless write
+
+
+def test_hello_platform_never_touches_other_device_types(monkeypatch) -> None:
+    # Only the two firewall kinds the agent can detect may flip — anything else
+    # stays untouched even if an agent somehow reports a platform.
+    inst = _instance(device_type="proxmox")
+    _patch(monkeypatch, inst)
+    with TestClient(main_mod.create_app()) as client:
+        _handshake(client, "pfsense")
+    assert inst.device_type == "proxmox"
+
+
+def test_hello_unknown_platform_ignored(monkeypatch) -> None:
+    inst = _instance(device_type="opnsense")
+    _patch(monkeypatch, inst)
+    with TestClient(main_mod.create_app()) as client:
+        _handshake(client, "unknown")
+    assert inst.device_type == "opnsense"
 
 
 def test_missing_token_rejected(monkeypatch) -> None:

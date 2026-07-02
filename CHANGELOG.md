@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **pfSense (Plus) boxes stored with the wrong device type self-heal on agent
+  connect.** Instances default to OPNsense on creation, so a pfSense box
+  enrolled without correcting the type was mislabeled and got OPNsense deep
+  links (`/ui/ipsec/sessions` instead of `/status_ipsec.php`). The agent's
+  platform detection now corrects the stored type on connect — only within the
+  opnsense↔pfsense pair; other device types are never touched.
+
 ## [2.5.2] - 2026-07-02
 
 ### Added
