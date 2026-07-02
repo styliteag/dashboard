@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **pfSense release updates in a newer train are now detected (agent 2.5.1).**
+  pfSense publishes each release in its own pkg train, and `pfSense-upgrade -c`
+  only checks the pinned one — a Plus box on 26.03 reported "up to date"
+  although 26.03.1 was out. The agent now refreshes Netgate's train catalogue
+  itself (`pfSense-repoc`, what the GUI update page does), compares train ids
+  numerically and reports the newest one as the available update, including
+  the target version. Proven live on pfSense Plus 26.03 (26.03.1 detected).
 - **Product names render with proper spelling everywhere in the UI.** Raw
   `device_type`/platform values (and a CSS `capitalize`) produced "Opnsense" /
   "Pfsense"; all UI badges now show "OPNsense" / "pfSense" via a shared label

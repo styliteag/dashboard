@@ -232,6 +232,113 @@ def test_pfsense_update_detection() -> None:
     assert agent._pfsense_update_available("") is False  # unknown/error → no false alarm
 
 
+# Verbatim repo layout captured on pfSense Plus 26.03 with 26.03.1 published
+# (cvo-gigu): Netgate drops the NEW train's conf+descr next to the active one,
+# but pfSense-upgrade -c still answers "up to date" for the pinned train.
+def _plus_repo_with_newer_train(fake_fs: dict) -> None:
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_1_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.descr"] = "Current Stable Version (26.03.1)\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.descr"] = "Previous Stable Version (26.03)\n"
+
+
+def test_pfsense_newer_branch_detects_next_train(fake_fs: dict) -> None:
+    _plus_repo_with_newer_train(fake_fs)
+    assert agent._pfsense_newer_branch("26_03") == ("26_03_1", "26.03.1")
+
+
+def test_pfsense_newer_branch_none_when_active_is_newest(fake_fs: dict) -> None:
+    _plus_repo_with_newer_train(fake_fs)
+    assert agent._pfsense_newer_branch("26_03_1") == ("", "")
+
+
+def test_pfsense_newer_branch_version_falls_back_to_train_id(fake_fs: dict) -> None:
+    # No .descr sidecar → dotted train id stands in for the human version.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pkg.pfsense.org/pfSense_v2_8_2_amd64-core"'
+    )
+    assert agent._pfsense_newer_branch("2_8_1") == ("2_8_2", "2.8.2")
+
+
+def test_pfsense_newer_branch_ignores_non_numeric_trains(fake_fs: dict) -> None:
+    # A dev/beta slot whose id isn't numeric must never trigger the flag.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = "pfSense: {}"  # no url
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.descr"] = "Development Snapshots\n"
+    assert agent._pfsense_newer_branch("26_03") == ("", "")
+
+
+def test_pfsense_newer_branch_rejects_degenerate_active_id(fake_fs: dict) -> None:
+    # Seen live on CE right after pfSense-repoc rewrote the repo files: the
+    # active conf read back mid-rewrite and the branch fell back to the
+    # filename slot "0000". That IS numeric, but single-part ids are never real
+    # trains (26_03 / 2_8_1) — comparing against it must not raise a false
+    # "newer train" alarm for the train the box is already on.
+    _plus_repo_with_newer_train(fake_fs)
+    assert agent._pfsense_newer_branch("0000") == ("", "")
+
+
+def test_collect_firmware_pfsense_flags_newer_train(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # End to end through collect_firmware: pinned train says "up to date", the
+    # sibling 26_03_1 train must still surface as an available upgrade.
+    _plus_repo_with_newer_train(fake_fs)
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    fw = agent.collect_firmware()
+    assert fw["upgrade_available"] is True
+    assert fw["product_latest"] == "26.03.1"
+    assert "26_03_1" in fw["update_check_output"]
+
+
+def test_collect_firmware_pfsense_refreshes_train_catalogue(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without a refresh the newer-train files only appear after someone opens
+    # the pfSense GUI update page (it runs pfSense-repoc). The agent must run
+    # repoc itself — BEFORE reading the repo confs — so unattended boxes see
+    # new trains too.
+    _plus_repo_with_newer_train(fake_fs)
+    fake_fs["/usr/local/sbin/pfSense-repoc"] = ""  # binary present
+    calls: list = []
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
+    monkeypatch.setattr(agent, "_run", lambda cmd, timeout=5: calls.append(cmd) or "")
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    agent.collect_firmware()
+    # Order matters: repoc refreshes the catalogue (but leaves the repo layout
+    # mid-rewrite), pfSense-upgrade -c normalizes it — reads come after both.
+    assert calls[0] == ["/usr/local/sbin/pfSense-repoc"]
+    assert calls[1] == ["/usr/local/sbin/pfSense-upgrade", "-c"]
+
+
+def test_collect_firmware_pfsense_no_newer_train_stays_uptodate(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    fw = agent.collect_firmware()
+    assert fw["upgrade_available"] is False
+    assert fw["product_latest"] == "26.03-RELEASE"
+
+
 # Real return_gateways_status() sample captured on pfSense Plus 26.03.
 _PF_GW_JSON = (
     '{"PPPOE_WAN":{"monitorip":"203.0.113.30","srcip":"203.0.113.35","name":"PPPOE_WAN",'

@@ -44,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.5.0"
+__version__ = "2.5.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1446,6 +1446,55 @@ def _pfsense_update_available(out: str) -> bool:
     )
 
 
+def _pfsense_train_key(train: str) -> tuple:
+    """Numeric sort key for a train id ('26_03_1' -> (26, 3, 1)); () if not numeric."""
+    try:
+        return tuple(int(p) for p in train.split("_"))
+    except (ValueError, AttributeError):
+        return ()
+
+
+def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
+    """Newest repo train strictly above the active one: (train, human version).
+
+    pfSense publishes each release in its own pkg train and ``pfSense-upgrade -c``
+    only checks the pinned one — a box on 26_03 answers "up to date" while 26.03.1
+    sits in the sibling 26_03_1 train Netgate already dropped into the repos dir
+    (confirmed on pfSense Plus 26.03). Train ids compare numerically; non-numeric
+    ids (dev/beta descr fallbacks) never trigger. The human version comes from the
+    "... Version (X)" ``.descr`` sidecar, else the dotted train id.
+    """
+    active_key = _pfsense_train_key(active)
+    # Real trains always have >=2 numeric parts (26_03, 2_8_1). A single-part id
+    # is a filename-slot fallback ("0000", seen mid-repoc-rewrite on CE) — never
+    # compare against it, it would flag the box's own train as "newer".
+    if len(active_key) < 2:
+        return "", ""
+    best_train, best_key, best_descr = "", active_key, ""
+    try:
+        for d in _PFSENSE_REPO_DIRS:
+            confs = sorted(Path(d).glob("pfSense-repo*.conf"))
+            if not confs:
+                continue
+            for conf in confs:
+                train = _pfsense_branch_from_conf(str(conf))
+                key = _pfsense_train_key(train)
+                if len(key) >= 2 and key > best_key:
+                    best_train, best_key = train, key
+                    base = re.sub(r"\.conf$", "", str(conf), flags=re.I)
+                    try:
+                        best_descr = Path(base + ".descr").read_text(errors="replace").strip()
+                    except OSError:
+                        best_descr = ""
+            break  # first dir with confs — mirrors _list_pfsense_branches
+    except Exception:
+        return "", ""
+    if not best_train:
+        return "", ""
+    m = re.search(r"\(([^)]+)\)", best_descr)
+    return best_train, (m.group(1) if m else best_train.replace("_", "."))
+
+
 def collect_firmware() -> dict:
     """Firmware version on every push; update check every 10 minutes (per platform).
 
@@ -1461,11 +1510,31 @@ def collect_firmware() -> dict:
         return {"product_version": version, **_last_fw_verdict}
 
     if pfsense:
+        # Refresh Netgate's train catalogue first — exactly what the GUI's
+        # update page does (pfSense-repoc, ~30-40s cold). Without it a new
+        # release train only appears after someone opens that page. Best-effort:
+        # offline boxes keep reporting from the last downloaded metadata.
+        # ORDER MATTERS: repoc renames the repo confs to train names and leaves
+        # the pfSense.conf symlink dangling; the following pfSense-upgrade -c
+        # normalizes the layout back to slot names and repairs the symlink
+        # (observed live on Plus 26.03). Only read branch/trains AFTER both.
+        if Path("/usr/local/sbin/pfSense-repoc").exists():
+            _run(["/usr/local/sbin/pfSense-repoc"], timeout=60)
+        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
         branch = _read_pfsense_branch()
         known_branches = _list_pfsense_branches()
-        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
         upgrade_available = _pfsense_update_available(out)
         latest = version  # pfSense-upgrade reports no target version
+        newer_train, newer_version = _pfsense_newer_branch(branch)
+        if newer_train:
+            # In-train check says "up to date", but a newer release train exists.
+            upgrade_available = True
+            latest = newer_version
+            out = out.strip() + (
+                "\nnewer release train available: %s (%s) — the pinned train "
+                "reports no update; switch the update branch (System > Update) "
+                "to upgrade" % (newer_train, newer_version)
+            )
     else:
         branch = _opnsense_series()
         known_branches = []
