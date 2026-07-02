@@ -90,34 +90,38 @@ export default function VPNOverviewPage() {
     });
   };
 
-  // Targeted refresh: after an action, refetch only the acted instance's IPsec
-  // and patch its rows into the overview cache — avoids a full cross-instance
-  // fan-out on every click. Falls back to a normal refetch on error.
+  // Patch one instance's fresh IPsec status into the overview cache — avoids a
+  // full cross-instance fan-out on every click.
+  const applyFresh = (instanceId: number, fresh: IPsecServiceStatus) => {
+    const byId = new Map(fresh.tunnels.map((ft) => [ft.id, ft]));
+    queryClient.setQueryData<GlobalVPNResponse>(["vpn-overview"], (old) => {
+      if (!old) return old;
+      const tunnels = old.tunnels.map((t) => {
+        if (t.instance_id !== instanceId) return t;
+        const ft = byId.get(t.tunnel_id);
+        if (!ft) return t;
+        return {
+          ...t,
+          phase1_status: ft.phase1_status,
+          unique_id: ft.unique_id,
+          phase2_up: ft.phase2_up,
+          phase2_total: ft.phase2_total,
+          seconds_established: ft.seconds_established,
+          bytes_in: ft.bytes_in,
+          bytes_out: ft.bytes_out,
+          children: ft.children,
+        };
+      });
+      const up = tunnels.filter((t) => isUp(t.phase1_status)).length;
+      return { ...old, tunnels, total: tunnels.length, up, down: tunnels.length - up };
+    });
+  };
+
+  // Targeted refresh after an action. Falls back to a normal refetch on error.
   const patchInstance = async (instanceId: number) => {
     try {
       const fresh = await api.get<IPsecServiceStatus>(`/api/instances/${instanceId}/ipsec`);
-      const byId = new Map(fresh.tunnels.map((ft) => [ft.id, ft]));
-      queryClient.setQueryData<GlobalVPNResponse>(["vpn-overview"], (old) => {
-        if (!old) return old;
-        const tunnels = old.tunnels.map((t) => {
-          if (t.instance_id !== instanceId) return t;
-          const ft = byId.get(t.tunnel_id);
-          if (!ft) return t;
-          return {
-            ...t,
-            phase1_status: ft.phase1_status,
-            unique_id: ft.unique_id,
-            phase2_up: ft.phase2_up,
-            phase2_total: ft.phase2_total,
-            seconds_established: ft.seconds_established,
-            bytes_in: ft.bytes_in,
-            bytes_out: ft.bytes_out,
-            children: ft.children,
-          };
-        });
-        const up = tunnels.filter((t) => isUp(t.phase1_status)).length;
-        return { ...old, tunnels, total: tunnels.length, up, down: tunnels.length - up };
-      });
+      applyFresh(instanceId, fresh);
     } catch {
       queryClient.invalidateQueries({ queryKey: ["vpn-overview"] });
     }
@@ -148,6 +152,17 @@ export default function VPNOverviewPage() {
       flash({ ok: r.success, text: r.success ? "Reconnected" : r.message });
       patchInstance(t.instance_id);
     },
+    onError: (e) => flash({ ok: false, text: apiErrorText(e, "Error") }),
+  });
+
+  // On-demand re-check: agent boxes push a fresh snapshot, direct boxes are
+  // fetched live — no waiting for the 30s poll after changing something.
+  const recheckMut = useMutation({
+    mutationFn: (t: GlobalTunnel) =>
+      api.post<IPsecServiceStatus>(`/api/instances/${t.instance_id}/ipsec/refresh`),
+    onMutate: (t) => setBusy(rowKey(t), true),
+    onSettled: (_d, _e, t) => setBusy(rowKey(t), false),
+    onSuccess: (fresh, t) => applyFresh(t.instance_id, fresh),
     onError: (e) => flash({ ok: false, text: apiErrorText(e, "Error") }),
   });
 
@@ -190,6 +205,7 @@ export default function VPNOverviewPage() {
       expanded={expanded.has(rowKey(t))}
       busy={pending.has(rowKey(t))}
       onToggleExpand={toggleExpand}
+      onRecheck={(tn) => recheckMut.mutate(tn)}
       onReconnect={(tn) => reconnectMut.mutate(tn)}
       onHistory={setHistoryTarget}
       onGraph={setGraphTarget}

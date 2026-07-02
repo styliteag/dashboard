@@ -44,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.4.1"
+__version__ = "2.5.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3932,6 +3932,26 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 if action == "agent.uninstall":
                     # Acks, then a detached script removes the agent — no return.
                     await _handle_uninstall(ws, request_id, params)
+                    continue
+
+                if action == "status.refresh":
+                    # On-demand re-check: collect and push a fresh snapshot BEFORE
+                    # acking — the dashboard ingests frames in order, so its cache
+                    # is already fresh when the command result resolves.
+                    try:
+                        snapshot = await asyncio.get_event_loop().run_in_executor(
+                            None, collect_all
+                        )
+                        await ws.send(json.dumps({"type": "metrics", "data": snapshot}))
+                        result = {"success": True, "output": "snapshot pushed"}
+                    except Exception as exc:  # noqa: BLE001 — report, keep the loop alive
+                        result = {"success": False, "output": str(exc)[:500]}
+                    await ws.send(json.dumps({
+                        "type": "command_result",
+                        "request_id": request_id,
+                        "action": action,
+                        "result": result,
+                    }))
                     continue
 
                 # Execute in thread pool to not block the event loop

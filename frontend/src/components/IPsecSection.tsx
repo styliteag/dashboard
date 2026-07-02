@@ -12,6 +12,7 @@ import {
   Stethoscope,
   History,
   LineChart,
+  RefreshCw,
 } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import type {
@@ -138,6 +139,17 @@ export default function IPsecSection({
     },
   });
 
+  // On-demand re-check: agent boxes push a fresh snapshot, direct boxes are
+  // fetched live — no waiting for the 30s poll after changing something.
+  const recheckMut = useMutation({
+    mutationFn: () => api.post<IPsecServiceStatus>(`/api/instances/${instanceId}/ipsec/refresh`),
+    onSuccess: (fresh) => queryClient.setQueryData(qk, fresh),
+    onError: (e) => {
+      setActionMsg({ ok: false, text: apiErrorText(e, "Error") });
+      clearMsg();
+    },
+  });
+
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [restartInput, setRestartInput] = useState("");
   const restartMut = useMutation({
@@ -166,12 +178,23 @@ export default function IPsecSection({
             </span>
           )}
         </h2>
-        <button
-          onClick={() => setConfirmRestart(true)}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
-        >
-          <RotateCw className="h-3 w-3" /> Restart Service
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => recheckMut.mutate()}
+            disabled={recheckMut.isPending}
+            title="Re-check tunnel status now (no 30s wait)"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${recheckMut.isPending ? "animate-spin" : ""}`} />{" "}
+            Recheck
+          </button>
+          <button
+            onClick={() => setConfirmRestart(true)}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+          >
+            <RotateCw className="h-3 w-3" /> Restart Service
+          </button>
+        </div>
       </div>
 
       {/* Agent silent → the statuses below are the last push, not live. */}

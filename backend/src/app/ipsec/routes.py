@@ -83,6 +83,40 @@ async def ipsec_status(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
+@router.post("/refresh", response_model=IPsecServiceStatus)
+async def ipsec_refresh(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_write),
+) -> IPsecServiceStatus:
+    """Re-check now instead of waiting for the next poll/push cycle.
+
+    Agent mode: ask the agent to collect and push a fresh snapshot
+    (``status.refresh``). The hub ingests frames in order, so the metrics push
+    lands before the command ack — the cache read below is already fresh.
+    Agents predating the command answer unknown-action; degrade to last-known
+    data rather than failing the re-check. Direct mode: a plain live fetch,
+    kept on this endpoint so the UI has one uniform call.
+    """
+    inst = await _get_instance(instance_id, session)
+
+    if inst.agent_mode:
+        agent = hub.get(instance_id)
+        if agent is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+            )
+        await agent.send_command("status.refresh", {}, timeout=20)
+        cached = hub.get_last_ipsec(instance_id)
+        return cached if cached is not None else IPsecServiceStatus()
+
+    try:
+        client = _ipsec_client(await registry.get(inst))
+        return await client.ipsec_status()
+    except (OPNsenseError, SecurepointError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
 @router.get("/{tunnel_id}/diagnose", response_model=IPsecDiagnosis)
 async def ipsec_diagnose(
     instance_id: int,

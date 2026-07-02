@@ -5,6 +5,7 @@ import {
   Link2,
   Unlink,
   RotateCw,
+  RefreshCw,
   ChevronRight,
   ChevronDown,
   History,
@@ -70,6 +71,7 @@ export default function TunnelRow({
   expanded,
   busy,
   onToggleExpand,
+  onRecheck,
   onReconnect,
   onHistory,
   onGraph,
@@ -80,6 +82,7 @@ export default function TunnelRow({
   expanded: boolean;
   busy: boolean;
   onToggleExpand: (key: string) => void;
+  onRecheck: (tunnel: GlobalTunnel) => void;
   onReconnect: (tunnel: GlobalTunnel) => void;
   onHistory: (tunnel: GlobalTunnel) => void;
   onGraph: (tunnel: GlobalTunnel) => void;
@@ -151,6 +154,14 @@ export default function TunnelRow({
         <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(t.bytes_out)}</td>
         <td className="px-3 py-2">
           <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={() => onRecheck(t)}
+              disabled={busy}
+              title="Re-check this connection now (no 30s wait)"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${busy ? "animate-spin" : ""}`} /> Recheck
+            </button>
             <button
               onClick={() => onHistory(t)}
               title="State-change history"

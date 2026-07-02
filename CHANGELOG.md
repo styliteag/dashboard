@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Recheck button per VPN connection.** After changing or reconnecting a
+  tunnel an admin no longer waits for the 30s cycle: each row in the VPN
+  overview (and the instance IPsec section header) has a Recheck action.
+  Agent-mode boxes collect and push a fresh snapshot on demand (new agent
+  command `status.refresh`, agent 2.5.0); direct-mode boxes are fetched live.
+  Older agents degrade gracefully to last-known data.
+
 ## [2.5.1] - 2026-07-02
 
 ### Added
