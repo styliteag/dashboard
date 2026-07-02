@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.7] - 2026-07-02
+
 ### Changed
 
 - **Agent offline floor raised from 120s to 300s.** A plain backend restart
