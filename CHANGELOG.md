@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Instance detail: IPsec section catches up with the VPN overview.** Each
+  tunnel row now offers the History (state-change log) and Graph (up/down
+  timeline) dialogs and shows a Phase-1 uptime column, matching the global VPN
+  overview.
 - **VPN overview: deep link to the firewall's own IPsec status page.** The
   external-link icon next to an instance name now lands directly on
   `/status_ipsec.php` (pfSense) / `/ui/ipsec/sessions` (OPNsense). Agent-mode

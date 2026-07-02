@@ -3,10 +3,20 @@
  */
 import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Unlink, RotateCw, Shield, ChevronRight, ChevronDown, Stethoscope } from "lucide-react";
+import {
+  Unlink,
+  RotateCw,
+  Shield,
+  ChevronRight,
+  ChevronDown,
+  Stethoscope,
+  History,
+  LineChart,
+} from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import type {
   IPsecServiceStatus,
+  IPsecTunnel,
   IPsecChild,
   IPsecPingMonitor,
   TunnelActionResponse,
@@ -15,7 +25,9 @@ import type {
 import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
 import PingMonitorDialog from "./PingMonitorDialog";
 import DiagnoseDialog from "./DiagnoseDialog";
-import { fmtBytes } from "../lib/format";
+import TunnelHistoryDialog from "./TunnelHistoryDialog";
+import TunnelGraphDialog from "./TunnelGraphDialog";
+import { fmtBytes, fmtDuration } from "../lib/format";
 
 interface Props {
   instanceId: number;
@@ -67,6 +79,8 @@ export default function IPsecSection({
     });
   const [dialog, setDialog] = useState<DialogTarget | null>(null);
   const [diagnose, setDiagnose] = useState<{ id: string; name: string } | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<IPsecTunnel | null>(null);
+  const [graphTarget, setGraphTarget] = useState<IPsecTunnel | null>(null);
 
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const clearMsg = () => setTimeout(() => setActionMsg(null), 5000);
@@ -224,6 +238,7 @@ export default function IPsecSection({
                 <th className="px-3 py-2">Remote</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Phase 2</th>
+                <th className="px-3 py-2">Uptime</th>
                 <th className="px-3 py-2 text-right">IN</th>
                 <th className="px-3 py-2 text-right">OUT</th>
                 <th className="px-3 py-2 text-right">Action</th>
@@ -270,6 +285,9 @@ export default function IPsecSection({
                           <Phase2DupNote entries={t.children ?? []} />
                         </div>
                       </td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                        {up && t.seconds_established > 0 ? fmtDuration(t.seconds_established) : "—"}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono text-xs">
                         {fmtBytes(t.bytes_in)}
                       </td>
@@ -278,6 +296,20 @@ export default function IPsecSection({
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setHistoryTarget(t)}
+                            title="State-change history"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                          >
+                            <History className="h-3 w-3" /> History
+                          </button>
+                          <button
+                            onClick={() => setGraphTarget(t)}
+                            title="Up/down timeline"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                          >
+                            <LineChart className="h-3 w-3" /> Graph
+                          </button>
                           {up && (
                             <button
                               onClick={() =>
@@ -314,7 +346,7 @@ export default function IPsecSection({
                     </tr>
                     {isOpen && (
                       <tr className="border-t border-slate-800/50 bg-slate-900/40">
-                        <td colSpan={7} className="px-3 py-1">
+                        <td colSpan={8} className="px-3 py-1">
                           <Phase2ChildList
                             tunnelId={t.id}
                             entries={t.children ?? []}
@@ -361,6 +393,30 @@ export default function IPsecSection({
           tunnelId={diagnose.id}
           tunnelName={diagnose.name}
           onClose={() => setDiagnose(null)}
+        />
+      )}
+
+      {historyTarget && (
+        <TunnelHistoryDialog
+          instanceId={instanceId}
+          tunnelId={historyTarget.id}
+          tunnelDescription={historyTarget.description || historyTarget.id}
+          onClose={() => setHistoryTarget(null)}
+        />
+      )}
+
+      {graphTarget && (
+        <TunnelGraphDialog
+          instanceId={instanceId}
+          tunnelId={graphTarget.id}
+          tunnelDescription={graphTarget.description || graphTarget.id}
+          live={{
+            phase1_status: graphTarget.phase1_status,
+            phase2_up: graphTarget.phase2_up,
+            phase2_total: graphTarget.phase2_total,
+            children: graphTarget.children,
+          }}
+          onClose={() => setGraphTarget(null)}
         />
       )}
     </section>
