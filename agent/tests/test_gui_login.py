@@ -218,7 +218,7 @@ def test_gui_login_get_transport_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_execute_command_dispatches_gui_login(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(agent, "_CONFIG", _cfg())
+    monkeypatch.setattr(agent._STATE, "config", _cfg())
     monkeypatch.setattr(agent, "_ensure_gui_credentials", lambda cfg: ("orbit", "PW"))
     fake, _ = _fake_http(
         (200, [("Set-Cookie", "PHPSESSID=pre")], b"<form></form>"),

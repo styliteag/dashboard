@@ -196,7 +196,7 @@ def test_provision_bad_output_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 def test_execute_command_dispatches_relay(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(agent, "_CONFIG", _cfg(local_api_key="K", local_api_secret="S"))
+    monkeypatch.setattr(agent._STATE, "config", _cfg(local_api_key="K", local_api_secret="S"))
     monkeypatch.setattr(
         agent, "_http_request", lambda *a, **k: (200, [("X", "Y")], b"hi")
     )

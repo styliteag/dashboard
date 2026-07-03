@@ -109,10 +109,10 @@ def test_collect_firmware_throttled_preserves_verdict(
     # The throttled (cheap) push must refresh product_version yet KEEP the last
     # upgrade verdict + latest, otherwise it blanks a detected update to "up to date".
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
-    monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic())
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", agent.time.monotonic())
     monkeypatch.setattr(
-        agent,
-        "_last_fw_verdict",
+        agent._STATE,
+        "fw_verdict",
         {
             "branch": "26.03",
             "known_branches": ["26.03"],
@@ -292,8 +292,8 @@ def test_collect_firmware_pfsense_flags_newer_train(
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     fw = agent.collect_firmware()
     assert fw["upgrade_available"] is True
     assert fw["product_latest"] == "26.03.1"
@@ -314,8 +314,8 @@ def test_collect_firmware_pfsense_refreshes_train_catalogue(
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda cmd, timeout=5: calls.append(cmd) or "")
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     agent.collect_firmware()
     # Order matters: repoc refreshes the catalogue (but leaves the repo layout
     # mid-rewrite), pfSense-upgrade -c normalizes it — reads come after both.
@@ -333,8 +333,8 @@ def test_collect_firmware_pfsense_no_newer_train_stays_uptodate(
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     fw = agent.collect_firmware()
     assert fw["upgrade_available"] is False
     assert fw["product_latest"] == "26.03-RELEASE"
@@ -1055,8 +1055,8 @@ def test_collect_firmware_pfsense_reports_check_failed(
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.0-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: _PFSENSE_CHECK_BROKEN)
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     fw = agent.collect_firmware()
     assert fw["check_failed"] is True
     assert fw["upgrade_available"] is False  # defensive: broken check must not cry update
@@ -1069,8 +1069,8 @@ def test_collect_firmware_pfsense_clean_check_not_failed(
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_8_1")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     fw = agent.collect_firmware()
     assert fw["check_failed"] is False
     assert fw["upgrade_available"] is False
@@ -1143,8 +1143,8 @@ def test_collect_firmware_pfsense_ce_update_reports_target(
     monkeypatch.setattr(
         agent, "_run", lambda *a, **k: "2.7.0 version of pfSense is available"
     )
-    monkeypatch.setattr(agent, "_last_fw_verdict", {})
-    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    monkeypatch.setattr(agent._STATE, "fw_verdict", {})
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", 0.0)
     fw = agent.collect_firmware()
     assert fw["upgrade_available"] is True
     assert fw["product_latest"] == "2.7.0"
@@ -1170,8 +1170,8 @@ def test_collect_firmware_network_check_throttled_hours(
 
     monkeypatch.setattr(agent, "_run", boom)
     monkeypatch.setattr(
-        agent,
-        "_last_fw_verdict",
+        agent._STATE,
+        "fw_verdict",
         {
             "branch": "2_8_1",
             "known_branches": [],
@@ -1181,7 +1181,7 @@ def test_collect_firmware_network_check_throttled_hours(
             "check_failed": False,
         },
     )
-    monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic() - 3600)
+    monkeypatch.setattr(agent._STATE, "fw_check_ts", agent.time.monotonic() - 3600)
     fw = agent.collect_firmware()
     assert fw["product_version"] == "2.8.1-RELEASE"
     assert fw["upgrade_available"] is False
@@ -1200,8 +1200,8 @@ def test_collect_certificates_cached_until_config_mtime_changes(
 
     monkeypatch.setattr(agent.ElementTree, "parse", fake_parse)
     monkeypatch.setattr(agent, "_config_mtime", lambda: 100.0)
-    monkeypatch.setattr(agent, "_certs_cache", [])
-    monkeypatch.setattr(agent, "_certs_cache_mtime", -1.0)
+    monkeypatch.setattr(agent._STATE, "certs_cache", [])
+    monkeypatch.setattr(agent._STATE, "certs_cache_mtime", -1.0)
 
     assert agent.collect_certificates() == []
     assert agent.collect_certificates() == []
@@ -1223,8 +1223,8 @@ def test_collect_certificates_no_cache_when_stat_fails(
 
     monkeypatch.setattr(agent.ElementTree, "parse", fake_parse)
     monkeypatch.setattr(agent, "_config_mtime", lambda: -1.0)  # stat failed
-    monkeypatch.setattr(agent, "_certs_cache", [])
-    monkeypatch.setattr(agent, "_certs_cache_mtime", -1.0)
+    monkeypatch.setattr(agent._STATE, "certs_cache", [])
+    monkeypatch.setattr(agent._STATE, "certs_cache_mtime", -1.0)
     assert agent.collect_certificates() == []
     assert agent.collect_certificates() == []
     assert len(calls) == 2  # unknown mtime must never serve a stale cache
@@ -1240,12 +1240,12 @@ def test_collect_certificates_cache_recomputes_days_remaining(
     soon = (agent.datetime.now(agent.UTC) + timedelta(days=10, hours=1)).isoformat()
     monkeypatch.setattr(agent, "_config_mtime", lambda: 100.0)
     monkeypatch.setattr(
-        agent,
-        "_certs_cache",
+        agent._STATE,
+        "certs_cache",
         [{"refid": "x", "name": "gui", "not_after": soon, "days_remaining": 9999}],
     )
-    monkeypatch.setattr(agent, "_certs_cache_mtime", 100.0)
+    monkeypatch.setattr(agent._STATE, "certs_cache_mtime", 100.0)
     out = agent.collect_certificates()
     assert out[0]["days_remaining"] == 10
     # Immutability: the cached entry itself must stay untouched.
-    assert agent._certs_cache[0]["days_remaining"] == 9999
+    assert agent._STATE.certs_cache[0]["days_remaining"] == 9999

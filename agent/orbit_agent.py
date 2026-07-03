@@ -67,22 +67,6 @@ CONFIG_PATH = os.environ.get("AGENT_CONFIG") or _path_with_legacy(
 
 log = logging.getLogger("orbit-agent")
 
-# Active config — set in main(). The HTTP relay (execute_command runs without a
-# cfg arg) reads the local OPNsense API settings from here.
-_CONFIG: Config | None = None
-
-# IPsec Phase-2 ping monitors, pushed by the dashboard via a `config_update` frame
-# (see _listen_loop_inner). Each entry: {tunnel_id, child_name, local_ts, remote_ts,
-# source, destination, enabled, ping_count}. collect_ipsec pings each enabled match.
-_PING_MONITORS: list[dict] = []
-
-# Standalone connectivity ping monitors (tunnel-independent), pushed in the same
-# `config_update` frame under "connectivity_monitors". Each entry:
-# {id, name, source, destination, enabled, ping_count}. collect_connectivity pings
-# each enabled one and echoes the dashboard `id` back so the backend check key
-# connectivity:<id> stays stable across renames.
-_CONN_MONITORS: list[dict] = []
-
 
 # =============================================================================
 # Configuration
@@ -144,6 +128,44 @@ class Config:
         self.local_api_url_explicit = "local_api_url" in data or "opnsense_api_url" in data
         self.enroll_code = data.get("enroll_code", self.enroll_code)
         self.enroll_url = data.get("enroll_url", self.enroll_url)
+
+
+class _AgentState:
+    """All mutable module-wide runtime state, in one place.
+
+    Everything the loops share across call boundaries lives here (instead of
+    scattered module globals): assignments are plain attribute writes, so no
+    function needs a ``global`` statement, and each field is replaced wholesale
+    (never mutated in place).
+    """
+
+    def __init__(self) -> None:
+        # Active config — set in main(). The HTTP relay (execute_command runs
+        # without a cfg arg) reads the local OPNsense API settings from here.
+        self.config: Config | None = None
+        # IPsec Phase-2 ping monitors, pushed by the dashboard via a `config_update`
+        # frame (see _listen_loop_inner). Each entry: {tunnel_id, child_name,
+        # local_ts, remote_ts, source, destination, enabled, ping_count}.
+        # collect_ipsec pings each enabled match.
+        self.ping_monitors: list[dict] = []
+        # Standalone connectivity ping monitors (tunnel-independent), pushed in the
+        # same `config_update` frame under "connectivity_monitors". Each entry:
+        # {id, name, source, destination, enabled, ping_count}. collect_connectivity
+        # pings each enabled one and echoes the dashboard `id` back so the backend
+        # check key connectivity:<id> stays stable across renames.
+        self.conn_monitors: list[dict] = []
+        # Firmware verdict cache + throttle window (see _store_fw_verdict).
+        self.fw_verdict: dict = {}
+        self.fw_check_ts: float = 0.0
+        # Certificate parse cache, keyed on config.xml mtime (see collect_certificates).
+        self.certs_cache: list = []
+        self.certs_cache_mtime: float = -1.0
+        # Probation healthiness signal — set on the first server frame after a
+        # self-update; the watchdog rolls back if it never fires (see §5).
+        self.healthy: "asyncio.Event | None" = None
+
+
+_STATE = _AgentState()
 
 
 # =============================================================================
@@ -1256,11 +1278,11 @@ def run_ping_checks(tunnels: list[dict], monitors: list[dict], now_iso: str) -> 
 def collect_connectivity() -> list:
     """Run each enabled standalone connectivity monitor concurrently.
 
-    Tunnel-independent source->dest pings (see _CONN_MONITORS). Returns one result
+    Tunnel-independent source->dest pings (see _STATE.conn_monitors). Returns one result
     per enabled monitor, keyed by the dashboard's stable monitor `id` so the
     backend check key connectivity:<id> survives renames and same-destination
     monitors. Reuses _ping_once (the same probe IPsec monitors use)."""
-    monitors = [m for m in _CONN_MONITORS if m.get("enabled", True)]
+    monitors = [m for m in _STATE.conn_monitors if m.get("enabled", True)]
     if not monitors:
         return []
     now_iso = datetime.now(UTC).isoformat()
@@ -1326,7 +1348,7 @@ def collect_ipsec() -> dict:
         for ch in t.get("children", []):
             ch.setdefault("ping_state", "none")
             ch["suggested_source"] = _suggest_source(ch.get("local_ts", ""), box_ips)
-    run_ping_checks(tunnels, _PING_MONITORS, datetime.now(UTC).isoformat())
+    run_ping_checks(tunnels, _STATE.ping_monitors, datetime.now(UTC).isoformat())
 
     running = bool(_run(["pgrep", "-x", "charon"]).strip())
     return {"running": running, "tunnels": tunnels}
@@ -1369,12 +1391,9 @@ def _read_opnsense_version() -> str:
     return _run(["pkg", "query", "%v", "opnsense"]).strip()
 
 
-# Track when we last ran a full firmware update check (network call). The verdict
-# is cached because pushes happen every ~30s but the network check only every
-# ~12h — without the cache the cheap interim pushes would blank a detected update.
-_last_fw_check_ts: float = 0.0
-_last_fw_verdict: dict = {}
-
+# The firmware verdict is cached (_STATE.fw_verdict/.fw_check_ts) because pushes
+# happen every ~30s but the network check only every ~12h — without the cache the
+# cheap interim pushes would blank a detected update.
 # Network update check every ~12h, plus a per-process jitter so a fleet doesn't
 # hit the vendor repos in lockstep. Release cadence is weeks; 600s meant 144
 # vendor requests per box per day (and repoc alone takes 30-40s cold on
@@ -1444,8 +1463,7 @@ def _store_fw_verdict(
     just-run check is reflected by the cheap interim pushes (otherwise a throttled
     push would overwrite a fresh manual check with the stale cached verdict).
     """
-    global _last_fw_check_ts, _last_fw_verdict
-    _last_fw_verdict = {
+    _STATE.fw_verdict = {
         "branch": branch,
         "known_branches": known_branches,
         "upgrade_available": upgrade_available,
@@ -1453,8 +1471,8 @@ def _store_fw_verdict(
         "update_check_output": out.strip()[:500],
         "check_failed": check_failed,
     }
-    _last_fw_check_ts = time.monotonic()
-    return _last_fw_verdict
+    _STATE.fw_check_ts = time.monotonic()
+    return _STATE.fw_verdict
 
 
 def _pfsense_update_available(out: str) -> bool:
@@ -1559,14 +1577,14 @@ def collect_firmware() -> dict:
 
     Only ``product_version`` is recomputed every push (a cheap local file read); the
     branch + upgrade verdict come from the cached last network check so the frequent
-    interim pushes never blank a detected update (see ``_last_fw_verdict``).
+    interim pushes never blank a detected update (see ``_STATE.fw_verdict``).
     """
     pfsense = detect_platform() == "pfsense"
     version = _read_pfsense_version() if pfsense else _read_opnsense_version()
 
     now = time.monotonic()
-    if _last_fw_verdict and now - _last_fw_check_ts < _FW_CHECK_INTERVAL_S:
-        return {"product_version": version, **_last_fw_verdict}
+    if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
+        return {"product_version": version, **_STATE.fw_verdict}
 
     if pfsense:
         # Refresh Netgate's train catalogue first — exactly what the GUI's
@@ -1807,10 +1825,6 @@ def _collect_services_pfsense() -> list[dict]:
     ]
 
 
-_certs_cache: list = []
-_certs_cache_mtime: float = -1.0
-
-
 def _config_mtime() -> float:
     """mtime of config.xml; -1.0 when unreadable (then never serve the cache)."""
     try:
@@ -1843,16 +1857,15 @@ def collect_certificates() -> list[dict]:
     subprocess fan-out) runs once per config.xml mtime — previously it ran on
     every 30s push, i.e. dozens of subprocesses per push on cert-heavy boxes.
     """
-    global _certs_cache, _certs_cache_mtime
     mtime = _config_mtime()
-    if mtime >= 0 and mtime == _certs_cache_mtime:
-        return _certs_with_fresh_days(_certs_cache)
+    if mtime >= 0 and mtime == _STATE.certs_cache_mtime:
+        return _certs_with_fresh_days(_STATE.certs_cache)
     try:
         root = ElementTree.parse(_CONFIG_XML).getroot()
     except (OSError, ElementTree.ParseError):
         # Cache the empty result too — an unchanged (broken) config stays
         # broken until its mtime moves; no point re-parsing every push.
-        _certs_cache, _certs_cache_mtime = [], mtime
+        _STATE.certs_cache, _STATE.certs_cache_mtime = [], mtime
         return []
     gui_ref = (root.findtext("./system/webgui/ssl-certref") or "").strip()
     out: list[dict] = []
@@ -1877,7 +1890,7 @@ def collect_certificates() -> list[dict]:
             "is_gui": bool(gui_ref) and refid == gui_ref,
             **info,
         })
-    _certs_cache, _certs_cache_mtime = out, mtime
+    _STATE.certs_cache, _STATE.certs_cache_mtime = out, mtime
     return out
 
 
@@ -3246,12 +3259,12 @@ def _cmd_relay_enable(params: dict) -> dict:
 
 
 def _cmd_gui_login(params: dict) -> dict:
-    return _gui_login(_CONFIG)
+    return _gui_login(_STATE.config)
 
 
 def _cmd_http_relay(params: dict) -> dict:
     # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
-    return _relay_http(params, _CONFIG)
+    return _relay_http(params, _STATE.config)
 
 
 def _cmd_ping(params: dict) -> dict:
@@ -3480,9 +3493,8 @@ async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSoc
 
 _UPDATE_RESTART_CODE = 42
 _PROBATION_SECS = 60
-# Set once the dashboard accepts us (welcome received). Created inside the running
-# loop in _main_async() so it never binds to the wrong event loop.
-_healthy: asyncio.Event | None = None
+# _STATE.healthy is set once the dashboard accepts us (welcome received). Created
+# inside the running loop in _main_async() so it never binds to the wrong event loop.
 
 
 def _self_path() -> str:
@@ -3592,9 +3604,9 @@ def _skip_sig_check() -> bool:
     prod use is obvious. Never returns True on its own — both channels are opt-in.
     """
     env_on = os.environ.get("AGENT_INSECURE_SKIP_SIG") == "1"
-    # Read the active config global (_CONFIG). The old globals().get("cfg") always
+    # Read the active config (_STATE.config). The old globals().get("cfg") always
     # returned None (no module-level `cfg`), so the config flag was dead.
-    cfg_on = bool(getattr(_CONFIG, "insecure_skip_sig", False))
+    cfg_on = bool(getattr(_STATE.config, "insecure_skip_sig", False))
     if env_on or cfg_on:
         log.warning(
             "INSECURE: self-update signature verification DISABLED "
@@ -3972,18 +3984,19 @@ def _apply_push_interval(value: object) -> None:
     """Apply a dashboard-pinned push cadence to the live config.
 
     The push loop reads ``cfg.push_interval`` each cycle, so mutating the shared
-    ``_CONFIG`` takes effect on the next push. Ignores junk and guards against a
-    0/negative value that would turn the push loop into a hot loop.
+    ``_STATE.config`` takes effect on the next push. Ignores junk and guards against
+    a 0/negative value that would turn the push loop into a hot loop.
     """
-    if value is None or _CONFIG is None:
+    cfg = _STATE.config
+    if value is None or cfg is None:
         return
     try:
         seconds = int(value)
     except (TypeError, ValueError):
         return
-    if seconds < 1 or seconds == _CONFIG.push_interval:
+    if seconds < 1 or seconds == cfg.push_interval:
         return
-    _CONFIG.push_interval = seconds
+    cfg.push_interval = seconds
     log.info("push interval set to %ds (dashboard)", seconds)
 
 
@@ -4109,7 +4122,7 @@ class _TunnelManager:
 
 async def _listen_loop(ws: WebSocket) -> None:
     """Listen for commands from the dashboard."""
-    gui = urlsplit(_CONFIG.local_api_url if _CONFIG else "https://127.0.0.1:4444")
+    gui = urlsplit(_STATE.config.local_api_url if _STATE.config else "https://127.0.0.1:4444")
     tunnels = _TunnelManager(ws, gui.hostname or "127.0.0.1", gui.port or 443)
     try:
         await _listen_loop_inner(ws, tunnels)
@@ -4136,8 +4149,8 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 if os.path.exists(_marker_path()):
                     _clear_probation()
                     log.info("self-update: probation passed (healthy connect)")
-                if _healthy is not None:
-                    _healthy.set()
+                if _STATE.healthy is not None:
+                    _STATE.healthy.set()
 
             elif msg_type == "command":
                 action = msg.get("action", "")
@@ -4193,14 +4206,14 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 data = msg.get("data", {})
                 monitors = data.get("ipsec_ping_monitors")
                 if monitors is not None:
-                    global _PING_MONITORS
-                    _PING_MONITORS = monitors if isinstance(monitors, list) else []
-                    log.info("applied %d ipsec ping monitor(s)", len(_PING_MONITORS))
+                    _STATE.ping_monitors = monitors if isinstance(monitors, list) else []
+                    log.info("applied %d ipsec ping monitor(s)", len(_STATE.ping_monitors))
                 conn_monitors = data.get("connectivity_monitors")
                 if conn_monitors is not None:
-                    global _CONN_MONITORS
-                    _CONN_MONITORS = conn_monitors if isinstance(conn_monitors, list) else []
-                    log.info("applied %d connectivity monitor(s)", len(_CONN_MONITORS))
+                    _STATE.conn_monitors = (
+                        conn_monitors if isinstance(conn_monitors, list) else []
+                    )
+                    log.info("applied %d connectivity monitor(s)", len(_STATE.conn_monitors))
                 _apply_push_interval(data.get("push_interval"))
 
             elif msg_type == "ping":
@@ -4293,19 +4306,17 @@ def _enroll(cfg: Config) -> bool:
 
 async def _main_async(cfg: Config) -> None:
     """Run the connection loop, plus a probation watchdog if we just self-updated."""
-    global _healthy
-    _healthy = asyncio.Event()
+    _STATE.healthy = asyncio.Event()
     tasks = [asyncio.create_task(agent_loop(cfg))]
     if os.path.exists(_marker_path()):
         log.info("self-update: on probation — must connect healthy within %ds", _PROBATION_SECS)
-        tasks.append(asyncio.create_task(_probation_watchdog(_healthy)))
+        tasks.append(asyncio.create_task(_probation_watchdog(_STATE.healthy)))
     await asyncio.gather(*tasks)
 
 
 def main() -> None:
-    global _CONFIG
     cfg = Config()
-    _CONFIG = cfg  # the HTTP relay reads local API settings from here
+    _STATE.config = cfg  # the HTTP relay reads local API settings from here
     logging.basicConfig(
         level=getattr(logging, cfg.log_level.upper(), logging.INFO),
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",

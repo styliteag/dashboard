@@ -67,19 +67,19 @@ def test_signature_enforced_with_pubkey(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_skip_sig_check_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_INSECURE_SKIP_SIG", raising=False)
-    monkeypatch.setattr(agent, "_CONFIG", SimpleNamespace(insecure_skip_sig=False))
+    monkeypatch.setattr(agent._STATE, "config", SimpleNamespace(insecure_skip_sig=False))
     assert agent._skip_sig_check() is False
 
 
 def test_skip_sig_check_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(agent, "_CONFIG", SimpleNamespace(insecure_skip_sig=False))
+    monkeypatch.setattr(agent._STATE, "config", SimpleNamespace(insecure_skip_sig=False))
     monkeypatch.setenv("AGENT_INSECURE_SKIP_SIG", "1")
     assert agent._skip_sig_check() is True
 
 
 def test_skip_sig_check_via_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_INSECURE_SKIP_SIG", raising=False)
-    monkeypatch.setattr(agent, "_CONFIG", SimpleNamespace(insecure_skip_sig=True))
+    monkeypatch.setattr(agent._STATE, "config", SimpleNamespace(insecure_skip_sig=True))
     assert agent._skip_sig_check() is True
 
 

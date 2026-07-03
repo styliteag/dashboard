@@ -9,7 +9,7 @@ import pytest
 @pytest.fixture
 def cfg(monkeypatch):
     c = agent.Config(path="/nonexistent-orbit-test.conf")  # no file → defaults (30s)
-    monkeypatch.setattr(agent, "_CONFIG", c)
+    monkeypatch.setattr(agent._STATE, "config", c)
     return c
 
 
@@ -44,5 +44,5 @@ def test_apply_ignores_junk(cfg):
 
 
 def test_apply_no_config_is_safe(monkeypatch):
-    monkeypatch.setattr(agent, "_CONFIG", None)
+    monkeypatch.setattr(agent._STATE, "config", None)
     agent._apply_push_interval(60)  # must not raise
