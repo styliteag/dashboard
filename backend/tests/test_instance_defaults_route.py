@@ -18,6 +18,7 @@ from app.auth.deps import current_user
 def test_defaults_endpoint_returns_global_intervals(monkeypatch) -> None:
     monkeypatch.setattr(sched_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", lambda *a, **k: None)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", lambda *a, **k: None)
     app = main_mod.create_app()
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(id=1)
     with TestClient(app) as c:

@@ -15,7 +15,7 @@ from app.agent_hub.hub import hub
 from app.agent_hub.routes import router as agent_router
 from app.apikeys.routes import router as apikeys_router
 from app.audit.routes import router as audit_router
-from app.auth.bootstrap import ensure_admin
+from app.auth.bootstrap import ensure_admin, ensure_superadmin
 from app.auth.mfa_routes import router as mfa_router
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
@@ -65,6 +65,11 @@ async def lifespan(app: FastAPI):
         await ensure_admin()
     except Exception as exc:  # noqa: BLE001
         log.error("admin_bootstrap.failed", error=str(exc))
+
+    try:
+        await ensure_superadmin()
+    except Exception as exc:  # noqa: BLE001
+        log.error("superadmin_bootstrap.failed", error=str(exc))
 
     # Re-hydrate the agent hub's live-status caches from the last persisted
     # snapshots so a backend restart doesn't blank the dashboard until the next push.

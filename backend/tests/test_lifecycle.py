@@ -81,6 +81,7 @@ async def _noop(*a, **k):
 def _app(monkeypatch, session, *, agent=None, limiter=None):
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
     # write_audit is imported per route module — patch every module under test.
     for mod in (enroll_mod, gui_mod, mgmt_mod, relay_mod):
         monkeypatch.setattr(mod, "write_audit", _noop)

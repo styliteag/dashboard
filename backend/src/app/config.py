@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     #   "0"              — force the seed admin ENABLED (manual break-glass / keep on).
     #   "1"              — force the seed admin DISABLED.
     admin_disabled: str = Field(default="auto", description="Bootstrap admin: auto|0|1")
+    # Initial superadmin password (seed account "superadmin", rights management
+    # only). Same lifecycle as the bootstrap admin: auto-retired once a real
+    # superadmin exists (see app.auth.bootstrap).
+    superadmin_password: str = Field(default="", description="Initial superadmin password")
+    superadmin_disabled: str = Field(default="auto", description="Bootstrap superadmin: auto|0|1")
     # Issuer label shown in the user's authenticator app for TOTP enrollment.
     mfa_issuer: str = Field(default="Orbit Dashboard", description="TOTP issuer label")
     # WebAuthn / passkeys. ``rp_id`` is the registrable domain (no scheme/port);

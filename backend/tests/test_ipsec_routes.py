@@ -67,6 +67,7 @@ class _Sess:
 def _app(monkeypatch, inst: object, client: object) -> object:
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
     monkeypatch.setattr(ipsec_mod, "write_audit", _noop)
 
     async def _get_instance(session: object, iid: int) -> object:

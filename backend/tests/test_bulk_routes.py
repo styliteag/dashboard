@@ -83,6 +83,7 @@ def _inst(iid: int, name: str, agent_mode: bool = False) -> SimpleNamespace:
 def _app(monkeypatch, instances: list) -> object:
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
     monkeypatch.setattr(bulk_mod, "write_audit", _noop)
     app = main_mod.create_app()
     app.dependency_overrides[require_write] = lambda: SimpleNamespace(

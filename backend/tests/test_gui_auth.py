@@ -42,6 +42,7 @@ async def _noop(*a, **k):
 def _client(monkeypatch) -> TestClient:
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
     monkeypatch.setattr(routes_mod.hub, "hydrate_from_db", _noop)
     return TestClient(main_mod.create_app())
 

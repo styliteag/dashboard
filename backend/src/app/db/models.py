@@ -7,12 +7,14 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Column,
     Double,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
     String,
+    Table,
     Text,
     UniqueConstraint,
     func,
@@ -24,6 +26,33 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.types import UtcDateTime
 from app.devices.types import DeviceType, Transport
+
+# User ↔ Group membership (a user may be in several groups; see app.auth.scope).
+user_groups = Table(
+    "user_groups",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("group_id", ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Group(Base):
+    """Instance container: every instance belongs to exactly one group and a user
+    only sees instances of groups they are member of (see app.auth.scope).
+
+    Group 1 ("default", seeded in migration 028) holds everything that existed
+    before groups were introduced. Groups are managed by superadmins only.
+    """
+
+    __tablename__ = "groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, server_default=func.now(), nullable=False
+    )
+
+    users: Mapped[list[User]] = relationship(secondary=user_groups, back_populates="groups")
 
 
 class User(Base):
@@ -51,6 +80,12 @@ class User(Base):
     )
     # Disabled accounts cannot log in and any live session dies on the next request.
     disabled: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
+    # SuperAdmins manage rights only (groups, users, memberships) — orthogonal to
+    # ``role``: instance visibility still comes solely from group membership, so a
+    # pure superadmin without groups sees no instances at all.
+    is_superadmin: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime, server_default=func.now(), nullable=False
     )
@@ -59,11 +94,21 @@ class User(Base):
     webauthn_credentials: Mapped[list[WebauthnCredential]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    # selectin: memberships load eagerly with the ``session.get`` in current_user,
+    # so ``group_id_set`` is synchronously available in every route and WS handler.
+    groups: Mapped[list[Group]] = relationship(
+        secondary=user_groups, back_populates="users", lazy="selectin"
+    )
 
     @property
     def is_admin(self) -> bool:
         """Derived flag kept for the admin-only guard and API responses."""
         return self.role == "admin"
+
+    @property
+    def group_id_set(self) -> frozenset[int]:
+        """Ids of the groups this user is member of (instance visibility scope)."""
+        return frozenset(g.id for g in self.groups)
 
 
 class WebauthnCredential(Base):
@@ -97,6 +142,15 @@ class Instance(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Every instance belongs to exactly one group (visibility scoping, see
+    # app.auth.scope). Pre-existing rows were backfilled into group 1 "default";
+    # RESTRICT makes deleting a non-empty group impossible at the DB level.
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", name="fk_instances_group_id_groups", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     # URL-safe DNS label for the prod GUI-proxy origin gui-<slug>.<domain> (§18).
     # Unique among *active* instances via the generated ``slug_active_key`` column
     # (same partial-unique trick as ``name``; freed automatically on soft-delete).

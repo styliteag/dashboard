@@ -79,6 +79,7 @@ def _patch(monkeypatch, instance, on_commit=None):
     monkeypatch.setattr(hub_mod, "get_sessionmaker", lambda: maker)
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
 
 
 def test_valid_token_handshake_registers_and_unregisters(monkeypatch) -> None:

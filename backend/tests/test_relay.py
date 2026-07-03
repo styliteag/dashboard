@@ -38,6 +38,7 @@ def _client(monkeypatch, agent_obj) -> TestClient:
     monkeypatch.setattr(routes_mod.hub, "get", lambda iid: agent_obj)
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
+    monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
     app = main_mod.create_app()
     # bypass session auth with a write-capable principal so require_write passes
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(

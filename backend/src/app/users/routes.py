@@ -62,7 +62,11 @@ async def _retire_bootstrap_if_supplanted(session: AsyncSession) -> None:
         return
     boot = (
         await session.execute(
-            select(User).where(User.is_bootstrap.is_(True), User.disabled.is_(False))
+            select(User).where(
+                User.is_bootstrap.is_(True),
+                User.is_superadmin.is_(False),
+                User.disabled.is_(False),
+            )
         )
     ).scalar_one_or_none()
     if boot is not None:
