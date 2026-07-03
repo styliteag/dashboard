@@ -2053,6 +2053,33 @@ def _timed(timings: dict, name: str, fn, *args):
         timings[name] = round((time.monotonic() - t0) * 1000, 1)
 
 
+# Snapshot sections in push order: (key, collector function name). Every collector
+# is a zero-arg callable; its result lands under `key` in the metrics frame. A
+# raising collector aborts the whole cycle (caught in _push_loop) — same as before.
+# Names, not function references: collect_all resolves them via globals() at call
+# time so monkeypatching a collector on the module (as the tests do) still works.
+_SNAPSHOT_SECTIONS = (
+    ("system", "collect_system_info"),
+    ("uptime", "collect_uptime"),
+    ("loadavg", "collect_loadavg"),
+    ("cpu", "collect_cpu"),
+    ("memory", "collect_memory"),
+    ("disks", "collect_disk"),
+    ("pf", "collect_pf"),
+    ("ntp", "collect_ntp"),
+    ("interfaces", "collect_interfaces"),
+    ("gateways", "collect_gateways"),
+    ("ipsec", "collect_ipsec"),
+    ("connectivity", "collect_connectivity"),
+    ("firmware", "collect_firmware"),
+    ("firewall_log", "collect_firewall_log"),
+    ("config", "collect_config"),
+    ("services", "collect_services"),
+    ("certificates", "collect_certificates"),
+    ("logfiles", "collect_logfiles"),
+)
+
+
 def collect_all() -> dict:
     """Full snapshot of this OPNsense instance.
 
@@ -2062,27 +2089,9 @@ def collect_all() -> dict:
     shows up as rising time here first."""
     section_ms: dict = {}
     t0 = time.monotonic()
-    snapshot = {
-        "ts": datetime.now(UTC).isoformat(),
-        "system": _timed(section_ms, "system", collect_system_info),
-        "uptime": _timed(section_ms, "uptime", collect_uptime),
-        "loadavg": _timed(section_ms, "loadavg", collect_loadavg),
-        "cpu": _timed(section_ms, "cpu", collect_cpu),
-        "memory": _timed(section_ms, "memory", collect_memory),
-        "disks": _timed(section_ms, "disks", collect_disk),
-        "pf": _timed(section_ms, "pf", collect_pf),
-        "ntp": _timed(section_ms, "ntp", collect_ntp),
-        "interfaces": _timed(section_ms, "interfaces", collect_interfaces),
-        "gateways": _timed(section_ms, "gateways", collect_gateways),
-        "ipsec": _timed(section_ms, "ipsec", collect_ipsec),
-        "connectivity": _timed(section_ms, "connectivity", collect_connectivity),
-        "firmware": _timed(section_ms, "firmware", collect_firmware),
-        "firewall_log": _timed(section_ms, "firewall_log", collect_firewall_log, 30),
-        "config": _timed(section_ms, "config", collect_config),
-        "services": _timed(section_ms, "services", collect_services),
-        "certificates": _timed(section_ms, "certificates", collect_certificates),
-        "logfiles": _timed(section_ms, "logfiles", collect_logfiles),
-    }
+    snapshot: dict = {"ts": datetime.now(UTC).isoformat()}
+    for key, fn_name in _SNAPSHOT_SECTIONS:
+        snapshot[key] = _timed(section_ms, key, globals()[fn_name])
     snapshot["collect_ms"] = round((time.monotonic() - t0) * 1000, 1)
     snapshot["section_ms"] = section_ms
     return snapshot
