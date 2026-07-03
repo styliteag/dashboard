@@ -17,7 +17,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [stage, setStage] = useState<Stage>("password");
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [setup, setSetup] = useState<TotpSetup | null>(null);
