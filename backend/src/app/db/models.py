@@ -55,6 +55,32 @@ class Group(Base):
     users: Mapped[list[User]] = relationship(secondary=user_groups, back_populates="groups")
 
 
+class GroupChannel(Base):
+    """Per-group notification-channel target (Mattermost/Telegram/Email).
+
+    ``config_enc`` is Fernet-encrypted JSON; field shapes per channel live in
+    app.notifications.channel_config. A configured row REPLACES the global
+    channel target for this group's instances; absence = global fallback.
+    Routing (selection rules) and the global mute toggles stay global.
+    """
+
+    __tablename__ = "group_channels"
+    __table_args__ = (UniqueConstraint("group_id", "channel", name="uq_group_channel"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    config_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 

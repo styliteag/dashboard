@@ -19,6 +19,18 @@ _EMPTY = SimpleNamespace(
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_group_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the GLOBAL dispatch path (several pass instance_id=1);
+    without this stub the group-override lookup would open a real sessionmaker.
+    Group-override routing has its own suite (test_group_channel_routing.py)."""
+
+    async def _none(_instance_id: int) -> dict:
+        return {}
+
+    monkeypatch.setattr(notifier, "_group_channel_overrides", _none)
+
+
 async def _resolve_public(_host: str) -> list[str]:
     """Stub for notifier._resolve: a public IP, so the SSRF guard allows the host
     without hitting real DNS."""

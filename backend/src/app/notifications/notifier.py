@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import smtplib
 import ssl
 from dataclasses import dataclass
@@ -20,7 +21,12 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
+from sqlalchemy import select
 
+from app.crypto.secrets import decrypt
+from app.db.base import get_sessionmaker
+from app.db.models import GroupChannel, Instance
+from app.notifications.channel_config import GroupChannelSettings
 from app.selection.model import AVAILABILITY
 from app.selection.store import is_on_live
 from app.settings.store import effective_settings
@@ -244,6 +250,29 @@ def _channel_muted(channel: str, s) -> bool:  # noqa: ANN001
     return bool(key and getattr(s, key, False))
 
 
+async def _group_channel_overrides(instance_id: int) -> dict[str, dict]:
+    """``channel -> decrypted config`` for the instance's group.
+
+    Fail-OPEN to ``{}`` (= global targets) on any error — a broken row or
+    missing Fernet key must degrade an alert to the global channel, never
+    drop it. One short DB session per dispatch; alert volume is low.
+    """
+    try:
+        async with get_sessionmaker()() as session:
+            gid = await session.scalar(select(Instance.group_id).where(Instance.id == instance_id))
+            if gid is None:
+                return {}
+            rows = (
+                (await session.execute(select(GroupChannel).where(GroupChannel.group_id == gid)))
+                .scalars()
+                .all()
+            )
+            return {r.channel: json.loads(decrypt(r.config_enc)) for r in rows}
+    except Exception as exc:  # noqa: BLE001 — fail open, alert delivery wins
+        log.warning("notify.group_channels_load_failed", instance_id=instance_id, error=str(exc))
+        return {}
+
+
 async def _dispatch(
     title: str,
     message: str,
@@ -257,8 +286,13 @@ async def _dispatch(
     for ``check_key`` on ``instance_id`` is reported as skipped without attempting a
     send (the test path turns it off — and passes ``instance_id=None`` — to reach
     every configured channel). ``check_key`` is the full check key (``gateway:WAN``)
-    or ``availability``; selection resolves it per channel (see ``app.selection``)."""
+    or ``availability``; selection resolves it per channel (see ``app.selection``).
+
+    A channel configured on the instance's group REPLACES the global target for
+    that send (global stays the fallback for unconfigured kinds). Routing and
+    the mute toggles are evaluated globally either way."""
     s = effective_settings()
+    overrides = await _group_channel_overrides(instance_id) if instance_id is not None else {}
     results: list[ChannelResult] = []
     for channel, sender in _CHANNEL_SENDERS:
         if respect_routes and not is_on_live(channel, check_key, instance_id):
@@ -267,7 +301,8 @@ async def _dispatch(
         if respect_routes and _channel_muted(channel, s):
             results.append(ChannelResult(channel, "skipped", "muted"))
             continue
-        results.append(await sender(s, title, message, level))
+        target = GroupChannelSettings(s, channel, overrides[channel]) if channel in overrides else s
+        results.append(await sender(target, title, message, level))
     return results
 
 
