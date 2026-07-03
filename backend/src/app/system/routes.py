@@ -27,10 +27,10 @@ router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
 async def certificates(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[CertInfo]:
     """Certificates and their expiry (agent push only). Direct/Securepoint = empty."""
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     if inst.agent_mode:
@@ -52,10 +52,10 @@ class ConfigInfoResponse(BaseModel):
 async def config_info(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> ConfigInfoResponse:
     """Config-change metadata + last backup time. Revision is agent-push only."""
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
@@ -90,11 +90,11 @@ async def config_info(
 async def services(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[ServiceInfo]:
     """Per-service running state. Agent mode: last push from the hub cache.
     Direct/Securepoint poll does not carry services → empty list."""
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     if inst.agent_mode:
@@ -106,9 +106,9 @@ async def services(
 async def gateways(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[GatewayStatus]:
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
@@ -130,7 +130,7 @@ async def config_backup(
     user: User = Depends(current_user),
 ) -> PlainTextResponse:
     """Download OPNsense config.xml. Agent mode: request via agent command."""
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
@@ -193,7 +193,7 @@ async def reboot(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> ActionResult:
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
@@ -251,10 +251,10 @@ async def firewall_log(
     instance_id: int,
     limit: int = Query(default=50, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[dict]:
     """Fetch recent firewall log entries. Agent mode: return cached push data."""
-    inst = await inst_service.get_instance(session, instance_id)
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 

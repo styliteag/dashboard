@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
@@ -18,6 +17,7 @@ from app.checks.event_store import read_check_events
 from app.checks.overlay import overlay_checks
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.instances.service import get_instance, list_instances
 from app.selection.model import CHECKMK, resolve
 from app.selection.store import fetch_rules
 from app.settings.store import effective_settings
@@ -112,11 +112,11 @@ async def gather_many(rows: list[Instance]) -> list[tuple[Instance, GatheredAspe
 async def instance_checks(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _principal=Depends(read_principal),
+    principal=Depends(read_principal),
 ) -> list[ServiceCheck]:
     """Evaluated OK/WARN/CRIT checks for one instance (memory, disks, gateways, IPsec, firmware)."""
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, principal)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     sys_status, gateways, ipsec, firmware, services, certs, connectivity = await _gather(
@@ -141,7 +141,7 @@ async def instance_check_history(
     key: str | None = None,
     key_prefix: str | None = None,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[CheckHistoryEvent]:
     """Recorded check state-change history for one instance, most recent first.
 
@@ -150,8 +150,8 @@ async def instance_check_history(
     agent-push ingest (plus availability from the scheduler); direct-API instances
     have only availability history.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     limit = max(1, min(limit, 500))
     rows = await read_check_events(session, instance_id, limit, key=key, key_prefix=key_prefix)
@@ -170,9 +170,12 @@ async def instance_check_history(
 @router.get("/export/checkmk")
 async def export_checkmk(
     session: AsyncSession = Depends(get_session),
-    _principal=Depends(read_principal),
+    principal=Depends(read_principal),
 ) -> dict:
     """All instances' checks in one call — consumed by the Checkmk special agent.
+
+    API-key callers (the special agent) stay global — per-key group binding is a
+    deliberate follow-up; a session user only gets their groups' instances.
 
     Push instances use the hub cache (cheap); direct instances are polled live,
     which can be slow with many of them (caching direct status is a follow-up).
@@ -184,15 +187,7 @@ async def export_checkmk(
     if getattr(settings, "checkmk_blackout", False):
         return {"version": 1, "instances": []}
 
-    rows = (
-        (
-            await session.execute(
-                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = await list_instances(session, principal)
 
     rules = await fetch_rules(session)
 
@@ -238,9 +233,10 @@ def _sev(s: int) -> int:
 @router.get("/checks", response_model=list[ServiceAlert])
 async def all_checks(
     session: AsyncSession = Depends(get_session),
-    _principal=Depends(read_principal),
+    principal=Depends(read_principal),
 ) -> list[ServiceAlert]:
-    """All evaluated service checks across instances (the data Checkmk receives).
+    """All evaluated service checks across the caller's visible instances (the
+    data Checkmk receives; API-key callers stay global).
 
     Each entry is annotated with whether it is currently exported to Checkmk. The
     export is opt-in (base default off): ``excluded`` is true for any check no
@@ -249,15 +245,7 @@ async def all_checks(
     """
     rules = await fetch_rules(session)
 
-    rows = (
-        (
-            await session.execute(
-                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = await list_instances(session, principal)
 
     settings = effective_settings()
     now = datetime.now(UTC)

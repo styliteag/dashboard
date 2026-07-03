@@ -147,6 +147,7 @@ def _orm_like(**overrides):
         name="opn1",
         slug="opn1",
         base_url="https://opn1:4444",
+        group_id=1,
         ssl_verify=True,
         gui_login_enabled=False,
         transport="push",

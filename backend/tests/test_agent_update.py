@@ -108,6 +108,14 @@ class FakeSession:
     async def get(self, model, pk):
         return self._instance
 
+    async def execute(self, stmt):
+        # _visible_instance_ids: the caller may see instance 1
+        class _R:
+            def scalars(self):
+                return iter([1])
+
+        return _R()
+
     async def commit(self) -> None:
         pass
 
@@ -140,7 +148,9 @@ async def test_update_all_recheck_skips_agent_reconnected_at_served(
     _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
 
     result = await update.update_all_agents(
-        request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
+        request=SimpleNamespace(),
+        session=FakeSession(),
+        user=SimpleNamespace(id=1, is_superadmin=False, group_id_set=frozenset({1})),
     )
 
     assert live.sent == []
@@ -156,7 +166,9 @@ async def test_update_all_pushes_outdated_agent(
     _patch_hub(monkeypatch, FakeHub(snapshot, {1: live}))
 
     result = await update.update_all_agents(
-        request=SimpleNamespace(), session=FakeSession(), user=SimpleNamespace(id=1)
+        request=SimpleNamespace(),
+        session=FakeSession(),
+        user=SimpleNamespace(id=1, is_superadmin=False, group_id_set=frozenset({1})),
     )
 
     assert [a for a, _ in live.sent] == ["agent.update"]
@@ -169,13 +181,13 @@ async def test_update_single_skips_when_agent_current(
 ) -> None:
     live = FakeAgent("2.4.0")
     _patch_hub(monkeypatch, FakeHub([], {1: live}))
-    inst = SimpleNamespace(id=1, deleted_at=None)
+    inst = SimpleNamespace(id=1, deleted_at=None, group_id=1)
 
     result = await update.update_agent(
         instance_id=1,
         request=SimpleNamespace(),
         session=FakeSession(instance=inst),
-        user=SimpleNamespace(id=1),
+        user=SimpleNamespace(id=1, is_superadmin=False, group_id_set=frozenset({1})),
     )
 
     assert live.sent == []
@@ -190,13 +202,13 @@ async def test_update_single_pushes_when_outdated(
 ) -> None:
     live = FakeAgent("2.3.6")
     _patch_hub(monkeypatch, FakeHub([], {1: live}))
-    inst = SimpleNamespace(id=1, deleted_at=None)
+    inst = SimpleNamespace(id=1, deleted_at=None, group_id=1)
 
     result = await update.update_agent(
         instance_id=1,
         request=SimpleNamespace(),
         session=FakeSession(instance=inst),
-        user=SimpleNamespace(id=1),
+        user=SimpleNamespace(id=1, is_superadmin=False, group_id_set=frozenset({1})),
     )
 
     assert [a for a, _ in live.sent] == ["agent.update"]
@@ -222,8 +234,8 @@ async def test_send_command_rejects_internal_actions(action: str) -> None:
             instance_id=1,
             body={"action": action, "params": {}},
             request=SimpleNamespace(),
-            session=FakeSession(),
-            user=SimpleNamespace(id=1),
+            session=FakeSession(instance=SimpleNamespace(id=1, deleted_at=None, group_id=1)),
+            user=SimpleNamespace(id=1, is_superadmin=False, group_id_set=frozenset({1})),
         )
     assert exc.value.status_code == 400
     assert "internal" in exc.value.detail
@@ -232,5 +244,5 @@ async def test_send_command_rejects_internal_actions(action: str) -> None:
 def test_get_agent_token_is_write_gated() -> None:
     # Regression guard: the token endpoint must stay require_write, not the looser
     # current_user (which would let a view_only session read the agent bearer token).
-    dep = inspect.signature(management.get_agent_token).parameters["_user"].default
+    dep = inspect.signature(management.get_agent_token).parameters["user"].default
     assert dep.dependency is require_write

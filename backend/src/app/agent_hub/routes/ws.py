@@ -18,6 +18,7 @@ from app.connectivity import service as conn_service
 from app.db.base import get_sessionmaker
 from app.db.models import Instance, User
 from app.devices.types import DeviceType, Transport
+from app.instances.service import get_instance
 from app.ipsec import ping_service
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -217,10 +218,16 @@ async def tunnel_websocket(ws: WebSocket, instance_id: int):
         return
     async with get_sessionmaker()() as session:
         user = await session.get(User, user_id)
-    if user is None or user.password_version != pwv:
-        # Unlike current_user we don't clear the session here (no Response on a WS);
-        # the stale cookie simply fails this check again on the next attempt.
-        await ws.close(code=4401)
+        if user is None or user.password_version != pwv:
+            # Unlike current_user we don't clear the session here (no Response on a
+            # WS); the stale cookie simply fails this check again on the next attempt.
+            await ws.close(code=4401)
+            return
+        # Group scoping: tunnelling to a foreign-group firewall is a full GUI/TCP
+        # bridge — enforce instance visibility, not just authentication.
+        inst = await get_instance(session, instance_id, user)
+    if inst is None:
+        await ws.close(code=4403)
         return
     agent = hub.get(instance_id)
     if agent is None:

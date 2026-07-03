@@ -92,7 +92,7 @@ def _app(monkeypatch, session, *, agent=None, limiter=None):
         monkeypatch.setattr(enroll_mod, "limiter", limiter)
     app = main_mod.create_app()
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=1, role="admin", is_admin=True
+        id=1, role="admin", is_admin=True, is_superadmin=False, group_id_set=frozenset({1})
     )
     app.dependency_overrides[get_session] = lambda: session
     return app
@@ -102,7 +102,7 @@ def _app(monkeypatch, session, *, agent=None, limiter=None):
 
 
 def test_uninstall_503_when_not_connected(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None, transport="push", agent_token="t")
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, transport="push", agent_token="t")
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=None)
     with TestClient(app) as c:
         r = c.post("/api/instances/7/agent/uninstall")
@@ -110,7 +110,7 @@ def test_uninstall_503_when_not_connected(monkeypatch):
 
 
 def test_uninstall_success_clears_agent_mode(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None, transport="push", agent_token="t")
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, transport="push", agent_token="t")
     fa = _FakeAgent({"success": True, "output": "uninstall started"})
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=fa)
     with TestClient(app) as c:
@@ -126,7 +126,7 @@ def test_uninstall_success_clears_agent_mode(monkeypatch):
 
 def test_gui_open_404_when_proxy_disabled(monkeypatch):
     # gui_proxy_enabled defaults False -> /gui/open is gated off.
-    inst = SimpleNamespace(id=7, deleted_at=None)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1)
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=None)
     with TestClient(app) as c:
         r = c.post("/api/instances/7/gui/open")
@@ -158,7 +158,7 @@ def _token_of(resp):
 def test_gui_open_replays_login_when_enabled(monkeypatch):
     from app.agent_hub.gui_session import gui_sessions
 
-    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=True)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=True)
     fa = _FakeAgent({"success": True, "cookies": [{"name": "PHPSESSID", "value": "sess-xyz"}]})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200
@@ -168,7 +168,7 @@ def test_gui_open_replays_login_when_enabled(monkeypatch):
 
 
 def test_gui_open_skips_login_when_disabled(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=False)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=False)
     fa = _FakeAgent({"success": True, "cookies": []})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200
@@ -178,7 +178,7 @@ def test_gui_open_skips_login_when_disabled(monkeypatch):
 def test_gui_open_degrades_when_login_fails(monkeypatch):
     from app.agent_hub.gui_session import gui_sessions
 
-    inst = SimpleNamespace(id=7, deleted_at=None, gui_login_enabled=True)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=True)
     fa = _FakeAgent({"success": False, "output": "gui login rejected"})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200  # still opens — just lands on the login page
@@ -188,7 +188,7 @@ def test_gui_open_degrades_when_login_fails(monkeypatch):
 def test_agent_command_refuses_internal_gui_login(monkeypatch):
     # gui.login returns a live admin cookie — must not run via the generic endpoint
     # (which echoes the result back + into audit). Refused before the agent is hit.
-    inst = SimpleNamespace(id=7, deleted_at=None)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1)
     fa = _FakeAgent({"success": True, "cookies": [{"name": "PHPSESSID", "value": "x"}]})
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=fa)
     with TestClient(app) as c:
@@ -211,7 +211,7 @@ def test_redact_audit_masks_credential_keys():
 
 
 def test_relay_enable_503_when_not_connected(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1)
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=None)
     with TestClient(app) as c:
         r = c.post("/api/instances/7/relay/enable")
@@ -219,7 +219,7 @@ def test_relay_enable_503_when_not_connected(monkeypatch):
 
 
 def test_relay_enable_forwards_command(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1)
     fa = _FakeAgent({"success": True, "output": "relay enabled (pfsense)"})
     app = _app(monkeypatch, _FakeSession(instance=inst), agent=fa)
     with TestClient(app) as c:
@@ -233,7 +233,7 @@ def test_relay_enable_forwards_command(monkeypatch):
 
 
 def test_enroll_code_minted_and_persisted(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None)
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1)
     sess = _FakeSession(instance=inst)
     app = _app(monkeypatch, sess)
     with TestClient(app) as c:
@@ -282,7 +282,7 @@ def test_enroll_used_code_401(monkeypatch):
 
 def test_enroll_valid_returns_token_and_consumes(monkeypatch):
     row = _code_row()
-    inst = SimpleNamespace(id=7, deleted_at=None, agent_token=None, transport="direct")
+    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, agent_token=None, transport="direct")
     sess = _FakeSession(instance=inst, enroll_row=row)
     app = _app(monkeypatch, sess, limiter=_FakeLimiter())
     with TestClient(app) as c:
@@ -295,7 +295,9 @@ def test_enroll_valid_returns_token_and_consumes(monkeypatch):
 
 def test_enroll_reuses_existing_token(monkeypatch):
     row = _code_row()
-    inst = SimpleNamespace(id=7, deleted_at=None, agent_token="EXISTING", transport="push")
+    inst = SimpleNamespace(
+        id=7, deleted_at=None, group_id=1, agent_token="EXISTING", transport="push"
+    )
     app = _app(monkeypatch, _FakeSession(instance=inst, enroll_row=row), limiter=_FakeLimiter())
     with TestClient(app) as c:
         r = c.post("/api/agent/enroll", json={"code": "good"})

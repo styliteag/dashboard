@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.scope import Principal, can_access, scope_clause
 from app.crypto.secrets import decrypt, encrypt
 from app.db.models import Instance
 from app.devices.types import DeviceType, Transport
@@ -79,27 +80,31 @@ async def _resolve_slug(
     return candidate
 
 
-async def list_instances(session: AsyncSession) -> list[Instance]:
-    rows = (
-        (
-            await session.execute(
-                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+async def list_instances(session: AsyncSession, principal: Principal = None) -> list[Instance]:
+    stmt = select(Instance).where(Instance.deleted_at.is_(None))
+    clause = scope_clause(principal)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    rows = (await session.execute(stmt.order_by(Instance.name))).scalars().all()
     return list(rows)
 
 
-async def get_instance(session: AsyncSession, instance_id: int) -> Instance | None:
+async def get_instance(
+    session: AsyncSession, instance_id: int, principal: Principal = None
+) -> Instance | None:
+    """Load an active instance; out-of-scope rows come back as ``None`` (→ the
+    caller's existing 404 path — no 403 existence oracle)."""
     inst = await session.get(Instance, instance_id)
     if inst is None or inst.deleted_at is not None:
+        return None
+    if not can_access(principal, inst):
         return None
     return inst
 
 
-async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Instance:
+async def create_instance(
+    session: AsyncSession, payload: InstanceCreate, group_id: int = 1
+) -> Instance:
     # In agent mode, API key/secret are not needed (agent collects data locally).
     # Store a placeholder so the NOT NULL constraint is satisfied.
     api_key = payload.api_key or ""
@@ -117,6 +122,7 @@ async def create_instance(session: AsyncSession, payload: InstanceCreate) -> Ins
 
     inst = Instance(
         name=payload.name,
+        group_id=group_id,
         slug=slug,
         base_url=payload.base_url,
         api_key_enc=placeholder,

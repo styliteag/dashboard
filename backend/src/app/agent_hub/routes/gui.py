@@ -21,6 +21,7 @@ from app.auth.deps import require_write
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.instances.service import get_instance
 from app.net import client_ip
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -69,8 +70,8 @@ async def gui_open(
     """Mint a short-lived handoff URL that logs the browser into the GUI proxy origin."""
     if not get_settings().gui_proxy_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="gui proxy disabled")
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     agent = hub.get(instance_id)
     if agent is None:

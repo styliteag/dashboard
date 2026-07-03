@@ -66,6 +66,10 @@ def _normalize_base_urls(value: str) -> str:
 
 class InstanceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
+    # Target group. Omit only when the creating user is member of exactly one
+    # group (then that group is implied); must be one of the user's groups
+    # (superadmins may target any existing group).
+    group_id: int | None = None
     # Optional: omit to auto-derive a URL-safe slug from ``name`` (§18 GUI proxy).
     slug: str | None = Field(default=None, max_length=63)
     base_url: str
@@ -162,6 +166,7 @@ class InstanceResponse(BaseModel):
 
     id: int
     name: str
+    group_id: int
     slug: str
     base_url: str
     ssl_verify: bool

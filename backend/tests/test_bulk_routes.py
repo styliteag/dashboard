@@ -72,7 +72,7 @@ def _inst(iid: int, name: str, agent_mode: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         id=iid,
         name=name,
-        deleted_at=None,
+        deleted_at=None, group_id=1,
         agent_mode=agent_mode,
         device_type="opnsense",
         transport="direct",
@@ -87,7 +87,7 @@ def _app(monkeypatch, instances: list) -> object:
     monkeypatch.setattr(bulk_mod, "write_audit", _noop)
     app = main_mod.create_app()
     app.dependency_overrides[require_write] = lambda: SimpleNamespace(
-        id=1, role="admin", is_admin=True
+        id=1, role="admin", is_admin=True, is_superadmin=False, group_id_set=frozenset({1})
     )
     app.dependency_overrides[get_session] = lambda: _Sess(instances)
     return app

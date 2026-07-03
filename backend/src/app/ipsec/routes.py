@@ -50,8 +50,8 @@ def _ipsec_client(client: object) -> SupportsIPsec:
     return client
 
 
-async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
-    inst = await inst_service.get_instance(session, instance_id)
+async def _get_instance(instance_id: int, session: AsyncSession, user: User) -> Instance:
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="instance not found")
     return inst
@@ -67,10 +67,10 @@ class TunnelActionResponse(BaseModel):
 async def ipsec_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> IPsecServiceStatus:
     """List all IPsec tunnels with status. Agent mode: return cached push data."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         cached = hub.get_last_ipsec(instance_id)
@@ -87,7 +87,7 @@ async def ipsec_status(
 async def ipsec_refresh(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(require_write),
+    user: User = Depends(require_write),
 ) -> IPsecServiceStatus:
     """Re-check now instead of waiting for the next poll/push cycle.
 
@@ -98,7 +98,7 @@ async def ipsec_refresh(
     data rather than failing the re-check. Direct mode: a plain live fetch,
     kept on this endpoint so the UI has one uniform call.
     """
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -122,14 +122,14 @@ async def ipsec_diagnose(
     instance_id: int,
     tunnel_id: str,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> IPsecDiagnosis:
     """Readable diagnostic bundle for one tunnel (config, SAs, IPsec log, peer ping).
 
     Agent mode: the agent gathers on-box (swanctl + strongSwan log + ping) and
     pushes the result over its WebSocket. Direct mode: Securepoint gathers via SSH.
     """
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -175,14 +175,14 @@ async def ipsec_tunnel_history(
     tunnel_id: str,
     limit: int = 100,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[TunnelHistoryEvent]:
     """Recorded state-change history for one tunnel, most recent first.
 
     Populated by the agent-push ingest (push mode); direct-API instances have no
     history yet and return an empty list.
     """
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     limit = max(1, min(limit, 500))
     rows = await read_tunnel_events(session, instance_id, tunnel_id, limit)
     return [
@@ -207,7 +207,7 @@ async def ipsec_connect(
     user: User = Depends(require_write),
 ) -> TunnelActionResponse:
     """Connect a single IPsec tunnel. Agent mode: send command to agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -272,7 +272,7 @@ async def ipsec_disconnect(
     user: User = Depends(require_write),
 ) -> TunnelActionResponse:
     """Disconnect a single IPsec tunnel. Agent mode: send command to agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -336,7 +336,7 @@ async def ipsec_restart(
     user: User = Depends(require_write),
 ) -> ActionResult:
     """Restart the IPsec service. Agent mode: send command to agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -396,10 +396,10 @@ async def ipsec_restart(
 async def list_ping_monitors(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[PingMonitorRead]:
     """List the configured Phase-2 ping monitors for an instance."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitors = await ping_service.list_monitors(session, instance_id)
     return [PingMonitorRead.model_validate(m) for m in monitors]
 
@@ -409,14 +409,14 @@ async def test_ping_monitor(
     instance_id: int,
     body: PingTestRequest,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(require_write),
+    user: User = Depends(require_write),
 ) -> PingTestResult:
     """Run a one-off ping via the agent so the user can validate source/dest before saving.
 
     Agent-mode only — the probe runs on the firewall (a direct-mode instance has
     no agent to ping from).
     """
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
     if not inst.agent_mode:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -450,7 +450,7 @@ async def create_ping_monitor(
     user: User = Depends(require_write),
 ) -> PingMonitorRead:
     """Create a Phase-2 ping monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     try:
         monitor = await ping_service.create_monitor(session, instance_id, body)
     except IntegrityError as exc:
@@ -485,7 +485,7 @@ async def update_ping_monitor(
     user: User = Depends(require_write),
 ) -> PingMonitorRead:
     """Update a Phase-2 ping monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitor = await ping_service.get_monitor(session, instance_id, monitor_id)
     if monitor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")
@@ -515,7 +515,7 @@ async def delete_ping_monitor(
     user: User = Depends(require_write),
 ) -> None:
     """Delete a Phase-2 ping monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitor = await ping_service.get_monitor(session, instance_id, monitor_id)
     if monitor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")

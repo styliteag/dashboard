@@ -20,6 +20,7 @@ from app.auth.security import limiter
 from app.db.base import get_session
 from app.db.models import EnrollmentCode, Instance, User
 from app.devices.types import Transport
+from app.instances.service import get_instance
 from app.net import client_ip
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -42,8 +43,8 @@ async def uninstall_agent(
     successful ack we revoke the token and fall back to direct transport so the
     dashboard stops expecting a push agent.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     agent = hub.get(instance_id)
     if agent is None:
@@ -102,8 +103,8 @@ async def create_enroll_code(
     The agent trades it at /agent/enroll for this instance's token, so the token
     never has to be pasted by hand. Only the code's SHA-256 is stored.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     code = secrets.token_urlsafe(24)

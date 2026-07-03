@@ -15,7 +15,8 @@ from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import require_write
 from app.db.base import get_session
-from app.db.models import Instance, User
+from app.db.models import User
+from app.instances.service import get_instance
 from app.net import client_ip
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -69,8 +70,8 @@ async def enable_relay(
     on the firewall) and provisions the relay user; on OPNsense it just provisions.
     Explicit by design — never an automatic side-effect of first relay use.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     agent = hub.get(instance_id)
     if agent is None:
@@ -112,7 +113,11 @@ _RELAY_PROBE_PATHS = {
 
 
 @router.post("/instances/{instance_id}/relay/test", response_model=RelayTestResponse)
-async def test_relay(instance_id: int, _user: User = Depends(require_write)) -> RelayTestResponse:
+async def test_relay(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> RelayTestResponse:
     """Make a real authenticated API call to the firewall through the agent relay.
 
     Picks a platform-appropriate API endpoint and reports whether it answered 2xx
@@ -120,6 +125,8 @@ async def test_relay(instance_id: int, _user: User = Depends(require_write)) -> 
     relayed 401/403 never reaches the browser — that would otherwise trip the
     auto-logout in the API wrapper.
     """
+    if await get_instance(session, instance_id, user) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     agent = hub.get(instance_id)
     if agent is None:
         return RelayTestResponse(ok=False, error="agent not connected")
@@ -157,9 +164,12 @@ async def relay_to_agent(
     instance_id: int,
     path: str,
     request: Request,
-    _user: User = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
 ) -> Response:
     """Proxy ``{method} /relay/<path>`` to the firewall's local API via its agent."""
+    if await get_instance(session, instance_id, user) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     agent = hub.get(instance_id)
     if agent is None:
         raise HTTPException(

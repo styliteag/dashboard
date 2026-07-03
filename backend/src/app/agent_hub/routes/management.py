@@ -16,8 +16,9 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
 from app.config import get_settings
 from app.db.base import get_session
-from app.db.models import Instance, User
+from app.db.models import User
 from app.devices.types import Transport
+from app.instances.service import get_instance
 from app.net import client_ip
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -60,8 +61,8 @@ async def enable_agent(
     user: User = Depends(require_write),
 ) -> AgentTokenResponse:
     """Enable agent mode for an instance. Generates a unique token."""
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     token = secrets.token_urlsafe(48)
@@ -89,8 +90,8 @@ async def disable_agent(
     user: User = Depends(require_write),
 ) -> dict:
     """Disable agent mode, revoke token, fall back to polling."""
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     inst.transport = Transport.DIRECT.value
@@ -137,10 +138,10 @@ def _as_utc(dt: datetime) -> datetime:
 async def agent_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> AgentStatusResponse:
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     connected = hub.get(instance_id)
@@ -194,6 +195,8 @@ async def send_agent_command(
     user: User = Depends(require_write),
 ) -> dict:
     """Send a command to a connected agent."""
+    if await get_instance(session, instance_id, user) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     action = body.get("action", "")
     params = body.get("params", {})
     if action in _INTERNAL_AGENT_ACTIONS:
@@ -228,7 +231,7 @@ async def send_agent_command(
 async def get_agent_token(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(require_write),
+    user: User = Depends(require_write),
 ) -> dict:
     """Return the stored agent token for an instance (agent mode must be enabled).
 
@@ -236,8 +239,8 @@ async def get_agent_token(
     agent WebSocket — anyone holding it can evict the real agent and push forged
     metrics — so a read-only session must not be able to read it.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     if not inst.agent_mode or inst.agent_token is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not enabled")

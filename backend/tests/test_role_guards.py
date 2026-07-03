@@ -18,6 +18,7 @@ from app.auth.deps import (
     current_user,
     read_principal,
     require_admin,
+    require_admin_or_superadmin,
     require_superadmin,
     require_write,
 )
@@ -82,7 +83,12 @@ def test_mutating_routes_block_view_only() -> None:
     for method, path, calls in _mutating_routes():
         if (method, path) in SELF_SERVICE_ALLOWLIST:
             continue
-        gated = require_write in calls or require_admin in calls or require_superadmin in calls
+        gated = (
+            require_write in calls
+            or require_admin in calls
+            or require_superadmin in calls
+            or require_admin_or_superadmin in calls
+        )
         authed = current_user in calls or read_principal in calls
         if authed and not gated:
             offenders.append(f"{method} {path}")

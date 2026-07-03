@@ -118,6 +118,20 @@ async def require_superadmin(
     return user
 
 
+async def require_admin_or_superadmin(
+    user: Annotated[User, Depends(current_user)],
+) -> User:
+    """Admin role OR superadmin flag — for the instance→group move.
+
+    A pure superadmin has role ``view_only`` (no operational writes), yet moving
+    instances between groups is rights management, so ``require_write`` would
+    wrongly lock them out; a group admin moves instances between his own groups.
+    """
+    if not (user.is_admin or user.is_superadmin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin only")
+    return user
+
+
 async def read_principal(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],

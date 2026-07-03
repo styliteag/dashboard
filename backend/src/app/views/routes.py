@@ -15,6 +15,7 @@ from app.auth.deps import current_user
 from app.checks.staleness import staleness_for
 from app.db.base import get_session
 from app.db.models import ConnectivityMonitor, Instance, User
+from app.instances.service import list_instances
 from app.settings.store import effective_settings
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
@@ -113,14 +114,10 @@ class GlobalVPNResponse(BaseModel):
 @router.get("/vpn/overview", response_model=GlobalVPNResponse)
 async def global_vpn_overview(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> GlobalVPNResponse:
-    """Fetch IPsec tunnels from ALL active instances in parallel."""
-    instances = (
-        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
-        .scalars()
-        .all()
-    )
+    """Fetch IPsec tunnels from the caller's visible instances in parallel."""
+    instances = await list_instances(session, user)
     settings = effective_settings()
     now = datetime.now(UTC)
 
@@ -213,17 +210,15 @@ class GlobalConnectivityResponse(BaseModel):
 @router.get("/connectivity/overview", response_model=GlobalConnectivityResponse)
 async def global_connectivity_overview(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> GlobalConnectivityResponse:
-    """Every standalone connectivity monitor across all instances, joined with its
-    latest pushed ping state from the agent-hub cache. Pure DB + in-memory — no
-    appliance round-trips (the firewalls do the pinging, the agent pushes results).
+    """Every standalone connectivity monitor across the caller's visible
+    instances, joined with its latest pushed ping state from the agent-hub
+    cache. Pure DB + in-memory — no appliance round-trips (the firewalls do the
+    pinging, the agent pushes results). Monitors of out-of-scope instances drop
+    out via the ``by_id`` lookup below.
     """
-    instances = (
-        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
-        .scalars()
-        .all()
-    )
+    instances = await list_instances(session, user)
     by_id = {i.id: i for i in instances}
     conn_cache = {iid: {r.id: r for r in (hub.get_last_connectivity(iid) or [])} for iid in by_id}
     settings = effective_settings()
@@ -303,14 +298,10 @@ class FirmwareComplianceResponse(BaseModel):
 @router.get("/firmware/compliance", response_model=FirmwareComplianceResponse)
 async def firmware_compliance(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> FirmwareComplianceResponse:
-    """Fetch firmware status from ALL active instances in parallel."""
-    instances = (
-        (await session.execute(select(Instance).where(Instance.deleted_at.is_(None))))
-        .scalars()
-        .all()
-    )
+    """Fetch firmware status from the caller's visible instances in parallel."""
+    instances = await list_instances(session, user)
 
     async def fetch_fw(inst: Instance) -> FirmwareEntry | None:
         try:

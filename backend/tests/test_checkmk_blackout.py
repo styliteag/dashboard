@@ -17,5 +17,5 @@ async def test_checkmk_blackout_returns_no_instances(monkeypatch) -> None:
     monkeypatch.setattr(
         checks_routes, "effective_settings", lambda: SimpleNamespace(checkmk_blackout=True)
     )
-    result = await checks_routes.export_checkmk(session=None, _principal=None)
+    result = await checks_routes.export_checkmk(session=None, principal=None)
     assert result == {"version": 1, "instances": []}

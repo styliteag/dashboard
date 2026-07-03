@@ -9,16 +9,17 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub import gui_caddy
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
-from app.auth.deps import current_user, require_write
+from app.auth.deps import current_user, require_admin_or_superadmin, require_write
 from app.config import get_settings
 from app.db.base import get_session
-from app.db.models import Instance, User
+from app.db.models import Group, Instance, User
 from app.instances import service
 from app.instances.schemas import (
     InstanceCreate,
@@ -78,12 +79,34 @@ def _safe_audit_detail(payload: InstanceUpdate) -> dict:
 @router.get("", response_model=list[InstanceResponse])
 async def list_all(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[InstanceResponse]:
-    rows = await service.list_instances(session)
+    rows = await service.list_instances(session, user)
     settings = effective_settings()
     now = datetime.now(UTC)
     return [instance_response(inst, settings, now) for inst in rows]
+
+
+async def _resolve_create_group(session: AsyncSession, user: User, group_id: int | None) -> int:
+    """Target group for a new instance: one of the creator's groups (superadmins
+    may target any existing group); implied when the user has exactly one."""
+    memberships = user.group_id_set
+    if group_id is None:
+        if len(memberships) == 1:
+            return next(iter(memberships))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="group_id required (you are not a member of exactly one group)",
+        )
+    if user.is_superadmin:
+        if await session.get(Group, group_id) is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown group")
+        return group_id
+    if group_id not in memberships:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="not a member of the target group"
+        )
+    return group_id
 
 
 @router.post("", response_model=InstanceResponse, status_code=status.HTTP_201_CREATED)
@@ -93,8 +116,9 @@ async def create(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> Instance:
+    group_id = await _resolve_create_group(session, user, payload.group_id)
     try:
-        inst = await service.create_instance(session, payload)
+        inst = await service.create_instance(session, payload, group_id)
     except service.SlugConflictError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -137,9 +161,9 @@ async def interval_defaults(_user: User = Depends(current_user)) -> dict:
 async def get(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> InstanceResponse:
-    inst = await service.get_instance(session, instance_id)
+    inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     return instance_response(inst, effective_settings(), datetime.now(UTC))
@@ -153,7 +177,7 @@ async def update(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> Instance:
-    inst = await service.get_instance(session, instance_id)
+    inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     try:
@@ -197,7 +221,7 @@ async def delete(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> None:
-    inst = await service.get_instance(session, instance_id)
+    inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     await service.soft_delete_instance(session, inst)
@@ -222,7 +246,7 @@ async def test(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> TestConnectionResponse:
-    inst = await service.get_instance(session, instance_id)
+    inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
@@ -266,3 +290,50 @@ async def test(
     return TestConnectionResponse(
         ok=ok, status_code=status_code, latency_ms=latency_ms, error=error
     )
+
+
+class InstanceMoveGroup(BaseModel):
+    group_id: int
+
+
+@router.put("/{instance_id}/group", response_model=InstanceResponse)
+async def move_group(
+    instance_id: int,
+    payload: InstanceMoveGroup,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_admin_or_superadmin),
+) -> Instance:
+    """Move an instance to another group.
+
+    Superadmin: any instance to any group. Role admin: member of BOTH source
+    and target group. A dedicated endpoint (not part of the generic PATCH)
+    because moving is a rights operation, not instance config.
+    """
+    # Superadmins bypass visibility scoping — they may move instances they
+    # cannot otherwise see (rights management without instance access).
+    inst = await service.get_instance(session, instance_id, None if user.is_superadmin else user)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if user.is_superadmin:
+        if await session.get(Group, payload.group_id) is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown group")
+    elif payload.group_id not in user.group_id_set:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="not a member of the target group"
+        )
+    old_group_id = inst.group_id
+    inst.group_id = payload.group_id
+    await write_audit(
+        session,
+        action="instance.move_group",
+        result="ok",
+        user_id=user.id,
+        target_type="instance",
+        target_id=inst.id,
+        source_ip=client_ip(request),
+        detail={"from_group_id": old_group_id, "to_group_id": payload.group_id},
+    )
+    await session.commit()
+    await session.refresh(inst)
+    return inst

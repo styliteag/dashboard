@@ -23,6 +23,7 @@ from app.checks.overlay import overlay_checks
 from app.checks.routes import gather_many
 from app.db.base import get_session
 from app.db.models import Instance, SelectionRule, User
+from app.instances.service import get_instance
 from app.net import client_ip
 from app.notifications.notifier import channel_configured, send_test_notification
 from app.selection.model import (
@@ -106,12 +107,13 @@ def _audit_target_id(consumer: str, instance_id: int | None, selector: str) -> s
     return f"{consumer}:{instance_id if instance_id is not None else 'global'}:{selector}"
 
 
-async def _require_instance(session: AsyncSession, instance_id: int | None) -> None:
-    """A per-instance rule must target a live instance (NULL = global, always OK)."""
+async def _require_instance(session: AsyncSession, instance_id: int | None, user: User) -> None:
+    """A per-instance rule must target a live instance the admin can see
+    (NULL = global, always OK)."""
     if instance_id is None:
         return
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="instance not found")
 
 
@@ -163,7 +165,7 @@ async def add_rule(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown mode")
     if not valid_selector(consumer, payload.selector):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown selector")
-    await _require_instance(session, payload.instance_id)
+    await _require_instance(session, payload.instance_id, admin)
     row = await set_rule(session, consumer, payload.selector, payload.mode, payload.instance_id)
     await write_audit(
         session,

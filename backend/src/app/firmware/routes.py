@@ -23,8 +23,8 @@ from app.xsense.schemas import ActionResult, FirmwareStatus, FirmwareUpgradeStat
 router = APIRouter(prefix="/instances/{instance_id}/firmware", tags=["firmware"])
 
 
-async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
-    inst = await inst_service.get_instance(session, instance_id)
+async def _get_instance(instance_id: int, session: AsyncSession, user: User) -> Instance:
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="instance not found")
     return inst
@@ -34,10 +34,10 @@ async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
 async def firmware_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> FirmwareStatus:
     """Get firmware status. Agent mode: return last push from the agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         cached = hub.get_last_firmware(instance_id)
@@ -58,7 +58,7 @@ async def firmware_check(
     user: User = Depends(require_write),
 ) -> ActionResult:
     """Trigger a firmware update check. Agent mode: send command to agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         agent = hub.get(instance_id)
@@ -143,7 +143,7 @@ async def firmware_update(
     user: User = Depends(require_write),
 ) -> ActionResult:
     """Trigger firmware update. Agent mode: send command to agent."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.firmware_locked:
         raise HTTPException(
@@ -207,10 +207,10 @@ async def firmware_update(
 async def firmware_upgrade_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> FirmwareUpgradeStatus:
     """Poll upgrade progress. Agent mode: not supported (returns empty)."""
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
         return FirmwareUpgradeStatus(status="unknown", log=[])

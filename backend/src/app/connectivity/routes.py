@@ -31,8 +31,8 @@ from app.net import client_ip
 router = APIRouter(prefix="/instances/{instance_id}/connectivity", tags=["connectivity"])
 
 
-async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
-    inst = await inst_service.get_instance(session, instance_id)
+async def _get_instance(instance_id: int, session: AsyncSession, user: User) -> Instance:
+    inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="instance not found")
     return inst
@@ -42,10 +42,10 @@ async def _get_instance(instance_id: int, session: AsyncSession) -> Instance:
 async def list_monitors(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[ConnMonitorRead]:
     """List the configured connectivity ping monitors for an instance."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitors = await conn_service.list_monitors(session, instance_id)
     return [ConnMonitorRead.model_validate(m) for m in monitors]
 
@@ -54,14 +54,14 @@ async def list_monitors(
 async def connectivity_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> list[ConnMonitorState]:
     """Each configured monitor joined with its latest pushed ping result.
 
     The live result comes from the agent-hub cache, keyed by monitor id; a monitor
     with no result yet (just added, or agent hasn't pushed) reports ``none``.
     """
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitors = await conn_service.list_monitors(session, instance_id)
     results = {r.id: r for r in (hub.get_last_connectivity(instance_id) or [])}
     out: list[ConnMonitorState] = []
@@ -86,14 +86,14 @@ async def test_monitor(
     instance_id: int,
     body: ConnPingTestRequest,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(require_write),
+    user: User = Depends(require_write),
 ) -> ConnPingTestResult:
     """Run a one-off ping via the agent so the user can validate source/dest before saving.
 
     Agent-mode only — the probe runs on the firewall (a direct-mode instance has
     no agent to ping from).
     """
-    inst = await _get_instance(instance_id, session)
+    inst = await _get_instance(instance_id, session, user)
     if not inst.agent_mode:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -127,7 +127,7 @@ async def create_monitor(
     user: User = Depends(require_write),
 ) -> ConnMonitorRead:
     """Create a connectivity monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     try:
         monitor = await conn_service.create_monitor(session, instance_id, body)
     except IntegrityError as exc:
@@ -162,7 +162,7 @@ async def update_monitor(
     user: User = Depends(require_write),
 ) -> ConnMonitorRead:
     """Update a connectivity monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitor = await conn_service.get_monitor(session, instance_id, monitor_id)
     if monitor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")
@@ -199,7 +199,7 @@ async def delete_monitor(
     user: User = Depends(require_write),
 ) -> None:
     """Delete a connectivity monitor and push the updated set to the agent."""
-    await _get_instance(instance_id, session)
+    await _get_instance(instance_id, session, user)
     monitor = await conn_service.get_monitor(session, instance_id, monitor_id)
     if monitor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="monitor not found")

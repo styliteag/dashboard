@@ -32,13 +32,13 @@ def _app(monkeypatch, inst: object) -> object:
     monkeypatch.setattr(main_mod, "ensure_admin", _noop)
     monkeypatch.setattr(main_mod, "ensure_superadmin", _noop)
 
-    async def _get_instance(session: object, iid: int) -> object:
+    async def _get_instance(session: object, iid: int, principal: object = None) -> object:
         return inst
 
     monkeypatch.setattr(ipsec_mod.inst_service, "get_instance", _get_instance)
     app = main_mod.create_app()
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=1, role="admin", is_admin=True
+        id=1, role="admin", is_admin=True, is_superadmin=False, group_id_set=frozenset({1})
     )
     app.dependency_overrides[get_session] = lambda: _Sess()
     return app
@@ -46,7 +46,12 @@ def _app(monkeypatch, inst: object) -> object:
 
 def _agent_instance() -> SimpleNamespace:
     return SimpleNamespace(
-        id=1, deleted_at=None, transport="agent", device_type="opnsense", agent_mode=True
+        id=1,
+        deleted_at=None,
+        group_id=1,
+        transport="agent",
+        device_type="opnsense",
+        agent_mode=True,
     )
 
 
@@ -114,7 +119,12 @@ def test_refresh_direct_mode_fetches_live(monkeypatch):
             raise NotImplementedError
 
     inst = SimpleNamespace(
-        id=1, deleted_at=None, transport="direct", device_type="opnsense", agent_mode=False
+        id=1,
+        deleted_at=None,
+        group_id=1,
+        transport="direct",
+        device_type="opnsense",
+        agent_mode=False,
     )
 
     async def _get_client(instance: object) -> object:

@@ -16,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import hub
 from app.auth.deps import current_user
+from app.auth.scope import scope_clause
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.instances.service import get_instance
 from app.metrics.store import read_metrics, to_rate
 from app.xsense.registry import registry
 from app.xsense.schemas import SystemStatus
@@ -64,7 +66,7 @@ RANGE_BUCKETS: dict[str, tuple[timedelta, int]] = {
 async def instance_status(
     instance_id: int,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> SystemStatus:
     """Current status snapshot.
 
@@ -72,8 +74,8 @@ async def instance_status(
       Falls back to an empty SystemStatus if the agent hasn't connected yet.
     - Polling mode: call poll_status() on demand for a near-real-time view.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     if inst.agent_mode:
@@ -98,10 +100,10 @@ async def instance_metrics(
     range: str = Query(default="24h", description="Time range: 1h, 6h, 24h, 7d, 30d"),
     rate: bool = Query(default=False, description="Differentiate a counter into a per-second rate"),
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> MetricResponse:
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     td, bucket = RANGE_BUCKETS.get(range, RANGE_BUCKETS["24h"])
@@ -118,13 +120,16 @@ async def instance_metrics(
 @router.get("/overview", response_model=OverviewResponse)
 async def overview(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> OverviewResponse:
-    """Global KPI tiles (US-3.4)."""
+    """KPI tiles over the caller's visible instances (US-3.4)."""
     cutoff = datetime.now(UTC) - timedelta(minutes=5)
 
     # Subqueries for each bucket
     base = select(Instance).where(Instance.deleted_at.is_(None))
+    clause = scope_clause(user)
+    if clause is not None:
+        base = base.where(clause)
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
     online_q = base.where(Instance.last_success_at >= cutoff).where(

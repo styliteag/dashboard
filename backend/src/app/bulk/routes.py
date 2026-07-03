@@ -16,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
+from app.auth.scope import scope_clause
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.instances.service import list_instances
 from app.net import client_ip
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
@@ -65,19 +67,19 @@ async def bulk_action(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_write),
 ) -> BulkActionResponse:
-    """Run an action on multiple instances in parallel."""
-    instances = (
-        (
-            await session.execute(
-                select(Instance).where(
-                    Instance.id.in_(payload.instance_ids),
-                    Instance.deleted_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    """Run an action on multiple instances in parallel.
+
+    Caller-supplied ids outside the user's groups are silently dropped by the
+    scope filter — never acted on, never confirmed to exist.
+    """
+    stmt = select(Instance).where(
+        Instance.id.in_(payload.instance_ids),
+        Instance.deleted_at.is_(None),
     )
+    clause = scope_clause(user)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    instances = (await session.execute(stmt)).scalars().all()
 
     async def run_agent(inst: Instance) -> BulkResult:
         agent = hub.get(inst.id)
@@ -170,18 +172,10 @@ async def bulk_action(
 @router.get("/export/instances.csv")
 async def export_instances_csv(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> StreamingResponse:
-    """Export all instances as CSV."""
-    instances = (
-        (
-            await session.execute(
-                select(Instance).where(Instance.deleted_at.is_(None)).order_by(Instance.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    """Export the caller's visible instances as CSV."""
+    instances = await list_instances(session, user)
 
     buf = io.StringIO()
     writer = csv.writer(buf)

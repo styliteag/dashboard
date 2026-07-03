@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 import app.agent_hub.routes.relay as routes_mod
 import app.main as main_mod
 from app.auth.deps import current_user
+from app.db.base import get_session
 
 
 class _FakeAgent:
@@ -34,6 +35,13 @@ async def _noop(*a, **k):
     return None
 
 
+class _FakeSession:
+    """Serves the scoped instance lookup the relay routes now perform."""
+
+    async def get(self, model, pk):
+        return SimpleNamespace(id=pk, deleted_at=None, group_id=1)
+
+
 def _client(monkeypatch, agent_obj) -> TestClient:
     monkeypatch.setattr(routes_mod.hub, "get", lambda iid: agent_obj)
     monkeypatch.setattr(main_mod, "start_scheduler", lambda: None)
@@ -42,8 +50,9 @@ def _client(monkeypatch, agent_obj) -> TestClient:
     app = main_mod.create_app()
     # bypass session auth with a write-capable principal so require_write passes
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(
-        id=1, role="admin", is_admin=True
+        id=1, role="admin", is_admin=True, is_superadmin=False, group_id_set=frozenset({1})
     )
+    app.dependency_overrides[get_session] = lambda: _FakeSession()
     return TestClient(app)
 
 

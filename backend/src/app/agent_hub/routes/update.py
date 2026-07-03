@@ -11,13 +11,16 @@ from pathlib import Path
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_hub.hub import ConnectedAgent, hub
 from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
+from app.auth.scope import scope_clause
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.instances.service import get_instance
 from app.net import client_ip
 
 log = structlog.get_logger("app.agent_hub.routes")
@@ -90,8 +93,8 @@ async def update_agent(
     Per-instance by design: this is the canary mechanism (DR-6). Update one
     instance, confirm it reconnects healthy at the new version, then the next.
     """
-    inst = await session.get(Instance, instance_id)
-    if inst is None or inst.deleted_at is not None:
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
     agent = hub.get(instance_id)
@@ -132,12 +135,29 @@ async def update_agent(
     return {"sent": True, "version": params["version"], "result": result}
 
 
+async def _visible_instance_ids(session: AsyncSession, user: User) -> set[int] | None:
+    """Ids of active instances the user may see; None = unscoped (machine).
+
+    The hub's connected-agents list is in-memory and bypasses every DB WHERE
+    clause, so it must be filtered against this set explicitly.
+    """
+    clause = scope_clause(user)
+    if clause is None:
+        return None
+    rows = (
+        await session.execute(select(Instance.id).where(Instance.deleted_at.is_(None), clause))
+    ).scalars()
+    return set(rows)
+
+
 @router.get("/agents/connected")
 async def list_connected_agents(
-    _user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
 ) -> list[dict]:
-    """List all currently connected agents, annotated with update availability."""
+    """The caller's visible connected agents, annotated with update availability."""
     served = _served_agent_version()
+    visible = await _visible_instance_ids(session, user)
     return [
         {
             **a,
@@ -147,6 +167,7 @@ async def list_connected_agents(
             ),
         }
         for a in hub.list_connected()
+        if visible is None or a["instance_id"] in visible
     ]
 
 
@@ -167,7 +188,12 @@ async def update_all_agents(
         )
     served = params["version"]
 
-    targets = [a for a in hub.list_connected() if a["agent_version"] != served]
+    visible = await _visible_instance_ids(session, user)
+    targets = [
+        a
+        for a in hub.list_connected()
+        if a["agent_version"] != served and (visible is None or a["instance_id"] in visible)
+    ]
     results = []
     for a in targets:
         agent = hub.get(a["instance_id"])

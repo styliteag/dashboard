@@ -80,8 +80,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("users", "is_superadmin")
-    op.drop_index("ix_instances_group_id", table_name="instances")
+    # FK first — MariaDB refuses to drop an index a foreign key still needs.
     op.drop_constraint("fk_instances_group_id_groups", "instances", type_="foreignkey")
+    op.drop_index("ix_instances_group_id", table_name="instances")
     op.drop_column("instances", "group_id")
     op.drop_table("user_groups")
     op.drop_table("groups")
