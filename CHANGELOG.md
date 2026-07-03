@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.9] - 2026-07-03
+
 ### Added
 
 - **Flapping filter for connectivity/IPsec Phase-2 ping-monitor notifications.**
