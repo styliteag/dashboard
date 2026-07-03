@@ -364,6 +364,7 @@ export interface FirmwareStatus {
   known_branches?: string[];
   product_latest: string;
   upgrade_available: boolean;
+  check_failed?: boolean; // update check could not run — verdict unknown
   updates_available: number;
   status_msg: string;
   needs_reboot: boolean;

@@ -246,6 +246,24 @@ def test_firmware_from_agent_derives_updates_count() -> None:
     assert fw2.updates_available == 1
     assert fw2.branch == ""  # not provided in override
     assert fw2.known_branches == []
+    assert fw2.check_failed is False  # older agents omit it → healthy default
+
+
+def test_firmware_from_agent_carries_check_failed() -> None:
+    # Agent 2.6.0+: a broken update check (e.g. pkg cannot reach the repo) is
+    # reported as check_failed — the verdict is "unknown", not "up to date".
+    broken = dict(
+        AGENT_PUSH,
+        firmware={
+            "product_version": "2.7.0-RELEASE",
+            "upgrade_available": False,
+            "check_failed": True,
+            "update_check_output": "ERROR: It was not possible to determine pkg remote version",
+        },
+    )
+    fw = firmware_from_agent(broken, "x")
+    assert fw.check_failed is True
+    assert fw.upgrade_available is False
 
 
 # --- registry identity semantics (overlapping reconnect race) -----------------

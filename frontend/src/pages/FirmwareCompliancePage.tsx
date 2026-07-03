@@ -18,6 +18,7 @@ interface FirmwareEntry {
   branch?: string; // pfSense update branch / software train
   product_latest: string;
   upgrade_available: boolean;
+  check_failed?: boolean; // update check could not run — verdict unknown
   updates_available: number;
   status_msg: string;
   needs_reboot: boolean;
@@ -26,7 +27,7 @@ interface FirmwareEntry {
 }
 
 const FW_ACCESSORS: Accessors<FirmwareEntry> = {
-  status: (e) => (e.product_version === "?" ? 2 : e.upgrade_available ? 0 : 1),
+  status: (e) => (e.product_version === "?" || e.check_failed ? 2 : e.upgrade_available ? 0 : 1),
   instance: (e) => e.instance_name.toLowerCase(),
   location: (e) => (e.location ?? "").toLowerCase(),
   installed: (e) => e.product_version,
@@ -117,7 +118,7 @@ export default function FirmwareCompliancePage() {
     const matchFilter =
       filter === "all" ||
       (filter === "outdated" && e.upgrade_available) ||
-      (filter === "current" && !e.upgrade_available && e.product_version !== "?") ||
+      (filter === "current" && !e.upgrade_available && !e.check_failed && e.product_version !== "?") ||
       (filter === "unknown" && e.product_version === "?");
     return matchSearch && matchFilter;
   });
@@ -305,6 +306,10 @@ export default function FirmwareCompliancePage() {
                       <HelpCircle className="h-4 w-4 text-slate-500" />
                     ) : e.upgrade_available ? (
                       <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    ) : e.check_failed ? (
+                      <span title="Update check failed — status unknown">
+                        <HelpCircle className="h-4 w-4 text-amber-400" />
+                      </span>
                     ) : (
                       <CheckCircle className="h-4 w-4 text-emerald-400" />
                     )}

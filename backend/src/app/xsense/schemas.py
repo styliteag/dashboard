@@ -285,6 +285,9 @@ class FirmwareStatus(BaseModel):
     product_latest: str = ""  # available version (agent: OPNsense pkg rquery); else = installed
     needs_reboot: bool = False
     upgrade_available: bool = False
+    # True when the box could not actually check (repo unreachable, broken pkg):
+    # the verdict is "unknown" — must not render as "up to date".
+    check_failed: bool = False
     updates_available: int = 0
     packages: list[dict] = []  # list of package/set dicts with name, current, new
     status_msg: str = ""

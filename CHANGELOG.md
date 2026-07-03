@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A broken firmware update check no longer shows as "up to date".** pfSense's
+  `pfSense-upgrade -c` exits 0 with "Your system is up to date" even when the
+  repository metadata refresh failed (seen live: CE 2.7.0 with a pkg binary
+  linked against a missing libssl — the box reported green for years while
+  updates piled up). The agent (2.6.1) now flags ERROR/failed check output
+  (and, on OPNsense, an empty remote catalogue) as `check_failed`; the
+  dashboard renders an amber "Check failed" badge on the firmware
+  page/compliance view and the firmware service check goes WARN instead of OK.
+  Firmware-compliance counters sort these boxes under "unknown", not
+  "up to date".
+
 ## [2.6.0] - 2026-07-03
 
 ### Added
@@ -29,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   up), the dev container and a bare uvicorn under a restart policy.
 
 ### Fixed
+
+- **Login page no longer prefills the username `admin`.** Handing every
+  visitor a valid admin username undercut the backend's username-enumeration
+  protections; the field starts empty and browser password managers fill it
+  per user.
 
 - **"Aggregate services" no longer shows on two Settings tabs.** The Checkmk
   export toggle appeared on both General and Checkmk; it now lives only on

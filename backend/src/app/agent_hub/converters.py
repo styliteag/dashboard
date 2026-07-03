@@ -262,6 +262,7 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
         # agents omit it → fall back to installed so "Latest" never goes blank.
         product_latest=fw_data.get("product_latest") or fw_data.get("product_version", ""),
         upgrade_available=upgrade_available,
+        check_failed=bool(fw_data.get("check_failed", False)),
         updates_available=1 if upgrade_available else 0,
         status_msg=fw_data.get("update_check_output", ""),
         last_check=last_check,

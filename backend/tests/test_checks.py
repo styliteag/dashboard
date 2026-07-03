@@ -264,6 +264,28 @@ def test_firmware_update_warns() -> None:
     )
 
 
+def test_firmware_check_failed_warns_not_green() -> None:
+    # A broken update check is "unknown", never "up to date" (false-green
+    # incident: CE 2.7.0 with broken pkg reported healthy for years).
+    c = firmware_check(
+        FirmwareStatus(product_version="2.7.0-RELEASE", upgrade_available=False, check_failed=True)
+    )
+    assert c.state == CheckState.WARN
+    assert "check failed" in c.summary.lower()
+
+    # A detected update outranks the failed-check note.
+    c2 = firmware_check(
+        FirmwareStatus(
+            product_version="2.7.0",
+            product_latest="2.8.1",
+            upgrade_available=True,
+            check_failed=True,
+        )
+    )
+    assert c2.state == CheckState.WARN
+    assert "2.8.1" in c2.summary
+
+
 def test_evaluate_aggregates_and_skips_missing() -> None:
     status = SystemStatus(memory=MemoryUsage(used_pct=10), cpu=CpuUsage(total=5))
     # only memory + cpu when nothing else supplied

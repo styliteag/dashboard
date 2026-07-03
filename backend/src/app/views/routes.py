@@ -284,6 +284,7 @@ class FirmwareEntry(BaseModel):
     branch: str = ""  # pfSense update branch / software train
     product_latest: str
     upgrade_available: bool
+    check_failed: bool = False  # update check could not run — verdict unknown
     updates_available: int
     status_msg: str
     needs_reboot: bool
@@ -331,6 +332,7 @@ async def firmware_compliance(
                 branch=getattr(fw, "branch", "") or "",
                 product_latest=fw.product_latest,
                 upgrade_available=fw.upgrade_available,
+                check_failed=getattr(fw, "check_failed", False),
                 updates_available=fw.updates_available,
                 status_msg=fw.status_msg,
                 needs_reboot=fw.needs_reboot,
@@ -346,6 +348,7 @@ async def firmware_compliance(
                 branch="",
                 product_latest="?",
                 upgrade_available=False,
+                check_failed=False,
                 updates_available=0,
                 status_msg="unreachable",
                 needs_reboot=False,
@@ -356,7 +359,12 @@ async def firmware_compliance(
     results = await asyncio.gather(*(fetch_fw(i) for i in instances))
     entries = [r for r in results if r is not None]
     outdated = sum(1 for e in entries if e.upgrade_available)
-    unknown = sum(1 for e in entries if e.product_version == "?")
+    # A failed update check is "unknown", not "up to date" — count it there.
+    unknown = sum(
+        1
+        for e in entries
+        if not e.upgrade_available and (e.product_version == "?" or e.check_failed)
+    )
     up_to_date = len(entries) - outdated - unknown
 
     return FirmwareComplianceResponse(

@@ -181,6 +181,14 @@ export default function FirmwareSection({
                     <AlertTriangle className="h-3.5 w-3.5" />
                     {fw.updates_available} available
                   </span>
+                ) : fw.check_failed ? (
+                  <span
+                    className="flex items-center gap-1 text-amber-400"
+                    title="The box could not check for updates (repo unreachable or pkg broken) — status unknown"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Check failed
+                  </span>
                 ) : (
                   <span className="text-emerald-400">Up to date</span>
                 )}

@@ -44,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.5.4"
+__version__ = "2.6.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1380,8 +1380,9 @@ def _opnsense_series() -> str:
         return ""
 
 
-def _opnsense_update_check(installed: str) -> tuple[bool, str, str]:
-    """Detect an OPNsense update. Returns ``(upgrade_available, latest, output)``.
+def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
+    """Detect an OPNsense update. Returns
+    ``(upgrade_available, latest, output, check_failed)``.
 
     ``opnsense-update -c`` only reports base-set (release) upgrades, so it MISSES
     pkg point releases — e.g. 26.1.9 -> 26.1.10, which ship as the ``opnsense``
@@ -1390,28 +1391,39 @@ def _opnsense_update_check(installed: str) -> tuple[bool, str, str]:
     and matches what the GUI firmware check shows. ``pkg rquery`` reads the local
     catalogue cache, so the ``pkg update`` refresh is what makes this work — a
     stale cache otherwise returns an empty remote version (false "up to date").
+
+    ``check_failed`` is True when no remote version could be determined at all —
+    the verdict is then "unknown", NOT "up to date".
     """
     out = _run(["/usr/local/sbin/opnsense-update", "-c"], timeout=30)
     low = out.lower()
     upgrade_available = "can be updated" in low or "updates available" in low
     latest = installed
+    check_failed = False
     try:
         _run(["pkg", "update", "-q"], timeout=60)  # refresh catalogue (lock-busy → next cycle)
         cur = _run(["pkg", "query", "%v", "opnsense"]).strip()
         remote = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
         if remote:
             latest = remote
+        else:
+            check_failed = True
         if cur and remote and cur != remote:
             upgrade_available = True
             if not out or "up to date" in low:
-                out = f"{cur} can be updated to {remote}"
+                out = "%s can be updated to %s" % (cur, remote)
     except Exception:
-        pass
-    return upgrade_available, latest, out
+        check_failed = True
+    return upgrade_available, latest, out, check_failed
 
 
 def _store_fw_verdict(
-    branch: str, known_branches: list, upgrade_available: bool, latest: str, out: str
+    branch: str,
+    known_branches: list,
+    upgrade_available: bool,
+    latest: str,
+    out: str,
+    check_failed: bool = False,
 ) -> dict:
     """Cache the firmware verdict + restart the 10-min throttle window.
 
@@ -1426,6 +1438,7 @@ def _store_fw_verdict(
         "upgrade_available": upgrade_available,
         "product_latest": latest,
         "update_check_output": out.strip()[:500],
+        "check_failed": check_failed,
     }
     _last_fw_check_ts = time.monotonic()
     return _last_fw_verdict
@@ -1444,6 +1457,20 @@ def _pfsense_update_available(out: str) -> bool:
     return any(
         s in low for s in ("will be upgraded", "new version", "version available", "upgrading")
     )
+
+
+def _pfsense_check_failed(out: str) -> bool:
+    """True when `pfSense-upgrade -c` could not actually check.
+
+    Confirmed live on CE 2.7.0 with a broken pkg (libssl.so.30 missing): the
+    metadata refresh fails with ERROR lines, yet the tool still exits 0 with
+    "Your system is up to date". Trusting that closing line alone reports a
+    false green — the verdict is "unknown", and the dashboard must say so.
+    """
+    low = out.lower()
+    if not low.strip():
+        return True  # no output = check never ran (missing tool / timeout)
+    return "error:" in low or "metadata... failed" in low
 
 
 def _pfsense_train_key(train: str) -> tuple:
@@ -1524,6 +1551,7 @@ def collect_firmware() -> dict:
         branch = _read_pfsense_branch()
         known_branches = _list_pfsense_branches()
         upgrade_available = _pfsense_update_available(out)
+        check_failed = _pfsense_check_failed(out)
         latest = version  # pfSense-upgrade reports no target version
         newer_train, newer_version = _pfsense_newer_branch(branch)
         if newer_train:
@@ -1538,9 +1566,11 @@ def collect_firmware() -> dict:
     else:
         branch = _opnsense_series()
         known_branches = []
-        upgrade_available, latest, out = _opnsense_update_check(version)
+        upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
 
-    verdict = _store_fw_verdict(branch, known_branches, upgrade_available, latest, out)
+    verdict = _store_fw_verdict(
+        branch, known_branches, upgrade_available, latest, out, check_failed
+    )
     return {"product_version": version, **verdict}
 
 
@@ -3077,15 +3107,16 @@ def execute_command(action: str, params: dict) -> dict:
             branch = _read_pfsense_branch()
             known = _list_pfsense_branches()
             upgrade_available = _pfsense_update_available(out)
+            check_failed = _pfsense_check_failed(out)
             latest = version  # pfSense-upgrade reports no target version
         else:
             version = _read_opnsense_version()
             branch = _opnsense_series()
             known = []
-            upgrade_available, latest, out = _opnsense_update_check(version)
+            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
         # Refresh the push-loop cache so a throttled interim push doesn't revert
         # this fresh manual check back to the previous verdict.
-        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out)
+        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
         return {
             "success": True,
             "output": verdict["update_check_output"],
@@ -3094,6 +3125,7 @@ def execute_command(action: str, params: dict) -> dict:
             "upgrade_available": verdict["upgrade_available"],
             "branch": verdict["branch"],
             "known_branches": verdict["known_branches"],
+            "check_failed": verdict["check_failed"],
         }
 
     elif action == "firmware.update":

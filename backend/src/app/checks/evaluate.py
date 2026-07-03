@@ -320,6 +320,14 @@ def firmware_check(fw: FirmwareStatus) -> ServiceCheck:
             state=int(CheckState.WARN),
             summary=f"Update available: {fw.product_version} → {latest}",
         )
+    if fw.check_failed:
+        # The box could not actually check (repo unreachable, broken pkg …) —
+        # "unknown" must never render as a green "up to date".
+        return ServiceCheck(
+            key="firmware",
+            state=int(CheckState.WARN),
+            summary=f"Firmware update check failed ({fw.product_version} installed)",
+        )
     return ServiceCheck(
         key="firmware",
         state=int(CheckState.OK),

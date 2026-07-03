@@ -141,7 +141,7 @@ def test_opnsense_update_check_detects_pkg_point_release(monkeypatch: pytest.Mon
         return ""  # pkg update -q
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, out = agent._opnsense_update_check("26.1.9")
+    upgrade, latest, out, _failed = agent._opnsense_update_check("26.1.9")
     assert upgrade is True
     assert latest == "26.1.10"
     assert "26.1.10" in out
@@ -154,7 +154,7 @@ def test_opnsense_update_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, _ = agent._opnsense_update_check("26.1.10")
+    upgrade, latest, _, _failed = agent._opnsense_update_check("26.1.10")
     assert upgrade is False
     assert latest == "26.1.10"  # latest still reported even with no update
 
@@ -170,9 +170,10 @@ def test_opnsense_update_check_stale_catalogue_no_false_uptodate(
         return ""  # rquery empty, update -q noop
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, _ = agent._opnsense_update_check("26.1.9")
+    upgrade, latest, _, failed = agent._opnsense_update_check("26.1.9")
     assert upgrade is False
     assert latest == "26.1.9"
+    assert failed is True  # empty rquery = catalogue broken/stale, verdict is unknown
 
 
 _REPO_DIR = "/usr/local/etc/pfSense/pkg/repos/"
@@ -1025,3 +1026,82 @@ def test_collect_disk_keeps_ufs_and_tmpfs_drops_devfs(monkeypatch: pytest.Monkey
     mounts = {d["mountpoint"] for d in disks}
     # Both devfs entries dropped; real ufs root and the tmpfs survive.
     assert mounts == {"/", "/var/run"}
+
+
+# Verbatim from a CE 2.7.0 box with a broken pkg (libssl.so.30 missing): the
+# metadata refresh fails, yet the tool still closes with "up to date" (exit 0).
+# Trusting that line alone reported a false green in the dashboard.
+_PFSENSE_CHECK_BROKEN = (
+    "ERROR: It was not possible to determine pkg remote version\n"
+    ">>> Updating repositories metadata... failed.\n"
+    "ERROR: It was not possible to determine pfSense remote version\n"
+    "ERROR: It was not possible to determine pfSense-base remote version\n"
+    "ERROR: It was not possible to determine pfSense-kernel-pfSense remote version\n"
+    "Your system is up to date"
+)
+
+
+def test_pfsense_check_failed_detection() -> None:
+    assert agent._pfsense_check_failed(_PFSENSE_CHECK_BROKEN) is True
+    assert agent._pfsense_check_failed("Messages:\nYour system is up to date") is False
+    assert agent._pfsense_check_failed("The following packages will be upgraded") is False
+    assert agent._pfsense_check_failed("") is True  # no output = check never ran
+
+
+def test_collect_firmware_pfsense_reports_check_failed(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.0-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _PFSENSE_CHECK_BROKEN)
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    fw = agent.collect_firmware()
+    assert fw["check_failed"] is True
+    assert fw["upgrade_available"] is False  # defensive: broken check must not cry update
+
+
+def test_collect_firmware_pfsense_clean_check_not_failed(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_8_1")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    fw = agent.collect_firmware()
+    assert fw["check_failed"] is False
+    assert fw["upgrade_available"] is False
+
+
+def test_opnsense_update_check_flags_failed_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Empty `pkg rquery` = the catalogue refresh never produced remote data —
+    # that is "unknown", not "up to date".
+    def run(cmd, timeout=5):
+        if cmd[0] == "/usr/local/sbin/opnsense-update":
+            return "Your system is up to date"
+        if cmd[:2] == ["pkg", "query"]:
+            return "26.1.10\n"
+        return ""  # pkg update -q / pkg rquery
+    monkeypatch.setattr(agent, "_run", run)
+    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.10")
+    assert failed is True
+    assert upgrade is False
+
+
+def test_opnsense_update_check_healthy_not_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def run(cmd, timeout=5):
+        if cmd[0] == "/usr/local/sbin/opnsense-update":
+            return "Your system is up to date"
+        if cmd[:2] == ["pkg", "query"]:
+            return "26.1.10\n"
+        if cmd[:2] == ["pkg", "rquery"]:
+            return "26.1.10\n"
+        return ""
+    monkeypatch.setattr(agent, "_run", run)
+    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.10")
+    assert failed is False
+    assert upgrade is False
+    assert latest == "26.1.10"
