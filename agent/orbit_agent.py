@@ -3093,151 +3093,187 @@ def _diagnose_ipsec(name: str) -> list[dict]:
     return sections
 
 
+def _cmd_ipsec_connect(params: dict) -> dict:
+    tunnel_id = params.get("tunnel_id", "")
+    out = _run(["swanctl", "--initiate", "--ike", tunnel_id], timeout=15)
+    ok = "successfully" in out.lower()
+    # `--initiate --ike` brings up only the IKE_SA; the configured CHILD_SAs
+    # (Phase 2) stay down until traffic. A user-driven (re)connect expects the
+    # whole tunnel, so initiate each configured child of this connection too.
+    child_results = []
+    for child in _connection_child_names(tunnel_id):
+        cout = _run(["swanctl", "--initiate", "--child", child], timeout=15)
+        child_results.append(f"{child}: {'ok' if 'successfully' in cout.lower() else 'failed'}")
+    msg = out.strip()
+    if child_results:
+        msg += "\nchildren: " + ", ".join(child_results)
+    return {"success": ok, "output": msg[:500]}
+
+
+def _cmd_ipsec_disconnect(params: dict) -> dict:
+    # tunnel_id is the active IKE_SA's unique id — stable even if the SA's
+    # connection name drifted from the configured name after a reload.
+    tunnel_id = params.get("tunnel_id", "")
+    out = _run(["swanctl", "--terminate", "--ike-id", tunnel_id], timeout=15)
+    return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
+
+
+def _cmd_ipsec_diagnose(params: dict) -> dict:
+    return {"success": True, "sections": _diagnose_ipsec(params.get("tunnel_id", ""))}
+
+
+def _cmd_ping_test(params: dict) -> dict:
+    # One-shot ping the dashboard runs from a config dialog BEFORE saving a
+    # monitor, so the user can see whether the source/destination work. Shared
+    # by the IPsec Phase-2 and the standalone connectivity dialogs.
+    source = params.get("source", "")
+    dest = params.get("destination", "")
+    count = int(params.get("ping_count", 3) or 3)
+    res = _ping_once(source, dest, count)
+    state = res.get("ping_state")
+    if state == "ok":
+        msg = (
+            f"reply from {dest}: {res.get('ping_rtt_ms')} ms avg, "
+            f"{res.get('ping_loss_pct')}% loss"
+        )
+    elif state == "fail":
+        msg = f"no reply from {dest} (100% loss) — host down or path blocked?"
+    else:
+        msg = "ping could not run — check the source IP (must be owned by this box) and routing"
+    return {
+        "success": state == "ok",
+        "ping_state": state,
+        "ping_rtt_ms": res.get("ping_rtt_ms"),
+        "ping_loss_pct": res.get("ping_loss_pct"),
+        "output": msg,
+    }
+
+
+def _cmd_ipsec_restart(params: dict) -> dict:
+    # Reload IPsec via each platform's own config layer. NEITHER OPNsense nor
+    # pfSense populates /usr/local/etc/swanctl/conf.d — both load swanctl via
+    # a custom layer (verified on real boxes: conf.d empty, tunnels still up).
+    # So `service strongswan restart` restarts charon with ZERO connections and
+    # drops every tunnel on BOTH. Use the native reload instead (regenerates +
+    # reloads in place, non-destructive). Fire-and-forget: the dashboard sees
+    # the result via its IPsec status polling.
+    if detect_platform() == "pfsense":
+        cmd = [
+            "php", "-r",
+            'require_once("/etc/inc/config.inc"); '
+            'require_once("/etc/inc/ipsec.inc"); ipsec_configure();',
+        ]
+    else:
+        cmd = ["configctl", "ipsec", "reload"]  # OPNsense → pluginctl -c ipsec
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"success": True, "output": "ipsec reload started in background"}
+
+
+def _cmd_firmware_check(params: dict) -> dict:
+    plat = detect_platform()
+    if plat == "pfsense":
+        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+        version = _read_pfsense_version()
+        branch = _read_pfsense_branch()
+        known = _list_pfsense_branches()
+        upgrade_available = _pfsense_update_available(out)
+        check_failed = _pfsense_check_failed(out)
+        latest = _pfsense_target_version(out) or version
+    else:
+        version = _read_opnsense_version()
+        branch = _opnsense_series()
+        known = []
+        upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+    # Refresh the push-loop cache so a throttled interim push doesn't revert
+    # this fresh manual check back to the previous verdict.
+    verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
+    return {
+        "success": True,
+        "output": verdict["update_check_output"],
+        "product_version": version,
+        "product_latest": verdict["product_latest"],
+        "upgrade_available": verdict["upgrade_available"],
+        "branch": verdict["branch"],
+        "known_branches": verdict["known_branches"],
+        "check_failed": verdict["check_failed"],
+    }
+
+
+def _cmd_firmware_update(params: dict) -> dict:
+    # Non-blocking: start in background. The vendor updater handles the
+    # reboot itself when the update requires one (new base/kernel).
+    if detect_platform() == "pfsense":
+        cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
+    else:
+        # Same path as the OPNsense GUI (configd "firmware update"):
+        # daemonized launcher.sh installs pkg+base+kernel, then reboots.
+        cmd = ["configctl", "firmware", "update"]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"success": True, "output": "update started in background"}
+
+
+def _cmd_config_backup(params: dict) -> dict:
+    config_path = "/conf/config.xml"
+    if os.path.exists(config_path):
+        content = Path(config_path).read_text(errors="replace")
+        return {"success": True, "config_xml": content}
+    return {"success": False, "output": "config.xml not found"}
+
+
+def _cmd_reboot(params: dict) -> dict:
+    subprocess.Popen(["shutdown", "-r", "+1"], stdout=subprocess.DEVNULL)
+    return {"success": True, "output": "reboot scheduled in 1 minute"}
+
+
+def _cmd_relay_enable(params: dict) -> dict:
+    # Explicit, idempotent: install the local REST API (pfSense) + provision the
+    # relay credential. Kept off the startup path on purpose (§16 #3) — on
+    # pfSense it pulls a package from the internet.
+    return _relay_enable()
+
+
+def _cmd_gui_login(params: dict) -> dict:
+    return _gui_login(_CONFIG)
+
+
+def _cmd_http_relay(params: dict) -> dict:
+    # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
+    return _relay_http(params, _CONFIG)
+
+
+def _cmd_ping(params: dict) -> dict:
+    return {"success": True, "output": "pong", "agent_version": __version__}
+
+
+# Dashboard action → handler. Every handler takes the command's `params` dict and
+# returns the command result dict. agent.update / agent.uninstall / status.refresh
+# are NOT here — they need the WebSocket and are handled in _listen_loop directly.
+_COMMANDS = {
+    "ipsec.connect": _cmd_ipsec_connect,
+    "ipsec.disconnect": _cmd_ipsec_disconnect,
+    "ipsec.diagnose": _cmd_ipsec_diagnose,
+    # Shared one-shot ping: IPsec Phase-2 dialog and standalone connectivity dialog.
+    "ipsec.ping_test": _cmd_ping_test,
+    "connectivity.ping_test": _cmd_ping_test,
+    "ipsec.restart": _cmd_ipsec_restart,
+    "firmware.check": _cmd_firmware_check,
+    "firmware.update": _cmd_firmware_update,
+    "config.backup": _cmd_config_backup,
+    "reboot": _cmd_reboot,
+    "relay.enable": _cmd_relay_enable,
+    "gui.login": _cmd_gui_login,
+    "http.relay": _cmd_http_relay,
+    "ping": _cmd_ping,
+}
+
+
 def execute_command(action: str, params: dict) -> dict:
     """Execute a command received from the dashboard."""
     log.info("executing command: %s", action)
-
-    if action == "ipsec.connect":
-        tunnel_id = params.get("tunnel_id", "")
-        out = _run(["swanctl", "--initiate", "--ike", tunnel_id], timeout=15)
-        ok = "successfully" in out.lower()
-        # `--initiate --ike` brings up only the IKE_SA; the configured CHILD_SAs
-        # (Phase 2) stay down until traffic. A user-driven (re)connect expects the
-        # whole tunnel, so initiate each configured child of this connection too.
-        child_results = []
-        for child in _connection_child_names(tunnel_id):
-            cout = _run(["swanctl", "--initiate", "--child", child], timeout=15)
-            child_results.append(f"{child}: {'ok' if 'successfully' in cout.lower() else 'failed'}")
-        msg = out.strip()
-        if child_results:
-            msg += "\nchildren: " + ", ".join(child_results)
-        return {"success": ok, "output": msg[:500]}
-
-    elif action == "ipsec.disconnect":
-        # tunnel_id is the active IKE_SA's unique id — stable even if the SA's
-        # connection name drifted from the configured name after a reload.
-        tunnel_id = params.get("tunnel_id", "")
-        out = _run(["swanctl", "--terminate", "--ike-id", tunnel_id], timeout=15)
-        return {"success": "successfully" in out.lower(), "output": out.strip()[:500]}
-
-    elif action == "ipsec.diagnose":
-        return {"success": True, "sections": _diagnose_ipsec(params.get("tunnel_id", ""))}
-
-    elif action in ("ipsec.ping_test", "connectivity.ping_test"):
-        # One-shot ping the dashboard runs from a config dialog BEFORE saving a
-        # monitor, so the user can see whether the source/destination work. Shared
-        # by the IPsec Phase-2 and the standalone connectivity dialogs.
-        source = params.get("source", "")
-        dest = params.get("destination", "")
-        count = int(params.get("ping_count", 3) or 3)
-        res = _ping_once(source, dest, count)
-        state = res.get("ping_state")
-        if state == "ok":
-            msg = (
-                f"reply from {dest}: {res.get('ping_rtt_ms')} ms avg, "
-                f"{res.get('ping_loss_pct')}% loss"
-            )
-        elif state == "fail":
-            msg = f"no reply from {dest} (100% loss) — host down or path blocked?"
-        else:
-            msg = "ping could not run — check the source IP (must be owned by this box) and routing"
-        return {
-            "success": state == "ok",
-            "ping_state": state,
-            "ping_rtt_ms": res.get("ping_rtt_ms"),
-            "ping_loss_pct": res.get("ping_loss_pct"),
-            "output": msg,
-        }
-
-    elif action == "ipsec.restart":
-        # Reload IPsec via each platform's own config layer. NEITHER OPNsense nor
-        # pfSense populates /usr/local/etc/swanctl/conf.d — both load swanctl via
-        # a custom layer (verified on real boxes: conf.d empty, tunnels still up).
-        # So `service strongswan restart` restarts charon with ZERO connections and
-        # drops every tunnel on BOTH. Use the native reload instead (regenerates +
-        # reloads in place, non-destructive). Fire-and-forget: the dashboard sees
-        # the result via its IPsec status polling.
-        if detect_platform() == "pfsense":
-            cmd = [
-                "php", "-r",
-                'require_once("/etc/inc/config.inc"); '
-                'require_once("/etc/inc/ipsec.inc"); ipsec_configure();',
-            ]
-        else:
-            cmd = ["configctl", "ipsec", "reload"]  # OPNsense → pluginctl -c ipsec
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return {"success": True, "output": "ipsec reload started in background"}
-
-    elif action == "firmware.check":
-        plat = detect_platform()
-        if plat == "pfsense":
-            out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
-            version = _read_pfsense_version()
-            branch = _read_pfsense_branch()
-            known = _list_pfsense_branches()
-            upgrade_available = _pfsense_update_available(out)
-            check_failed = _pfsense_check_failed(out)
-            latest = _pfsense_target_version(out) or version
-        else:
-            version = _read_opnsense_version()
-            branch = _opnsense_series()
-            known = []
-            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
-        # Refresh the push-loop cache so a throttled interim push doesn't revert
-        # this fresh manual check back to the previous verdict.
-        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
-        return {
-            "success": True,
-            "output": verdict["update_check_output"],
-            "product_version": version,
-            "product_latest": verdict["product_latest"],
-            "upgrade_available": verdict["upgrade_available"],
-            "branch": verdict["branch"],
-            "known_branches": verdict["known_branches"],
-            "check_failed": verdict["check_failed"],
-        }
-
-    elif action == "firmware.update":
-        # Non-blocking: start in background. The vendor updater handles the
-        # reboot itself when the update requires one (new base/kernel).
-        if detect_platform() == "pfsense":
-            cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
-        else:
-            # Same path as the OPNsense GUI (configd "firmware update"):
-            # daemonized launcher.sh installs pkg+base+kernel, then reboots.
-            cmd = ["configctl", "firmware", "update"]
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return {"success": True, "output": "update started in background"}
-
-    elif action == "config.backup":
-        config_path = "/conf/config.xml"
-        if os.path.exists(config_path):
-            content = Path(config_path).read_text(errors="replace")
-            return {"success": True, "config_xml": content}
-        return {"success": False, "output": "config.xml not found"}
-
-    elif action == "reboot":
-        subprocess.Popen(["shutdown", "-r", "+1"], stdout=subprocess.DEVNULL)
-        return {"success": True, "output": "reboot scheduled in 1 minute"}
-
-    elif action == "relay.enable":
-        # Explicit, idempotent: install the local REST API (pfSense) + provision the
-        # relay credential. Kept off the startup path on purpose (§16 #3) — on
-        # pfSense it pulls a package from the internet.
-        return _relay_enable()
-
-    elif action == "gui.login":
-        return _gui_login(_CONFIG)
-
-    elif action == "http.relay":
-        # Tunnel a dashboard HTTP request to the local OPNsense API (see §15).
-        return _relay_http(params, _CONFIG)
-
-    elif action == "ping":
-        return {"success": True, "output": "pong", "agent_version": __version__}
-
-    else:
+    handler = _COMMANDS.get(action)
+    if handler is None:
         return {"success": False, "output": f"unknown action: {action}"}
+    return handler(params)
 
 
 # =============================================================================
