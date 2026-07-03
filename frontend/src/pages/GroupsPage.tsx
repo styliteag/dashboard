@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Bell, Boxes, Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { useAuth } from "../lib/use-auth";
+import GroupChannelsEditor from "../components/groups/GroupChannelsEditor";
 import type { Group, GroupInstance } from "../lib/types";
 
 const GROUPS_QK = ["groups"];
@@ -14,6 +15,7 @@ export default function GroupsPage() {
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
   const [renameTo, setRenameTo] = useState("");
+  const [channelsFor, setChannelsFor] = useState<number | null>(null);
 
   const { data: groups = [], isError } = useQuery({
     queryKey: GROUPS_QK,
@@ -152,7 +154,8 @@ export default function GroupsPage() {
         </thead>
         <tbody>
           {groups.map((g) => (
-            <tr key={g.id} className="border-t border-slate-800">
+            <Fragment key={g.id}>
+              <tr className="border-t border-slate-800">
               <td className="py-2">
                 {renaming === g.id ? (
                   <span className="inline-flex items-center gap-1">
@@ -184,34 +187,54 @@ export default function GroupsPage() {
               </td>
               <td className="py-2 text-slate-400">{g.member_count}</td>
               <td className="py-2 text-slate-400">{g.instance_count}</td>
-              <td className="py-2">
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenaming(g.id);
-                      setRenameTo(g.name);
-                    }}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
-                  >
-                    <Pencil className="h-3 w-3" /> Rename
-                  </button>
-                  <button
-                    type="button"
-                    disabled={g.instance_count > 0}
-                    title={
-                      g.instance_count > 0 ? "Move the instances out of the group first" : undefined
-                    }
-                    onClick={() => {
-                      if (window.confirm(`Delete group “${g.name}”?`)) deleteMut.mutate(g.id);
-                    }}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-40"
-                  >
-                    <Trash2 className="h-3 w-3" /> Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
+                <td className="py-2">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setChannelsFor(channelsFor === g.id ? null : g.id)}
+                      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800 ${
+                        channelsFor === g.id ? "text-emerald-400" : "text-slate-300"
+                      }`}
+                      title="Per-group notification channels"
+                    >
+                      <Bell className="h-3 w-3" /> Channels
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRenaming(g.id);
+                        setRenameTo(g.name);
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                    >
+                      <Pencil className="h-3 w-3" /> Rename
+                    </button>
+                    <button
+                      type="button"
+                      disabled={g.instance_count > 0}
+                      title={
+                        g.instance_count > 0
+                          ? "Move the instances out of the group first"
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (window.confirm(`Delete group “${g.name}”?`)) deleteMut.mutate(g.id);
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {channelsFor === g.id && (
+                <tr className="border-t border-slate-800/50">
+                  <td colSpan={4} className="py-3">
+                    <GroupChannelsEditor groupId={g.id} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

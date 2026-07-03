@@ -517,6 +517,15 @@ export interface GroupInstance {
   slug: string;
 }
 
+export type GroupChannelKind = "mattermost" | "telegram" | "email";
+
+/** Per-group notification-channel config; secrets arrive masked (••••••). */
+export interface GroupChannel {
+  channel: GroupChannelKind;
+  config: Record<string, string>;
+  updated_at: string;
+}
+
 export interface DashUser {
   id: number;
   username: string;
