@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent internals reorganized (agent 2.6.4, no behavior change).** The
+  dashboard command handler is now a dispatch table, the metrics snapshot is
+  driven by a collector registry, and all shared runtime state lives in one
+  documented state object instead of scattered module globals. Groundwork for
+  future agent features; wire behavior, payloads, and platform handling are
+  unchanged.
+
 ## [2.6.3] - 2026-07-03
 
 ### Changed
