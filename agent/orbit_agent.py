@@ -512,6 +512,10 @@ def collect_gateways() -> list[dict]:
     """Get gateway status (platform-specific)."""
     if detect_platform() == "pfsense":
         return _collect_gateways_pfsense()
+    return _collect_gateways_opnsense()
+
+
+def _collect_gateways_opnsense() -> list[dict]:
     # OPNsense: pluginctl returns gateway status as JSON
     out = _run(["pluginctl", "-r", "return_gateways_status"])
     gateways = []
