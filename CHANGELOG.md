@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-07-03
+
 ### Fixed
 
 - **A broken firmware update check no longer shows as "up to date".** pfSense's
