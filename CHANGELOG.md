@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hourly metrics prune no longer starves the DB connection pool.** The
+  retention job deleted all expired `metrics` rows in one unbounded `DELETE`;
+  on a large table that held row locks long enough to block every concurrent
+  agent-push INSERT, exhaust the connection pool (default 5 + 10 overflow) and
+  fail API requests / health checks with `QueuePool limit … reached` for the
+  duration (observed: ~80 s outage every hour with ~60 connected agents). All
+  retention pruners (metrics, IPsec events, check events) now delete in
+  10 000-row batches with a commit and a short pause between batches, so
+  writers interleave and the prune is invisible to agents and the API.
+
+### Changed
+
+- **DB connection pool is configurable and sized for larger fleets.** New
+  settings `DASH_DB_POOL_SIZE` (default 20) and `DASH_DB_MAX_OVERFLOW`
+  (default 30) replace SQLAlchemy's built-in 5/10 defaults.
+
 ## [2.5.9] - 2026-07-03
 
 ### Added

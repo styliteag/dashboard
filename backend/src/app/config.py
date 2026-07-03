@@ -38,6 +38,13 @@ class Settings(BaseSettings):
         description="SQLAlchemy async URL for MariaDB",
     )
 
+    # DB connection pool. SQLAlchemy's default (5 + 10 overflow) starved with ~60
+    # push agents: one slow writer (e.g. the hourly prune) queued every metrics
+    # INSERT, exhausted the 15 connections and 500ed the whole API for its duration.
+    # Keep pool_size + max_overflow well below MariaDB's max_connections (151 default).
+    db_pool_size: int = 20
+    db_max_overflow: int = 30
+
     # Master key for Fernet encryption of OPNsense API secrets at rest.
     # Generate with: just gen-key
     master_key: str = Field(default="", description="Fernet master key (base64, 32 bytes)")
