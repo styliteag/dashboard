@@ -1149,3 +1149,103 @@ def test_collect_firmware_pfsense_ce_update_reports_target(
     assert fw["upgrade_available"] is True
     assert fw["product_latest"] == "2.7.0"
     assert fw["check_failed"] is False
+
+
+def test_fw_check_interval_is_hours_with_jitter() -> None:
+    # 12h base + up to 1h per-process jitter, so a fleet doesn't hit the
+    # vendor repos in lockstep. Was 600s — 144 vendor requests/box/day for
+    # releases that ship every few weeks.
+    assert 12 * 3600 <= agent._FW_CHECK_INTERVAL_S <= 13 * 3600
+
+
+def test_collect_firmware_network_check_throttled_hours(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A verdict from 1h ago must be served from cache — no repoc / upgrade -c.
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
+
+    def boom(*a, **k):
+        raise AssertionError("network check ran inside the throttle window")
+
+    monkeypatch.setattr(agent, "_run", boom)
+    monkeypatch.setattr(
+        agent,
+        "_last_fw_verdict",
+        {
+            "branch": "2_8_1",
+            "known_branches": [],
+            "upgrade_available": False,
+            "product_latest": "2.8.1-RELEASE",
+            "update_check_output": "",
+            "check_failed": False,
+        },
+    )
+    monkeypatch.setattr(agent, "_last_fw_check_ts", agent.time.monotonic() - 3600)
+    fw = agent.collect_firmware()
+    assert fw["product_version"] == "2.8.1-RELEASE"
+    assert fw["upgrade_available"] is False
+
+
+def test_collect_certificates_cached_until_config_mtime_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Certs only change with the config: the parse (and its per-cert openssl
+    # subprocesses) must run once per config.xml mtime, not on every 30s push.
+    calls: list = []
+
+    def fake_parse(path):
+        calls.append(path)
+        raise OSError("no config in test")
+
+    monkeypatch.setattr(agent.ElementTree, "parse", fake_parse)
+    monkeypatch.setattr(agent, "_config_mtime", lambda: 100.0)
+    monkeypatch.setattr(agent, "_certs_cache", [])
+    monkeypatch.setattr(agent, "_certs_cache_mtime", -1.0)
+
+    assert agent.collect_certificates() == []
+    assert agent.collect_certificates() == []
+    assert len(calls) == 1  # second call: cache hit, no re-parse
+
+    monkeypatch.setattr(agent, "_config_mtime", lambda: 200.0)
+    agent.collect_certificates()
+    assert len(calls) == 2  # config changed → re-parse
+
+
+def test_collect_certificates_no_cache_when_stat_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list = []
+
+    def fake_parse(path):
+        calls.append(path)
+        raise OSError("gone")
+
+    monkeypatch.setattr(agent.ElementTree, "parse", fake_parse)
+    monkeypatch.setattr(agent, "_config_mtime", lambda: -1.0)  # stat failed
+    monkeypatch.setattr(agent, "_certs_cache", [])
+    monkeypatch.setattr(agent, "_certs_cache_mtime", -1.0)
+    assert agent.collect_certificates() == []
+    assert agent.collect_certificates() == []
+    assert len(calls) == 2  # unknown mtime must never serve a stale cache
+
+
+def test_collect_certificates_cache_recomputes_days_remaining(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # days_remaining must NOT freeze at parse time: a config untouched for
+    # months would otherwise never trip the expiry warning.
+    from datetime import timedelta
+
+    soon = (agent.datetime.now(agent.UTC) + timedelta(days=10, hours=1)).isoformat()
+    monkeypatch.setattr(agent, "_config_mtime", lambda: 100.0)
+    monkeypatch.setattr(
+        agent,
+        "_certs_cache",
+        [{"refid": "x", "name": "gui", "not_after": soon, "days_remaining": 9999}],
+    )
+    monkeypatch.setattr(agent, "_certs_cache_mtime", 100.0)
+    out = agent.collect_certificates()
+    assert out[0]["days_remaining"] == 10
+    # Immutability: the cached entry itself must stay untouched.
+    assert agent._certs_cache[0]["days_remaining"] == 9999

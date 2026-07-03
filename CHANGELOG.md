@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent hits vendor repos and openssl far less often (agent 2.6.3).** The
+  firmware update check ran every 10 minutes — 144 Netgate/OPNsense repo
+  requests per box per day (pfSense's repoc alone takes 30-40s cold) for
+  releases that ship every few weeks. It now runs every ~12h with a
+  per-process jitter so fleets don't check in lockstep; the manual "Check
+  now" button and firmware updates still check fresh, and the first push
+  after an agent (re)start checks immediately. Certificate parsing (one
+  `openssl x509` subprocess per cert, previously on every 30s push) now runs
+  only when config.xml's mtime changes; the expiry countdown is recomputed
+  from the cached `not_after` on every push, so long-unchanged configs still
+  trip the warning.
+
 ## [2.6.2] - 2026-07-03
 
 ### Fixed

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import platform
+import random
 import re
 import signal
 import ssl
@@ -44,7 +45,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.6.2"
+__version__ = "2.6.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1365,10 +1366,18 @@ def _read_opnsense_version() -> str:
 
 
 # Track when we last ran a full firmware update check (network call). The verdict
-# is cached because pushes happen every ~30s but the network check only every 10
-# min — without the cache the cheap interim pushes would blank a detected update.
+# is cached because pushes happen every ~30s but the network check only every
+# ~12h — without the cache the cheap interim pushes would blank a detected update.
 _last_fw_check_ts: float = 0.0
 _last_fw_verdict: dict = {}
+
+# Network update check every ~12h, plus a per-process jitter so a fleet doesn't
+# hit the vendor repos in lockstep. Release cadence is weeks; 600s meant 144
+# vendor requests per box per day (and repoc alone takes 30-40s cold on
+# pfSense). Manual "Check now" (firmware.check) and firmware.update always
+# check fresh; the first push after agent start still checks immediately
+# (empty verdict cache).
+_FW_CHECK_INTERVAL_S: float = 12 * 3600 + random.randint(0, 3600)
 
 
 def _opnsense_series() -> str:
@@ -1425,7 +1434,7 @@ def _store_fw_verdict(
     out: str,
     check_failed: bool = False,
 ) -> dict:
-    """Cache the firmware verdict + restart the 10-min throttle window.
+    """Cache the firmware verdict + restart the check-interval throttle window.
 
     Both the periodic push and the manual ``firmware.check`` go through here so a
     just-run check is reflected by the cheap interim pushes (otherwise a throttled
@@ -1542,7 +1551,7 @@ def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
 
 
 def collect_firmware() -> dict:
-    """Firmware version on every push; update check every 10 minutes (per platform).
+    """Firmware version on every push; network update check every ~12h (per platform).
 
     Only ``product_version`` is recomputed every push (a cheap local file read); the
     branch + upgrade verdict come from the cached last network check so the frequent
@@ -1552,7 +1561,7 @@ def collect_firmware() -> dict:
     version = _read_pfsense_version() if pfsense else _read_opnsense_version()
 
     now = time.monotonic()
-    if _last_fw_verdict and now - _last_fw_check_ts < 600:
+    if _last_fw_verdict and now - _last_fw_check_ts < _FW_CHECK_INTERVAL_S:
         return {"product_version": version, **_last_fw_verdict}
 
     if pfsense:
@@ -1794,14 +1803,52 @@ def _collect_services_pfsense() -> list[dict]:
     ]
 
 
+_certs_cache: list = []
+_certs_cache_mtime: float = -1.0
+
+
+def _config_mtime() -> float:
+    """mtime of config.xml; -1.0 when unreadable (then never serve the cache)."""
+    try:
+        return os.stat(_CONFIG_XML).st_mtime
+    except OSError:
+        return -1.0
+
+
+def _certs_with_fresh_days(certs: list) -> list:
+    """Copy of cached cert dicts with ``days_remaining`` recomputed from
+    ``not_after``. Without this the countdown would freeze at parse time and a
+    config untouched for months would never trip the expiry warning."""
+    now = datetime.now(UTC)
+    out = []
+    for c in certs:
+        try:
+            not_after = datetime.fromisoformat(c["not_after"])
+            out.append(dict(c, days_remaining=(not_after - now).days))
+        except (KeyError, ValueError, TypeError):
+            out.append(dict(c))
+    return out
+
+
 def collect_certificates() -> list[dict]:
     """Certificate expiry from ``/conf/config.xml`` <cert>/<ca>. The agent is
     stdlib-only (no x509 parser), so each PEM is piped through ``openssl x509``.
     Works on both platforms; the GUI cert is flagged via <system><webgui><ssl-certref>.
+
+    Certs only change with the config, so the parse (and its per-cert openssl
+    subprocess fan-out) runs once per config.xml mtime — previously it ran on
+    every 30s push, i.e. dozens of subprocesses per push on cert-heavy boxes.
     """
+    global _certs_cache, _certs_cache_mtime
+    mtime = _config_mtime()
+    if mtime >= 0 and mtime == _certs_cache_mtime:
+        return _certs_with_fresh_days(_certs_cache)
     try:
         root = ElementTree.parse(_CONFIG_XML).getroot()
     except (OSError, ElementTree.ParseError):
+        # Cache the empty result too — an unchanged (broken) config stays
+        # broken until its mtime moves; no point re-parsing every push.
+        _certs_cache, _certs_cache_mtime = [], mtime
         return []
     gui_ref = (root.findtext("./system/webgui/ssl-certref") or "").strip()
     out: list[dict] = []
@@ -1826,6 +1873,7 @@ def collect_certificates() -> list[dict]:
             "is_gui": bool(gui_ref) and refid == gui_ref,
             **info,
         })
+    _certs_cache, _certs_cache_mtime = out, mtime
     return out
 
 
