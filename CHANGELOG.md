@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **pfSense CE's update wording is now recognized (false "up to date").**
+  CE says "2.7.0 version of pfSense is available" — none of the agent's
+  inferred positive patterns matched that, so a box with a pending release
+  upgrade reported green (confirmed live on CE 2.6.0 pinned to the 2.7.0
+  train). Agent 2.6.2 matches the confirmed wording and also parses the
+  named target version, so the dashboard shows "2.6.0 → 2.7.0" instead of
+  "2.6.0 → 2.6.0".
+
 ### Added
 
 - **Users page shows when an account is disabled.** The bootstrap `admin` is

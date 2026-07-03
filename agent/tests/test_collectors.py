@@ -1105,3 +1105,47 @@ def test_opnsense_update_check_healthy_not_failed(monkeypatch: pytest.MonkeyPatc
     assert failed is False
     assert upgrade is False
     assert latest == "26.1.10"
+
+
+def test_pfsense_update_available_ce_wording() -> None:
+    # Verbatim positive from CE 2.6.0 with the branch switched to 2.7.0
+    # (gruene-sty): "up to date" is absent, but none of the previously inferred
+    # positive patterns matched either — false negative "up to date".
+    assert (
+        agent._pfsense_update_available(
+            ">>> Updating repositories metadata... done.\n"
+            "2.7.0 version of pfSense is available"
+        )
+        is True
+    )
+    # And it is a clean check — not check_failed.
+    assert (
+        agent._pfsense_check_failed(
+            ">>> Updating repositories metadata... done.\n"
+            "2.7.0 version of pfSense is available"
+        )
+        is False
+    )
+
+
+def test_pfsense_target_version_parsed_from_check_output() -> None:
+    out = ">>> Updating repositories metadata... done.\n2.7.0 version of pfSense is available"
+    assert agent._pfsense_target_version(out) == "2.7.0"
+    assert agent._pfsense_target_version("Your system is up to date") == ""
+
+
+def test_collect_firmware_pfsense_ce_update_reports_target(
+    fake_fs: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.6.0-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_0")
+    monkeypatch.setattr(
+        agent, "_run", lambda *a, **k: "2.7.0 version of pfSense is available"
+    )
+    monkeypatch.setattr(agent, "_last_fw_verdict", {})
+    monkeypatch.setattr(agent, "_last_fw_check_ts", 0.0)
+    fw = agent.collect_firmware()
+    assert fw["upgrade_available"] is True
+    assert fw["product_latest"] == "2.7.0"
+    assert fw["check_failed"] is False

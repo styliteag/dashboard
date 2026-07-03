@@ -44,7 +44,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.6.1"
+__version__ = "2.6.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1448,15 +1448,34 @@ def _pfsense_update_available(out: str) -> bool:
     """Decide update availability from `pfSense-upgrade -c` output.
 
     Confirmed negative on pfSense Plus 26.03: "Your system is up to date".
-    The positive wording is inferred and should be re-confirmed against a box
-    with a pending update; when unsure we do NOT raise a false alarm.
+    Confirmed positive on CE 2.6.0 with the branch switched to 2.7.0:
+    "2.7.0 version of pfSense is available" — none of the earlier inferred
+    patterns matched that (false "up to date"). When unsure we do NOT raise
+    a false alarm.
     """
     low = out.lower()
     if "up to date" in low:
         return False
     return any(
-        s in low for s in ("will be upgraded", "new version", "version available", "upgrading")
+        s in low
+        for s in (
+            "will be upgraded",
+            "new version",
+            "version available",
+            "of pfsense is available",
+            "upgrading",
+        )
     )
+
+
+def _pfsense_target_version(out: str) -> str:
+    """Target version from `pfSense-upgrade -c` output, if it names one.
+
+    CE wording (confirmed live): "2.7.0 version of pfSense is available".
+    Empty when no version is named — the caller keeps its fallback.
+    """
+    m = re.search(r"([0-9][\w.\-]*)\s+version of pfsense is available", out.lower())
+    return m.group(1) if m else ""
 
 
 def _pfsense_check_failed(out: str) -> bool:
@@ -1552,7 +1571,9 @@ def collect_firmware() -> dict:
         known_branches = _list_pfsense_branches()
         upgrade_available = _pfsense_update_available(out)
         check_failed = _pfsense_check_failed(out)
-        latest = version  # pfSense-upgrade reports no target version
+        # CE names the target ("2.7.0 version of pfSense is available");
+        # otherwise fall back to installed so "Latest" never goes blank.
+        latest = _pfsense_target_version(out) or version
         newer_train, newer_version = _pfsense_newer_branch(branch)
         if newer_train:
             # In-train check says "up to date", but a newer release train exists.
@@ -3108,7 +3129,7 @@ def execute_command(action: str, params: dict) -> dict:
             known = _list_pfsense_branches()
             upgrade_available = _pfsense_update_available(out)
             check_failed = _pfsense_check_failed(out)
-            latest = version  # pfSense-upgrade reports no target version
+            latest = _pfsense_target_version(out) or version
         else:
             version = _read_opnsense_version()
             branch = _opnsense_series()
