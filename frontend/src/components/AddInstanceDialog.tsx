@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorText } from "../lib/api";
-import { DEVICE_TYPES, type Instance } from "../lib/types";
+import { useAuth } from "../lib/use-auth";
+import { DEVICE_TYPES, type Group, type Instance } from "../lib/types";
 import Dialog from "./Dialog";
 
 interface Props {
@@ -10,8 +11,10 @@ interface Props {
 
 export default function AddInstanceDialog({ onClose }: Props) {
   const queryClient = useQueryClient();
+  const { user: me } = useAuth();
   const [form, setForm] = useState({
     name: "",
+    group_id: "",
     base_url: "https://",
     device_type: "opnsense",
     agent_mode: false,
@@ -32,6 +35,15 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const isSecurepoint = form.device_type === "securepoint";
+  // Target group: normal users pick among their memberships (implied when they
+  // have exactly one); superadmins may target any group.
+  const { data: allGroups } = useQuery({
+    queryKey: ["groups"],
+    queryFn: () => api.get<Group[]>("/api/groups"),
+    enabled: !!me?.is_superadmin,
+  });
+  const groupOptions = me?.is_superadmin && allGroups ? allGroups : (me?.groups ?? []);
+  const needsGroupChoice = groupOptions.length > 1;
   // Global interval defaults — shown as the placeholder so "empty = inherit" is concrete.
   const { data: defaults } = useQuery({
     queryKey: ["instance-defaults"],
@@ -65,6 +77,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         name: form.name,
+        ...(form.group_id !== "" ? { group_id: Number(form.group_id) } : {}),
         base_url: form.base_url,
         device_type: form.device_type,
         agent_mode: form.agent_mode,
@@ -133,6 +146,26 @@ export default function AddInstanceDialog({ onClose }: Props) {
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name *" value={form.name} onChange={set("name")} required />
+        {needsGroupChoice && (
+          <div className="space-y-1">
+            <label className="text-xs text-slate-400">Group *</label>
+            <select
+              value={form.group_id}
+              onChange={(e) => setForm((f) => ({ ...f, group_id: e.target.value }))}
+              required
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            >
+              <option value="" disabled>
+                Select a group…
+              </option>
+              {groupOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <Input
           label="Base URLs (comma-separated, HTTPS) *"
           value={form.base_url}

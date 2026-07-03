@@ -8,6 +8,7 @@ import {
   Package,
   Settings,
   AlertTriangle,
+  FolderTree,
   Radio,
   Users,
   ShieldCheck,
@@ -86,7 +87,7 @@ export default function Layout() {
               <Settings className="h-4 w-4" /> Settings
             </Link>
           )}
-          {user?.is_admin && (
+          {user?.is_superadmin && (
             <Link
               to="/users"
               className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
@@ -94,12 +95,24 @@ export default function Layout() {
               <Users className="h-4 w-4" /> Users
             </Link>
           )}
+          {user?.is_superadmin && (
+            <Link
+              to="/groups"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <FolderTree className="h-4 w-4" /> Groups
+            </Link>
+          )}
           <span className="text-slate-600">|</span>
           <span className="text-slate-500">
             {user?.username}
             {user && (
               <span className="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400">
-                {user.role === "view_only" ? "view-only" : user.role}
+                {user.is_superadmin
+                  ? "superadmin"
+                  : user.role === "view_only"
+                    ? "view-only"
+                    : user.role}
               </span>
             )}
           </span>

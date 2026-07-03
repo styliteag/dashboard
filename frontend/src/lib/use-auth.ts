@@ -3,13 +3,15 @@
  * AuthProvider component so React Fast Refresh only sees component exports there.
  */
 import { createContext, useContext } from "react";
-import type { UserRole } from "./types";
+import type { GroupBrief, UserRole } from "./types";
 
 export interface User {
   id: number;
   username: string;
   role: UserRole;
   is_admin: boolean;
+  is_superadmin: boolean;
+  groups: GroupBrief[];
   session_token?: string | null;
 }
 

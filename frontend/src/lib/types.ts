@@ -6,6 +6,8 @@
 export interface Instance {
   id: number;
   name: string;
+  /** Owning group (visibility scope); resolve the name via me.groups or /api/groups. */
+  group_id: number;
   base_url: string;
   ssl_verify: boolean;
   gui_login_enabled: boolean;
@@ -491,10 +493,34 @@ export interface NotificationTestResult {
 
 export type UserRole = "admin" | "user" | "view_only";
 
+/** Minimal group reference (embedded in /auth/me and /api/users). */
+export interface GroupBrief {
+  id: number;
+  name: string;
+}
+
+/** Full group row from /api/groups (superadmin only). */
+export interface Group {
+  id: number;
+  name: string;
+  created_at: string;
+  member_count: number;
+  instance_count: number;
+}
+
+/** Instance reference inside a group (superadmin move UI; no status/config data). */
+export interface GroupInstance {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface DashUser {
   id: number;
   username: string;
   role: UserRole;
+  is_superadmin: boolean;
+  groups: GroupBrief[];
   created_at: string;
   disabled: boolean;
   totp_enabled: boolean;

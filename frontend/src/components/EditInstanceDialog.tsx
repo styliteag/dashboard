@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorText } from "../lib/api";
-import type { Instance } from "../lib/types";
+import { useAuth } from "../lib/use-auth";
+import type { Group, Instance } from "../lib/types";
 import Dialog from "./Dialog";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 export default function EditInstanceDialog({ instance, onClose }: Props) {
   const queryClient = useQueryClient();
+  const { user: me } = useAuth();
   // Agent mode reaches the firewall through the agent (push + relay), so the
   // direct-API fields (key/secret, TLS verify) don't apply — only the agent-only
   // Auto-Login does. Mirror AddInstanceDialog's per-mode field set.
@@ -53,7 +55,21 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     maintenance: instance.maintenance,
     firmware_locked: instance.firmware_locked,
   });
+  const [groupId, setGroupId] = useState(String(instance.group_id));
   const [error, setError] = useState<string | null>(null);
+
+  // Moving between groups: admins pick among their memberships, superadmins any
+  // group. Uses the dedicated move endpoint (rights operation, not config).
+  const { data: allGroups } = useQuery({
+    queryKey: ["groups"],
+    queryFn: () => api.get<Group[]>("/api/groups"),
+    enabled: !!me?.is_superadmin,
+  });
+  const groupOptions = me?.is_superadmin && allGroups ? allGroups : (me?.groups ?? []);
+  const canMove =
+    (me?.is_superadmin || me?.is_admin) &&
+    groupOptions.length > 1 &&
+    groupOptions.some((g) => g.id === instance.group_id);
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -93,7 +109,11 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         body.ssh_user = form.ssh_user || "root";
         if (form.ssh_key) body.ssh_key = form.ssh_key; // empty = keep existing
       }
-      return api.patch<Instance>(`/api/instances/${instance.id}`, body);
+      const updated = await api.patch<Instance>(`/api/instances/${instance.id}`, body);
+      if (canMove && Number(groupId) !== instance.group_id) {
+        await api.put(`/api/instances/${instance.id}/group`, { group_id: Number(groupId) });
+      }
+      return updated;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] });
@@ -120,6 +140,22 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
           <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
         )}
         <Input label="Name" value={form.name} onChange={set("name")} required />
+        {canMove && (
+          <div className="space-y-1">
+            <label className="text-xs text-slate-400">Group</label>
+            <select
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            >
+              {groupOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <Input
           label="Base URLs (comma-separated, all clickable)"
           value={form.base_url}

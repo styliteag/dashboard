@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Plus, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
+import { KeyRound, Plus, Shield, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { fmtDate } from "../lib/datetime";
 import { useAuth } from "../lib/use-auth";
-import type { DashUser, UserRole } from "../lib/types";
+import type { DashUser, Group, UserRole } from "../lib/types";
 
 const USERS_QK = ["users"];
+const GROUPS_QK = ["groups"];
 
 const ROLES: { value: UserRole; label: string; hint: string }[] = [
-  { value: "admin", label: "Admin", hint: "Full access incl. config and user management" },
+  { value: "admin", label: "Admin", hint: "Config + all operational actions in their groups" },
   { value: "user", label: "User", hint: "All operational actions, no configuration" },
   { value: "view_only", label: "View-Only", hint: "Reads everything, cannot change anything" },
 ];
@@ -22,6 +23,8 @@ export default function UsersPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("view_only");
+  const [newSuperadmin, setNewSuperadmin] = useState(false);
+  const [newGroups, setNewGroups] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [resetFor, setResetFor] = useState<number | null>(null);
   const [resetPw, setResetPw] = useState("");
@@ -29,33 +32,49 @@ export default function UsersPage() {
   const { data: users = [], isError } = useQuery({
     queryKey: USERS_QK,
     queryFn: () => api.get<DashUser[]>("/api/users"),
-    enabled: !!me?.is_admin,
+    enabled: !!me?.is_superadmin,
+  });
+  const { data: groups = [] } = useQuery({
+    queryKey: GROUPS_QK,
+    queryFn: () => api.get<Group[]>("/api/groups"),
+    enabled: !!me?.is_superadmin,
   });
 
   const fail = (e: unknown, fallback: string) => setError(apiErrorText(e, fallback));
-  const invalidate = () => qc.invalidateQueries({ queryKey: USERS_QK });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: USERS_QK });
+    qc.invalidateQueries({ queryKey: GROUPS_QK });
+  };
 
   const createMut = useMutation({
     mutationFn: () =>
-      api.post<DashUser>("/api/users", { username: username.trim(), password, role }),
+      api.post<DashUser>("/api/users", {
+        username: username.trim(),
+        password,
+        role,
+        is_superadmin: newSuperadmin,
+        group_ids: newGroups,
+      }),
     onSuccess: () => {
       setUsername("");
       setPassword("");
       setRole("view_only");
+      setNewSuperadmin(false);
+      setNewGroups([]);
       setError(null);
       invalidate();
     },
     onError: (e) => fail(e, "Failed to create user"),
   });
 
-  const roleMut = useMutation({
-    mutationFn: ({ id, role }: { id: number; role: UserRole }) =>
-      api.patch<DashUser>(`/api/users/${id}`, { role }),
+  const patchMut = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      api.patch<DashUser>(`/api/users/${id}`, body),
     onSuccess: () => {
       setError(null);
       invalidate();
     },
-    onError: (e) => fail(e, "Failed to change role"),
+    onError: (e) => fail(e, "Failed to update user"),
   });
 
   const pwMut = useMutation({
@@ -87,28 +106,36 @@ export default function UsersPage() {
     onError: (e) => fail(e, "Failed to reset 2FA"),
   });
 
-  if (!me?.is_admin) {
+  if (!me?.is_superadmin) {
     return (
       <div className="mx-auto max-w-3xl">
         <p className="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
-          User management is available to admins only.
+          User management is available to superadmins only.
         </p>
       </div>
     );
   }
 
+  const toggleUserGroup = (u: DashUser, groupId: number) => {
+    const current = u.groups.map((g) => g.id);
+    const next = current.includes(groupId)
+      ? current.filter((id) => id !== groupId)
+      : [...current, groupId];
+    patchMut.mutate({ id: u.id, body: { group_ids: next } });
+  };
+
   const pwTooShort = password.length > 0 && password.length < MIN_PW;
   const canCreate = username.trim().length > 0 && password.length >= MIN_PW && !createMut.isPending;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-5xl">
       <h1 className="flex items-center gap-2 text-xl font-semibold">
         <UsersIcon className="h-5 w-5 text-slate-400" /> Users
       </h1>
       <p className="mt-1 text-sm text-slate-400">
-        Accounts and their role. <strong>Admin</strong> manages config and users;{" "}
-        <strong>User</strong> performs operational actions; <strong>View-Only</strong> can read but
-        not change anything.
+        Accounts, their global role and group memberships. A user only sees instances of their
+        groups. <strong>SuperAdmin</strong> manages rights only (users + groups) — it grants no
+        instance access by itself.
       </p>
 
       {/* Create */}
@@ -148,6 +175,15 @@ export default function UsersPage() {
               </option>
             ))}
           </select>
+          <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={newSuperadmin}
+              onChange={(e) => setNewSuperadmin(e.target.checked)}
+              className="accent-emerald-600"
+            />
+            SuperAdmin
+          </label>
           <button
             type="button"
             onClick={() => createMut.mutate()}
@@ -157,6 +193,29 @@ export default function UsersPage() {
             <Plus className="h-4 w-4" /> Add
           </button>
         </div>
+        {groups.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-slate-500">Groups:</span>
+            {groups.map((g) => (
+              <label
+                key={g.id}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
+              >
+                <input
+                  type="checkbox"
+                  checked={newGroups.includes(g.id)}
+                  onChange={() =>
+                    setNewGroups((prev) =>
+                      prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id],
+                    )
+                  }
+                  className="accent-emerald-600"
+                />
+                {g.name}
+              </label>
+            ))}
+          </div>
+        )}
         <p className="mt-2 text-xs text-slate-500">{ROLES.find((r) => r.value === role)?.hint}</p>
       </div>
 
@@ -175,6 +234,8 @@ export default function UsersPage() {
           <tr>
             <th className="py-1">User</th>
             <th className="py-1">Role</th>
+            <th className="py-1">SuperAdmin</th>
+            <th className="py-1">Groups</th>
             <th className="py-1">2FA</th>
             <th className="py-1">Created</th>
             <th className="py-1 text-right">Actions</th>
@@ -183,6 +244,7 @@ export default function UsersPage() {
         <tbody>
           {users.map((u) => {
             const isSelf = u.id === me.id;
+            const memberIds = new Set(u.groups.map((g) => g.id));
             return (
               <tr key={u.id} className="border-t border-slate-800 align-top">
                 <td className="py-2">
@@ -193,7 +255,7 @@ export default function UsersPage() {
                   {u.disabled && (
                     <span
                       className="ml-2 rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] text-amber-400"
-                      title="Logins rejected. The bootstrap admin retires automatically once another admin exists (DASH_ADMIN_DISABLED=auto) or is forced off with DASH_ADMIN_DISABLED=1; set DASH_ADMIN_DISABLED=0 to re-enable it."
+                      title="Logins rejected. Bootstrap seeds retire automatically once a real counterpart exists (…_DISABLED=auto) or are forced off with …_DISABLED=1; set …_DISABLED=0 to re-enable."
                     >
                       disabled
                     </span>
@@ -202,10 +264,11 @@ export default function UsersPage() {
                 <td className="py-2">
                   <select
                     value={u.role}
-                    disabled={isSelf || roleMut.isPending}
-                    onChange={(e) => roleMut.mutate({ id: u.id, role: e.target.value as UserRole })}
+                    disabled={patchMut.isPending}
+                    onChange={(e) =>
+                      patchMut.mutate({ id: u.id, body: { role: e.target.value as UserRole } })
+                    }
                     className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-emerald-600 focus:outline-none disabled:opacity-50"
-                    title={isSelf ? "You cannot change your own role" : undefined}
                   >
                     {ROLES.map((r) => (
                       <option key={r.value} value={r.value}>
@@ -213,6 +276,46 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
+                </td>
+                <td className="py-2">
+                  <label
+                    className="inline-flex items-center gap-1 text-xs text-slate-300"
+                    title={isSelf ? "You cannot revoke your own superadmin flag" : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={u.is_superadmin}
+                      disabled={isSelf || patchMut.isPending}
+                      onChange={(e) =>
+                        patchMut.mutate({ id: u.id, body: { is_superadmin: e.target.checked } })
+                      }
+                      className="accent-emerald-600 disabled:opacity-50"
+                    />
+                    {u.is_superadmin && <Shield className="h-3 w-3 text-emerald-400" />}
+                  </label>
+                </td>
+                <td className="py-2">
+                  <div className="flex max-w-56 flex-wrap gap-1">
+                    {groups.map((g) => (
+                      <label
+                        key={g.id}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${
+                          memberIds.has(g.id)
+                            ? "border-emerald-700 bg-emerald-900/40 text-emerald-300"
+                            : "border-slate-700 bg-slate-800 text-slate-400"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={memberIds.has(g.id)}
+                          disabled={patchMut.isPending}
+                          onChange={() => toggleUserGroup(u, g.id)}
+                          className="hidden"
+                        />
+                        {g.name}
+                      </label>
+                    ))}
+                  </div>
                 </td>
                 <td className="py-2 text-xs">
                   {u.totp_enabled ? (

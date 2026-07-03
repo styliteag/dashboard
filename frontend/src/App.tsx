@@ -12,6 +12,7 @@ import PasswordPage from "./pages/PasswordPage";
 import SettingsPage from "./pages/SettingsPage";
 import SecurityPage from "./pages/SecurityPage";
 import UsersPage from "./pages/UsersPage";
+import GroupsPage from "./pages/GroupsPage";
 import AlertsPage from "./pages/AlertsPage";
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="security" element={<SecurityPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="groups" element={<GroupsPage />} />
         </Route>
       </Route>
 
