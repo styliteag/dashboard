@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Check, FolderTree, Pencil, Plus, Trash2, X } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { useAuth } from "../lib/use-auth";
@@ -14,7 +14,6 @@ export default function GroupsPage() {
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
   const [renameTo, setRenameTo] = useState("");
-  const [openGroup, setOpenGroup] = useState<number | null>(null);
 
   const { data: groups = [], isError } = useQuery({
     queryKey: GROUPS_QK,
@@ -22,11 +21,20 @@ export default function GroupsPage() {
     enabled: !!me?.is_superadmin,
   });
 
-  const { data: groupInstances = [] } = useQuery({
-    queryKey: ["group-instances", openGroup],
-    queryFn: () => api.get<GroupInstance[]>(`/api/groups/${openGroup}/instances`),
-    enabled: !!me?.is_superadmin && openGroup !== null,
+  // One flat "instance → group" assignment table: fetch every group's
+  // instances in parallel and merge. Small fleets — N cheap requests are fine.
+  const instanceQueries = useQueries({
+    queries: groups.map((g) => ({
+      queryKey: ["group-instances", g.id],
+      queryFn: () => api.get<GroupInstance[]>(`/api/groups/${g.id}/instances`),
+      enabled: !!me?.is_superadmin,
+    })),
   });
+  const assignments: { instance: GroupInstance; groupId: number }[] = groups
+    .flatMap((g, i) =>
+      (instanceQueries[i]?.data ?? []).map((instance) => ({ instance, groupId: g.id })),
+    )
+    .sort((a, b) => a.instance.name.localeCompare(b.instance.name));
 
   const fail = (e: unknown, fallback: string) => setError(apiErrorText(e, fallback));
   const invalidate = () => {
@@ -132,7 +140,7 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {/* List */}
+      {/* Group list */}
       <table className="mt-4 w-full text-sm">
         <thead className="text-left text-xs text-slate-500">
           <tr>
@@ -144,7 +152,7 @@ export default function GroupsPage() {
         </thead>
         <tbody>
           {groups.map((g) => (
-            <tr key={g.id} className="border-t border-slate-800 align-top">
+            <tr key={g.id} className="border-t border-slate-800">
               <td className="py-2">
                 {renaming === g.id ? (
                   <span className="inline-flex items-center gap-1">
@@ -175,45 +183,7 @@ export default function GroupsPage() {
                 )}
               </td>
               <td className="py-2 text-slate-400">{g.member_count}</td>
-              <td className="py-2">
-                <button
-                  type="button"
-                  onClick={() => setOpenGroup(openGroup === g.id ? null : g.id)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
-                >
-                  <Boxes className="h-3 w-3" /> {g.instance_count}
-                </button>
-                {openGroup === g.id && (
-                  <ul className="mt-2 space-y-1">
-                    {groupInstances.length === 0 && (
-                      <li className="text-xs text-slate-500">No instances in this group.</li>
-                    )}
-                    {groupInstances.map((inst) => (
-                      <li key={inst.id} className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-300">{inst.name}</span>
-                        <select
-                          value={g.id}
-                          disabled={moveMut.isPending}
-                          onChange={(e) =>
-                            moveMut.mutate({
-                              instanceId: inst.id,
-                              groupId: Number(e.target.value),
-                            })
-                          }
-                          className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300 focus:border-emerald-600 focus:outline-none disabled:opacity-50"
-                          title="Move to group"
-                        >
-                          {groups.map((target) => (
-                            <option key={target.id} value={target.id}>
-                              {target.name}
-                            </option>
-                          ))}
-                        </select>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </td>
+              <td className="py-2 text-slate-400">{g.instance_count}</td>
               <td className="py-2">
                 <div className="flex items-center justify-end gap-1">
                   <button
@@ -245,6 +215,58 @@ export default function GroupsPage() {
           ))}
         </tbody>
       </table>
+
+      {/* Instance assignment — the one place to move instances between groups */}
+      <div className="mt-8 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+          <Boxes className="h-4 w-4 text-slate-400" /> Instance assignment
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Pick a group per instance — the move applies immediately.
+        </p>
+        {assignments.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No instances yet.</p>
+        ) : (
+          <table className="mt-3 w-full text-sm">
+            <thead className="text-left text-xs text-slate-500">
+              <tr>
+                <th className="py-1">Instance</th>
+                <th className="py-1">Group</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignments.map(({ instance, groupId }) => (
+                <tr key={instance.id} className="border-t border-slate-800">
+                  <td className="py-2 text-slate-200">
+                    {instance.name}
+                    <span className="ml-2 text-xs text-slate-500">{instance.slug}</span>
+                  </td>
+                  <td className="py-2">
+                    <select
+                      value={groupId}
+                      disabled={moveMut.isPending || groups.length < 2}
+                      title={groups.length < 2 ? "Create a second group first" : undefined}
+                      onChange={(e) =>
+                        moveMut.mutate({
+                          instanceId: instance.id,
+                          groupId: Number(e.target.value),
+                        })
+                      }
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300 focus:border-emerald-600 focus:outline-none disabled:opacity-50"
+                    >
+                      {groups.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
