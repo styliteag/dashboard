@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   UI gets a group picker and a Groups column. Deleting a group that is the
   last binding of an active key is refused (the key would silently turn
   global).
+- **Per-group notification channels.** Each group may configure its own
+  Mattermost webhook, Telegram bot/chat and email targets
+  (`/api/groups/{id}/channels`, editable via the Channels toggle on the
+  Groups page — superadmins and member admins). For an alert, a channel kind
+  configured on the instance's group replaces the global target; unconfigured
+  kinds fall back to the global channel. Selection-rule routing and the
+  global mute toggles stay global; test-send stays global-only. Group webhook
+  URLs pass the same SSRF guard as the global one, at save and at send time.
 
 ### Changed
 
