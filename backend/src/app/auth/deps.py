@@ -105,6 +105,19 @@ async def require_admin(
     return user
 
 
+async def require_superadmin(
+    user: Annotated[User, Depends(current_user)],
+) -> User:
+    """Like ``current_user`` but requires the ``is_superadmin`` flag.
+
+    Guards rights management only: groups, user accounts and group memberships.
+    Superadmin is orthogonal to ``role`` — it grants no instance access.
+    """
+    if not user.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="superadmin only")
+    return user
+
+
 async def read_principal(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],

@@ -14,7 +14,13 @@ from __future__ import annotations
 
 from fastapi.routing import APIRoute
 
-from app.auth.deps import current_user, read_principal, require_admin, require_write
+from app.auth.deps import (
+    current_user,
+    read_principal,
+    require_admin,
+    require_superadmin,
+    require_write,
+)
 from app.main import create_app
 
 # Self-service routes a logged-in account of ANY role may call on itself — these
@@ -76,7 +82,7 @@ def test_mutating_routes_block_view_only() -> None:
     for method, path, calls in _mutating_routes():
         if (method, path) in SELF_SERVICE_ALLOWLIST:
             continue
-        gated = require_write in calls or require_admin in calls
+        gated = require_write in calls or require_admin in calls or require_superadmin in calls
         authed = current_user in calls or read_principal in calls
         if authed and not gated:
             offenders.append(f"{method} {path}")

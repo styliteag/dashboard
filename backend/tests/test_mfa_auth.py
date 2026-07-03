@@ -76,6 +76,8 @@ def _user(**kw: object) -> SimpleNamespace:
         disabled=False,
         role="view_only",
         is_admin=False,
+        is_superadmin=False,
+        groups=[],
         totp_enabled=False,
         totp_secret_enc=None,
     )

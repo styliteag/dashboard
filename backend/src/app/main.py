@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
+from app.groups.routes import router as groups_router
 from app.http_log import AccessLogMiddleware
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
@@ -234,6 +235,7 @@ def create_app() -> FastAPI:
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(users_router, prefix="/api")
+    app.include_router(groups_router, prefix="/api")
     app.include_router(selection_router, prefix="/api")
     app.include_router(llm_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")

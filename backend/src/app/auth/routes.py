@@ -19,6 +19,7 @@ from app.auth.security import hash_password, limiter, verify_password, verify_pa
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import User, WebauthnCredential
+from app.groups.schemas import GroupBrief
 from app.net import client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,7 +40,21 @@ class UserResponse(BaseModel):
     username: str
     role: str
     is_admin: bool
+    is_superadmin: bool
+    groups: list[GroupBrief]
     session_token: str | None = None
+
+
+def _user_response(user: User, session_token: str | None = None) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        is_admin=user.is_admin,
+        is_superadmin=user.is_superadmin,
+        groups=[GroupBrief.model_validate(g) for g in user.groups],
+        session_token=session_token,
+    )
 
 
 class LoginChallenge(BaseModel):
@@ -80,13 +95,7 @@ async def complete_login(
     await write_audit(session, action="auth.login", result="ok", user_id=user.id, source_ip=ip)
     await session.commit()
     token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        role=user.role,
-        is_admin=user.is_admin,
-        session_token=token,
-    )
+    return _user_response(user, session_token=token)
 
 
 @router.post("/login", response_model=LoginChallenge)
@@ -190,7 +199,7 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
-    return UserResponse(id=user.id, username=user.username, role=user.role, is_admin=user.is_admin)
+    return _user_response(user)
 
 
 @router.post("/password", response_model=UserResponse)
@@ -228,4 +237,4 @@ async def change_password(
         source_ip=client_ip(request),
     )
     await session.commit()
-    return UserResponse(id=user.id, username=user.username, role=user.role, is_admin=user.is_admin)
+    return _user_response(user)
