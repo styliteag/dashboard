@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, KeyRound, Plus, Trash2 } from "lucide-react";
 import { api, apiErrorText } from "../../lib/api";
 import { fmtDate, fmtDateTime, fmtRelative } from "../../lib/datetime";
-import type { ApiKey, ApiKeyCreated, ApiKeyRevealed } from "../../lib/types";
+import { useAuth } from "../../lib/use-auth";
+import type { ApiKey, ApiKeyCreated, ApiKeyRevealed, Group } from "../../lib/types";
 
 const KEYS_QK = ["apikeys"];
 
@@ -30,7 +31,9 @@ function CopyButton({ value, label = "Copy" }: { value: string; label?: string }
 
 export default function CheckmkApiKeys() {
   const qc = useQueryClient();
+  const { user: me } = useAuth();
   const [name, setName] = useState("checkmk");
+  const [bindGroups, setBindGroups] = useState<number[]>([]);
   const [created, setCreated] = useState<ApiKeyCreated | null>(null);
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -39,12 +42,29 @@ export default function CheckmkApiKeys() {
     queryKey: KEYS_QK,
     queryFn: () => api.get<ApiKey[]>("/api/apikeys"),
   });
+  // Binding options: superadmins may pick any group (or none = global);
+  // group-scoped admins must bind to their own groups.
+  const { data: allGroups } = useQuery({
+    queryKey: ["groups"],
+    queryFn: () => api.get<Group[]>("/api/groups"),
+    enabled: !!me?.is_superadmin,
+  });
+  const groupOptions = me?.is_superadmin && allGroups ? allGroups : (me?.groups ?? []);
+  const bindingRequired = !me?.is_superadmin;
+  const myGroupIds = new Set((me?.groups ?? []).map((g) => g.id));
+  const mayReveal = (k: ApiKey) =>
+    !!me?.is_superadmin || (k.groups.length > 0 && k.groups.every((g) => myGroupIds.has(g.id)));
 
   const createMut = useMutation({
     mutationFn: () =>
-      api.post<ApiKeyCreated>("/api/apikeys", { name: name.trim(), revealable: true }),
+      api.post<ApiKeyCreated>("/api/apikeys", {
+        name: name.trim(),
+        revealable: true,
+        group_ids: bindGroups,
+      }),
     onSuccess: (k) => {
       setCreated(k);
+      setBindGroups([]);
       setError(null);
       qc.invalidateQueries({ queryKey: KEYS_QK });
     },
@@ -111,12 +131,48 @@ export default function CheckmkApiKeys() {
         <button
           type="button"
           onClick={() => createMut.mutate()}
-          disabled={createMut.isPending || !name.trim()}
+          disabled={
+            createMut.isPending || !name.trim() || (bindingRequired && bindGroups.length === 0)
+          }
           className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
         >
           <Plus className="h-4 w-4" /> Create key
         </button>
       </div>
+      {groupOptions.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-500">Bind to groups:</span>
+          {groupOptions.map((g) => (
+            <label
+              key={g.id}
+              className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+                bindGroups.includes(g.id)
+                  ? "border-emerald-700 bg-emerald-900/40 text-emerald-300"
+                  : "border-slate-700 bg-slate-800 text-slate-400"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={bindGroups.includes(g.id)}
+                onChange={() =>
+                  setBindGroups((prev) =>
+                    prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id],
+                  )
+                }
+                className="hidden"
+              />
+              {g.name}
+            </label>
+          ))}
+          <span className="text-xs text-slate-500">
+            {bindingRequired
+              ? "— keys must be bound to your groups"
+              : bindGroups.length === 0
+                ? "— none selected: global key (all instances)"
+                : ""}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="mt-3 rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>
@@ -146,6 +202,7 @@ export default function CheckmkApiKeys() {
           <tr>
             <th className="py-1">Name</th>
             <th className="py-1">Prefix</th>
+            <th className="py-1">Groups</th>
             <th className="py-1">Created</th>
             <th className="py-1">Last used</th>
             <th className="py-1 text-right">Actions</th>
@@ -154,7 +211,7 @@ export default function CheckmkApiKeys() {
         <tbody>
           {active.length === 0 && (
             <tr>
-              <td colSpan={5} className="py-3 text-xs text-slate-500">
+              <td colSpan={6} className="py-3 text-xs text-slate-500">
                 No active keys.
               </td>
             </tr>
@@ -163,6 +220,24 @@ export default function CheckmkApiKeys() {
             <tr key={k.id} className="border-t border-slate-800">
               <td className="py-2">{k.name}</td>
               <td className="py-2 font-mono text-xs text-slate-400">{k.prefix}…</td>
+              <td className="py-2">
+                {k.groups.length === 0 ? (
+                  <span className="text-xs text-slate-500" title="Sees all instances">
+                    global
+                  </span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {k.groups.map((g) => (
+                      <span
+                        key={g.id}
+                        className="rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300"
+                      >
+                        {g.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </td>
               <td className="py-2 text-xs text-slate-400">{fmtDate(k.created_at)}</td>
               <td className="py-2 text-xs text-slate-400">
                 {k.last_used_at ? (
@@ -173,7 +248,7 @@ export default function CheckmkApiKeys() {
               </td>
               <td className="py-2">
                 <div className="flex items-center justify-end gap-1">
-                  {k.revealable && (
+                  {k.revealable && mayReveal(k) && (
                     <button
                       type="button"
                       onClick={() => reveal(k.id)}

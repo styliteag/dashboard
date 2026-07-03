@@ -386,6 +386,8 @@ export interface ApiKey {
   name: string;
   prefix: string;
   revealable: boolean;
+  /** Group binding — empty = global key (sees all instances). */
+  groups: GroupBrief[];
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
