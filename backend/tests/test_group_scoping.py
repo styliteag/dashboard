@@ -64,9 +64,18 @@ class _FakeSession:
 # --- scope primitives ---------------------------------------------------------
 
 
-def test_scope_clause_none_for_machine_and_apikey() -> None:
+def test_scope_clause_none_for_machine_and_unbound_apikey() -> None:
     assert scope_clause(None) is None
+    # INVERTED empty-set semantics: an ApiKey with zero bindings is GLOBAL
+    # (while a User with zero memberships sees nothing, below).
     assert scope_clause(ApiKey()) is None
+
+
+def test_scope_clause_bound_apikey_filters_on_binding() -> None:
+    key = ApiKey(groups=[Group(id=2, name="branch")])
+    clause = scope_clause(key)
+    assert clause is not None
+    assert "group_id" in str(clause)
 
 
 def test_scope_clause_filters_on_membership() -> None:
@@ -84,7 +93,9 @@ def test_scope_clause_zero_groups_is_false_not_all() -> None:
 def test_can_access_matrix() -> None:
     inst = _inst(group_id=2)
     assert can_access(None, inst) is True  # machine context
-    assert can_access(ApiKey(), inst) is True  # orbit_ key stays global
+    assert can_access(ApiKey(), inst) is True  # unbound orbit_ key = global
+    assert can_access(ApiKey(groups=[Group(id=2, name="b")]), inst) is True  # bound, member
+    assert can_access(ApiKey(groups=[Group(id=1, name="a")]), inst) is False  # bound, foreign
     assert can_access(_user(2), inst) is True  # member
     assert can_access(_user(1), inst) is False  # other group
     assert can_access(_user(), inst) is False  # zero groups

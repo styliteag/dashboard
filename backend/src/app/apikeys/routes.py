@@ -1,4 +1,13 @@
-"""Admin CRUD for read-only API keys (service accounts)."""
+"""CRUD for read-only API keys (service accounts).
+
+Admins and superadmins manage keys. Keys may be bound to instance groups
+(``apikey_groups``): a bound key only reads its groups' instances; an unbound
+key is global. A group-scoped admin must bind new keys to his own groups and
+may reveal only keys bound within his groups — otherwise minting/reading a
+global key would bypass his instance scoping. Binding is fixed at creation;
+re-mint to change it. Losing a group membership later does not disable a key
+(the binding lives on the key, not its creator) — it only removes reveal.
+"""
 
 from __future__ import annotations
 
@@ -11,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
 from app.auth.apikey import generate_key
-from app.auth.deps import require_admin
+from app.auth.deps import require_admin_or_superadmin
 from app.crypto.secrets import decrypt, encrypt
 from app.db.base import get_session
-from app.db.models import ApiKey, User
+from app.db.models import ApiKey, Group, User
+from app.groups.schemas import GroupBrief
 from app.net import client_ip
 
 router = APIRouter(prefix="/apikeys", tags=["apikeys"])
@@ -25,6 +35,9 @@ class ApiKeyCreate(BaseModel):
     # When True the full token is also kept Fernet-encrypted so it can be
     # re-displayed later (GET /apikeys/{id}/reveal). Default is show-once.
     revealable: bool = False
+    # Group binding. None/empty = global key (superadmin only); a non-superadmin
+    # admin MUST bind to a non-empty subset of his own groups.
+    group_ids: list[int] | None = None
 
 
 class ApiKeyCreated(BaseModel):
@@ -41,6 +54,7 @@ class ApiKeyResponse(BaseModel):
     name: str
     prefix: str
     revealable: bool
+    groups: list[GroupBrief]
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
@@ -51,13 +65,44 @@ class ApiKeyRevealed(BaseModel):
     key: str
 
 
+async def _resolve_binding(session: AsyncSession, user: User, group_ids: list[int] | None) -> list:
+    """Validate + load the groups a new key gets bound to (see module docstring)."""
+    ids = set(group_ids or [])
+    if not user.is_superadmin:
+        if not ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="a group-scoped admin must bind the key to at least one of his groups",
+            )
+        if not ids <= user.group_id_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="not a member of the target group(s)"
+            )
+    if not ids:
+        return []
+    groups = list((await session.execute(select(Group).where(Group.id.in_(ids)))).scalars().all())
+    if len(groups) != len(ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown group")
+    return groups
+
+
+def _may_reveal(user: User, key: ApiKey) -> bool:
+    """Superadmin: any key. Admin: only keys bound within his groups — a global
+    key's token would bypass his instance scoping."""
+    if user.is_superadmin:
+        return True
+    binding = key.group_id_set
+    return bool(binding) and binding <= user.group_id_set
+
+
 @router.post("", response_model=ApiKeyCreated)
 async def create_apikey(
     payload: ApiKeyCreate,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_admin_or_superadmin),
 ) -> ApiKeyCreated:
+    groups = await _resolve_binding(session, user, payload.group_ids)
     token, key_hash, prefix = generate_key()
     key = ApiKey(
         name=payload.name,
@@ -65,6 +110,7 @@ async def create_apikey(
         prefix=prefix,
         revealable=payload.revealable,
         key_enc=encrypt(token) if payload.revealable else None,
+        groups=groups,
     )
     session.add(key)
     await session.flush()
@@ -76,7 +122,11 @@ async def create_apikey(
         target_type="apikey",
         target_id=str(key.id),
         source_ip=client_ip(request),
-        detail={"name": payload.name, "revealable": payload.revealable},
+        detail={
+            "name": payload.name,
+            "revealable": payload.revealable,
+            "group_ids": sorted(g.id for g in groups),
+        },
     )
     await session.commit()
     return ApiKeyCreated(id=key.id, name=key.name, prefix=prefix, key=token)
@@ -85,7 +135,7 @@ async def create_apikey(
 @router.get("", response_model=list[ApiKeyResponse])
 async def list_apikeys(
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_superadmin),
 ) -> list[ApiKey]:
     rows = (
         (await session.execute(select(ApiKey).order_by(ApiKey.created_at.desc()))).scalars().all()
@@ -98,7 +148,7 @@ async def revoke_apikey(
     key_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_admin_or_superadmin),
 ) -> dict:
     key = await session.get(ApiKey, key_id)
     if key is None:
@@ -125,7 +175,7 @@ async def delete_apikey(
     key_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_admin_or_superadmin),
 ) -> dict:
     """Hard-delete a key row. Only a revoked key can be purged — an active key
     must be revoked first (revoke = soft, drops its recoverable copy; purge =
@@ -157,11 +207,20 @@ async def reveal_apikey(
     key_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_admin_or_superadmin),
 ) -> ApiKeyRevealed:
-    """Return the full token of a revealable, non-revoked key (admin-only, audited)."""
+    """Return the full token of a revealable, non-revoked key (audited).
+
+    Same 404 for missing / revoked / not-revealable / out-of-binding — no oracle.
+    """
     key = await session.get(ApiKey, key_id)
-    if key is None or key.revoked_at is not None or not key.revealable or key.key_enc is None:
+    if (
+        key is None
+        or key.revoked_at is not None
+        or not key.revealable
+        or key.key_enc is None
+        or not _may_reveal(user, key)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not revealable")
     await write_audit(
         session,

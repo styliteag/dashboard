@@ -76,6 +76,7 @@ class _FakeSession:
         instances: list[object] | None = None,
         member_count: int = 0,
         instance_count: int = 0,
+        bound_keys: list[object] | None = None,
         dup: bool = False,
     ) -> None:
         self._group = group
@@ -85,6 +86,7 @@ class _FakeSession:
         self._instances = instances or []
         self._member_count = member_count
         self._instance_count = instance_count
+        self._bound_keys = bound_keys or []
         self._dup = dup
         self.added: list[object] = []
         self.deleted: list[object] = []
@@ -100,6 +102,8 @@ class _FakeSession:
             return _PairsResult(self._member_pairs)
         if "count" in sql and "instances" in sql:
             return _PairsResult(self._instance_pairs)
+        if "api_keys" in sql:  # delete-guard: keys bound to this group
+            return _ScalarsResult(list(self._bound_keys))
         if "from groups" in sql:
             return _ScalarsResult(self._groups)
         if "from instances" in sql:
@@ -279,6 +283,38 @@ async def test_delete_empty_group_ok() -> None:
     )
     assert group in session.deleted
     assert session.committed
+
+
+@pytest.mark.asyncio
+async def test_delete_blocked_when_last_binding_of_active_key() -> None:
+    # apikey_groups CASCADEs: losing the last binding would flip the key to
+    # GLOBAL (empty set = unscoped) — a silent privilege escalation.
+    key = SimpleNamespace(name="checkmk-branch", revoked_at=None, group_id_set=frozenset({2}))
+    session = _FakeSession(group=_group(2, "branch"), instance_count=0, bound_keys=[key])
+    with pytest.raises(HTTPException) as exc:
+        await delete_group(
+            2,
+            _request(),
+            session=session,  # type: ignore[arg-type]
+            actor=_actor(),
+        )
+    assert exc.value.status_code == 409
+    assert session.deleted == []
+
+
+@pytest.mark.asyncio
+async def test_delete_ok_when_key_has_other_bindings_or_is_revoked() -> None:
+    multi = SimpleNamespace(name="multi", revoked_at=None, group_id_set=frozenset({1, 2}))
+    revoked = SimpleNamespace(name="old", revoked_at=datetime.now(UTC), group_id_set=frozenset({2}))
+    group = _group(2, "branch")
+    session = _FakeSession(group=group, instance_count=0, bound_keys=[multi, revoked])
+    await delete_group(
+        2,
+        _request(),
+        session=session,  # type: ignore[arg-type]
+        actor=_actor(),
+    )
+    assert group in session.deleted
 
 
 # --- instances listing ----------------------------------------------------------

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.log import write_audit
 from app.auth.deps import require_superadmin
 from app.db.base import get_session
-from app.db.models import Group, Instance, User, user_groups
+from app.db.models import ApiKey, Group, Instance, User, apikey_groups, user_groups
 from app.groups.schemas import GroupCreate, GroupInstanceOut, GroupOut, GroupUpdate
 from app.net import client_ip
 
@@ -165,6 +165,27 @@ async def delete_group(
             status_code=status.HTTP_409_CONFLICT,
             detail="group still contains instances (including soft-deleted) — move them first",
         )
+    # Privilege-escalation guard: apikey_groups CASCADEs, and an API key whose
+    # LAST binding disappears becomes global (empty set = unscoped). Block the
+    # delete while any active key depends on this group alone.
+    dependent_keys = (
+        (
+            await session.execute(
+                select(ApiKey).join(apikey_groups).where(apikey_groups.c.group_id == group.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for key in dependent_keys:
+        if key.revoked_at is None and key.group_id_set == {group.id}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"API key '{key.name}' is bound to this group only — deleting the group "
+                    "would make the key global; revoke or re-mint it first"
+                ),
+            )
     await session.delete(group)
     await write_audit(
         session,

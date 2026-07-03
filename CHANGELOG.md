@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Move instances between groups.** `PUT /api/instances/{id}/group` — 
   superadmins move any instance anywhere; admins move between groups they are
   member of (also available in the Edit-instance dialog and the Groups page).
+- **API keys can be bound to instance groups.** A key created with group
+  bindings only sees those groups' instances in `/api/checks`,
+  `/api/instances/{id}/checks` and `/api/export/checkmk` — one Checkmk key per
+  customer/group. Keys without bindings stay global, so existing keys are
+  unaffected. Binding is fixed at creation (re-mint to change); the Settings
+  UI gets a group picker and a Groups column. Deleting a group that is the
+  last binding of an active key is refused (the key would silently turn
+  global).
 
 ### Changed
 
@@ -44,9 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GUI-proxy tunnel (`/ws/tunnel/{id}`) now enforces instance visibility.**
   Previously any authenticated user could tunnel to any firewall's GUI; now
   membership in the instance's group is required (closes with code 4403).
-- The read-only `orbit_…` API keys and the Checkmk export deliberately stay
-  global (no group binding yet) — per-key group binding is a planned
-  follow-up.
+- **API-key management now admits superadmins** (`/api/apikeys` moves to
+  admin-or-superadmin). A group-scoped admin must bind new keys to his own
+  groups and can reveal only keys bound within his groups — a scoped admin
+  can no longer mint or read a global key to bypass instance scoping.
 
 ## [2.6.4] - 2026-07-03
 

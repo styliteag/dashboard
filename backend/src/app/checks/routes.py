@@ -172,10 +172,10 @@ async def export_checkmk(
     session: AsyncSession = Depends(get_session),
     principal=Depends(read_principal),
 ) -> dict:
-    """All instances' checks in one call — consumed by the Checkmk special agent.
+    """All visible instances' checks in one call — consumed by the Checkmk special agent.
 
-    API-key callers (the special agent) stay global — per-key group binding is a
-    deliberate follow-up; a session user only gets their groups' instances.
+    API-key callers honor the key's group binding (unbound = global); a session
+    user only gets their groups' instances.
 
     Push instances use the hub cache (cheap); direct instances are polled live,
     which can be slow with many of them (caching direct status is a follow-up).
@@ -236,7 +236,7 @@ async def all_checks(
     principal=Depends(read_principal),
 ) -> list[ServiceAlert]:
     """All evaluated service checks across the caller's visible instances (the
-    data Checkmk receives; API-key callers stay global).
+    data Checkmk receives; API keys honor their group binding, unbound = global).
 
     Each entry is annotated with whether it is currently exported to Checkmk. The
     export is opt-in (base default off): ``excluded`` is true for any check no

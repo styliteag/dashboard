@@ -317,6 +317,17 @@ class Metric(Base):
     value: Mapped[float] = mapped_column(Double, nullable=False)
 
 
+# ApiKey ↔ Group binding. NO rows = a GLOBAL key (backward compat — keys
+# existed before groups did). Note the inversion vs ``user_groups``, where no
+# rows means the user sees nothing. See app.auth.scope.
+apikey_groups = Table(
+    "apikey_groups",
+    Base.metadata,
+    Column("apikey_id", ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True),
+    Column("group_id", ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class ApiKey(Base):
     """Read-only API key for service accounts (e.g. the Checkmk special agent).
 
@@ -341,6 +352,16 @@ class ApiKey(Base):
         default=False, nullable=False, server_default=text("false")
     )
     key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+    # selectin: bindings load with the key_hash select in read_principal, so
+    # ``group_id_set`` is synchronously available in app.auth.scope
+    # (expire_on_commit=False keeps it across the last_used_at commit).
+    groups: Mapped[list[Group]] = relationship(secondary=apikey_groups, lazy="selectin")
+
+    @property
+    def group_id_set(self) -> frozenset[int]:
+        """Groups this key is bound to. EMPTY = GLOBAL (see app.auth.scope)."""
+        return frozenset(g.id for g in self.groups)
 
 
 class SelectionRule(Base):
