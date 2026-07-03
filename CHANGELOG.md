@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Flapping filter for connectivity/IPsec Phase-2 ping-monitor notifications.**
+  Each agent push is a single ping measurement, so a lone dropped packet used
+  to flip a "ping ok" check to "ping FAILED" and back within one push cycle —
+  each flip sent a Telegram/e-mail/Mattermost notification and a check-history
+  entry, flooding channels with back-to-back down/up pairs. A ping monitor's
+  notification and history entry now only fire CRIT after 3 consecutive
+  failed pushes; recovery still notifies immediately on the first successful
+  ping. Applies uniformly to all three notification channels since the fix
+  sits upstream of dispatch. The live Checks/Alerts page and Checkmk export
+  are unaffected — they still show the latest single measurement, not the
+  debounced value.
+
 ## [2.5.8] - 2026-07-03
 
 ### Fixed

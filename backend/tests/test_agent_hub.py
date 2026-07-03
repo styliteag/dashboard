@@ -18,8 +18,9 @@ from app.agent_hub.converters import (
     ipsec_from_agent,
     status_from_agent,
 )
-from app.agent_hub.hub import _DUP_PERSIST_POLLS, AgentHub
+from app.agent_hub.hub import _DUP_PERSIST_POLLS, _PING_FLAP_POLLS, AgentHub
 from app.checks.history import CheckTransition
+from app.checks.models import CheckState, ServiceCheck
 from app.xsense.schemas import (
     InterfaceStats,
     IPsecChild,
@@ -367,3 +368,63 @@ def test_dup_persistence_is_isolated_per_instance() -> None:
         hub._annotate_dup_persistence(1, _ipsec_with_dup(2))
     # A different instance keeps its own streak — one dup poll is not persistent.
     assert _dup_flag(hub._annotate_dup_persistence(2, _ipsec_with_dup(2))) is False
+
+
+# --- Ping-monitor flap debounce ----------------------------------------------
+# Each agent push is a single ping measurement; a connectivity/IPsec Phase-2 ping
+# check only goes CRIT once the failure has survived _PING_FLAP_POLLS consecutive
+# pushes, so a lone dropped packet never fires (and un-fires) a notification a
+# few seconds later. Recovery is immediate on the first OK.
+
+
+def _conn_check(state: CheckState, key: str = "connectivity:5") -> ServiceCheck:
+    return ServiceCheck(key=key, state=int(state), summary="ping")
+
+
+def test_ping_flap_held_at_ok_below_threshold() -> None:
+    hub = AgentHub()
+    for _ in range(_PING_FLAP_POLLS - 1):
+        out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+        assert out[0].state == int(CheckState.OK)
+
+
+def test_ping_flap_confirms_crit_at_threshold() -> None:
+    hub = AgentHub()
+    for _ in range(_PING_FLAP_POLLS - 1):
+        hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+    assert out[0].state == int(CheckState.CRIT)
+
+
+def test_ping_flap_resets_on_a_single_ok() -> None:
+    hub = AgentHub()
+    for _ in range(_PING_FLAP_POLLS):
+        hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.OK)])
+    assert out[0].state == int(CheckState.OK)
+    # ...and the counter starts over (one fail poll is not yet confirmed).
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+    assert out[0].state == int(CheckState.OK)
+
+
+def test_ping_flap_is_isolated_per_instance() -> None:
+    hub = AgentHub()
+    for _ in range(_PING_FLAP_POLLS):
+        hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT)])
+    # A different instance keeps its own streak.
+    out = hub._debounce_ping_checks(2, [_conn_check(CheckState.CRIT)])
+    assert out[0].state == int(CheckState.OK)
+
+
+def test_ping_flap_ignores_non_ping_check_keys() -> None:
+    hub = AgentHub()
+    # A CRIT memory/gateway/etc check is not a ping monitor — passes through as-is.
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT, key="memory")])
+    assert out[0].state == int(CheckState.CRIT)
+
+
+def test_ping_flap_debounces_ipsec_tunnel_ping_key_too() -> None:
+    hub = AgentHub()
+    key = "ipsec.tunnel_ping:site-a/10.0.0.0/24"
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT, key=key)])
+    assert out[0].state == int(CheckState.OK)

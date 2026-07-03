@@ -17,7 +17,9 @@ from app.agent_hub.converters import (
     ipsec_from_agent,
     status_from_agent,
 )
-from app.agent_hub.hub import AgentHub
+from app.agent_hub.hub import _PING_FLAP_POLLS, AgentHub
+from app.checks.history import diff_checks
+from app.checks.models import CheckState, ServiceCheck
 from app.ipsec.history import diff_ipsec
 from app.xsense.schemas import IPsecChild, IPsecServiceStatus, IPsecTunnel
 
@@ -144,6 +146,37 @@ def test_hydrate_reseeds_dup_streak_no_restart_flap() -> None:
     new = h._annotate_dup_persistence(7, _ipsec_with_dup(False))
     assert new.tunnels[0].children[0].phase2_dup_persistent is True
     assert diff_ipsec(prev, new) == []  # no flap event
+
+
+def test_hydrate_reseeds_ping_flap_streak_no_restart_flap() -> None:
+    """A restart with a currently-CRIT ping monitor must not emit a spurious
+    recovered/down flap: the in-memory fail-streak is re-seeded from the hydrated
+    check-state baseline, so a still-failing push right after restart stays CRIT
+    instead of being held to OK by the fresh (empty) streak and diffing as a false
+    "recovered" against the hydrated CRIT baseline."""
+    src = AgentHub()
+    src._last_status[7] = status_from_agent(SAMPLE)  # so the snapshot isn't None
+    src._last_check_states[7] = {
+        "connectivity:5": int(CheckState.CRIT),
+        "memory": int(
+            CheckState.CRIT
+        ),  # also CRIT — proves the prefix filter, not just state==CRIT
+    }
+    snap = src._snapshot_for(7)
+
+    h = AgentHub()  # fresh process after restart
+    h.hydrate_instance(7, snap)
+    assert h._ping_fail_streak[7]["connectivity:5"] >= _PING_FLAP_POLLS  # re-seeded
+    assert "memory" not in h._ping_fail_streak[7]  # CRIT but not a ping-monitor key — excluded
+
+    # First still-failing push after restart: without the re-seed this would be
+    # held to OK (streak 0+1 < threshold) and diff as a false "recovered" event.
+    still_failing = [
+        ServiceCheck(key="connectivity:5", state=int(CheckState.CRIT), summary="ping FAILED")
+    ]
+    debounced = h._debounce_ping_checks(7, still_failing)
+    assert debounced[0].state == int(CheckState.CRIT)
+    assert diff_checks(h._last_check_states.get(7), debounced) == []  # no flap event
 
 
 class _FakeScalars:
