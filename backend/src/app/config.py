@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Service
     env: str = "dev"
     log_level: str = "info"
+    log_format: str = "console"  # "console" (human-readable key=value) | "json"
 
     # Reverse-proxy hops in front of the app. The client IP used for login/enroll
     # rate-limiting and audit is taken as the Nth-from-last entry of

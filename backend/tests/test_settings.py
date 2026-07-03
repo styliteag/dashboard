@@ -76,3 +76,13 @@ async def test_update_invalid_value_422() -> None:
             admin=SimpleNamespace(id=1),  # type: ignore[arg-type]
         )
     assert exc.value.status_code == 422
+
+
+def test_coerce_log_format_options() -> None:
+    d = EDITABLE["log_format"]
+    assert coerce_value(d, "console") == "console"
+    assert coerce_value(d, "json") == "json"
+    with pytest.raises(ValueError):
+        coerce_value(d, "xml")
+    assert d.restart_required is True
+    assert get_settings().log_format == "console"

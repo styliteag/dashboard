@@ -9,6 +9,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import GeneralSettings from "../components/settings/GeneralSettings";
+import RestartBackend from "../components/settings/RestartBackend";
 import SelectionTree from "../components/settings/SelectionTree";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
 import LlmProviderTests from "../components/settings/LlmProviderTests";
@@ -97,10 +98,14 @@ export default function SettingsPage() {
       </div>
 
       {tab === "general" && (
-        <section className="mt-6">
+        <section className="mt-6 space-y-6">
           {/* "Maintenance" excluded: its bool toggles render as switches on their own
-              tabs (MuteToggle), not as text fields in the generic settings list. */}
-          <GeneralSettings exclude={["Mattermost", "Telegram", "Email", "LLM", "Maintenance"]} />
+              tabs (MuteToggle), not as text fields in the generic settings list.
+              "Checkmk" excluded: rendered on the Checkmk tab next to the export config. */}
+          <GeneralSettings
+            exclude={["Mattermost", "Telegram", "Email", "LLM", "Maintenance", "Checkmk"]}
+          />
+          <RestartBackend />
         </section>
       )}
 

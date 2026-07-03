@@ -7,7 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Security/operational events now appear in the backend log.** Logins,
+  failed passwords, brute-force IP locks (`auth.ip_blocked`), enrollments and
+  every other audited action are mirrored to a dedicated `app.audit` log
+  stream; device/agent offline/online and check alerts are logged via the
+  notification funnel. The stream stays visible even at
+  `DASH_LOG_LEVEL=warning`.
+- **`DASH_LOG_FORMAT=console|json`** (default `console`): human-readable
+  key=value log lines instead of raw JSON; also editable in Settings → Service
+  (restart required). structlog and uvicorn/stdlib records render through one
+  unified pipeline.
+- **"Restart backend" button on Settings → General.** Applies "needs restart"
+  settings without shell access: two-step confirm, then the backend restarts
+  itself (`POST /api/settings/restart`, admin-only, audit-logged) and the page
+  reloads once `/api/health` answers again. Works in the combined prod
+  container (new supervisor loop in `start.sh` restarts uvicorn, nginx stays
+  up), the dev container and a bare uvicorn under a restart policy.
+
 ### Fixed
+
+- **"Aggregate services" no longer shows on two Settings tabs.** The Checkmk
+  export toggle appeared on both General and Checkmk; it now lives only on
+  Settings → Checkmk next to the rest of the export config.
+
+- **HTTP access log shows the external client IP.** uvicorn's access log
+  (which only saw the nginx-internal address) is replaced by an app-level
+  access log that resolves the client via the trusted-proxy-aware
+  `DASH_TRUSTED_PROXY_HOPS` logic; includes method, path, status, duration and
+  session user id. WebSocket connects/disconnects are logged with their source
+  IP as well. Library plumbing noise (httpx/httpcore, apscheduler job lines,
+  asyncssh SSH chatter, WebSocket frame traces) is quieted to WARNING.
 
 - **Hourly metrics prune no longer starves the DB connection pool.** The
   retention job deleted all expired `metrics` rows in one unbounded `DELETE`;

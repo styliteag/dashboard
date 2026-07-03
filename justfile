@@ -10,7 +10,7 @@ backend-install:
     cd backend && uv sync --all-extras
 
 backend-run: _sign-if-key
-    cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
 
 backend-test:
     cd backend && uv run pytest -q

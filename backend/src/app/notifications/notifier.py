@@ -27,6 +27,11 @@ from app.settings.store import effective_settings
 
 log = structlog.get_logger("app.notifications")
 
+# Every real alert (device up/down, agent silent, check transitions) funnels
+# through send_notification — mirror it onto the always-visible event stream,
+# even when no channel is configured or all are muted.
+audit_log = structlog.get_logger("app.audit")
+
 
 async def _ssrf_block_reason(url: str) -> str | None:
     """Reject a user-configured webhook URL that would let the backend reach a
@@ -275,6 +280,10 @@ async def send_notification(
     per-instance rule overrides the global one), so a missing id would silently match
     only global rules and ignore every per-instance override — a forgotten call site
     must fail loudly, not degrade to global-only. Failures are logged, not raised."""
+    lvl = level if level in ("info", "warning", "error") else "info"
+    getattr(audit_log, lvl)(
+        "alert", title=title, message=message, instance_id=instance_id, check_key=check_key
+    )
     await _dispatch(title, message, level, check_key, instance_id, respect_routes=True)
 
 

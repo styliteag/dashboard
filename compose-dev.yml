@@ -37,6 +37,7 @@ services:
     environment:
       DASH_ENV: dev
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
+      DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
       # Vite proxies /api without adding X-Forwarded-For, so trust no hops in dev.
       # Dev default 0 (never trust XFF). In prod this must match actual proxies.
       DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-0}

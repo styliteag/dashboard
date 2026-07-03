@@ -338,3 +338,40 @@ async def test_dispatch_async_is_fire_and_forget(monkeypatch) -> None:
     assert ran.is_set() is False  # not awaited inline
     await asyncio.sleep(0)  # let the scheduled task run
     assert ran.is_set() is True
+
+
+@pytest.mark.asyncio
+async def test_send_notification_logs_alert_event(monkeypatch) -> None:
+    from structlog.testing import capture_logs
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
+    with capture_logs() as cap:
+        await notifier.send_notification(
+            "🔴 fw1 is offline", "no push for 300s", 3, level="error", check_key="availability"
+        )
+    (event,) = [e for e in cap if e["event"] == "alert"]
+    assert event["log_level"] == "error"
+    assert event["title"] == "🔴 fw1 is offline"
+    assert event["instance_id"] == 3
+    assert event["check_key"] == "availability"
+
+
+@pytest.mark.asyncio
+async def test_send_notification_alert_level_falls_back_to_info(monkeypatch) -> None:
+    from structlog.testing import capture_logs
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
+    with capture_logs() as cap:
+        await notifier.send_notification("t", "m", 1, level="bogus")
+    (event,) = [e for e in cap if e["event"] == "alert"]
+    assert event["log_level"] == "info"
+
+
+@pytest.mark.asyncio
+async def test_send_test_notification_logs_no_alert(monkeypatch) -> None:
+    from structlog.testing import capture_logs
+
+    monkeypatch.setattr(notifier, "effective_settings", lambda: _EMPTY)
+    with capture_logs() as cap:
+        await notifier.send_test_notification()
+    assert [e for e in cap if e["event"] == "alert"] == []

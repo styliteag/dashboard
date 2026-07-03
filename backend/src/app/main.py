@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from contextlib import asynccontextmanager
 
 import structlog
@@ -25,10 +24,12 @@ from app.config import Settings, get_settings
 from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
+from app.http_log import AccessLogMiddleware
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
 from app.llm.routes import router as llm_router
 from app.logs.routes import router as logs_router
+from app.logsetup import configure_logging
 from app.metrics.routes import router as metrics_router
 from app.poller.scheduler import start_scheduler, stop_scheduler
 from app.routes import health
@@ -40,21 +41,6 @@ from app.system.routes import router as system_router
 from app.users.routes import router as users_router
 from app.views.routes import router as views_router
 from app.xsense.registry import registry
-
-
-def _configure_logging(level: str) -> None:
-    logging.basicConfig(level=level.upper(), format="%(message)s")
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, level.upper(), logging.INFO)
-        ),
-    )
 
 
 @asynccontextmanager
@@ -72,7 +58,8 @@ async def lifespan(app: FastAPI):
         log.info("settings.loaded", overrides=count, selection_rules=rules)
     except Exception as exc:  # noqa: BLE001 — never block startup on settings load
         log.error("settings.load_failed", error=str(exc))
-    _configure_logging(effective_settings().log_level)
+    eff = effective_settings()
+    configure_logging(eff.log_level, eff.log_format)
 
     try:
         await ensure_admin()
@@ -196,8 +183,10 @@ def _validate_security(settings: Settings) -> None:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Logging first: _validate_security emits warnings that must render through
+    # the unified pipeline.
+    configure_logging(settings.log_level, settings.log_format)
     _validate_security(settings)
-    _configure_logging(settings.log_level)
 
     app = FastAPI(
         title="Orbit Dashboard",
@@ -218,6 +207,10 @@ def create_app() -> FastAPI:
         same_site="lax",
         max_age=12 * 60 * 60,
     )
+
+    # Added last ⇒ outermost: times the full stack and reads scope["session"]
+    # (populated by the inner SessionMiddleware) when logging the request.
+    app.add_middleware(AccessLogMiddleware)
 
     app.include_router(health.router, prefix="/api")
     app.include_router(auth_router, prefix="/api")

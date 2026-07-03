@@ -133,6 +133,15 @@ _DEFS: tuple[SettingDef, ...] = (
         options=("debug", "info", "warning", "error"),
         restart_required=True,
     ),
+    SettingDef(
+        "log_format",
+        "str",
+        "Log format",
+        "Service",
+        help="Backend log output: human-readable console lines or JSON lines.",
+        options=("console", "json"),
+        restart_required=True,
+    ),
     # --- Notification channels. One ``group`` per channel so the Settings UI can
     # render a tab each (Mattermost / Telegram / Email). Which alert categories
     # each channel receives is a separate per-channel routing table.

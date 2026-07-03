@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import signal
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,6 +112,59 @@ async def update_setting(
     await session.commit()
     await load_overrides(session)  # resync cache from committed state
     return _item(defn)
+
+
+# Long enough for the 202 response to flush to the client, short enough that the
+# UI's health polling never races a still-alive old process.
+_RESTART_DELAY_SECONDS = 0.5
+
+_PID1_CMDLINE = "/proc/1/cmdline"
+
+
+def _restart_target_pid() -> int:
+    """PID to SIGTERM for a restart.
+
+    Normally our own process: in the combined prod container the start.sh
+    supervisor loop restarts uvicorn while nginx (PID 1) stays up. But when
+    PID 1 is uvicorn itself — the dev --reload supervisor or a bare-uvicorn
+    container — a dead worker is NOT resupervised (verified: the reloader idles
+    forever next to its dead child). There the whole PID-1 process must exit so
+    the container restart policy brings up a fresh one.
+    """
+    try:
+        with open(_PID1_CMDLINE, "rb") as f:
+            if b"uvicorn" in f.read():
+                return 1
+    except OSError:
+        pass
+    return os.getpid()
+
+
+def _schedule_self_terminate() -> None:
+    """SIGTERM the restart target shortly after the current response is sent."""
+    loop = asyncio.get_running_loop()
+    loop.call_later(_RESTART_DELAY_SECONDS, os.kill, _restart_target_pid(), signal.SIGTERM)
+
+
+@router.post("/restart", status_code=status.HTTP_202_ACCEPTED)
+async def restart_backend(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    """Restart the backend process (applies "needs restart" settings)."""
+    await write_audit(
+        session,
+        action="settings.restart",
+        result="ok",
+        user_id=admin.id,
+        target_type="service",
+        target_id="backend",
+        source_ip=client_ip(request),
+    )
+    await session.commit()
+    _schedule_self_terminate()
+    return {"status": "restarting"}
 
 
 @router.delete("/{key}", response_model=SettingItem)
