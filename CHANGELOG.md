@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Users page shows when an account is disabled.** The bootstrap `admin` is
+  retired automatically once another admin exists (`DASH_ADMIN_DISABLED=auto`)
+  or forced off via env — but the Users list rendered it like an active
+  account. Disabled accounts now show a struck-through name and an amber
+  "disabled" badge explaining the bootstrap lifecycle and how to re-enable.
+
 ## [2.6.1] - 2026-07-03
 
 ### Fixed

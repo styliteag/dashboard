@@ -186,8 +186,18 @@ export default function UsersPage() {
             return (
               <tr key={u.id} className="border-t border-slate-800 align-top">
                 <td className="py-2">
-                  {u.username}
+                  <span className={u.disabled ? "text-slate-500 line-through" : undefined}>
+                    {u.username}
+                  </span>
                   {isSelf && <span className="ml-1 text-xs text-slate-500">(you)</span>}
+                  {u.disabled && (
+                    <span
+                      className="ml-2 rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] text-amber-400"
+                      title="Logins rejected. The bootstrap admin retires automatically once another admin exists (DASH_ADMIN_DISABLED=auto) or is forced off with DASH_ADMIN_DISABLED=1; set DASH_ADMIN_DISABLED=0 to re-enable it."
+                    >
+                      disabled
+                    </span>
+                  )}
                 </td>
                 <td className="py-2">
                   <select
