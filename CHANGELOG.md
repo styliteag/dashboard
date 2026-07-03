@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Group-based permission system.** Instances now belong to exactly one
+  group; users are members of any number of groups and only see (and act on)
+  instances of their groups — this applies to the instance list, detail
+  pages, all overviews (VPN, connectivity, firmware), alerts/checks, bulk
+  actions, CSV export, connected-agents list and the GUI proxy. A user
+  without groups sees no instances. On upgrade, migration 028 puts every
+  existing instance and every existing user into group 1 "default", so
+  visibility is unchanged; prune memberships afterwards in the new UI.
+- **SuperAdmins.** A new per-user flag for rights management only: SuperAdmins
+  manage groups (create/rename/delete via the new Groups page and
+  `/api/groups`), user accounts and group memberships — and nothing else; the
+  flag grants no instance access. The first superadmin is seeded from the new
+  `DASH_SUPERADMIN_PASSWORD` env (username `superadmin`, password-only, same
+  auto-retire/break-glass lifecycle as the bootstrap admin, controlled by
+  `DASH_SUPERADMIN_DISABLED=auto|0|1`).
+- **Move instances between groups.** `PUT /api/instances/{id}/group` — 
+  superadmins move any instance anywhere; admins move between groups they are
+  member of (also available in the Edit-instance dialog and the Groups page).
+
+### Changed
+
+- **BREAKING for API clients: `/api/users` now requires a superadmin**, not an
+  admin — user management (accounts, roles, passwords, 2FA reset) moved to
+  the rights-management surface. The Users page in the UI moved accordingly.
+- Creating an instance now targets a group: members of exactly one group get
+  it implied, otherwise `group_id` is required and must be one of the
+  creator's groups (superadmins may target any group).
+- `/api/auth/me` and `/api/users` responses now include `is_superadmin` and
+  the user's groups; instance responses include `group_id`.
+
+### Security
+
+- **GUI-proxy tunnel (`/ws/tunnel/{id}`) now enforces instance visibility.**
+  Previously any authenticated user could tunnel to any firewall's GUI; now
+  membership in the instance's group is required (closes with code 4403).
+- The read-only `orbit_…` API keys and the Checkmk export deliberately stay
+  global (no group binding yet) — per-key group binding is a planned
+  follow-up.
+
 ## [2.6.4] - 2026-07-03
 
 ### Changed

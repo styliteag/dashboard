@@ -59,6 +59,10 @@ services:
       # DASH_WEBAUTHN_RP_ID=dash.example.com and DASH_WEBAUTHN_ORIGIN=https://dash.example.com
       # (exact https origin, no trailing slash). TOTP works regardless.
       DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
+      # Bootstrap superadmin (rights management only) — same lifecycle as the
+      # bootstrap admin. Empty = seed is skipped.
+      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-}
+      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
       DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
       DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
       DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}

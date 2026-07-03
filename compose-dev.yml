@@ -45,6 +45,8 @@ services:
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-admin}
       DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
+      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-superadmin}
+      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
       DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
       # Dev: browser is at localhost:5173 (Vite proxies /api), so rp_id=localhost.
       DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
