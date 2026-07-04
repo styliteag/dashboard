@@ -150,6 +150,7 @@ def _orm_like(**overrides):
         group_id=1,
         ssl_verify=True,
         gui_login_enabled=False,
+        shell_enabled=False,
         transport="push",
         device_type="opnsense",
         agent_mode=True,

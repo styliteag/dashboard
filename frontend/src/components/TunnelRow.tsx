@@ -15,6 +15,8 @@ import { api } from "../lib/api";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
 import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
 import { WebUiIconLink } from "./WebUiIconLink";
+import { ShellIconLink } from "./ShellIconLink";
+import { useShellEnabledMap } from "../lib/instances";
 import { ipsecDirectUrl, ipsecUiPath, isUp, rowKey, type GlobalTunnel } from "../lib/vpn-overview";
 import { fmtBytes, fmtDuration } from "../lib/format";
 
@@ -91,6 +93,7 @@ export default function TunnelRow({
   const up = isUp(t.phase1_status);
   const k = rowKey(t);
   const hasChildren = (t.children?.length ?? 0) > 0;
+  const shellEnabled = useShellEnabledMap().get(t.instance_id) ?? false;
   return (
     <Fragment>
       <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
@@ -106,6 +109,12 @@ export default function TunnelRow({
               path={ipsecUiPath(t.device_type) || undefined}
               directUrl={ipsecDirectUrl(t)}
               title={`Open IPsec status on ${t.instance_name}`}
+            />
+            <ShellIconLink
+              instanceId={t.instance_id}
+              instanceName={t.instance_name}
+              agentMode={t.agent_mode ?? false}
+              shellEnabled={shellEnabled}
             />
           </span>
         </td>

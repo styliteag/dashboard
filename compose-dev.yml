@@ -67,6 +67,8 @@ services:
       # GUI proxy (on in dev — Caddy fronts it per-port; see docker/Caddyfile.dev).
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
+      # Interactive shell (SPIKE §22) — off by default, opt in via .env for dev.
+      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
       TZ: ${TZ:-UTC}
     ports:
       - "${DASH_BACKEND_PORT:-8000}:8000"

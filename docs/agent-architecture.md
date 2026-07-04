@@ -882,3 +882,50 @@ Safety-Net-Job). Kein Langzeit-Log-Speicher — Quelle ist immer nur das letzte 
 **Default ist Errors (≤ 3), nicht Critical** — die komplette Prod-DB enthielt **null**
 sev≤2-Zeilen; die relevanten Funde (sterbende Platte via `CAM status: SCSI Status Error`,
 OpenVPN-TLS-Failures, kaputte Remote-Syslog-Ziele) sind alle sev 3.
+
+## 22. Interaktives Terminal — Root-PTY über die Agent-WS (🧪 SPIKE, 2026-07-04)
+
+**Frage:** Browser-SSH/Terminal zur Firewall — als „reverse shell" im Agent machbar?
+**Antwort:** Ja. ~90 % lag schon (der GUI-Proxy-Tunnel §18). Dieser Spike zeigt Ansatz **B**
+(Agent forkt selbst eine PTY) end-to-end, hinter einem Kill-Switch.
+
+**Warum B (Agent-PTY) und nicht A (Tunnel auf lokalen sshd)?** A bräuchte einen SSH-Client
+irgendwo (Browser kann kein SSH; server-seitiger Client bräuchte Box-Credentials → bricht das
+„Dashboard hält KEINE Firewall-Creds"-Modell §15) und scheitert, wenn sshd aus ist. B forkt
+`pty.fork()` als root, execvp't eine Login-Shell, pumpt den Master-fd — keine Extra-Creds,
+kein sshd nötig.
+
+**Datenweg (nutzt exakt das §18-Multiplexing):**
+```
+xterm.js  ──ws binary──▶  /api/ws/shell/{id}  ──tunnel-Frame──▶  Agent  ──▶ pty.fork()/execvp shell
+   ▲                                                                             │
+   └──────────────── tunnel data-Frame (base64) ◀── PTY-Master-Reader ◀─────────┘
+```
+- Agent: `_TunnelManager` bekommt einen `kind:"shell"`-Zweig. `op:open|data|resize|close`;
+  Master-fd non-blocking via `loop.add_reader`. Fenstergröße per `TIOCSWINSZ`. Reap = SIGKILL +
+  `waitpid`. Stdlib-only, 3.8-safe (`pty`, `termios`, `fcntl` existieren auf FreeBSD).
+- Backend: `/api/ws/shell/{id}` — Klon von `tunnel_websocket`. Volle Session-Validierung +
+  `get_instance`-Gruppenscope. Binary = Tastatur, JSON-Text `{type:resize}` = Control. Jedes
+  Open/Close → `write_audit(shell.open|close)` mit User + Source-IP.
+- Frontend: `ShellDialog.tsx` (xterm.js + FitAddon), Button im `InstanceHeader` (nur bei
+  `agent_mode && shell_enabled && agent_connected`).
+
+**Gates (Root-RCE by design — bewusst mehrschichtig):**
+1. `DASH_SHELL_ENABLED` (Backend, **default false**) — der einzige echte Server-Gate; ist er aus,
+   sendet das Backend nie einen Shell-`open`-Frame und die Route schließt mit 4403.
+2. `ORBIT_AGENT_SHELL=0` (Agent) — Box-Operator-Hard-Off, unabhängig vom Dashboard.
+3. Gruppenscope + Session-Validierung wie beim GUI-Tunnel. **Kein Superadmin-Bypass**
+   (Superadmin hat per Scope-Regel keinen Instance-Zugriff).
+
+**Verifiziert:** Agent-seitiger PTY-Pfad end-to-end gegen einen Fake-WS auf Darwin
+(open → `echo`-Marker zurück → resize → close/reap → Gate-off refused). Gates grün: `agent-test`
+(265), `backend-test` (686), `frontend-build`, Lints.
+
+**Offen vor Merge (SPIKE, NICHT produktionsreif):**
+- Session-Recording/TTY-Log auf Disk für Forensik (heute nur open/close-Audit).
+- Idle-Reaper für Shell-Streams (GUI-Tunnel hat `gui_idle_minutes` — analog nachziehen).
+- Backpressure: `_pty_readable` schedult pro Read einen Send-Task; bei langsamer WS unbounded.
+- Agent-Version-Deploy: Self-Update auf 2.7.8 **und** Re-Sign nötig, sonst kein Shell-Support auf
+  den Boxen (Testboxen laufen noch 2.7.7).
+- xterm.js lazy-loaden (Bundle +295 KB / ~73 KB gzip; besser `import()`-split).
+- Read-only-Modus / Bestätigungs-Gate erwägen.

@@ -127,6 +127,12 @@ class Settings(BaseSettings):
     # Close an instance's forwarder after this many idle minutes (0 = never).
     gui_idle_minutes: int = 15
 
+    # Interactive shell (SPIKE, see docs/agent-architecture.md §22): a browser
+    # terminal to a root PTY on the firewall, tunneled through the agent WS. This
+    # is arbitrary root RCE on the box — OFF by default and the ONLY server-side
+    # gate; when false the backend never opens a shell stream to the agent.
+    shell_enabled: bool = False
+
     # Notifications (all optional). Three channels — Mattermost, Telegram, Email —
     # all editable (and overridable) in the Settings UI; env defaults here for
     # first-boot/ops parity. Per-channel service selection lives in the

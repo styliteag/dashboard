@@ -8,8 +8,9 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Radio, History } from "lucide-react";
 import { api } from "../lib/api";
-import { useAgentModeMap } from "../lib/instances";
+import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
 import { WebUiIconLink } from "../components/WebUiIconLink";
+import { ShellIconLink } from "../components/ShellIconLink";
 import CheckHistoryDialog from "../components/CheckHistoryDialog";
 import KpiTile from "../components/KpiTile";
 import type { GlobalConnMonitor, GlobalConnectivityResponse } from "../lib/types";
@@ -48,6 +49,7 @@ function PingPill({ m }: { m: GlobalConnMonitor }) {
 export default function ConnectivityOverviewPage() {
   const navigate = useNavigate();
   const agentMode = useAgentModeMap();
+  const shellEnabled = useShellEnabledMap();
   const [hist, setHist] = useState<GlobalConnMonitor | null>(null);
   const [filter, setFilter] = useState<"all" | "ok" | "down" | "error">("all");
   const { data } = useQuery({
@@ -144,6 +146,12 @@ export default function ConnectivityOverviewPage() {
                         instanceId={m.instance_id}
                         instanceName={m.instance_name}
                         agentMode={agentMode.get(m.instance_id) ?? false}
+                      />
+                      <ShellIconLink
+                        instanceId={m.instance_id}
+                        instanceName={m.instance_name}
+                        agentMode={agentMode.get(m.instance_id) ?? false}
+                        shellEnabled={shellEnabled.get(m.instance_id) ?? false}
                       />
                     </span>
                   </td>

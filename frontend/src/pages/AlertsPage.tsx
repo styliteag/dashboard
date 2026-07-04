@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Link as LinkIcon, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
-import { useAgentModeMap } from "../lib/instances";
+import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
+import { ShellIconLink } from "../components/ShellIconLink";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import type { ServiceAlert } from "../lib/types";
 
@@ -19,6 +20,7 @@ export default function AlertsPage() {
   const [problemsOnly, setProblemsOnly] = useState(true);
   const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">("exported");
   const agentMode = useAgentModeMap();
+  const shellEnabled = useShellEnabledMap();
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["alerts"],
@@ -181,6 +183,12 @@ export default function AlertsPage() {
                           instanceId={a.instance_id}
                           instanceName={a.instance_name}
                           agentMode={agentMode.get(a.instance_id) ?? false}
+                        />
+                        <ShellIconLink
+                          instanceId={a.instance_id}
+                          instanceName={a.instance_name}
+                          agentMode={agentMode.get(a.instance_id) ?? false}
+                          shellEnabled={shellEnabled.get(a.instance_id) ?? false}
                         />
                       </span>
                     </td>

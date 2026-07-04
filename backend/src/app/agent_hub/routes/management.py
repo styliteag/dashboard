@@ -46,6 +46,7 @@ class AgentStatusResponse(BaseModel):
     update_available: bool = False
     gui_proxy_enabled: bool = False  # whether the GUI proxy is configured (global)
     gui_login_enabled: bool = False  # per-instance: replay a WebUI login on "Open GUI"
+    shell_enabled: bool = False  # global: browser terminal to a root PTY (SPIKE, §22)
     platform: str | None = None  # "opnsense" / "pfsense", reported by the connected agent
     # Last self-update attempt the agent refused (e.g. signature/sha256), so the GUI
     # can show why it didn't update. None when the last attempt took (or none yet).
@@ -160,6 +161,7 @@ async def agent_status(
         update_available=update_available,
         gui_proxy_enabled=get_settings().gui_proxy_enabled,
         gui_login_enabled=inst.gui_login_enabled,
+        shell_enabled=get_settings().shell_enabled,
         platform=connected.platform if connected else None,
         last_update_error=connected.last_update_error if connected else None,
         last_update_version=connected.last_update_version if connected else None,

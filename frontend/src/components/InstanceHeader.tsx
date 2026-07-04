@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, ExternalLink, Download, Pencil, Power } from "lucide-react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  ExternalLink,
+  Download,
+  Pencil,
+  Power,
+  Terminal,
+} from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { deviceTypeLabel, type Instance, type SystemStatus } from "../lib/types";
 
 interface AgentStatus {
   agent_connected: boolean;
   gui_proxy_enabled?: boolean;
+  shell_enabled?: boolean;
   platform?: string;
 }
 
@@ -59,6 +68,10 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const platform = deviceTypeLabel(agent?.platform?.trim());
   const version = status?.version?.trim();
   const showGui = agentMode && agent?.gui_proxy_enabled && agent?.agent_connected;
+  // Two-level gate: server-wide feature (agent.shell_enabled) AND per-box opt-in
+  // (instance.shell_enabled), and the agent must be connected.
+  const showShell =
+    agentMode && agent?.shell_enabled && instance?.shell_enabled && agent?.agent_connected;
 
   const btn =
     "flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50";
@@ -115,6 +128,15 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
           >
             <ExternalLink className="h-3.5 w-3.5" />
             {guiMut.isPending ? "Opening…" : "Open GUI"}
+          </button>
+        )}
+        {showShell && (
+          <button
+            onClick={() => window.open(`/instances/${id}/terminal`, "_blank", "noopener")}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-700/60 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-900/20"
+            title="Open a root shell in a new tab (open several for several shells)"
+          >
+            <Terminal className="h-3.5 w-3.5" /> Terminal
           </button>
         )}
         <button onClick={onRefresh} className={btn}>

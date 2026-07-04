@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Experimental (SPIKE, off by default): browser terminal to a firewall.** A
+  root PTY on the box, streamed through the agent WebSocket to an xterm.js
+  terminal (agent 2.7.11, see agent-architecture.md §22). Opens in its own browser
+  tab (open several for several independent shells). The agent execs root's own
+  login shell exactly as sshd would, so the box shows its **native console menu**
+  (pfSense `rc.initial`, OPNsense `opnsense-shell`) rather than a bare prompt. The
+  socket has a server-side keepalive so idle sessions survive proxy idle timeouts.
+  This is arbitrary root RCE, so it is gated: `DASH_SHELL_ENABLED` (backend,
+  default false) is the only server-side gate; `ORBIT_AGENT_SHELL=0` hard-disables
+  on the box. Every session open/close is audited with the acting user and source
+  IP. Gated per instance too (Edit instance → "Terminal (root shell)"); migration
+  035 turns it on for boxes that already have WebUI Auto-Login enabled. A terminal
+  icon sits next to the WebGUI icon in the instance list and the VPN, Connectivity,
+  Alerts and Firmware overviews. Not production-ready — see the "offen vor Merge"
+  list in §22.
+
 ### Changed
 
 - KPI tiles (Total/Online/Offline etc.) on the Instances, VPN, Connectivity and

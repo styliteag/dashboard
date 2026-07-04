@@ -43,6 +43,7 @@ _SAFE_AUDIT_FIELDS = {
     "base_url",
     "ssl_verify",
     "gui_login_enabled",
+    "shell_enabled",
     "poll_interval_seconds",
     "push_interval_seconds",
     "ssh_enabled",

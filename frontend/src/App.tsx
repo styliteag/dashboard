@@ -15,6 +15,7 @@ import UsersPage from "./pages/UsersPage";
 import GroupsPage from "./pages/GroupsPage";
 import AlertsPage from "./pages/AlertsPage";
 import LogEventsPage from "./pages/LogEventsPage";
+import TerminalPage from "./pages/TerminalPage";
 
 export default function App() {
   return (
@@ -22,6 +23,9 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
+        {/* Standalone (no Layout chrome): opens full-screen in its own tab. */}
+        <Route path="instances/:id/terminal" element={<TerminalPage />} />
+
         <Route element={<Layout />}>
           <Route index element={<InstancesPage />} />
           <Route path="instances/:id" element={<InstanceDetailPage />} />

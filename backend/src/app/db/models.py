@@ -218,6 +218,12 @@ class Instance(Base):
     gui_login_enabled: Mapped[bool] = mapped_column(
         default=False, nullable=False, server_default="false"
     )
+    # Opt-in per box: expose the browser terminal (root PTY over the agent WS) for
+    # this instance. Gated on top of the global DASH_SHELL_ENABLED — both must be
+    # on. Off by default; this is arbitrary root RCE (see §22).
+    shell_enabled: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default="false"
+    )
     # Securepoint SSH enrichment (opt-in): when enabled, IPsec status is fetched via
     # `swanctl --raw` over SSH (rich SPIs/cookies/bytes the spcgi API lacks). The
     # admin supplies a per-instance ed25519 private key (Fernet-encrypted at rest,

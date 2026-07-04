@@ -126,6 +126,7 @@ class InstanceUpdate(BaseModel):
     ca_bundle: str | None = None
     ssl_verify: bool | None = None
     gui_login_enabled: bool | None = None
+    shell_enabled: bool | None = None
     # Send null to clear an override back to the global default; a number sets it;
     # omit to leave unchanged (the service distinguishes these via model_fields_set).
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
@@ -171,6 +172,7 @@ class InstanceResponse(BaseModel):
     base_url: str
     ssl_verify: bool
     gui_login_enabled: bool
+    shell_enabled: bool
     transport: str
     device_type: str
     agent_mode: bool

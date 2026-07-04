@@ -11,6 +11,7 @@ export interface Instance {
   base_url: string;
   ssl_verify: boolean;
   gui_login_enabled: boolean;
+  shell_enabled: boolean;
   agent_mode: boolean;
   device_type: string;
   transport: string;

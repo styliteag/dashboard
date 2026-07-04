@@ -20,3 +20,22 @@ export function useAgentModeMap(): Map<number, boolean> {
     return map;
   }, [data]);
 }
+
+/**
+ * id → per-instance shell (terminal) opt-in, from the same shared ["instances"]
+ * query. The global list views use it to decide whether a row shows the terminal
+ * icon next to the WebGUI icon. The server-wide DASH_SHELL_ENABLED gate is enforced
+ * on the WS itself; a box with the per-instance flag off never offers the icon.
+ */
+export function useShellEnabledMap(): Map<number, boolean> {
+  const { data } = useQuery({
+    queryKey: ["instances"],
+    queryFn: () => api.get<Instance[]>("/api/instances"),
+    staleTime: 60_000,
+  });
+  return useMemo(() => {
+    const map = new Map<number, boolean>();
+    for (const i of data ?? []) map.set(i.id, i.shell_enabled);
+    return map;
+  }, [data]);
+}

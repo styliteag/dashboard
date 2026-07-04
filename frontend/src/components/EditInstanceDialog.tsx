@@ -39,6 +39,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     api_secret: "",
     ssl_verify: instance.ssl_verify,
     gui_login_enabled: instance.gui_login_enabled,
+    shell_enabled: instance.shell_enabled,
     ssh_enabled: instance.ssh_enabled,
     ssh_port: String(instance.ssh_port),
     ssh_user: instance.ssh_user,
@@ -97,6 +98,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       };
       if (agentMode) {
         body.gui_login_enabled = form.gui_login_enabled;
+        body.shell_enabled = form.shell_enabled;
       } else {
         body.ssl_verify = form.ssl_verify;
         // Only send secrets if the user typed something new (US-2.2).
@@ -238,6 +240,18 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             />
             Auto-login — replay the firewall&apos;s WebUI login so &quot;Open GUI&quot; lands signed
             in (requires GUI proxy)
+          </label>
+        )}
+        {agentMode && (
+          <label className="flex items-center gap-2 text-sm text-amber-300/80">
+            <input
+              type="checkbox"
+              checked={form.shell_enabled}
+              onChange={(e) => setForm((f) => ({ ...f, shell_enabled: e.target.checked }))}
+              className="rounded border-slate-600"
+            />
+            Terminal (root shell) — allow a browser terminal to a root shell on this box (requires
+            the server-wide shell feature)
           </label>
         )}
         {isSecurepoint && (

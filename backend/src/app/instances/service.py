@@ -169,6 +169,8 @@ async def update_instance(
         inst.ssl_verify = payload.ssl_verify
     if payload.gui_login_enabled is not None:
         inst.gui_login_enabled = payload.gui_login_enabled
+    if payload.shell_enabled is not None:
+        inst.shell_enabled = payload.shell_enabled
     # Interval overrides: presence in model_fields_set (not None-ness) drives intent
     # — an explicit null clears the override back to the global default.
     fields_set = payload.model_fields_set

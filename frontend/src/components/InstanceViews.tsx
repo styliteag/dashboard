@@ -5,6 +5,7 @@ import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/type
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
 import { WebUiIconLink } from "./WebUiIconLink";
+import { ShellIconLink } from "./ShellIconLink";
 
 export interface InstanceViewProps {
   instance: Instance;
@@ -213,6 +214,13 @@ export function InstanceCard({
             agentMode={inst.agent_mode}
             iconClassName="h-3 w-3"
           />
+          <ShellIconLink
+            instanceId={inst.id}
+            instanceName={inst.name}
+            agentMode={inst.agent_mode}
+            shellEnabled={inst.shell_enabled}
+            iconClassName="h-3 w-3"
+          />
         </div>
         <Tags tags={inst.tags} />
       </div>
@@ -287,6 +295,13 @@ export function InstanceRow({
             instanceId={inst.id}
             instanceName={inst.name}
             agentMode={inst.agent_mode}
+            iconClassName="h-3 w-3"
+          />
+          <ShellIconLink
+            instanceId={inst.id}
+            instanceName={inst.name}
+            agentMode={inst.agent_mode}
+            shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
         </span>

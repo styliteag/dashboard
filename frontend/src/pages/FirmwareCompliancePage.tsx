@@ -11,7 +11,8 @@ import {
   Lock,
 } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
-import { useAgentModeMap } from "../lib/instances";
+import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
+import { ShellIconLink } from "../components/ShellIconLink";
 import { useAuth, canWrite } from "../lib/use-auth";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import { useSort, type Accessors } from "../lib/use-sort";
@@ -71,6 +72,7 @@ export default function FirmwareCompliancePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "outdated" | "current" | "unknown">("all");
   const agentMode = useAgentModeMap();
+  const shellEnabled = useShellEnabledMap();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canWr = canWrite(user);
@@ -360,6 +362,12 @@ export default function FirmwareCompliancePage() {
                         instanceId={e.instance_id}
                         instanceName={e.instance_name}
                         agentMode={agentMode.get(e.instance_id) ?? false}
+                      />
+                      <ShellIconLink
+                        instanceId={e.instance_id}
+                        instanceName={e.instance_name}
+                        agentMode={agentMode.get(e.instance_id) ?? false}
+                        shellEnabled={shellEnabled.get(e.instance_id) ?? false}
                       />
                       {e.firmware_locked && (
                         <Lock

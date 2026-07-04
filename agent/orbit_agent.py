@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import fcntl
 import glob
 import hashlib
 import http.client
@@ -20,6 +21,8 @@ import json
 import logging
 import os
 import platform
+import pty
+import pwd
 import random
 import re
 import signal
@@ -27,6 +30,7 @@ import ssl
 import struct
 import subprocess
 import tempfile
+import termios
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -45,7 +49,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.7"
+__version__ = "2.7.11"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4044,8 +4048,22 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
 # in JSON `tunnel` frames (the stdlib WS client is text-only).
 # =============================================================================
 
+# Interactive shell (SPIKE — see docs/agent-architecture.md §22). A dashboard
+# `tunnel` frame with kind="shell" spawns a root PTY instead of a TCP connection
+# to the GUI port. Root RCE by design, so it is gated: the PRIMARY gate is the
+# dashboard (DASH_SHELL_ENABLED, off by default — the backend never sends the open
+# frame otherwise). This env is a box-operator hard-off, honoured regardless of
+# what the dashboard sends. Set ORBIT_AGENT_SHELL=0 to refuse shells locally.
+_SHELL_OK = os.environ.get("ORBIT_AGENT_SHELL", "1") != "0"
+
+# Fallback PATH for the login shell (a proper login sources the box profile, which
+# normally sets its own; this just guarantees the essentials pre-profile).
+_SHELL_PATH = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
+
+
 class _TunnelManager:
-    """Per-connection multiplexed TCP tunnels to the local GUI port."""
+    """Per-connection multiplexed TCP tunnels to the local GUI port (and, when
+    enabled, interactive root PTY streams — see the shell block below)."""
 
     def __init__(self, ws: WebSocket, host: str, port: int):
         self._ws = ws
@@ -4053,6 +4071,8 @@ class _TunnelManager:
         self._port = port
         self._writers: dict[str, asyncio.StreamWriter] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        # Interactive shell streams: stream_id -> {"pid": int, "fd": master_fd}.
+        self._shells: dict[str, dict] = {}
 
     async def handle(self, msg: dict) -> None:
         op = msg.get("op")
@@ -4060,15 +4080,28 @@ class _TunnelManager:
         if not stream:
             return
         if op == "open":
+            if msg.get("kind") == "shell":
+                await self._open_shell(
+                    stream, int(msg.get("rows") or 0), int(msg.get("cols") or 0)
+                )
+                return
             # Pin the destination to the configured local GUI target; ignore any
             # server-supplied host/port so a malicious dashboard cannot turn the
             # agent (root) into a TCP pivot into the box's networks. Mirrors how
             # _relay_http pins its target to cfg.local_api_url.
             await self._open(stream)
         elif op == "data":
-            await self._data(stream, msg.get("data", ""))
+            if stream in self._shells:
+                self._shell_write(stream, msg.get("data", ""))
+            else:
+                await self._data(stream, msg.get("data", ""))
+        elif op == "resize":
+            self._shell_resize(stream, int(msg.get("rows") or 0), int(msg.get("cols") or 0))
         elif op == "close":
-            self._close(stream)
+            if stream in self._shells:
+                self._reap_shell(stream)
+            else:
+                self._close(stream)
 
     async def _open(self, stream: str) -> None:
         host, port = self._host, self._port
@@ -4121,12 +4154,128 @@ class _TunnelManager:
         with contextlib.suppress(WSError, OSError):
             await self._ws.send(json.dumps(frame))
 
+    # --- interactive shell (PTY) ---------------------------------------------
+
+    async def _open_shell(self, stream: str, rows: int, cols: int) -> None:
+        """Fork root's login shell on a fresh PTY and pump its output to the dashboard.
+
+        We exec exactly what sshd would: root's own login shell (from the passwd
+        db) as a *login* shell, chdir'd to its home. On pfSense that is /bin/sh,
+        whose /root/.profile launches the console menu (/etc/rc.initial); on
+        OPNsense the shell IS the menu (/usr/local/sbin/opnsense-shell). So the box
+        presents its familiar console screen instead of a bare prompt.
+
+        pty.fork() gives the child a controlling terminal (login_tty), so the menu,
+        job control and password prompts behave like a real ssh session. The parent
+        keeps the master fd non-blocking and feeds it to the event loop.
+        """
+        if not _SHELL_OK:
+            log.warning("shell: refused (ORBIT_AGENT_SHELL=0)")
+            await self._send(stream, "close")
+            return
+        try:
+            pid, master_fd = pty.fork()
+        except OSError as exc:
+            log.warning("shell %s: fork failed: %s", stream, exc)
+            await self._send(stream, "close")
+            return
+        if pid == 0:
+            # Child: become root's login shell. Never returns; _exit on any failure
+            # so a broken exec can't fall back into agent code inside the fork.
+            try:
+                pw = pwd.getpwuid(0)
+                shell = pw.pw_shell or "/bin/sh"
+                home = pw.pw_dir or "/root"
+                env = os.environ.copy()
+                env["TERM"] = "xterm-256color"
+                env["HOME"] = home
+                env["USER"] = pw.pw_name or "root"
+                env["LOGNAME"] = pw.pw_name or "root"
+                env["SHELL"] = shell
+                env.setdefault("PATH", _SHELL_PATH)
+                # Mark this as an interactive remote-tty login (which it is): the
+                # pfSense /root/.profile only launches the console menu when SSH_TTY
+                # is set OR TERM is in a short whitelist that excludes
+                # xterm-256color. sshd sets SSH_TTY to the slave tty — do the same.
+                with contextlib.suppress(OSError):
+                    env["SSH_TTY"] = os.ttyname(0)
+                with contextlib.suppress(OSError):
+                    os.chdir(home)
+                # argv0 with a leading "-" marks a LOGIN shell, so it sources the
+                # box profile — that is what raises the native console menu, exactly
+                # as sshd does. Fall back to /bin/sh if the passwd shell is broken.
+                argv0 = "-" + os.path.basename(shell)
+                try:
+                    os.execve(shell, [argv0], env)
+                except OSError:
+                    os.execve("/bin/sh", ["-sh"], env)
+            except Exception:  # noqa: BLE001 — child must die, not raise
+                os._exit(127)
+        # Parent.
+        os.set_blocking(master_fd, False)
+        self._shells[stream] = {"pid": pid, "fd": master_fd}
+        if rows and cols:
+            self._set_winsize(master_fd, rows, cols)
+        log.info("shell %s: pty opened (pid %d)", stream, pid)
+        asyncio.get_event_loop().add_reader(master_fd, self._pty_readable, stream, master_fd)
+
+    def _pty_readable(self, stream: str, fd: int) -> None:
+        """Event-loop reader callback: drain the PTY master, forward as data frames."""
+        try:
+            data = os.read(fd, 65536)
+        except (BlockingIOError, InterruptedError):
+            return
+        except OSError:
+            data = b""
+        if not data:  # EOF — the shell exited
+            self._reap_shell(stream)
+            return
+        asyncio.create_task(self._send(stream, "data", base64.b64encode(data).decode()))
+
+    def _shell_write(self, stream: str, data_b64: str) -> None:
+        sh = self._shells.get(stream)
+        if sh is None:
+            return
+        try:
+            os.write(sh["fd"], base64.b64decode(data_b64))
+        except (OSError, ValueError):
+            self._reap_shell(stream)
+
+    def _shell_resize(self, stream: str, rows: int, cols: int) -> None:
+        sh = self._shells.get(stream)
+        if sh is None or not rows or not cols:
+            return
+        self._set_winsize(sh["fd"], rows, cols)
+
+    @staticmethod
+    def _set_winsize(fd: int, rows: int, cols: int) -> None:
+        with contextlib.suppress(OSError):
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+    def _reap_shell(self, stream: str, notify: bool = True) -> None:
+        sh = self._shells.pop(stream, None)
+        if sh is None:
+            return
+        with contextlib.suppress(Exception):
+            asyncio.get_event_loop().remove_reader(sh["fd"])
+        with contextlib.suppress(OSError):
+            os.close(sh["fd"])
+        with contextlib.suppress(OSError):
+            os.kill(sh["pid"], signal.SIGKILL)
+        with contextlib.suppress(OSError):
+            os.waitpid(sh["pid"], 0)
+        log.info("shell %s: closed (pid %d)", stream, sh["pid"])
+        if notify:
+            asyncio.create_task(self._send(stream, "close"))
+
     def shutdown(self) -> None:
         for task in list(self._tasks.values()):
             task.cancel()
         for writer in list(self._writers.values()):
             with contextlib.suppress(OSError):
                 writer.close()
+        for stream in list(self._shells):
+            self._reap_shell(stream, notify=False)
         self._tasks.clear()
         self._writers.clear()
 
