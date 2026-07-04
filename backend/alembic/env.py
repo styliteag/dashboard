@@ -56,6 +56,12 @@ def run_migrations_online() -> None:
             ).scalar()
             if not locked:
                 raise RuntimeError("another migration run held the lock for >600s")
+            # The lock query autobegins a SQLAlchemy transaction. Alembic sees the
+            # open transaction at configure() time, treats it as caller-managed and
+            # never commits — connection close then ROLLS BACK the version stamp
+            # (and any DML), so the head migration re-runs on every boot. End it
+            # here; GET_LOCK is not transactional, the lock survives the commit.
+            connection.commit()
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
