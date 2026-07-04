@@ -6,9 +6,10 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
 
 ## TL;DR
 
-- **What:** one dashboard for a fleet of OPNsense, pfSense, and **Securepoint UTM**
+- **What:** one dashboard for a fleet of **OPNsense**, **pfSense**, and **Securepoint UTM**
   firewalls — live status, IPsec/VPN, gateways, firmware compliance, service checks,
-  audit log, notifications.
+  logs (snapshots, critical-event rollup, AI analysis), audit log, notifications,
+  group-based permissions.
 - **How boxes connect:** `direct` (dashboard → box API) or `push` (box → outbound
   `wss://`, a stdlib-only FreeBSD agent). Push works behind NAT with no inbound access
   and no stored API key; the agent also tunnels the box's REST API (**relay**) and its
@@ -36,9 +37,23 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
   for **Checkmk/OMD** (one piggyback host per firewall, no agent on the box).
 - **Bulk actions + CSV export** — run `firmware_check` / `ipsec_restart` across many
   instances in parallel and export the results.
+- **Logs** — the push agent collects the box's important logs hourly (system, filter,
+  IPsec, OpenVPN, resolver, gateways, … capped at 250 KB each); the instance page shows
+  the raw snapshots, and an optional **AI log analysis** sends an *anonymized* version
+  (public IPs, hostnames, secrets scrubbed — with preview) to a configured LLM provider.
+  A global **Logs** page rolls the whole fleet up to critical events: lines are rated by
+  syslog severity (plus curated patterns for PRI-less logs), noise-filtered, and
+  aggregated into one row per message pattern with a count.
+- **Groups & permissions** — every instance belongs to exactly one group; users only
+  see (and act on) instances of their groups, across every view, bulk action, export
+  and the GUI proxy. **SuperAdmins** manage groups, users and memberships — rights
+  management only, no instance access implied.
 - **Audit log** — who did what, when.
-- **Notifications** — webhook, Telegram, and ntfy on state changes (all optional).
-- **Read-only API keys** — service-account auth for Checkmk and other integrations.
+- **Notifications** — Mattermost (webhook), Telegram and email on state changes
+  (all optional); each group can override channel targets for its instances, with
+  fallback to the global config.
+- **Read-only API keys** — service-account auth for Checkmk and other integrations;
+  keys can be bound to instance groups (e.g. one Checkmk key per customer).
 
 ## How firewalls connect
 
@@ -86,7 +101,7 @@ Prerequisites: Docker, Docker Compose, and (optionally) [`just`](https://github.
 # 1. Configure secrets
 cp .env.example .env
 just gen-key            # paste output into DASH_MASTER_KEY in .env
-# also set DB_PASSWORD, DB_ROOT_PASSWORD, and DASH_ADMIN_PASSWORD
+# also set DB_PASSWORD, DB_ROOT_PASSWORD, DASH_ADMIN_PASSWORD and DASH_SUPERADMIN_PASSWORD
 
 # 2. Start the stack (MariaDB + combined app image)
 just up                 # or: docker compose up -d --build

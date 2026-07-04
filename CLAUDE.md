@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-STYLiTE Orbit — multi-firewall dashboard (OPNsense + pfSense). Three deployable apps in one repo:
+STYLiTE Orbit — multi-firewall dashboard (OPNsense, pfSense, Securepoint UTM). Three deployable apps in one repo:
 
 - `backend/` — FastAPI + async SQLAlchemy on **MariaDB** (Python 3.12)
 - `frontend/` — React 18 + Vite + TypeScript (npm)
@@ -54,6 +54,7 @@ When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates
 - **Settings prefix is `DASH_`** (pydantic-settings). All env vars and config keys use it; don't introduce another prefix.
 - **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
 - **`agent/` runs on FreeBSD** (OPNsense/pfSense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
+- **Every user-facing instance query is group-scoped.** Apply `scope_clause(principal)` (list/aggregate queries) or `can_access(principal, inst)` (by-id fetches) from `backend/src/app/auth/scope.py` — new endpoints that return instance data without one of these leak across groups. Two invariants, never "simplify" them: a **User** with zero group memberships sees NOTHING, an **ApiKey** with zero bindings is GLOBAL (keys predate groups); and **superadmin grants rights management only, no instance access** — there is no superadmin bypass in scoping.
 
 ## Frontend
 
@@ -65,9 +66,13 @@ TypeScript **strict mode** is enabled (`noUnusedLocals`, `noUnusedParameters` on
 
 The existing `src/` was never run through Prettier — first `just frontend-fmt` will rewrite ~20 files. Don't bundle that mass-format with an unrelated change.
 
+## Logs pipeline (agent → UI)
+
+The agent pushes the box's important logs **hourly** (`collect_logfiles`, 250 KB per log / 1 MB total). `app/logs/store.py` keeps the newest **3 snapshots** per `(instance, name)` in `logfiles` and, on every ingest, re-extracts critical lines into `log_events` (one row per normalized message pattern, per-`(instance, log)` replace — idempotent, no history beyond the snapshot window). The extraction rules live in `app/logs/events.py` and are **calibrated against real prod data**: syslog `<PRI>` severity where present (OPNsense + most pfSense), curated patterns for PRI-less BSD lines, and a hardcoded noise list (dpinger `sendto error`, filterdns `failed to resolve` — steady-state on half the fleet). Real fleets have **zero sev≤2 lines** — don't make crit-only the default anywhere. Raw snapshot content is admin-only viewable; the LLM analysis path must only ever send the **anonymized** text (`app/llm/anonymize`).
+
 ## Required env (`.env` at repo root)
 
-`DASH_MASTER_KEY` (generate with `just gen-key`), `DASH_ADMIN_PASSWORD`, the MariaDB vars `DB_PASSWORD` / `DB_ROOT_PASSWORD` (and optionally `DB_USER` / `DB_NAME`), and `DASH_ENV`. Note the DB vars are **un-prefixed** — they're consumed by the MariaDB container and composed into `DASH_DATABASE_URL` in compose; only the app's own settings use the `DASH_` prefix. See `.env.example` for the full list. Both `compose.yml` and `compose-dev.yml` read this file via Docker Compose's default `.env` loader.
+`DASH_MASTER_KEY` (generate with `just gen-key`), `DASH_ADMIN_PASSWORD`, `DASH_SUPERADMIN_PASSWORD` (seeds the rights-management account), the MariaDB vars `DB_PASSWORD` / `DB_ROOT_PASSWORD` (and optionally `DB_USER` / `DB_NAME`), and `DASH_ENV`. Note the DB vars are **un-prefixed** — they're consumed by the MariaDB container and composed into `DASH_DATABASE_URL` in compose; only the app's own settings use the `DASH_` prefix. See `.env.example` for the full list. Both `compose.yml` and `compose-dev.yml` read this file via Docker Compose's default `.env` loader.
 
 ## CI
 

@@ -307,7 +307,7 @@ Erwartung: eine der Gateway-Methoden liefert strukturierten Status (Name/Adresse
 `pfSense-upgrade -c` einen Text/Code, aus dem „Update verfügbar" ableitbar ist. Damit werden
 `_collect_gateways_pfsense()` und der pfSense-Zweig in `collect_firmware()` fertiggestellt.
 
-## 13. Checkmk/OMD-Integration + Zustandsbewertung (geplant, nicht jetzt bauen)
+## 13. Checkmk/OMD-Integration + Zustandsbewertung (✅ gebaut — Details in `CHECKMK.md`)
 
 **Ziel** (User, 2026-06-24): Das Dashboard wird in ein bestehendes **check_mk/OMD**-Setup
 eingebunden. Checkmk fragt uns über ein **Plugin (special agent)** ab und bekommt pro Firewall
@@ -742,6 +742,9 @@ Slug → 409-Konflikt; abgeleiteter → auto-suffix `-2/-3`).
 - **Config:** `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.<domain>` (`{slug}` bevorzugt, `{id}`
   back-compat), `DASH_GUI_CADDY_ADMIN_URL` (compose default `http://gui-proxy:2019/load`).
   Tests: slug-helper (10), gui_caddy-builder (3), slug-service/schema (9). Backend grün.
+- **Nachtrag 2.7.0 (Gruppen-RBAC):** der Tunnel-Endpoint (`/ws/tunnel/{id}`) prüft jetzt
+  Instanz-Sichtbarkeit — User ohne Gruppenmitgliedschaft der Instanz bekommen Close-Code **4403**.
+  Vorher konnte jeder authentifizierte User zu jeder Firewall-GUI tunneln.
 
 ## 19. IPsec Phase-2 Ping-Monitore (Doku des Ist-Zustands, 2026-06-27)
 
@@ -836,3 +839,46 @@ Regel hinge der Agent unbegrenzt an einem toten Socket (historischer Bug, gefixt
 Staleness-Schwelle, ab der das Dashboard eine Box als *offline* markiert (`agent_last_seen` zu alt) —
 **nicht** der Agent-Reconnect-Cap (zufällig auch 120). Backend-Restart → Agents reconnecten dank
 Dead-Peer-Fix binnen ~60s (§14).
+
+## 21. Log-Snapshots & kritische Log-Events (✅ 2.7.1, 2026-07-04)
+
+**Agent-Seite** (`collect_logfiles`, Teil des Metrik-Push): sammelt **höchstens stündlich**
+(`_LOG_INTERVAL=3600`) die wichtigen Logs der Box — system, filter, ipsec, openvpn, resolver,
+gateways, dhcp — plus billige Ist-Zustands-Extras (pf-Ruleset, ifconfig, listeners, neighbors,
+mbufs, dmesg). Caps: **250 KB pro Log** (tail), **1 MB gesamt** pro Snapshot. Kein neues
+Wire-Format: hängt als `logfiles`-Liste am normalen Push.
+
+**Speicherung** (`app/logs/store.py`): Tabelle `logfiles`, `content` als MEDIUMTEXT; pro
+`(instance, name)` bleiben die **neuesten 3** Snapshots (Prune beim Schreiben + täglicher
+Safety-Net-Job). Kein Langzeit-Log-Speicher — Quelle ist immer nur das letzte 250-KB-Fenster.
+
+**Drei Konsumenten:**
+1. **Roh-Viewer** — Instanz-Detailseite, Log-Tab („Log Snapshots"): Metadaten-Liste +
+   `GET /api/instances/{id}/logs/{logfile_id}/content` (admin-only, instance-scoped).
+2. **KI-Analyse** (unverändert seit Einführung): der Browser bekommt **nur** den anonymisierten
+   Text (`app/llm/anonymize`, server-seitig) und reicht ihn an `POST /api/llm/analyze` weiter.
+3. **Kritische Events** (neu, 2.7.1): beim Ingest extrahiert `app/logs/events.py` pro Snapshot
+   die kritischen Zeilen in die Tabelle `log_events` (Migration 031; einmaliger Backfill-Job
+   beim Start, falls leer).
+
+**Extraktions-Design** (an einer Prod-DB-Kopie mit 68 Instanzen kalibriert):
+- Zeilen **mit** Syslog-`<PRI>` (RFC5424 oder RFC3164): Severity = `PRI % 8`, gespeichert ab
+  ≤ 4 (warning). OPNsense loggt durchgehend mit PRI, Prod-pfSense überwiegend auch — die
+  2.8er-Testbox dagegen ohne. Beide Parser sind nötig.
+- **PRI-lose BSD-Zeilen:** kuratierte Pattern-Liste mit fester Severity (panic/out of swap → 2,
+  auth-failures/error → 3, failed/timeout/link-down → 4). Unmatched → verworfen.
+- **Noise-Filter fest im Code** (bewusst nicht konfigurierbar, v1): `dpinger … sendto error`
+  (lief auf 37/68 Prod-Boxen dauerhaft, 49k+ Zeilen) und `filterdns … failed to resolve`
+  (47/68 Boxen). Beides Dauerzustand, kein Signal.
+- **Aggregation:** Message normalisiert (IPs/MACs/Zahlen/Quotes → Platzhalter) → **eine Zeile
+  pro Muster** mit Count + letzter Rohzeile als Sample. Prod-Extrem: 3920 identische
+  `syslogd sendto: Host is down`-Zeilen einer Box → 1 Event.
+- **Replace-Semantik:** pro Push wird `(instance, log_name)` komplett neu berechnet
+  (DELETE + INSERT) — idempotent, kein Dedup-Problem durch überlappende Snapshot-Fenster,
+  selbstheilend. Bewusster Trade-off: keine Historie über das Fenster hinaus.
+
+**API/UI:** `GET /api/logs/events?max_severity=N` (admin-only, gruppenscoped via
+`scope_clause`); Nav-Seite „Logs" mit Critical/Errors/Warnings-Schalter und Instanz-Filter.
+**Default ist Errors (≤ 3), nicht Critical** — die komplette Prod-DB enthielt **null**
+sev≤2-Zeilen; die relevanten Funde (sterbende Platte via `CAM status: SCSI Status Error`,
+OpenVPN-TLS-Failures, kaputte Remote-Syslog-Ziele) sind alle sev 3.

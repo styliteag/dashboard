@@ -112,6 +112,11 @@ page (*Reveal*) and revocable there.
 The key is **read-only** (`orbit_…` Bearer, rejected on any non-GET request), so
 it's safe to drop into the Checkmk datasource config.
 
+Since 2.7.0 a key can be **bound to instance groups** at creation (group picker in
+the same dialog): a bound key only exports its groups' instances — one Checkmk key
+per customer/group. Keys without bindings stay **global** (existing keys are
+unaffected). The binding is fixed at creation; re-mint the key to change it.
+
 On the same page you also choose **what gets exported**: nothing is on by default
 (opt-in) — turn on a whole category globally, then add or mute a single service on
 one instance (export-only; the dashboard keeps showing all checks).
