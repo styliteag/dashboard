@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- KPI tiles (Total/Online/Offline etc.) on the Instances, VPN, Connectivity and
+  Firmware compliance overviews are now clickable and filter the list below;
+  clicking an active tile (or Total) clears the filter.
+- VPN overview now opens on the **Disconnected** filter by default — problems
+  first; one click on "Tunnels total" or "All" shows everything.
+
 ## [2.7.7] - 2026-07-04
 
 ### Changed

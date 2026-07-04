@@ -11,6 +11,7 @@ import { api } from "../lib/api";
 import { useAgentModeMap } from "../lib/instances";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import CheckHistoryDialog from "../components/CheckHistoryDialog";
+import KpiTile from "../components/KpiTile";
 import type { GlobalConnMonitor, GlobalConnectivityResponse } from "../lib/types";
 
 function PingPill({ m }: { m: GlobalConnMonitor }) {
@@ -44,19 +45,11 @@ function PingPill({ m }: { m: GlobalConnMonitor }) {
   return <span className="text-xs text-slate-600">no data yet</span>;
 }
 
-function Kpi({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold ${color}`}>{value}</div>
-    </div>
-  );
-}
-
 export default function ConnectivityOverviewPage() {
   const navigate = useNavigate();
   const agentMode = useAgentModeMap();
   const [hist, setHist] = useState<GlobalConnMonitor | null>(null);
+  const [filter, setFilter] = useState<"all" | "ok" | "down" | "error">("all");
   const { data } = useQuery({
     queryKey: ["connectivity-overview"],
     queryFn: () => api.get<GlobalConnectivityResponse>("/api/connectivity/overview"),
@@ -69,7 +62,15 @@ export default function ConnectivityOverviewPage() {
     navigate(`/instances/${id}`);
   };
 
-  const monitors = data?.monitors ?? [];
+  // Same bucketing as the backend's KPI counts (ok / fail / error on ping_state)
+  // so a clicked number shows exactly the rows it counted.
+  const monitors = (data?.monitors ?? []).filter(
+    (m) =>
+      filter === "all" ||
+      (filter === "ok" && m.ping_state === "ok") ||
+      (filter === "down" && m.ping_state === "fail") ||
+      (filter === "error" && m.ping_state === "error"),
+  );
 
   return (
     <div>
@@ -79,16 +80,41 @@ export default function ConnectivityOverviewPage() {
 
       {data && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Total" value={data.total} color="text-slate-100" />
-          <Kpi label="OK" value={data.ok} color="text-emerald-400" />
-          <Kpi label="Down" value={data.down} color="text-red-400" />
-          <Kpi label="Error" value={data.error} color="text-amber-400" />
+          <KpiTile
+            label="Total"
+            value={data.total}
+            color="text-slate-100"
+            onClick={() => setFilter("all")}
+          />
+          <KpiTile
+            label="OK"
+            value={data.ok}
+            color="text-emerald-400"
+            onClick={() => setFilter(filter === "ok" ? "all" : "ok")}
+            active={filter === "ok"}
+          />
+          <KpiTile
+            label="Down"
+            value={data.down}
+            color="text-red-400"
+            onClick={() => setFilter(filter === "down" ? "all" : "down")}
+            active={filter === "down"}
+          />
+          <KpiTile
+            label="Error"
+            value={data.error}
+            color="text-amber-400"
+            onClick={() => setFilter(filter === "error" ? "all" : "error")}
+            active={filter === "error"}
+          />
         </div>
       )}
 
       {monitors.length === 0 ? (
         <p className="mt-6 text-sm text-slate-500">
-          No connectivity checks configured yet. Add them from the Connectivity tab on an instance.
+          {(data?.monitors?.length ?? 0) > 0
+            ? "No checks match the current filter."
+            : "No connectivity checks configured yet. Add them from the Connectivity tab on an instance."}
         </p>
       ) : (
         <div className="mt-5 overflow-x-auto rounded-lg border border-slate-800">

@@ -154,10 +154,33 @@ export default function FirmwareCompliancePage() {
 
       {data && (
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <KpiTile label="Total" value={data.total} color="text-slate-100" />
-          <KpiTile label="Up to date" value={data.up_to_date} color="text-emerald-400" />
-          <KpiTile label="Outdated" value={data.outdated} color="text-amber-400" />
-          <KpiTile label="Unknown" value={data.unknown} color="text-slate-500" />
+          <KpiTile
+            label="Total"
+            value={data.total}
+            color="text-slate-100"
+            onClick={() => setFilter("all")}
+          />
+          <KpiTile
+            label="Up to date"
+            value={data.up_to_date}
+            color="text-emerald-400"
+            onClick={() => setFilter(filter === "current" ? "all" : "current")}
+            active={filter === "current"}
+          />
+          <KpiTile
+            label="Outdated"
+            value={data.outdated}
+            color="text-amber-400"
+            onClick={() => setFilter(filter === "outdated" ? "all" : "outdated")}
+            active={filter === "outdated"}
+          />
+          <KpiTile
+            label="Unknown"
+            value={data.unknown}
+            color="text-slate-500"
+            onClick={() => setFilter(filter === "unknown" ? "all" : "unknown")}
+            active={filter === "unknown"}
+          />
         </div>
       )}
 

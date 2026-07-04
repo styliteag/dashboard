@@ -25,7 +25,8 @@ import {
 
 export default function VPNOverviewPage() {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "up" | "down">("all");
+  // Problems first: the page opens on the disconnected tunnels.
+  const [filter, setFilter] = useState<"all" | "up" | "down">("down");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   // Pairing/aggregation is optional: off → a flat, sortable list.
   const [grouped, setGrouped] = useState(() => localStorage.getItem("vpn.grouped") !== "0");
@@ -222,9 +223,26 @@ export default function VPNOverviewPage() {
       {/* KPIs */}
       {data && (
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <KpiTile label="Tunnels total" value={data.total} color="text-slate-100" />
-          <KpiTile label="Connected" value={data.up} color="text-emerald-400" />
-          <KpiTile label="Disconnected" value={data.down} color="text-red-400" />
+          <KpiTile
+            label="Tunnels total"
+            value={data.total}
+            color="text-slate-100"
+            onClick={() => setFilter("all")}
+          />
+          <KpiTile
+            label="Connected"
+            value={data.up}
+            color="text-emerald-400"
+            onClick={() => setFilter(filter === "up" ? "all" : "up")}
+            active={filter === "up"}
+          />
+          <KpiTile
+            label="Disconnected"
+            value={data.down}
+            color="text-red-400"
+            onClick={() => setFilter(filter === "down" ? "all" : "down")}
+            active={filter === "down"}
+          />
         </div>
       )}
 
@@ -328,7 +346,11 @@ export default function VPNOverviewPage() {
       {isLoading ? (
         <p className="mt-6 text-slate-500">Loading VPN status of all instances…</p>
       ) : filtered.length === 0 ? (
-        <p className="mt-6 text-slate-500">No tunnels found.</p>
+        <p className="mt-6 text-slate-500">
+          {(data?.tunnels?.length ?? 0) > 0
+            ? "No tunnels match the current filter."
+            : "No tunnels found."}
+        </p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
           <table className="w-full min-w-[880px] text-sm xl:min-w-[1080px]">

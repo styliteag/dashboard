@@ -12,6 +12,20 @@ import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
 import KpiTile from "../components/KpiTile";
 
+// Mirrors the GET /api/overview bucketing (5-minute cutoff) so clicking a KPI
+// number shows exactly the rows it counted — the row badge's simpler
+// timestamp-only status would drift from the tile numbers.
+type StatusBucket = "online" | "degraded" | "offline";
+const statusBucket = (i: Instance): StatusBucket => {
+  const cutoff = Date.now() - 5 * 60_000;
+  const succ = i.last_success_at ? Date.parse(i.last_success_at) : null;
+  const err = i.last_error_at ? Date.parse(i.last_error_at) : null;
+  if (succ !== null && succ >= cutoff && (err === null || succ > err)) return "online";
+  if (succ !== null && succ >= cutoff && err !== null && err >= cutoff && err >= succ)
+    return "degraded";
+  return "offline";
+};
+
 const INST_ACCESSORS: Accessors<Instance> = {
   status: (i) =>
     i.last_error_at && !i.last_success_at
@@ -99,6 +113,7 @@ export default function InstancesPage() {
   });
 
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | StatusBucket>("all");
   const [maintenanceOnly, setMaintenanceOnly] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
@@ -140,8 +155,9 @@ export default function InstancesPage() {
       (i.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (i.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()));
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
+    const matchStatus = statusFilter === "all" || statusBucket(i) === statusFilter;
     const matchMaintenance = !maintenanceOnly || i.maintenance;
-    return matchSearch && matchTag && matchMaintenance;
+    return matchSearch && matchTag && matchStatus && matchMaintenance;
   });
 
   // Firmware-locked instances are never selectable — the bulk bar's only
@@ -171,10 +187,33 @@ export default function InstancesPage() {
       {/* KPI Tiles (US-3.4) */}
       {overview && (
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <KpiTile label="Total" value={overview.total} color="text-slate-100" />
-          <KpiTile label="Online" value={overview.online} color="text-emerald-400" />
-          <KpiTile label="Degraded" value={overview.degraded} color="text-amber-400" />
-          <KpiTile label="Offline" value={overview.offline} color="text-red-400" />
+          <KpiTile
+            label="Total"
+            value={overview.total}
+            color="text-slate-100"
+            onClick={() => setStatusFilter("all")}
+          />
+          <KpiTile
+            label="Online"
+            value={overview.online}
+            color="text-emerald-400"
+            onClick={() => setStatusFilter(statusFilter === "online" ? "all" : "online")}
+            active={statusFilter === "online"}
+          />
+          <KpiTile
+            label="Degraded"
+            value={overview.degraded}
+            color="text-amber-400"
+            onClick={() => setStatusFilter(statusFilter === "degraded" ? "all" : "degraded")}
+            active={statusFilter === "degraded"}
+          />
+          <KpiTile
+            label="Offline"
+            value={overview.offline}
+            color="text-red-400"
+            onClick={() => setStatusFilter(statusFilter === "offline" ? "all" : "offline")}
+            active={statusFilter === "offline"}
+          />
         </div>
       )}
 
