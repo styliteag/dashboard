@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.7] - 2026-07-04
+
 ### Changed
 
 - Agent 2.6.5: metrics-push phase is randomized across the push interval and
