@@ -25,8 +25,13 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index("ix_metrics_ts", "metrics", ["ts"])
+    # MariaDB-native IF NOT EXISTS: the index build runs minutes on a large
+    # ``metrics`` table, and multi-replica deployments race `alembic upgrade head`
+    # at boot — the loser (or a rerun after a mid-build container kill that landed
+    # after the server committed the index but before the version stamp) must
+    # no-op instead of crash-looping on 1061 "Duplicate key name".
+    op.execute("CREATE INDEX IF NOT EXISTS ix_metrics_ts ON metrics (ts)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_metrics_ts", table_name="metrics")
+    op.execute("DROP INDEX IF EXISTS ix_metrics_ts ON metrics")

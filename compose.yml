@@ -100,7 +100,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      # Generous start window: boot runs alembic migrations first, and a single
+      # DDL (e.g. index build on a large metrics table) can take minutes. An
+      # orchestrator that kills on early health failures (Swarm) would otherwise
+      # abort the migration mid-build and crash-loop the task.
+      start_period: 600s
 
   # Firewall GUI proxy (OPTIONAL). Your EXTERNAL Traefik terminates TLS and routes
   # Host(*.${ORBIT_GUI_DOMAIN}) to THIS Caddy (over HTTP); it host-matches gui-<slug>,

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Upgrade to 2.7.5 could crash-loop the app container** on deployments with
+  multiple replicas or where the orchestrator killed the container during the
+  minutes-long `ix_metrics_ts` index build: the index existed but
+  `alembic_version` was never stamped, so every boot retried migration 033 and
+  died with `1061 Duplicate key name 'ix_metrics_ts'`. Migration 033 now uses
+  MariaDB `CREATE INDEX IF NOT EXISTS` and is safe to re-run.
+- Concurrent `alembic upgrade head` runs (multi-replica boots) are now
+  serialized via a MariaDB advisory lock (`GET_LOCK`) in the Alembic env —
+  Alembic has no built-in migration lock on MySQL.
+- `compose.yml`: app healthcheck `start_period` raised 30s → 600s so long
+  boot-time migrations aren't killed mid-DDL by health-based restarts.
+
 ## [2.7.5] - 2026-07-04
 
 ## [2.7.4] - 2026-07-04
