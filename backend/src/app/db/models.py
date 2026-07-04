@@ -599,6 +599,39 @@ class Logfile(Base):
     __table_args__ = (Index("ix_logfile_lookup", "instance_id", "name", "collected_at"),)
 
 
+class LogEvent(Base):
+    """An aggregated critical log pattern extracted from the newest snapshot.
+
+    Recomputed on every agent push (delete + insert per ``(instance, log_name)``)
+    — ``count`` reflects the current snapshot window, not all-time history.
+    ``severity`` is syslog 0-7; only <= 4 (warning) is ever stored, the UI
+    filters further. ``last_ts`` is the raw in-log timestamp (BSD lines carry
+    no year, so it is display-only); ``updated_at`` is the push time.
+    """
+
+    __tablename__ = "log_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    log_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[int] = mapped_column(Integer, nullable=False)
+    program: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    pattern: Mapped[str] = mapped_column(String(200), nullable=False)
+    sample: Mapped[str] = mapped_column(Text(), nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    last_ts: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_log_event_lookup", "instance_id", "log_name"),
+        Index("ix_log_event_severity", "severity"),
+    )
+
+
 class EnrollmentCode(Base):
     """One-time agent enrollment code (see §16 chunk C2).
 

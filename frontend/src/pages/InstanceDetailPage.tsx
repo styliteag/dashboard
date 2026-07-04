@@ -32,6 +32,7 @@ import IPsecSection from "../components/IPsecSection";
 import ConnectivitySection from "../components/ConnectivitySection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
+import LogSnapshotsSection from "../components/LogSnapshotsSection";
 import AiLogAnalysisSection from "../components/AiLogAnalysisSection";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
@@ -259,10 +260,11 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Log: firewall log + AI log analysis */}
+      {/* Log: firewall log + stored snapshots + AI log analysis */}
       {tab === "log" && (
         <div>
           <FirewallLogSection instanceId={nid} />
+          <LogSnapshotsSection instanceId={nid} />
           <AiLogAnalysisSection instanceId={nid} />
         </div>
       )}

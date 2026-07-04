@@ -14,6 +14,7 @@ import SecurityPage from "./pages/SecurityPage";
 import UsersPage from "./pages/UsersPage";
 import GroupsPage from "./pages/GroupsPage";
 import AlertsPage from "./pages/AlertsPage";
+import LogEventsPage from "./pages/LogEventsPage";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="connectivity" element={<ConnectivityOverviewPage />} />
           <Route path="firmware" element={<FirmwareCompliancePage />} />
           <Route path="alerts" element={<AlertsPage />} />
+          <Route path="logs" element={<LogEventsPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="password" element={<PasswordPage />} />
           <Route path="security" element={<SecurityPage />} />

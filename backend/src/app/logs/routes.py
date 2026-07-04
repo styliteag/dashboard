@@ -1,8 +1,8 @@
-"""Read API for stored logfile snapshots (metadata + anonymized preview).
+"""Read API for stored logfile snapshots (metadata, raw content, anonymized preview).
 
-Raw log content never leaves the backend: the anonymized endpoint applies
-``app.llm.anonymize`` server-side so the browser only ever sees scrubbed text,
-which it then hands to ``POST /api/llm/analyze``.
+Admins can view the raw snapshots via the content endpoint. The LLM path stays
+scrubbed: the anonymized endpoint applies ``app.llm.anonymize`` server-side so
+only anonymized text is ever handed to ``POST /api/llm/analyze``.
 """
 
 from __future__ import annotations
@@ -19,15 +19,24 @@ from app.db.models import User
 from app.instances.service import get_instance
 from app.llm.anonymize import anonymize
 from app.logs.context import build_analysis_text, build_context_text
-from app.logs.store import latest_per_name, list_logfiles
+from app.logs.store import get_logfile, latest_per_name, list_logfiles
 
 router = APIRouter(prefix="/instances", tags=["logs"])
 
 
 class LogfileItem(BaseModel):
+    id: int
     name: str
     collected_at: datetime
     bytes: int
+
+
+class LogfileContent(BaseModel):
+    id: int
+    name: str
+    collected_at: datetime
+    bytes: int
+    content: str
 
 
 class AnonymizedLogs(BaseModel):
@@ -44,7 +53,30 @@ async def list_instance_logs(
     if await get_instance(session, instance_id, admin) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     rows = await list_logfiles(session, instance_id)
-    return [LogfileItem(name=r.name, collected_at=r.collected_at, bytes=r.bytes) for r in rows]
+    return [
+        LogfileItem(id=r.id, name=r.name, collected_at=r.collected_at, bytes=r.bytes) for r in rows
+    ]
+
+
+@router.get("/{instance_id}/logs/{logfile_id}/content", response_model=LogfileContent)
+async def instance_log_content(
+    instance_id: int,
+    logfile_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(require_admin),
+) -> LogfileContent:
+    if await get_instance(session, instance_id, admin) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    row = await get_logfile(session, instance_id, logfile_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    return LogfileContent(
+        id=row.id,
+        name=row.name,
+        collected_at=row.collected_at,
+        bytes=row.bytes,
+        content=row.content,
+    )
 
 
 @router.get("/{instance_id}/logs/anonymized", response_model=AnonymizedLogs)

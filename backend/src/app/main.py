@@ -30,6 +30,7 @@ from app.http_log import AccessLogMiddleware
 from app.instances.routes import router as instances_router
 from app.ipsec.routes import router as ipsec_router
 from app.llm.routes import router as llm_router
+from app.logs.overview import router as log_events_router
 from app.logs.routes import router as logs_router
 from app.logsetup import configure_logging
 from app.metrics.routes import router as metrics_router
@@ -241,6 +242,7 @@ def create_app() -> FastAPI:
     app.include_router(selection_router, prefix="/api")
     app.include_router(llm_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
+    app.include_router(log_events_router, prefix="/api")
     return app
 
 

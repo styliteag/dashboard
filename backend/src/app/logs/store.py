@@ -11,7 +11,8 @@ from __future__ import annotations
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Logfile
+from app.db.models import LogEvent, Logfile
+from app.logs.events import ExtractedEvent, extract_events
 
 KEEP_PER_NAME = 3
 MAX_BYTES = 1_000_000  # per-logfile safety cap (agent tails first, this is a backstop)
@@ -51,7 +52,7 @@ async def _newest_first_ids(session: AsyncSession, instance_id: int, name: str) 
 
 
 async def record_logfiles(session: AsyncSession, instance_id: int, raw: list[dict]) -> int:
-    """Insert pushed snapshots and prune each touched name to KEEP_PER_NAME."""
+    """Insert pushed snapshots, prune each touched name, refresh critical events."""
     pairs = sanitize_logfiles(raw)
     if not pairs:
         return 0
@@ -64,7 +65,31 @@ async def record_logfiles(session: AsyncSession, instance_id: int, raw: list[dic
         extra = surplus_ids(await _newest_first_ids(session, instance_id, name))
         if extra:
             await session.execute(delete(Logfile).where(Logfile.id.in_(extra)))
+    for name, content in pairs:
+        await replace_log_events(session, instance_id, name, extract_events(name, content))
     return len(pairs)
+
+
+async def replace_log_events(
+    session: AsyncSession, instance_id: int, log_name: str, events: list[ExtractedEvent]
+) -> None:
+    """Swap the stored events for one (instance, log) with the latest extraction."""
+    await session.execute(
+        delete(LogEvent).where(LogEvent.instance_id == instance_id, LogEvent.log_name == log_name)
+    )
+    for e in events:
+        session.add(
+            LogEvent(
+                instance_id=instance_id,
+                log_name=log_name,
+                severity=e.severity,
+                program=e.program,
+                pattern=e.pattern,
+                sample=e.sample,
+                count=e.count,
+                last_ts=e.last_ts,
+            )
+        )
 
 
 async def list_logfiles(session: AsyncSession, instance_id: int) -> list[Logfile]:
@@ -74,6 +99,14 @@ async def list_logfiles(session: AsyncSession, instance_id: int) -> list[Logfile
         .order_by(Logfile.name.asc(), Logfile.collected_at.desc())
     )
     return list(rows.all())
+
+
+async def get_logfile(session: AsyncSession, instance_id: int, logfile_id: int) -> Logfile | None:
+    """A single stored snapshot, scoped to the instance (cross-instance ids miss)."""
+    row = await session.execute(
+        select(Logfile).where(Logfile.id == logfile_id, Logfile.instance_id == instance_id)
+    )
+    return row.scalars().first()
 
 
 async def latest_per_name(session: AsyncSession, instance_id: int) -> list[Logfile]:
@@ -93,6 +126,30 @@ async def latest_per_name(session: AsyncSession, instance_id: int) -> list[Logfi
         if latest is not None:
             out.append(latest)
     return out
+
+
+async def backfill_log_events(session: AsyncSession) -> int:
+    """Populate an empty log_events table from the newest stored snapshots.
+
+    No-op when events already exist — ingest keeps them current. Returns the
+    number of events created."""
+    from sqlalchemy import func
+
+    existing = await session.scalar(select(func.count()).select_from(LogEvent))
+    if existing:
+        return 0
+    newest = (
+        select(func.max(Logfile.id).label("mid"))
+        .group_by(Logfile.instance_id, Logfile.name)
+        .subquery()
+    )
+    rows = await session.execute(select(Logfile).where(Logfile.id.in_(select(newest.c.mid))))
+    created = 0
+    for lf in rows.scalars():
+        events = extract_events(lf.name, lf.content)
+        await replace_log_events(session, lf.instance_id, lf.name, events)
+        created += len(events)
+    return created
 
 
 async def prune_logfiles(session: AsyncSession) -> int:

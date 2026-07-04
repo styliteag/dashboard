@@ -21,6 +21,7 @@ from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
 from app.maintenance.jobs import (
+    backfill_log_events,
     prune_check_events,
     prune_ipsec_events,
     prune_logfiles,
@@ -346,6 +347,9 @@ def start_scheduler() -> None:
     )
     # Logfile snapshots: ingest prunes on write; this is a daily safety net.
     _scheduler.add_job(prune_logfiles, "interval", hours=24, id="logfiles_prune", max_instances=1)
+    # One-shot: seed log_events from stored snapshots after the 031 upgrade
+    # (no-op when the table already has rows — ingest keeps it current).
+    _scheduler.add_job(backfill_log_events, id="log_events_backfill", max_instances=1)
     _scheduler.start()
     log.info(
         "scheduler.started",

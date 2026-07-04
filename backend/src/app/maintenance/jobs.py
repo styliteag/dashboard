@@ -16,6 +16,7 @@ import structlog
 from sqlalchemy import text
 
 from app.db.base import get_sessionmaker
+from app.logs.store import backfill_log_events as _backfill_log_events_store
 from app.logs.store import prune_logfiles as _prune_logfiles_store
 from app.settings.store import effective_settings
 
@@ -73,6 +74,18 @@ async def prune_check_events() -> int:
     if deleted:
         log.info("check_events.pruned", rows=deleted)
     return deleted
+
+
+async def backfill_log_events() -> int:
+    """One-shot at startup: extract log_events from stored snapshots when the
+    table is empty (fresh upgrade). Ingest keeps it current afterwards."""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        created = await _backfill_log_events_store(session)
+        await session.commit()
+    if created:
+        log.info("log_events.backfilled", rows=created)
+    return created
 
 
 async def prune_logfiles() -> int:

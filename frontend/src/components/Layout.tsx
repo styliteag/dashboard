@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   FolderTree,
   Radio,
+  ScrollText,
   Users,
   ShieldCheck,
 } from "lucide-react";
@@ -60,6 +61,12 @@ export default function Layout() {
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
           >
             <AlertTriangle className="h-4 w-4" /> Alerts
+          </Link>
+          <Link
+            to="/logs"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <ScrollText className="h-4 w-4" /> Logs
           </Link>
           <Link
             to="/audit"

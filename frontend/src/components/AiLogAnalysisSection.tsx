@@ -35,8 +35,8 @@ function fmtBytes(n: number): string {
 /**
  * AI log analysis: shows the agent's stored log snapshots, lets the admin preview
  * exactly what (anonymized) text would be sent, pick a configured provider, and
- * run the analysis. Raw log content never reaches the browser — the backend only
- * serves the anonymized text.
+ * run the analysis. This flow only ever uses the backend-anonymized text — raw
+ * snapshots are viewable separately in LogSnapshotsSection.
  */
 export default function AiLogAnalysisSection({ instanceId }: { instanceId: number }) {
   const [expanded, setExpanded] = useState(false);

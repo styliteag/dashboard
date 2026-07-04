@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Log snapshot viewer.** The instance Log tab has a new "Log Snapshots"
+  section showing the agent-pushed logfile snapshots; clicking a snapshot
+  loads its raw content (admin-only, via the new
+  `GET /api/instances/{id}/logs/{logfile_id}/content` endpoint). The AI
+  analysis flow is unchanged and still only sends anonymized text.
+- **Global "Logs" page with critical events.** Critical lines are extracted
+  from the agents' log snapshots at ingest (syslog `<PRI>` severity where
+  present, curated patterns for PRI-less BSD lines), normalized (IPs/numbers
+  masked) and aggregated into one row per message pattern with a count —
+  known steady-state noise (dpinger `sendto error`, filterdns
+  `failed to resolve`) is dropped. New `log_events` table (migration 031,
+  backfilled once at startup), `GET /api/logs/events?max_severity=N`
+  (group-scoped, admin-only) and a "Logs" page in the nav with a
+  Critical/Errors/Warnings level switch (default: Errors) and instance
+  filter.
+
 ## [2.7.0] - 2026-07-04
 
 ### Added
