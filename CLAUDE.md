@@ -64,7 +64,7 @@ TypeScript **strict mode** is enabled (`noUnusedLocals`, `noUnusedParameters` on
 - `just frontend-lint` — ESLint flat config (`eslint.config.js`), React + react-hooks rules, prettier-aware
 - `just frontend-fmt` — Prettier rewrite (config: `.prettierrc.json`, line width 100, double quotes, trailing commas)
 
-The existing `src/` was never run through Prettier — first `just frontend-fmt` will rewrite ~20 files. Don't bundle that mass-format with an unrelated change.
+`src/` is Prettier-formatted (initial mass-format 2026-07-04) — `just frontend-fmt` should only touch files you changed. Don't bundle format-only rewrites of unrelated files into a feature commit.
 
 ## Logs pipeline (agent → UI)
 
