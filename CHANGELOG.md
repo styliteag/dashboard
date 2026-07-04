@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Migrations were silently rolled back since 2.7.6** (visible as migration 035
+  re-running on every boot and its Auto-Login → Terminal backfill never landing).
+  The `GET_LOCK` serialization added in 2.7.6 opened an implicit SQLAlchemy
+  transaction on the migration connection; Alembic then treated the transaction
+  as caller-managed and never committed, so closing the connection rolled back
+  the version stamp and all data migrations — only DDL survived via MariaDB's
+  implicit commit. env.py now ends that transaction before Alembic configures.
+  Self-healing on upgrade: the pending 035 run stamps and backfills correctly.
+- The browser terminal was impossible to enable in prod: `compose.yml` did not
+  pass `DASH_SHELL_ENABLED` through to the app container (only `compose-dev.yml`
+  did), so the global gate was always off. Now wired through (default false) and
+  documented in `.env.example`.
+
 ## [2.7.8] - 2026-07-04
 
 ### Added
