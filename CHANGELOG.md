@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.9] - 2026-07-05
+
 ### Security
 
 - Browser terminal + GUI-proxy tunnel hardening (agent 2.7.12): both WebSocket
