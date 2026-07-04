@@ -49,7 +49,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.13"
+__version__ = "2.7.14"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4050,20 +4050,18 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
 
 # Interactive shell (SPIKE — see docs/agent-architecture.md §22). A dashboard
 # `tunnel` frame with kind="shell" spawns a root PTY instead of a TCP connection
-# to the GUI port. Root RCE by design, so it is gated at TWO levels: the dashboard
-# (DASH_SHELL_ENABLED + per-instance opt-in), AND here on the box. This agent gate
-# is OPT-IN — default OFF — so a compromised dashboard can NOT spawn shells on a
-# box the operator never consented to (defense in depth, matching signed
-# self-update). Enable locally with env ORBIT_AGENT_SHELL=1 or by creating the
-# marker file below (a box-local decision the dashboard cannot flip).
-_SHELL_MARKER = "/usr/local/etc/orbit-agent-shell.enabled"
+# to the GUI port. Root RCE by design. The gate is the DASHBOARD
+# (DASH_SHELL_ENABLED + per-instance opt-in + write/MFA auth), same trust model as
+# the GUI tunnel — so no per-box marker is needed and it works fleet-wide. A box
+# operator can still hard-disable this one box with ORBIT_AGENT_SHELL=0. (Trade-off,
+# deliberate per operator request: unlike signed self-update there is no box-local
+# opt-in, so a compromised dashboard could spawn a shell on any connected box.)
 
 
 def _shell_allowed() -> bool:
-    """Whether this box permits an interactive shell. Re-checked on every open (not
-    cached at import) so creating the marker takes effect without an agent restart.
-    Default: denied."""
-    return os.environ.get("ORBIT_AGENT_SHELL", "0") == "1" or os.path.exists(_SHELL_MARKER)
+    """Whether this box permits an interactive shell. Enabled by default; a box
+    operator can locally hard-disable it with ORBIT_AGENT_SHELL=0. Checked per open."""
+    return os.environ.get("ORBIT_AGENT_SHELL", "1") != "0"
 
 # Fallback PATH for the login shell (a proper login sources the box profile, which
 # normally sets its own; this just guarantees the essentials pre-profile).

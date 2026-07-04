@@ -928,9 +928,12 @@ xterm.js  ──ws binary──▶  /api/ws/shell/{id}  ──tunnel-Frame──
 - **Origin-Allowlist** auf beiden WS-Routen (`ws_allowed_origin_hosts` + WebAuthn-Host;
   localhost/127.0.0.1 immer) gegen same-site CSWSH von den `gui-<slug>`-Subdomains.
 - **Per-Instanz `shell_enabled` nur von Admin** schaltbar (über die Write-Rolle hinaus).
-- **Agent-Gate opt-in (default OFF):** `ORBIT_AGENT_SHELL=1` **oder** Marker
-  `/usr/local/etc/orbit-agent-shell.enabled` (box-lokal, dashboard-unabhängig) — ein
-  kompromittiertes Backend spawnt keine Shells auf nicht-zugestimmten Boxen.
+- **Agent-Gate:** default **ON** — der Gate ist das Dashboard (DASH_SHELL_ENABLED +
+  per-Instanz + write/MFA-Auth), gleiches Trust-Modell wie der GUI-Tunnel, funktioniert
+  flottenweit ohne Per-Box-Config. Box-lokaler Hard-Off pro Box via `ORBIT_AGENT_SHELL=0`.
+  *(Bewusster Trade-off auf Betreiber-Wunsch: kein box-lokales Opt-in wie beim signierten
+  Self-Update — ein kompromittiertes Backend könnte auf jeder verbundenen Box eine Shell
+  spawnen.)*
 - **Limits:** Concurrency-Cap (5/User, 5/Box), Idle-Timeout (15 min ohne Tastendruck),
   Max-Lifetime (8 h) via Watchdog. Pong resettet die Idle-Uhr **nicht**.
 - **Backpressure:** `_pty_pump` liest/sendet awaited (kein fire-and-forget mehr).
