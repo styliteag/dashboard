@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer open a root shell or a GUI bridge. Arming a box's terminal
   (`shell_enabled`) is admin-only. The agent gate is now **opt-in** (default off):
   enable per box via `ORBIT_AGENT_SHELL=1` or the marker file
-  `/usr/local/etc/orbit-agent-shell.enabled` (box-local, dashboard can't flip it).
+  `/usr/local/etc/orbit-agent-shell.enabled` (box-local, dashboard can't flip it;
+  agent 2.7.13 re-checks it on every open, so creating it needs no agent restart).
   Added concurrency caps (5/user, 5/box), an idle timeout and max session
   lifetime, PTY-output backpressure, stream-id audit correlation, and optional
   capped session recording (`DASH_SHELL_RECORD_DIR`).

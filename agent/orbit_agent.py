@@ -49,7 +49,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.12"
+__version__ = "2.7.13"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4057,7 +4057,13 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
 # self-update). Enable locally with env ORBIT_AGENT_SHELL=1 or by creating the
 # marker file below (a box-local decision the dashboard cannot flip).
 _SHELL_MARKER = "/usr/local/etc/orbit-agent-shell.enabled"
-_SHELL_OK = os.environ.get("ORBIT_AGENT_SHELL", "0") == "1" or os.path.exists(_SHELL_MARKER)
+
+
+def _shell_allowed() -> bool:
+    """Whether this box permits an interactive shell. Re-checked on every open (not
+    cached at import) so creating the marker takes effect without an agent restart.
+    Default: denied."""
+    return os.environ.get("ORBIT_AGENT_SHELL", "0") == "1" or os.path.exists(_SHELL_MARKER)
 
 # Fallback PATH for the login shell (a proper login sources the box profile, which
 # normally sets its own; this just guarantees the essentials pre-profile).
@@ -4172,8 +4178,8 @@ class _TunnelManager:
         job control and password prompts behave like a real ssh session. The parent
         keeps the master fd non-blocking and feeds it to the event loop.
         """
-        if not _SHELL_OK:
-            log.warning("shell: refused (ORBIT_AGENT_SHELL=0)")
+        if not _shell_allowed():
+            log.warning("shell %s: refused (not enabled on this box)", stream)
             await self._send(stream, "close")
             return
         try:
