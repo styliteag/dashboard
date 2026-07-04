@@ -72,7 +72,8 @@ def _inst(iid: int, name: str, agent_mode: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         id=iid,
         name=name,
-        deleted_at=None, group_id=1,
+        deleted_at=None,
+        group_id=1,
         agent_mode=agent_mode,
         device_type="opnsense",
         transport="direct",

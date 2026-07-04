@@ -84,8 +84,8 @@ export default function RestartBackend() {
       )}
       {phase === "failed" && (
         <p className="mt-2 text-xs text-red-400">
-          Backend did not come back within 60s. Check the container logs; the page may still
-          recover on a manual reload.
+          Backend did not come back within 60s. Check the container logs; the page may still recover
+          on a manual reload.
         </p>
       )}
     </div>

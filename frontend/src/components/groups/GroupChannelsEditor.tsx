@@ -147,9 +147,10 @@ export default function GroupChannelsEditor({ groupId }: { groupId: number }) {
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
       <p className="text-[11px] text-slate-500">
-        A configured channel replaces the global target for this group&apos;s instances; unconfigured
-        channels fall back to the global one. Routing rules and mute toggles stay global. Saved
-        secrets show as <code>••••••</code> — leave them untouched to keep the stored value.
+        A configured channel replaces the global target for this group&apos;s instances;
+        unconfigured channels fall back to the global one. Routing rules and mute toggles stay
+        global. Saved secrets show as <code>••••••</code> — leave them untouched to keep the stored
+        value.
       </p>
       <div className="mt-2 grid gap-3 md:grid-cols-3">
         {CHANNEL_SPECS.map((spec) => (

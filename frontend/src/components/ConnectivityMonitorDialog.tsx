@@ -137,7 +137,9 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
               setDestination(e.target.value);
               resetTest();
             }}
-            placeholder={name.trim() ? `empty → ${name.trim()}` : "e.g. 10.2.2.1 or host.example.com"}
+            placeholder={
+              name.trim() ? `empty → ${name.trim()}` : "e.g. 10.2.2.1 or host.example.com"
+            }
             className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm focus:border-emerald-600 focus:outline-none"
           />
           <span className="mt-1 block text-[11px] text-slate-500">

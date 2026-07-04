@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Package, AlertTriangle, CheckCircle, HelpCircle, Search, Download, Lock } from "lucide-react";
+import {
+  Package,
+  AlertTriangle,
+  CheckCircle,
+  HelpCircle,
+  Search,
+  Download,
+  Lock,
+} from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { useAgentModeMap } from "../lib/instances";
 import { useAuth, canWrite } from "../lib/use-auth";
@@ -118,7 +126,10 @@ export default function FirmwareCompliancePage() {
     const matchFilter =
       filter === "all" ||
       (filter === "outdated" && e.upgrade_available) ||
-      (filter === "current" && !e.upgrade_available && !e.check_failed && e.product_version !== "?") ||
+      (filter === "current" &&
+        !e.upgrade_available &&
+        !e.check_failed &&
+        e.product_version !== "?") ||
       (filter === "unknown" && e.product_version === "?");
     return matchSearch && matchFilter;
   });
@@ -187,8 +198,8 @@ export default function FirmwareCompliancePage() {
         <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
           <p className="text-sm text-red-300">
             This starts a firmware update on {selectedEligible.length} instance
-            {selectedEligible.length > 1 ? "s" : ""} — each box reboots when its update requires
-            it. Type <span className="font-mono font-semibold">UPDATE</span> to confirm:
+            {selectedEligible.length > 1 ? "s" : ""} — each box reboots when its update requires it.
+            Type <span className="font-mono font-semibold">UPDATE</span> to confirm:
           </p>
           <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
             {selectedEligible.map((e) => (

@@ -156,37 +156,37 @@ export default function GroupsPage() {
           {groups.map((g) => (
             <Fragment key={g.id}>
               <tr className="border-t border-slate-800">
-              <td className="py-2">
-                {renaming === g.id ? (
-                  <span className="inline-flex items-center gap-1">
-                    <input
-                      value={renameTo}
-                      onChange={(e) => setRenameTo(e.target.value)}
-                      maxLength={64}
-                      className="w-48 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-emerald-600 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={renameTo.trim().length === 0 || renameMut.isPending}
-                      onClick={() => renameMut.mutate({ id: g.id, name: renameTo.trim() })}
-                      className="rounded p-1 text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRenaming(null)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-800"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                ) : (
-                  <span className="font-medium text-slate-200">{g.name}</span>
-                )}
-              </td>
-              <td className="py-2 text-slate-400">{g.member_count}</td>
-              <td className="py-2 text-slate-400">{g.instance_count}</td>
+                <td className="py-2">
+                  {renaming === g.id ? (
+                    <span className="inline-flex items-center gap-1">
+                      <input
+                        value={renameTo}
+                        onChange={(e) => setRenameTo(e.target.value)}
+                        maxLength={64}
+                        className="w-48 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-emerald-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={renameTo.trim().length === 0 || renameMut.isPending}
+                        onClick={() => renameMut.mutate({ id: g.id, name: renameTo.trim() })}
+                        className="rounded p-1 text-emerald-400 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRenaming(null)}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-800"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="font-medium text-slate-200">{g.name}</span>
+                  )}
+                </td>
+                <td className="py-2 text-slate-400">{g.member_count}</td>
+                <td className="py-2 text-slate-400">{g.instance_count}</td>
                 <td className="py-2">
                   <div className="flex items-center justify-end gap-1">
                     <button

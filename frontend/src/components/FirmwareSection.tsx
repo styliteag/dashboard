@@ -256,8 +256,8 @@ export default function FirmwareSection({
           {confirmUpdate && (
             <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
               <p className="text-sm text-red-300">
-                Firmware update starts the updater and reboots the box when the update requires
-                it. Type the instance name to confirm:
+                Firmware update starts the updater and reboots the box when the update requires it.
+                Type the instance name to confirm:
               </p>
               {fw.packages.length > 0 && (
                 <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
