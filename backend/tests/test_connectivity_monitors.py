@@ -23,11 +23,9 @@ from app.db.models import ConnectivityMonitor
 # --- schema validation -------------------------------------------------------
 
 
-def test_create_requires_name_and_destination() -> None:
+def test_create_requires_name() -> None:
     with pytest.raises(ValidationError):
         ConnMonitorCreate(destination="10.2.2.1")  # no name
-    with pytest.raises(ValidationError):
-        ConnMonitorCreate(name="probe")  # no destination
 
 
 def test_create_rejects_blank_name() -> None:
@@ -37,12 +35,35 @@ def test_create_rejects_blank_name() -> None:
 
 def test_create_rejects_bad_destination() -> None:
     with pytest.raises(ValidationError):
-        ConnMonitorCreate(name="probe", destination="not-an-ip")
+        ConnMonitorCreate(name="probe", destination="bad host")  # space → no host, no IP
+    with pytest.raises(ValidationError):
+        ConnMonitorCreate(name="probe", destination="999.1.1.1")  # IP-shaped typo
+    with pytest.raises(ValidationError):
+        ConnMonitorCreate(name="probe", destination="host..example.com")
+
+
+def test_create_accepts_hostname_destination() -> None:
+    m = ConnMonitorCreate(name="probe", destination=" google.com ")
+    assert m.destination == "google.com"
+    assert ConnMonitorCreate(name="p", destination="core-switch").destination == "core-switch"
+
+
+def test_create_empty_destination_falls_back_to_name() -> None:
+    m = ConnMonitorCreate(name="google.com")
+    assert m.destination == "google.com"
+    m = ConnMonitorCreate(name="10.2.2.1", destination="")
+    assert m.destination == "10.2.2.1"
+    # Name that is neither IP nor hostname → no fallback possible.
+    with pytest.raises(ValidationError):
+        ConnMonitorCreate(name="core switch uplink")
 
 
 def test_create_rejects_bad_source() -> None:
     with pytest.raises(ValidationError):
         ConnMonitorCreate(name="probe", destination="10.2.2.1", source="999.1.1.1")
+    # Source stays IP-only: ping -S needs a local address, not a name.
+    with pytest.raises(ValidationError):
+        ConnMonitorCreate(name="probe", destination="10.2.2.1", source="host.example.com")
 
 
 def test_create_allows_empty_source_and_defaults() -> None:
@@ -70,9 +91,17 @@ def test_update_is_partial_and_validated() -> None:
     upd = ConnMonitorUpdate(enabled=False)
     assert upd.model_dump(exclude_unset=True) == {"enabled": False}
     with pytest.raises(ValidationError):
-        ConnMonitorUpdate(destination="nope")
+        ConnMonitorUpdate(destination="bad host")
     with pytest.raises(ValidationError):
         ConnMonitorUpdate(name="  ")
+
+
+def test_update_empty_destination_falls_back_to_name() -> None:
+    upd = ConnMonitorUpdate(name="google.com", destination="")
+    assert upd.destination == "google.com"
+    # Empty destination without a name in the same request can't fall back.
+    with pytest.raises(ValidationError):
+        ConnMonitorUpdate(destination="")
 
 
 def test_ipv6_destination_accepted() -> None:
@@ -84,9 +113,10 @@ def test_ping_test_request_validation() -> None:
     with pytest.raises(ValidationError):
         ConnPingTestRequest(source="10.1.1.1")  # no destination
     with pytest.raises(ValidationError):
-        ConnPingTestRequest(destination="nope")
+        ConnPingTestRequest(destination="bad host")
     ok = ConnPingTestRequest(destination="10.2.2.1")
     assert ok.source == "" and ok.ping_count == 3
+    assert ConnPingTestRequest(destination="google.com").destination == "google.com"
 
 
 # --- payload builder ---------------------------------------------------------

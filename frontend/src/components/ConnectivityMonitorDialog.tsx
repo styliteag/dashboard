@@ -36,11 +36,14 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
   const base = `/api/instances/${instanceId}/connectivity/monitors`;
   const resetTest = () => setTestResult(null);
 
+  // Empty destination falls back to a host-shaped name (mirrors the backend).
+  const effectiveDestination = destination.trim() || name.trim();
+
   const testMut = useMutation({
     mutationFn: () =>
       api.post<PingTestResult>(`${base}/test`, {
         source,
-        destination,
+        destination: effectiveDestination,
         ping_count: pingCount,
       }),
     onSuccess: (r) => {
@@ -95,7 +98,7 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
     onError: (e) => setError(apiErrorText(e, "Delete failed")),
   });
 
-  const canSave = !!name.trim() && !!destination.trim();
+  const canSave = !!name.trim();
 
   return (
     <Dialog
@@ -127,16 +130,20 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
         </label>
 
         <label className="block">
-          <span className="text-xs text-slate-400">Destination IP</span>
+          <span className="text-xs text-slate-400">Destination (IP or hostname)</span>
           <input
             value={destination}
             onChange={(e) => {
               setDestination(e.target.value);
               resetTest();
             }}
-            placeholder="e.g. 10.2.2.1"
+            placeholder={name.trim() ? `empty → ${name.trim()}` : "e.g. 10.2.2.1 or host.example.com"}
             className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm focus:border-emerald-600 focus:outline-none"
           />
+          <span className="mt-1 block text-[11px] text-slate-500">
+            Hostnames are resolved on the firewall (its DNS view). Leave empty to ping the name
+            above.
+          </span>
         </label>
 
         <div className="flex items-center gap-4">
@@ -170,7 +177,7 @@ export default function ConnectivityMonitorDialog({ instanceId, existing, onClos
           <button
             type="button"
             onClick={() => testMut.mutate()}
-            disabled={testMut.isPending || !destination.trim()}
+            disabled={testMut.isPending || !effectiveDestination}
             className="inline-flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
           >
             <Activity className={`h-4 w-4 ${testMut.isPending ? "animate-pulse" : ""}`} />

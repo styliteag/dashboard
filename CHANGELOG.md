@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Connectivity checks accept hostnames.** The destination of a ping
+  monitor may now be a DNS name (resolved on the firewall by `ping` itself,
+  so the box's own DNS view applies); an empty destination falls back to the
+  check's name when it is host-shaped (migration 032 widens the column).
+
+### Fixed
+
+- Validation errors in dialogs rendered as `[object Object]` — FastAPI
+  validation details are now formatted into readable text.
+
 ## [2.7.1] - 2026-07-04
 
 ### Added

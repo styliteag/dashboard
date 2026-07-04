@@ -496,7 +496,8 @@ class ConnectivityMonitor(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     # Local source IP — must be box-owned. "" = default route.
     source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
-    destination: Mapped[str] = mapped_column(String(64), nullable=False)
+    # IP literal or hostname (RFC 1123 caps hostnames at 253 chars).
+    destination: Mapped[str] = mapped_column(String(253), nullable=False)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
     ping_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
     created_at: Mapped[datetime] = mapped_column(

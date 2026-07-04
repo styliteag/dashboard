@@ -21,6 +21,19 @@ export function apiErrorText(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback;
 }
 
+/** FastAPI `detail` → readable text. Validation errors arrive as an array of
+ *  {loc, msg, type} objects — `String()` on those renders "[object Object]". */
+function detailText(detail: unknown): string {
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) =>
+        d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : String(d),
+      )
+      .join("; ");
+  }
+  return String(detail);
+}
+
 export const unauthorizedEvent = "dash:unauthorized";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -66,7 +79,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 
     const detail =
       (parsed && typeof parsed === "object" && "detail" in parsed
-        ? String((parsed as { detail: unknown }).detail)
+        ? detailText((parsed as { detail: unknown }).detail)
         : null) ?? `HTTP ${res.status}`;
     throw new ApiError(res.status, detail, parsed);
   }
