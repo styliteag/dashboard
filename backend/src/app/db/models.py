@@ -550,7 +550,13 @@ class IPsecTunnelEvent(Base):
     old_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
     new_value: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
 
-    __table_args__ = (Index("ix_ipsec_event_lookup", "instance_id", "tunnel_id", "ts"),)
+    __table_args__ = (
+        Index("ix_ipsec_event_lookup", "instance_id", "tunnel_id", "ts"),
+        # Standalone ts index for the daily retention prune — same pattern as
+        # ix_metrics_ts (033): ts behind other index columns means the batched
+        # DELETE ... WHERE ts < cutoff full-scans and next-key-locks the table.
+        Index("ix_ipsec_events_ts", "ts"),
+    )
 
 
 class CheckEvent(Base):
@@ -579,7 +585,11 @@ class CheckEvent(Base):
     new_state: Mapped[int] = mapped_column(Integer, nullable=False)
     summary: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
 
-    __table_args__ = (Index("ix_check_event_lookup", "instance_id", "ts"),)
+    __table_args__ = (
+        Index("ix_check_event_lookup", "instance_id", "ts"),
+        # Standalone ts index for the daily retention prune (see ix_ipsec_events_ts).
+        Index("ix_check_events_ts", "ts"),
+    )
 
 
 class Logfile(Base):

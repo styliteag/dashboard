@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Standalone `ts` indexes on `ipsec_tunnel_events` and `check_events`
+  (migration 034): their daily retention prunes had the same
+  full-scan/next-key-lock pattern fixed for `metrics` in 2.7.4 — preventive,
+  both tables are small transition logs today.
+
 ## [2.7.6] - 2026-07-04
 
 ### Fixed
