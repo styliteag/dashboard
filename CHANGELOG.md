@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Browser terminal + GUI-proxy tunnel hardening (agent 2.7.12): both WebSocket
+  routes now require a write role plus full session validation (Origin allowlist,
+  account-disabled and MFA checks, password-version) — a `view_only` account can
+  no longer open a root shell or a GUI bridge. Arming a box's terminal
+  (`shell_enabled`) is admin-only. The agent gate is now **opt-in** (default off):
+  enable per box via `ORBIT_AGENT_SHELL=1` or the marker file
+  `/usr/local/etc/orbit-agent-shell.enabled` (box-local, dashboard can't flip it).
+  Added concurrency caps (5/user, 5/box), an idle timeout and max session
+  lifetime, PTY-output backpressure, stream-id audit correlation, and optional
+  capped session recording (`DASH_SHELL_RECORD_DIR`).
+
 ## [2.7.8] - 2026-07-04
 
 ### Added

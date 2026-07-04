@@ -921,11 +921,21 @@ xterm.js  ──ws binary──▶  /api/ws/shell/{id}  ──tunnel-Frame──
 (open → `echo`-Marker zurück → resize → close/reap → Gate-off refused). Gates grün: `agent-test`
 (265), `backend-test` (686), `frontend-build`, Lints.
 
-**Offen vor Merge (SPIKE, NICHT produktionsreif):**
-- Session-Recording/TTY-Log auf Disk für Forensik (heute nur open/close-Audit).
-- Idle-Reaper für Shell-Streams (GUI-Tunnel hat `gui_idle_minutes` — analog nachziehen).
-- Backpressure: `_pty_readable` schedult pro Read einen Send-Task; bei langsamer WS unbounded.
-- Agent-Version-Deploy: Self-Update auf 2.7.8 **und** Re-Sign nötig, sonst kein Shell-Support auf
-  den Boxen (Testboxen laufen noch 2.7.7).
-- xterm.js lazy-loaden (Bundle +295 KB / ~73 KB gzip; besser `import()`-split).
-- Read-only-Modus / Bestätigungs-Gate erwägen.
+**Security-Härtung (✅ 2026-07-05, agent 2.7.12) — aus dem Audit umgesetzt:**
+- **Autorisierung:** die Shell-WS (und der GUI-Tunnel) verlangen jetzt `require_write` +
+  volle Session-Validierung (Origin, `disabled`, MFA, `password_version`) — kein `view_only`-
+  Root-Zugriff mehr. Gemeinsamer Helper `_ws_authenticate`.
+- **Origin-Allowlist** auf beiden WS-Routen (`ws_allowed_origin_hosts` + WebAuthn-Host;
+  localhost/127.0.0.1 immer) gegen same-site CSWSH von den `gui-<slug>`-Subdomains.
+- **Per-Instanz `shell_enabled` nur von Admin** schaltbar (über die Write-Rolle hinaus).
+- **Agent-Gate opt-in (default OFF):** `ORBIT_AGENT_SHELL=1` **oder** Marker
+  `/usr/local/etc/orbit-agent-shell.enabled` (box-lokal, dashboard-unabhängig) — ein
+  kompromittiertes Backend spawnt keine Shells auf nicht-zugestimmten Boxen.
+- **Limits:** Concurrency-Cap (5/User, 5/Box), Idle-Timeout (15 min ohne Tastendruck),
+  Max-Lifetime (8 h) via Watchdog. Pong resettet die Idle-Uhr **nicht**.
+- **Backpressure:** `_pty_pump` liest/sendet awaited (kein fire-and-forget mehr).
+- **Forensik:** stream-id im Audit-detail; optionales Session-Recording des Box-Outputs
+  (`shell_record_dir`, capped 8 MB/Session, default aus).
+
+**Noch offen:** Recording-Retention/Viewer-UI/Verschlüsselung; xterm.js lazy-loaden
+(Bundle +295 KB / ~73 KB gzip); optional Read-only-/Bestätigungs-Modus.

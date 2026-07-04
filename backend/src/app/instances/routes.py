@@ -181,6 +181,13 @@ async def update(
     inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    # Arming a box's root shell has real blast radius — gate that one field on
+    # admin, above the write role the rest of the update needs.
+    if "shell_enabled" in payload.model_fields_set and not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin role required to change terminal access",
+        )
     try:
         await service.update_instance(session, inst, payload)
     except service.SlugConflictError as exc:

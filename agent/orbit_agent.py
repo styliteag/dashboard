@@ -49,7 +49,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.11"
+__version__ = "2.7.12"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4050,11 +4050,14 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
 
 # Interactive shell (SPIKE — see docs/agent-architecture.md §22). A dashboard
 # `tunnel` frame with kind="shell" spawns a root PTY instead of a TCP connection
-# to the GUI port. Root RCE by design, so it is gated: the PRIMARY gate is the
-# dashboard (DASH_SHELL_ENABLED, off by default — the backend never sends the open
-# frame otherwise). This env is a box-operator hard-off, honoured regardless of
-# what the dashboard sends. Set ORBIT_AGENT_SHELL=0 to refuse shells locally.
-_SHELL_OK = os.environ.get("ORBIT_AGENT_SHELL", "1") != "0"
+# to the GUI port. Root RCE by design, so it is gated at TWO levels: the dashboard
+# (DASH_SHELL_ENABLED + per-instance opt-in), AND here on the box. This agent gate
+# is OPT-IN — default OFF — so a compromised dashboard can NOT spawn shells on a
+# box the operator never consented to (defense in depth, matching signed
+# self-update). Enable locally with env ORBIT_AGENT_SHELL=1 or by creating the
+# marker file below (a box-local decision the dashboard cannot flip).
+_SHELL_MARKER = "/usr/local/etc/orbit-agent-shell.enabled"
+_SHELL_OK = os.environ.get("ORBIT_AGENT_SHELL", "0") == "1" or os.path.exists(_SHELL_MARKER)
 
 # Fallback PATH for the login shell (a proper login sources the box profile, which
 # normally sets its own; this just guarantees the essentials pre-profile).
@@ -4213,24 +4216,37 @@ class _TunnelManager:
                 os._exit(127)
         # Parent.
         os.set_blocking(master_fd, False)
-        self._shells[stream] = {"pid": pid, "fd": master_fd}
+        self._shells[stream] = {"pid": pid, "fd": master_fd, "task": None}
         if rows and cols:
             self._set_winsize(master_fd, rows, cols)
         log.info("shell %s: pty opened (pid %d)", stream, pid)
-        asyncio.get_event_loop().add_reader(master_fd, self._pty_readable, stream, master_fd)
+        self._shells[stream]["task"] = asyncio.create_task(self._pty_pump(stream, master_fd))
 
-    def _pty_readable(self, stream: str, fd: int) -> None:
-        """Event-loop reader callback: drain the PTY master, forward as data frames."""
+    async def _pty_pump(self, stream: str, fd: int) -> None:
+        """Drain the PTY master and forward output, awaiting each send so a flood of
+        box output (e.g. a root `yes`) applies backpressure instead of piling up
+        unbounded in-flight send tasks. Waits for readability between reads."""
+        loop = asyncio.get_event_loop()
         try:
-            data = os.read(fd, 65536)
-        except (BlockingIOError, InterruptedError):
-            return
-        except OSError:
-            data = b""
-        if not data:  # EOF — the shell exited
+            while True:
+                try:
+                    data = os.read(fd, 65536)
+                except (BlockingIOError, InterruptedError):
+                    fut = loop.create_future()
+                    loop.add_reader(fd, lambda f=fut: f.done() or f.set_result(None))
+                    try:
+                        await fut
+                    finally:
+                        with contextlib.suppress(Exception):
+                            loop.remove_reader(fd)
+                    continue
+                except OSError:
+                    break
+                if not data:  # EOF — the shell exited
+                    break
+                await self._send(stream, "data", base64.b64encode(data).decode())
+        finally:
             self._reap_shell(stream)
-            return
-        asyncio.create_task(self._send(stream, "data", base64.b64encode(data).decode()))
 
     def _shell_write(self, stream: str, data_b64: str) -> None:
         sh = self._shells.get(stream)
@@ -4256,6 +4272,9 @@ class _TunnelManager:
         sh = self._shells.pop(stream, None)
         if sh is None:
             return
+        task = sh.get("task")
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
         with contextlib.suppress(Exception):
             asyncio.get_event_loop().remove_reader(sh["fd"])
         with contextlib.suppress(OSError):

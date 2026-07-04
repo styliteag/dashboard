@@ -132,6 +132,15 @@ class Settings(BaseSettings):
     # is arbitrary root RCE on the box — OFF by default and the ONLY server-side
     # gate; when false the backend never opens a shell stream to the agent.
     shell_enabled: bool = False
+    # Extra hostnames (comma-separated) allowed as the Origin of a shell/GUI-tunnel
+    # WebSocket handshake, on top of the WebAuthn origin's host. localhost/127.0.0.1
+    # are always allowed (dev). Blocks cross-site WS hijack from the same-eTLD+1
+    # firewall GUI-proxy subdomains (gui-<slug>.…).
+    ws_allowed_origin_hosts: str = ""
+    # When set, the backend records each terminal session's I/O to a capped file in
+    # this directory (forensics). Empty = no recording. Files hold plaintext root
+    # session data — point this at an access-controlled, retained volume.
+    shell_record_dir: str = ""
 
     # Notifications (all optional). Three channels — Mattermost, Telegram, Email —
     # all editable (and overridable) in the Settings UI; env defaults here for

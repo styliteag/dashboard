@@ -6,7 +6,10 @@ import asyncio
 import base64
 import contextlib
 import json
+import os
 import uuid
+from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -14,6 +17,7 @@ from sqlalchemy import select
 
 from app.agent_hub.hub import hub
 from app.audit.log import write_audit
+from app.auth.roles import WRITE_ROLES
 from app.config import get_settings
 from app.connectivity import service as conn_service
 from app.db.base import get_sessionmaker
@@ -201,6 +205,53 @@ async def _tunnel_agent_to_client(client_ws: WebSocket, queue: asyncio.Queue) ->
             await client_ws.send_bytes(base64.b64decode(frame.get("data", "")))
 
 
+# --- Shared WebSocket authorization (GUI tunnel + shell) ---------------------
+
+
+def _ws_origin_ok(ws: WebSocket) -> bool:
+    """Reject a cross-site WS handshake. A SameSite=Lax cookie is still sent on a
+    same-site request, and the product serves firewall-controlled content on
+    same-eTLD+1 gui-proxy subdomains — so a strict Origin allowlist is what stops
+    JS on a compromised firewall WebUI from driving these sockets. Non-browser
+    clients (no Origin) pass; localhost/127.0.0.1 always pass (dev)."""
+    origin = ws.headers.get("origin")
+    if not origin:
+        return True
+    host = (urlsplit(origin).hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    s = get_settings()
+    allowed = {(urlsplit(s.webauthn_origin).hostname or "").lower()}
+    allowed.update(h.strip().lower() for h in s.ws_allowed_origin_hosts.split(",") if h.strip())
+    allowed.discard("")
+    return host in allowed
+
+
+async def _ws_authenticate(ws: WebSocket, session, *, write: bool) -> User | None:
+    """Full session validation for a WS route, parity with REST ``current_user``:
+    Origin, presence of user_id/password_version, a passed second factor, the user
+    still existing + password_version match + not disabled, and (when ``write``)
+    a non-``view_only`` role. Closes the socket and returns None on any failure."""
+    if not _ws_origin_ok(ws):
+        await ws.close(code=4403)
+        return None
+    user_id = ws.session.get("user_id")
+    pwv = ws.session.get("password_version")
+    if not user_id or pwv is None or ws.session.get("mfa_passed") is not True:
+        await ws.close(code=4401)
+        return None
+    user = await session.get(User, user_id)
+    # Unlike current_user we don't clear the session here (no Response on a WS); the
+    # stale cookie simply fails again on the next attempt.
+    if user is None or user.password_version != pwv or user.disabled:
+        await ws.close(code=4401)
+        return None
+    if write and user.role not in WRITE_ROLES:
+        await ws.close(code=4403)
+        return None
+    return user
+
+
 @router.websocket("/ws/tunnel/{instance_id}")
 async def tunnel_websocket(ws: WebSocket, instance_id: int):
     """Bridge a local client socket to the firewall's GUI port through the agent.
@@ -210,20 +261,11 @@ async def tunnel_websocket(ws: WebSocket, instance_id: int):
     speaks TLS end-to-end with the firewall, so no HTML rewriting is needed.
     """
     await ws.accept()
-    # Full session validation (not just presence of user_id): the user must still
-    # exist and the password_version must match, so a cookie invalidated by a
-    # password change can't open a tunnel within its remaining lifetime. F5.
-    user_id = ws.session.get("user_id")
-    pwv = ws.session.get("password_version")
-    if not user_id or pwv is None:
-        await ws.close(code=4401)
-        return
     async with get_sessionmaker()() as session:
-        user = await session.get(User, user_id)
-        if user is None or user.password_version != pwv:
-            # Unlike current_user we don't clear the session here (no Response on a
-            # WS); the stale cookie simply fails this check again on the next attempt.
-            await ws.close(code=4401)
+        # A GUI/TCP bridge to the box is a write-level action (mirrors POST
+        # /gui/open, which is require_write) — enforce role + full session validity.
+        user = await _ws_authenticate(ws, session, write=True)
+        if user is None:
             return
         # Group scoping: tunnelling to a foreign-group firewall is a full GUI/TCP
         # bridge — enforce instance visibility, not just authentication.
@@ -266,6 +308,100 @@ async def tunnel_websocket(ws: WebSocket, instance_id: int):
 # frame keeps the socket warm. Server-side so a backgrounded browser tab (whose
 # timers get throttled) still stays connected. Under the common 60s proxy floor.
 _SHELL_PING_INTERVAL = 25
+# An idle root shell is torn down after this many seconds with no keystrokes, and
+# every session is capped at an absolute lifetime regardless of activity.
+_SHELL_IDLE_SECONDS = 900
+_SHELL_MAX_LIFETIME = 8 * 3600
+# Concurrency caps: bound forked root PTYs so one account can't fork-bomb a box.
+_SHELL_MAX_PER_USER = 5
+_SHELL_MAX_PER_INSTANCE = 5
+# Forensic recording cap (bytes of box output per session), when recording is on.
+_SHELL_RECORD_CAP = 8 * 1024 * 1024
+
+_shell_count_user: dict[int, int] = {}
+_shell_count_inst: dict[int, int] = {}
+
+
+def _shell_slot_acquire(user_id: int, instance_id: int) -> bool:
+    """Reserve a concurrency slot; False if the per-user or per-box cap is reached."""
+    if (
+        _shell_count_user.get(user_id, 0) >= _SHELL_MAX_PER_USER
+        or _shell_count_inst.get(instance_id, 0) >= _SHELL_MAX_PER_INSTANCE
+    ):
+        return False
+    _shell_count_user[user_id] = _shell_count_user.get(user_id, 0) + 1
+    _shell_count_inst[instance_id] = _shell_count_inst.get(instance_id, 0) + 1
+    return True
+
+
+def _shell_slot_release(user_id: int, instance_id: int) -> None:
+    for counts, key in ((_shell_count_user, user_id), (_shell_count_inst, instance_id)):
+        n = counts.get(key, 0) - 1
+        if n > 0:
+            counts[key] = n
+        else:
+            counts.pop(key, None)
+
+
+class _ShellRecorder:
+    """Append the box's terminal output to a capped file for forensics. Best-effort:
+    any IO error silently stops recording rather than breaking the session."""
+
+    def __init__(self, path: str):
+        self._n = 0
+        try:
+            self._f = open(path, "ab")  # noqa: SIM115 — long-lived; closed in close()
+        except OSError:
+            self._f = None
+
+    def out(self, data: bytes) -> None:
+        if self._f is None or self._n >= _SHELL_RECORD_CAP:
+            return
+        with contextlib.suppress(OSError):
+            self._f.write(data)
+            self._f.flush()
+            self._n += len(data)
+
+    def close(self) -> None:
+        if self._f is not None:
+            with contextlib.suppress(OSError):
+                self._f.close()
+            self._f = None
+
+
+def _open_recorder(stream: str, instance_id: int, user_id: int) -> _ShellRecorder | None:
+    """A recorder when ``shell_record_dir`` is set, else None (recording off)."""
+    d = get_settings().shell_record_dir
+    if not d:
+        return None
+    with contextlib.suppress(OSError):
+        os.makedirs(d, exist_ok=True)
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return _ShellRecorder(os.path.join(d, f"{ts}-inst{instance_id}-user{user_id}-{stream}.log"))
+
+
+async def _shell_watchdog(state: dict) -> None:
+    """Complete (→ session teardown) once idle-timeout or max-lifetime is exceeded."""
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    while True:
+        await asyncio.sleep(30)
+        now = loop.time()
+        if now - state["last"] > _SHELL_IDLE_SECONDS or now - start > _SHELL_MAX_LIFETIME:
+            return
+
+
+async def _shell_agent_to_client(client_ws: WebSocket, queue: asyncio.Queue, rec) -> None:
+    """Forward box output to the terminal, teeing it to the recorder when present."""
+    while True:
+        frame = await queue.get()
+        if frame.get("op") == "close":
+            return
+        if frame.get("op") == "data":
+            raw = base64.b64decode(frame.get("data", ""))
+            if rec is not None:
+                rec.out(raw)
+            await client_ws.send_bytes(raw)
 
 
 async def _shell_keepalive(client_ws: WebSocket) -> None:
@@ -278,14 +414,16 @@ async def _shell_keepalive(client_ws: WebSocket) -> None:
         return
 
 
-async def _shell_client_to_agent(client_ws: WebSocket, agent, stream: str) -> None:
+async def _shell_client_to_agent(client_ws: WebSocket, agent, stream: str, state: dict) -> None:
     """Forward keystrokes (binary) and resize control (JSON text) to the agent PTY.
 
-    Exits cleanly on client disconnect OR on a failed agent send — the latter
-    happens when the agent WS drops mid-session (e.g. agent restart/self-update):
-    without the guard the raw ``RuntimeError`` surfaces as an unretrieved task
-    exception. The outer handler then tears the shell down normally.
+    Updates ``state["last"]`` on every client frame so the idle watchdog can tell a
+    live session from an abandoned one. Exits cleanly on client disconnect OR on a
+    failed agent send — the latter happens when the agent WS drops mid-session
+    (e.g. agent restart/self-update): without the guard the raw ``RuntimeError``
+    surfaces as an unretrieved task exception. The outer handler then tears down.
     """
+    loop = asyncio.get_event_loop()
     try:
         while True:
             msg = await client_ws.receive()
@@ -293,6 +431,9 @@ async def _shell_client_to_agent(client_ws: WebSocket, agent, stream: str) -> No
                 return
             data = msg.get("bytes")
             if data is not None:
+                # Only real keystrokes count as activity — a keepalive pong must
+                # not reset the idle timer, or an abandoned shell never times out.
+                state["last"] = loop.time()
                 await agent.ws.send_json(
                     {
                         "type": "tunnel",
@@ -335,21 +476,15 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
     if not get_settings().shell_enabled:
         await ws.close(code=4403)
         return
-    # Full session validation (mirrors tunnel_websocket): the user must still exist
-    # and password_version match, so a cookie invalidated by a password change
-    # cannot open a root shell within its remaining lifetime.
-    user_id = ws.session.get("user_id")
-    pwv = ws.session.get("password_version")
-    if not user_id or pwv is None:
-        await ws.close(code=4401)
-        return
     # Same trusted-hops logic as REST audit (spoof-safe behind Traefik); WebSocket
     # is HTTPConnection-shaped, so client_ip's .headers/.client access applies.
     source_ip = client_ip(ws)
     async with get_sessionmaker()() as session:
-        user = await session.get(User, user_id)
-        if user is None or user.password_version != pwv:
-            await ws.close(code=4401)
+        # A root shell is the most privileged action in the product — require a
+        # write role + full session validity + a passed second factor, not mere
+        # visibility. (Origin, disabled, MFA all enforced in _ws_authenticate.)
+        user = await _ws_authenticate(ws, session, write=True)
+        if user is None:
             return
         # Group scoping: a shell is a full root bridge — enforce instance
         # visibility, not just authentication.
@@ -366,6 +501,10 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
     if agent is None:
         await ws.close(code=4404)
         return
+    if not _shell_slot_acquire(user.id, instance_id):
+        log.warning("shell.rejected_cap", instance_id=instance_id, user_id=user.id)
+        await ws.close(code=4008)  # policy/limit
+        return
 
     stream = uuid.uuid4().hex
     async with get_sessionmaker()() as session:
@@ -373,15 +512,18 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
             session,
             action="shell.open",
             result="ok",
-            user_id=user_id,
+            user_id=user.id,
             target_type="instance",
             target_id=instance_id,
             source_ip=source_ip,
+            detail={"stream": stream},
         )
         await session.commit()
-    log.info("shell.open", instance_id=instance_id, user_id=user_id, stream=stream, ip=source_ip)
+    log.info("shell.open", instance_id=instance_id, user_id=user.id, stream=stream, ip=source_ip)
+    rec = _open_recorder(stream, instance_id, user.id)
 
     queue = hub.open_tunnel(stream)
+    state = {"last": asyncio.get_event_loop().time()}
     try:
         await agent.ws.send_json(
             {
@@ -395,8 +537,9 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
         )
         pumps = [
             asyncio.create_task(_shell_keepalive(ws)),
-            asyncio.create_task(_shell_client_to_agent(ws, agent, stream)),
-            asyncio.create_task(_tunnel_agent_to_client(ws, queue)),
+            asyncio.create_task(_shell_client_to_agent(ws, agent, stream, state)),
+            asyncio.create_task(_shell_agent_to_client(ws, queue, rec)),
+            asyncio.create_task(_shell_watchdog(state)),
         ]
         _, pending = await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -406,6 +549,9 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
     except Exception:
         log.exception("shell.error", instance_id=instance_id, stream=stream)
     finally:
+        _shell_slot_release(user.id, instance_id)
+        if rec is not None:
+            rec.close()
         hub.close_tunnel(stream)
         with contextlib.suppress(Exception):
             await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
@@ -417,9 +563,10 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
                     session,
                     action="shell.close",
                     result="ok",
-                    user_id=user_id,
+                    user_id=user.id,
                     target_type="instance",
                     target_id=instance_id,
                     source_ip=source_ip,
+                    detail={"stream": stream},
                 )
                 await session.commit()
