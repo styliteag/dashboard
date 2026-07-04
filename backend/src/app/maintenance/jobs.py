@@ -31,8 +31,14 @@ _BATCH_PAUSE_SECONDS = 0.1
 
 
 async def _prune_before(table: str, cutoff: datetime) -> int:
-    """Batched ``DELETE FROM <table> WHERE ts < cutoff``. Returns rows deleted."""
-    stmt = text(f"DELETE FROM {table} WHERE ts < :c LIMIT :n")  # table is an internal constant
+    """Batched ``DELETE FROM <table> WHERE ts < cutoff``. Returns rows deleted.
+
+    ``ORDER BY ts`` deletes oldest-first so each batch drives off the ``ts`` index
+    (``ix_metrics_ts`` on the big ``metrics`` table) and confines its row/gap locks
+    to the oldest rows — never the recent range where fresh inserts land. Without
+    it the optimizer may full-scan the clustered index and gap-lock every writer out.
+    """
+    stmt = text(f"DELETE FROM {table} WHERE ts < :c ORDER BY ts LIMIT :n")  # table: internal const
     deleted = 0
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:

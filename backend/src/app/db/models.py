@@ -342,6 +342,14 @@ class Metric(Base):
     # rates derived by subtracting consecutive stored values.
     value: Mapped[float] = mapped_column(Double, nullable=False)
 
+    # Standalone ts index for the hourly retention prune. Without it,
+    # ``DELETE ... WHERE ts < cutoff`` can't seek by ts (ts is the 2nd PK column,
+    # behind instance_id) and full-scans the clustered index, gap-locking every
+    # instance's rows and blocking concurrent poll/push INSERTs until they hit the
+    # 50s lock-wait timeout and flip the box offline. The index lets the prune
+    # range-scan only the old rows, well away from where fresh inserts (ts=now) land.
+    __table_args__ = (Index("ix_metrics_ts", "ts"),)
+
 
 # ApiKey ↔ Group binding. NO rows = a GLOBAL key (backward compat — keys
 # existed before groups did). Note the inversion vs ``user_groups``, where no

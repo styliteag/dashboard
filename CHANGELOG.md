@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Metrics retention prune no longer locks writers out.** The hourly prune
+  `DELETE FROM metrics WHERE ts < cutoff` could not seek by `ts` (2nd column of
+  the `(instance_id, ts, metric)` PK) and full-scanned the table, gap-locking
+  every instance's rows under REPEATABLE READ and blocking concurrent poll/push
+  inserts until they hit the 50s lock-wait timeout and flipped the box offline
+  (`Lock wait timeout exceeded … INSERT IGNORE INTO metrics`). Added a standalone
+  `ts` index (migration 033) and made the batched prune delete oldest-first, so
+  its locks stay confined to the old rows being removed.
+
 ## [2.7.3] - 2026-07-04
 
 ### Fixed
