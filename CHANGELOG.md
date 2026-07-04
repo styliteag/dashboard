@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Agent 2.6.5: metrics-push phase is randomized across the push interval and
+  reconnects get 0–5s jitter. After a backend restart the whole fleet used to
+  reconnect and then push in the same second every cycle (lockstep INSERT
+  spikes on the dashboard DB); pushes now spread evenly across the interval.
+
 ### Fixed
 
 - Standalone `ts` indexes on `ipsec_tunnel_events` and `check_events`

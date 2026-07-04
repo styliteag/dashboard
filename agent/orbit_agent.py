@@ -45,7 +45,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.6.4"
+__version__ = "2.6.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3962,7 +3962,9 @@ async def agent_loop(cfg: Config) -> None:
             if ws is not None:
                 await ws.close()
 
-        await asyncio.sleep(reconnect_delay)
+        # Jitter so a fleet dropped by one backend restart doesn't reconnect (and
+        # hammer the WS handshake + first push) in the same second.
+        await asyncio.sleep(reconnect_delay + random.uniform(0, 5))
         reconnect_delay = min(reconnect_delay * 2, 120)  # exponential backoff, max 2min
 
 
@@ -4001,7 +4003,16 @@ def _apply_push_interval(value: object) -> None:
 
 
 async def _push_loop(ws: WebSocket, cfg: Config) -> None:
-    """Push metrics snapshot every N seconds."""
+    """Push metrics snapshot every N seconds.
+
+    The initial random sleep spreads the fleet's push phase across the interval:
+    a backend restart drops every agent at once and they all reconnect within the
+    same backoff window — without the jitter the whole fleet then pushes in the
+    same second, every cycle, in lockstep (INSERT spikes on the dashboard DB).
+    Capped at 30s so a large operator-set interval can't delay first data past
+    the dashboard's stale threshold (120s).
+    """
+    await asyncio.sleep(random.uniform(0, min(cfg.push_interval, 30)))
     while True:
         try:
             snapshot = await asyncio.get_event_loop().run_in_executor(None, collect_all)
