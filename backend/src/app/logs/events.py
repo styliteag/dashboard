@@ -3,8 +3,9 @@
 Two syslog shapes exist in the wild (verified against a prod DB copy):
 RFC5424 with a ``<PRI>`` prefix (OPNsense, most pfSense logs) where severity
 is ``PRI % 8``, and PRI-less BSD lines (dpinger, older pfSense) where a curated
-pattern list assigns a severity. Lines are normalized (IPs, numbers, quoted
-strings → placeholders) so repeats collapse into one event with a count —
+pattern list assigns a severity. Lines are normalized (IPs, numbers, hex
+addresses, quoted strings → placeholders) so repeats collapse into one event
+with a count —
 prod data showed 3900+ identical ``syslogd sendto`` lines on a single box.
 
 Known-noise patterns are dropped entirely: ``dpinger sendto error`` appeared on
@@ -60,13 +61,27 @@ class ExtractedEvent:
     last_ts: str = field(default="")
 
 
+_DAYS = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+_MONTHS = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+
+
 def normalize(msg: str) -> str:
     """Mask the variable parts of a log message so repeats collapse."""
     msg = re.sub(r'"[^"]*"', '"…"', msg)
+    msg = re.sub(r"acme-challenge/[A-Za-z0-9_-]+", "acme-challenge/…", msg)
+    msg = re.sub(r"orbit-\w+\.php", "orbit-….php", msg)
     msg = re.sub(r"\b\d+\.\d+\.\d+\.\d+\b", "IP", msg)
     msg = re.sub(r"\b[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}\b", "MAC", msg)
     msg = re.sub(r"\b[0-9a-fA-F:]*:[0-9a-fA-F:%a-z0-9]{4,}\b", "IP6", msg)
+    msg = re.sub(r"\b0x[0-9a-fA-F]+\b", "0xHEX", msg)
+    # Date words only in date context ("Tue Aug", "13 Feb", "Feb 13") so prose
+    # like "You May not" survives.
+    msg = re.sub(rf"\b{_DAYS}\s+{_MONTHS}\b", "D M", msg)
+    msg = re.sub(rf"(?<=\d\s){_MONTHS}\b", "M", msg)
+    msg = re.sub(rf"\b{_MONTHS}(?=\s+\d)", "M", msg)
+    msg = re.sub(r"(?<![\w.])-\d+\b", "N", msg)
     msg = re.sub(r"\b\d+\b", "N", msg)
+    msg = re.sub(r"\s{2,}", " ", msg)
     return msg[:_PATTERN_MAX]
 
 
@@ -85,6 +100,24 @@ def _classify(line: str) -> tuple[int, str, str, str] | None:
     return None
 
 
+# dmesg sub-tags that show up as their own "program" when the line reaches
+# syslog untagged: ALL-CAPS subsystems (GEOM) or snake_case functions
+# (module_register_init). Plain words ("panic: ...") are messages, not tags.
+_KERNEL_SUBTAG = re.compile(
+    r"^(?P<sub>[A-Z]{2,}[\w.-]*|[A-Za-z][\w.-]*_[\w.-]+):\s+(?P<rest>\S.*)$"
+)
+
+
+def _resplit_kernel(program: str, msg: str) -> tuple[str, str]:
+    """Unify kernel-tagged dmesg lines with their raw (untagged) twins."""
+    if program != "kernel":
+        return program, msg
+    m = _KERNEL_SUBTAG.match(msg)
+    if m:
+        return m["sub"], m["rest"]
+    return program, msg
+
+
 def extract_events(log_name: str, content: str) -> list[ExtractedEvent]:
     """Aggregate a snapshot's critical lines into normalized events.
 
@@ -101,6 +134,7 @@ def extract_events(log_name: str, content: str) -> list[ExtractedEvent]:
         severity, program, msg, ts = classified
         if severity > MAX_SEVERITY:
             continue
+        program, msg = _resplit_kernel(program, msg)
         key = (severity, program, normalize(msg))
         event = by_key.get(key)
         if event is None:

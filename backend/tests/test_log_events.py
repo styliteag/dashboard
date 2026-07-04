@@ -90,6 +90,92 @@ def test_normalize_masks_variable_parts() -> None:
     assert "bob" not in n  # quoted strings masked
 
 
+def test_aggregation_ignores_hex_addresses() -> None:
+    content = "\n".join(
+        [
+            _bsd(
+                "kernel",
+                "module_register_init: MOD_LOAD (ipw_bss_fw, 0xffff00000026dbb8, 0) error 1",
+            ),
+            _bsd(
+                "kernel",
+                "module_register_init: MOD_LOAD (ipw_bss_fw, 0xffff000000269298, 0) error 1",
+            ),
+        ]
+    )
+    events = extract_events("system", content)
+    assert len(events) == 1
+    assert events[0].count == 2
+    assert "0xffff" not in events[0].pattern
+    assert "0xHEX" in events[0].pattern
+    # Different firmware names stay distinct patterns.
+    content2 = (
+        content
+        + "\n"
+        + _bsd(
+            "kernel", "module_register_init: MOD_LOAD (ipw_ibss_fw, 0xffff000000269350, 0) error 1"
+        )
+    )
+    assert len(extract_events("system", content2)) == 2
+
+
+def test_kernel_dmesg_lines_unify_with_tagged_lines() -> None:
+    # The same dmesg line reaches syslog both raw (first token becomes the
+    # program) and kernel-tagged — both shapes must land on one pattern.
+    content = "\n".join(
+        [
+            _bsd(
+                "kernel",
+                "module_register_init: MOD_LOAD (ipw_bss_fw, 0xffff00000026dbb8, 0) error 1",
+            ),
+            _bsd("module_register_init", "MOD_LOAD (ipw_bss_fw, 0xffff000000269298, 0) error 1"),
+        ]
+    )
+    events = extract_events("system", content)
+    assert len(events) == 1
+    assert events[0].program == "module_register_init"
+    assert events[0].count == 2
+    # All-caps subsystem tags (GEOM) unify the same way.
+    content = "\n".join(
+        [
+            _bsd("kernel", "GEOM: mmcsd0: the primary GPT table is corrupt or invalid."),
+            _bsd("GEOM", "mmcsd0: the primary GPT table is corrupt or invalid."),
+        ]
+    )
+    events = extract_events("system", content)
+    assert len(events) == 1
+    assert events[0].program == "GEOM"
+    # "panic: ..." is a message, not a subsystem tag — stays program "kernel".
+    events = extract_events("system", _bsd("kernel", "panic: out of swap space"))
+    assert events[0].program == "kernel"
+
+
+def test_normalize_masks_negative_numbers() -> None:
+    assert normalize("Connection reset, restarting [0]") == normalize(
+        "Connection reset, restarting [-1]"
+    )
+    assert normalize("event_wait : Interrupted system call (fd=-4,code=5)") == normalize(
+        "event_wait : Interrupted system call (fd=8,code=4)"
+    )
+
+
+def test_normalize_masks_dates() -> None:
+    a = normalize("output was '13 Feb 12:00:01 ntpd[123]: built Tue Aug  6 12:00:00 UTC 2024'")
+    b = normalize("output was '13 Nov 09:10:11 ntpd[99]: built Wed Aug 14 08:00:00 UTC 2024'")
+    assert a == b
+    # "May" without date context stays untouched.
+    assert "May" in normalize("You May not pass")
+
+
+def test_normalize_masks_acme_challenge_and_orbit_tmpfiles() -> None:
+    a = normalize("Invalid response from http://x.org/.well-known/acme-challenge/qK2Bxps7kNe8")
+    b = normalize("Invalid response from http://x.org/.well-known/acme-challenge/-CQKIlLqlxv71eVY")
+    assert a == b
+    assert normalize("/tmp/orbit-0m908twg.php: PHP ERROR: Type: 1") == normalize(
+        "/tmp/orbit-9zk41abq.php: PHP ERROR: Type: 1"
+    )
+
+
 def test_last_timestamp_wins() -> None:
     content = "\n".join(
         [

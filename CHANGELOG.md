@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Log events: hex addresses (e.g. kernel `MOD_LOAD (…, 0xffff…, 0)`) are now
+  masked as `0xHEX` during normalization, so lines differing only in a memory
+  address aggregate into one event instead of one row each.
+- Log events: better aggregation — kernel-tagged dmesg lines unify with their
+  raw twins (`kernel: GEOM: …` ≙ `GEOM: …`), embedded dates (`Tue Aug 6`),
+  negative numbers (`[-1]`), ACME challenge tokens and `orbit-*.php` temp
+  names are masked, runs of whitespace collapse.
+
 ## [2.7.2] - 2026-07-04
 
 ### Added
