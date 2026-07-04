@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-07-04
+
 ### Fixed
 
 - Log events: hex addresses (e.g. kernel `MOD_LOAD (…, 0xffff…, 0)`) are now
