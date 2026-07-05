@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Link as LinkIcon, Search } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
 import { ShellIconLink } from "../components/ShellIconLink";
@@ -16,9 +16,16 @@ const STATE: Record<number, { label: string; dot: string; text: string; row: str
 };
 
 export default function AlertsPage() {
-  const [search, setSearch] = useState("");
+  // A deep link like /alerts?q=gateway: (e.g. the Hub's "Gateways" alert chip)
+  // pre-fills the search and shows all checks — the chip counts every CRIT
+  // regardless of Checkmk export state, so don't hide excluded ones here.
+  const [params] = useSearchParams();
+  const initialQuery = params.get("q") ?? "";
+  const [search, setSearch] = useState(initialQuery);
   const [problemsOnly, setProblemsOnly] = useState(true);
-  const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">("exported");
+  const [cmkFilter, setCmkFilter] = useState<"all" | "exported" | "excluded">(
+    initialQuery ? "all" : "exported",
+  );
   const agentMode = useAgentModeMap();
   const shellEnabled = useShellEnabledMap();
 

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hub "CRIT alerts by tab": gateway alerts were bucketed under **Connectivity**,
+  which is only the ping monitors — so a fleet with 0 ping problems but down
+  gateways showed a misleading "Connectivity N" chip linking to a page with nothing
+  wrong. Gateway alerts now get their own **Gateways** chip that deep-links to the
+  filtered alert list (`/alerts?q=gateway:`); Connectivity counts only `connectivity:*`
+  ping monitors.
 - Service checks: `ipsec.service` no longer reports CRIT ("IPsec service NOT
   running") on boxes that don't use IPsec at all. strongSwan legitimately isn't
   running there, so the check was a permanent false alert (it inflated the Hub's

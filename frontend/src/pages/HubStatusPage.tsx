@@ -250,16 +250,17 @@ export default function HubStatusPage() {
 
 /** Map a granular check key to the tab that owns it, so a Hub alert links to the
  * page where it is acted on. Categories mirror backend/src/app/checks/evaluate.py.
- * System checks (memory/cpu/disk/service/ntp/…) have no overview tab → the alert
- * list, which shows them per-instance. */
+ * "Connectivity" is only the ping monitors (connectivity:*) shown on that page —
+ * gateway alerts are a different thing (dpinger gateway state) with no overview
+ * page, so they go to the alert list alongside the System checks. */
 function alertTab(key: string): { to: string; label: string } {
   const cat = key.includes(":") ? key.slice(0, key.indexOf(":")) : key;
   if (cat === "cert") return { to: "/certs", label: "Certificates" };
   if (cat === "ipsec.tunnel" || cat === "ipsec.tunnel_ping" || cat === "ipsec.service") {
     return { to: "/vpn", label: "VPN" };
   }
-  if (cat === "gateway" || cat === "connectivity")
-    return { to: "/connectivity", label: "Connectivity" };
+  if (cat === "connectivity") return { to: "/connectivity", label: "Connectivity" };
+  if (cat === "gateway") return { to: "/alerts?q=gateway:", label: "Gateways" };
   if (cat === "firmware") return { to: "/firmware", label: "Firmware" };
   return { to: "/alerts", label: "System" };
 }
