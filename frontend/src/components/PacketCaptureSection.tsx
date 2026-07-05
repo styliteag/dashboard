@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Play, Download, ExternalLink } from "lucide-react";
-import { api } from "../lib/api";
+import { api, apiErrorText } from "../lib/api";
 import type { SystemStatus } from "../lib/types";
 
 interface Props {
@@ -33,7 +33,11 @@ export default function PacketCaptureSection({ instanceId }: Props) {
   });
 
   const interfaces = (status?.interfaces ?? []).map((i) => i.name).filter(Boolean);
-  const currentIface = interfaces.length ? (interfaces.includes(iface) ? iface : interfaces[0]) : iface;
+  const currentIface = interfaces.length
+    ? interfaces.includes(iface)
+      ? iface
+      : interfaces[0]
+    : iface;
 
   const capMut = useMutation({
     mutationFn: () =>
@@ -71,7 +75,9 @@ export default function PacketCaptureSection({ instanceId }: Props) {
               disabled={capMut.isPending}
             >
               {(interfaces.length ? interfaces : [currentIface]).map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n} value={n}>
+                  {n}
+                </option>
               ))}
             </select>
             <p className="text-[10px] text-slate-500 mt-0.5">From live ifconfig on the box.</p>
@@ -109,7 +115,9 @@ export default function PacketCaptureSection({ instanceId }: Props) {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">Agent traffic is excluded by default.</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Agent traffic is excluded by default.
+            </p>
           </label>
 
           <label className="block">
@@ -141,7 +149,10 @@ export default function PacketCaptureSection({ instanceId }: Props) {
               <option value={10485760}>10 MB</option>
               <option value={20971520}>20 MB</option>
             </select>
-            <p className="text-[10px] text-slate-500 mt-0.5">Hard-capped on the firewall for safety. Live captures have no fixed time limit (until you stop or close the tab).</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Hard-capped on the firewall for safety. Live captures have no fixed time limit (until
+              you stop or close the tab).
+            </p>
           </label>
         </div>
 
@@ -166,16 +177,25 @@ export default function PacketCaptureSection({ instanceId }: Props) {
           <Play className="h-4 w-4" /> Start LIVE stream (new tab)
         </button>
 
-        {capMut.isPending && <div className="text-sm text-slate-400">Capturing on the firewall…</div>}
-        {capMut.error && <div className="text-sm text-red-400">{(capMut.error as any)?.message || "failed"}</div>}
+        {capMut.isPending && (
+          <div className="text-sm text-slate-400">Capturing on the firewall…</div>
+        )}
+        {capMut.error && (
+          <div className="text-sm text-red-400">{apiErrorText(capMut.error, "Capture failed")}</div>
+        )}
 
         {result && (
           <div className="mt-2 rounded border border-emerald-800/40 bg-emerald-950/20 p-3 text-sm space-y-2">
             <div>
-              Captured <span className="font-mono">{result.meta.bytes}</span> bytes on <span className="font-mono">{result.meta.interface}</span>
-              {result.meta.truncated && <span className="ml-2 text-amber-400">(truncated at limit)</span>}
+              Captured <span className="font-mono">{result.meta.bytes}</span> bytes on{" "}
+              <span className="font-mono">{result.meta.interface}</span>
+              {result.meta.truncated && (
+                <span className="ml-2 text-amber-400">(truncated at limit)</span>
+              )}
             </div>
-            {result.meta.filter && <div className="text-xs text-slate-400">filter: {result.meta.filter}</div>}
+            {result.meta.filter && (
+              <div className="text-xs text-slate-400">filter: {result.meta.filter}</div>
+            )}
 
             <div className="flex flex-wrap gap-2 pt-1">
               <a
@@ -191,13 +211,16 @@ export default function PacketCaptureSection({ instanceId }: Props) {
                 <ExternalLink className="h-3.5 w-3.5" /> View packets in new tab
               </button>
             </div>
-            <div className="text-[10px] text-slate-500">Capture id: {result.capture_id} (expires in ~1h)</div>
+            <div className="text-[10px] text-slate-500">
+              Capture id: {result.capture_id} (expires in ~1h)
+            </div>
           </div>
         )}
       </div>
 
       <p className="text-xs text-slate-500">
-        Runs <code>tcpdump</code> on the firewall via the agent (bounded, no SSH needed). Open the viewer in a new tab for a clean packet list + hex view.
+        Runs <code>tcpdump</code> on the firewall via the agent (bounded, no SSH needed). Open the
+        viewer in a new tab for a clean packet list + hex view.
       </p>
     </section>
   );

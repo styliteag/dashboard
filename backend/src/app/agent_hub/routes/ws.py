@@ -708,7 +708,9 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
 # and forward raw pcap chunks as binary frames. Client sends JSON controls.
 
 
-async def _run_live_capture(client_ws: WebSocket, agent, stream: str, queue: asyncio.Queue | None = None) -> None:
+async def _run_live_capture(
+    client_ws: WebSocket, agent, stream: str, queue: asyncio.Queue | None = None
+) -> None:
     if queue is None:
         queue = hub.open_tunnel(stream)
     try:
@@ -784,7 +786,13 @@ async def capture_websocket(ws: WebSocket, instance_id: int):
     queue = hub.open_tunnel(stream)
 
     # Tell the agent to start the capture pump
-    log.info("capture.start", instance_id=instance_id, stream=stream, interface=q.get("interface"), filter=q.get("filter"))
+    log.info(
+        "capture.start",
+        instance_id=instance_id,
+        stream=stream,
+        interface=q.get("interface"),
+        filter=q.get("filter"),
+    )
     await agent.ws.send_json(
         {
             "type": "tunnel",
