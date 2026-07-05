@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Added non-alert warning under /instances (small "Console PW" badge) and on the instance Overview tab (amber note) when "Password protect the console menu" is enabled on a firewall. The team prefers console access without password protection (the disableconsolemenu flag absent in config.xml). No check/alert or notification is emitted for this condition. Agent 2.7.17+ surfaces the flag via status; direct-poll boxes default to no warning.
+
 ## [2.8.7] - 2026-07-05
 
 ### Changed
