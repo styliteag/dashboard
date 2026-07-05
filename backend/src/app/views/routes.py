@@ -365,3 +365,116 @@ async def firmware_compliance(
         outdated=outdated,
         unknown=unknown,
     )
+
+
+# --- Certificate lifecycle ---------------------------------------------------
+
+# Expiry runway thresholds — mirror app.checks.evaluate so the fleet view and the
+# per-cert alert use the same OK/WARN/CRIT boundaries.
+_CERT_WARN_DAYS = 30
+_CERT_CRIT_DAYS = 7
+# An ACME cert (Let's Encrypt et al.) auto-renews ~30 days out. One still inside
+# this window has almost certainly failed to renew — surface it separately.
+_CERT_ACME_RENEW_DAYS = 21
+# Substrings identifying an ACME-issuing CA (case-insensitive issuer match). The
+# agent doesn't collect an explicit ACME marker, so we derive it from the issuer.
+_ACME_ISSUER_MARKERS = (
+    "let's encrypt",
+    "lets encrypt",
+    "isrg",
+    "zerossl",
+    "buypass",
+    "google trust services",
+)
+
+
+class CertEntry(BaseModel):
+    instance_id: int
+    instance_name: str
+    location: str | None
+    refid: str
+    name: str
+    type: str  # "cert" | "ca"
+    is_gui: bool
+    subject: str
+    issuer: str
+    not_after: str
+    days_remaining: int
+    acme: bool  # issued by an ACME CA (renewal expected to be automatic)
+    acme_overdue: bool  # ACME cert past its auto-renew window — renewal likely failing
+    status: str  # "ok" | "warning" | "critical" | "expired"
+
+
+class CertOverviewResponse(BaseModel):
+    certs: list[CertEntry]
+    total: int
+    ok: int
+    warning: int  # < 30 days
+    critical: int  # < 7 days (not yet expired)
+    expired: int
+    acme: int
+    acme_overdue: int
+
+
+def _cert_status(days: int) -> str:
+    if days < 0:
+        return "expired"
+    if days < _CERT_CRIT_DAYS:
+        return "critical"
+    if days < _CERT_WARN_DAYS:
+        return "warning"
+    return "ok"
+
+
+def _is_acme(issuer: str) -> bool:
+    lo = issuer.lower()
+    return any(m in lo for m in _ACME_ISSUER_MARKERS)
+
+
+@router.get("/certs/overview", response_model=CertOverviewResponse)
+async def certs_overview(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> CertOverviewResponse:
+    """Fleet-wide certificate inventory across the caller's visible instances.
+
+    Certs are agent-push only (parsed from config.xml on the box), so direct-poll
+    and Securepoint instances contribute nothing. Pure in-memory hub read — no
+    appliance round-trips. Sorted soonest-expiry-first so the timeline reads top-down.
+    """
+    instances = await list_instances(session, user)
+    out: list[CertEntry] = []
+    for inst in instances:
+        if not inst.agent_mode:
+            continue
+        for c in hub.get_last_certs(inst.id) or []:
+            acme = _is_acme(c.issuer)
+            out.append(
+                CertEntry(
+                    instance_id=inst.id,
+                    instance_name=inst.name,
+                    location=inst.location,
+                    refid=c.refid,
+                    name=c.name,
+                    type=c.type,
+                    is_gui=c.is_gui,
+                    subject=c.subject,
+                    issuer=c.issuer,
+                    not_after=c.not_after,
+                    days_remaining=c.days_remaining,
+                    acme=acme,
+                    acme_overdue=acme and 0 <= c.days_remaining < _CERT_ACME_RENEW_DAYS,
+                    status=_cert_status(c.days_remaining),
+                )
+            )
+    out.sort(key=lambda e: e.days_remaining)
+    return CertOverviewResponse(
+        certs=out,
+        total=len(out),
+        ok=sum(1 for e in out if e.status == "ok"),
+        warning=sum(1 for e in out if e.status == "warning"),
+        critical=sum(1 for e in out if e.status == "critical"),
+        expired=sum(1 for e in out if e.status == "expired"),
+        acme=sum(1 for e in out if e.acme),
+        acme_overdue=sum(1 for e in out if e.acme_overdue),
+    )

@@ -7,6 +7,7 @@ import InstanceDetailPage from "./pages/InstanceDetailPage";
 import VPNOverviewPage from "./pages/VPNOverviewPage";
 import ConnectivityOverviewPage from "./pages/ConnectivityOverviewPage";
 import FirmwareCompliancePage from "./pages/FirmwareCompliancePage";
+import CertificatesPage from "./pages/CertificatesPage";
 import AuditPage from "./pages/AuditPage";
 import PasswordPage from "./pages/PasswordPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="vpn" element={<VPNOverviewPage />} />
           <Route path="connectivity" element={<ConnectivityOverviewPage />} />
           <Route path="firmware" element={<FirmwareCompliancePage />} />
+          <Route path="certs" element={<CertificatesPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="logs" element={<LogEventsPage />} />
           <Route path="audit" element={<AuditPage />} />
