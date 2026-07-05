@@ -207,6 +207,11 @@ export default function PacketCaptureViewer() {
   const staticPackets = staticData?.packets ?? [];
 
   const allPackets = isLive ? livePackets : staticPackets;
+
+  const instanceId = useMemo(() => {
+    if (isLive) return Number(capId);
+    return staticData?.meta?.instance_id ? Number(staticData.meta.instance_id) : null;
+  }, [isLive, capId, staticData]);
   const meta = (isLive ? liveMeta : staticData?.meta || {}) as Record<
     string,
     string | number | boolean | undefined
@@ -223,6 +228,44 @@ export default function PacketCaptureViewer() {
         (p.proto || "").toLowerCase().includes(q),
     );
   }, [allPackets, filter]);
+
+  // Collect unique Source/Dest values for alias-style completion in the filter
+  const srcDestSuggestions = useMemo(() => {
+    const s = new Set<string>();
+    allPackets.forEach((p) => {
+      if (p.src) s.add(p.src);
+      if (p.dst) s.add(p.dst);
+    });
+    return Array.from(s).sort();
+  }, [allPackets]);
+
+  // Fetch rule options to get aliases for completion and resolution (Address or Alias like pfSense)
+  const { data: ruleOptions } = useQuery({
+    queryKey: ["firewall-rule-options", instanceId],
+    queryFn: () => api.get(`/api/instances/${instanceId}/firewall/rules/options`),
+    enabled: !!instanceId,
+  });
+
+  const aliasSuggestions = useMemo(() => {
+    if (!ruleOptions?.networks) return [];
+    const aliases: string[] = [];
+    const traverse = (obj: any) => {
+      if (typeof obj === "string" && obj) {
+        // skip generic ones, keep user aliases and special nets
+        if (!["any", "lan", "wan", "loopback"].some((g) => obj.toLowerCase().includes(g))) {
+          aliases.push(obj);
+        }
+      } else if (obj && typeof obj === "object") {
+        Object.values(obj).forEach(traverse);
+      }
+    };
+    traverse(ruleOptions.networks);
+    return [...new Set(aliases)].sort();
+  }, [ruleOptions]);
+
+  const allFilterSuggestions = useMemo(() => {
+    return [...new Set([...srcDestSuggestions, ...aliasSuggestions])].sort();
+  }, [srcDestSuggestions, aliasSuggestions]);
 
   useEffect(() => {
     if (!selected && filtered.length) setSelected(filtered[0]);
@@ -411,9 +454,15 @@ export default function PacketCaptureViewer() {
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter by IP, port, info…"
+            placeholder="Filter by IP, port, info, or alias…"
+            list="src-dest-suggestions"
             className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm"
           />
+          <datalist id="src-dest-suggestions">
+            {allFilterSuggestions.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
           {isLive && !isStopped && (
             <span className="text-xs text-emerald-400">
               Live — new packets append automatically
