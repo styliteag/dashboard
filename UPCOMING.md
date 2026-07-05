@@ -28,38 +28,24 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   silence windows and maintenance mode.
 - **More notification channels** — e-mail digests, generic webhook, ntfy, Slack /
   Teams / Telegram. Escalation chains (notify B if A doesn't ack in 15 min).
-- **Certificate lifecycle view** — fleet-wide cert inventory (already collected)
-  with expiry timeline, ACME renewal status, and alerting.
 - **Live log streaming** — today logs arrive as hourly snapshots; add an on-demand
   "follow" mode where the agent tails a selected log over the existing WS and the
   UI streams it live (with the same admin-only + anonymization rules).
-- **Top talkers / state table insight** — lightweight traffic insight from `pfctl`
-  state summaries: top source/dest, states per interface, without full NetFlow.
 - **SLA / availability reports** — monthly uptime per instance and per tunnel,
   rendered as PDF/e-mail for customers ("99.7 % in June").
 
 ## 🛰 Agent & fleet operations
 
-- **Config backup & versioning** — agent pushes `config.xml` (and Securepoint
-  equivalent) on change; dashboard stores encrypted, versioned copies with a
-  **diff viewer** ("what changed on this box between Tue and Wed?") and
-  one-click download for disaster recovery. Probably the highest-value single
-  feature for a firewall fleet tool.
 - **Config drift / compliance checks** — declarative expectations ("SSH password
   auth off", "DNS servers = X", "firmware ≥ Y") evaluated fleet-wide, with a
   compliance score per group. FirmwareCompliancePage is the seed of this.
 - **Scheduled & staged firmware rollouts** — maintenance windows per group,
   canary-first ordering (update 1 box, wait, then the rest), automatic abort on
   failed health check after reboot.
-- **Zero-touch enrollment** — one-time enrollment code as QR / single copy-paste
-  installer line; pre-provisioned group assignment so a new box lands in the right
-  customer group automatically.
 - **Agent as native package** — OPNsense plugin (`os-orbit-agent`) / pfSense package
   so installation happens in the firewall GUI instead of scp + shell.
 - **Update-key rotation flow** — solve the chicken-and-egg of rotating the baked-in
   Ed25519 pubkey across the fleet (dual-key transition window).
-- **Terminal session recording** — the browser terminal (SSH/PTY) gets asciinema-style
-  recordings attached to the audit log; optional four-eyes approval for root sessions.
 - **Remote packet capture** — request a bounded `tcpdump` (interface, filter, max
   seconds/bytes) via the agent, download the pcap from the dashboard.
 - **Wake-up / on-demand refresh** — "refresh now" button that asks the agent to push
@@ -80,13 +66,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 
 ## 🤖 AI / assistant
 
-- **Root-cause assistant** — "why is tunnel opn1↔pf1 down?" — LLM gets the
-  (anonymized) tunnel status history, related log events, and gateway metrics, and
-  answers with a hypothesis + suggested checks. Builds on the existing anonymized
-  LLM analysis path; TODO.md already suggests feeding `swanctl.conf` connection
-  blocks.
-- **Fleet Q&A** — natural-language queries over inventory: "which boxes still run
-  2.6 and have a cert expiring this quarter?"
 - **Daily fleet briefing** — one generated paragraph per morning: what changed,
   what's degraded, what needs a human. Delivered via the notification channels.
 - **Log-pattern triage suggestions** — when a new critical pattern appears, the LLM
@@ -120,11 +99,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 
 ## 🧪 Moonshots
 
-- **Orbit Marketplace for checks** — pluggable check/collector definitions
-  (signed, like the agent) that the community can share: "Suricata alert summary",
-  "Zenarmor status", "CARP health".
-- **Cross-fleet benchmarking** — anonymized, opt-in comparisons: "your tunnel
-  re-key failure rate is 4× the fleet median".
 - **Autonomous remediation** — for a whitelisted set of failures (stale DHCP lease
   daemon, hung IPsec child SA) the dashboard proposes — and with per-group opt-in,
   executes — a known-good fix via the agent, fully audited.
