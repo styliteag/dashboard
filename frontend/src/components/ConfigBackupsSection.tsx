@@ -121,9 +121,7 @@ export default function ConfigBackupsSection({ instanceId }: { instanceId: numbe
                 <>
                   <p className="text-xs text-slate-500">
                     {fmtDateTime(diff.from_collected_at)} → {fmtDateTime(diff.to_collected_at)}
-                    {diff.truncated && (
-                      <span className="ml-2 text-amber-400">diff truncated</span>
-                    )}
+                    {diff.truncated && <span className="ml-2 text-amber-400">diff truncated</span>}
                   </p>
                   {diff.diff === "" ? (
                     <p className="text-sm text-slate-500">No differences.</p>

@@ -41,11 +41,17 @@ export default function Layout() {
 
         <nav className="flex items-center gap-4 text-sm">
           {user?.is_admin && (
-            <Link to="/hub" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+            <Link
+              to="/hub"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
               <Activity className="h-4 w-4" /> Hub
             </Link>
           )}
-          <Link to="/instances" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+          <Link
+            to="/instances"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
             <Server className="h-4 w-4" /> Instances
           </Link>
           <Link to="/vpn" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">

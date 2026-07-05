@@ -88,6 +88,14 @@ function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
           Locked
         </span>
       )}
+      {inst.console_password_protected && (
+        <span
+          className="rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-400"
+          title="Password protect the console menu is enabled — we prefer no password on console"
+        >
+          Console PW
+        </span>
+      )}
     </span>
   );
 }

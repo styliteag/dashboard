@@ -688,7 +688,9 @@ function RuleDialog({
                     ))}
                   </Select>
                 </div>
-                <p className="mt-1 ml-28 text-[10px] text-slate-500">Choose the interface this rule applies to.</p>
+                <p className="mt-1 ml-28 text-[10px] text-slate-500">
+                  Choose the interface this rule applies to.
+                </p>
               </div>
 
               <div>
@@ -726,7 +728,9 @@ function RuleDialog({
                     <option value="GRE">GRE</option>
                   </Select>
                 </div>
-                <p className="mt-1 ml-28 text-[10px] text-slate-500">Choose the IP protocol to match.</p>
+                <p className="mt-1 ml-28 text-[10px] text-slate-500">
+                  Choose the IP protocol to match.
+                </p>
               </div>
             </div>
 
@@ -773,14 +777,16 @@ function RuleDialog({
                   />
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  The Source Port Range is typically random. In most cases leave as "any".
+                  The Source Port Range is typically random. In most cases leave as &quot;any&quot;.
                 </p>
               </div>
             </div>
 
             {/* Destination Section */}
             <div className="rounded border border-slate-800 bg-slate-900/50 p-4">
-              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">Destination</div>
+              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">
+                Destination
+              </div>
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <Checkbox
@@ -827,7 +833,9 @@ function RuleDialog({
 
             {/* Extra Options */}
             <div className="rounded border border-slate-800 bg-slate-900/50 p-4">
-              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">Extra Options</div>
+              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">
+                Extra Options
+              </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2">
                 <Checkbox
                   label="Log packets that are handled by this rule"
@@ -841,7 +849,8 @@ function RuleDialog({
                 />
               </div>
               <p className="mt-2 text-[10px] text-slate-500">
-                Log: enable logging for this rule. Quick: apply this rule immediately (first match wins).
+                Log: enable logging for this rule. Quick: apply this rule immediately (first match
+                wins).
               </p>
             </div>
 
@@ -885,7 +894,9 @@ function RuleDialog({
 
               {showAdvanced && (
                 <div className="mt-3">
-                  <label className="block text-xs font-medium text-slate-400">Advanced fields (JSON)</label>
+                  <label className="block text-xs font-medium text-slate-400">
+                    Advanced fields (JSON)
+                  </label>
                   <textarea
                     value={effectiveForm.advanced}
                     onChange={(event) => setField("advanced", event.target.value)}

@@ -61,11 +61,11 @@ export default function HubStatusPage() {
     // Direct navigation by a non-admin lands here (403) — the nav link is gated.
     return (
       <div className="py-8 text-center">
-        <p className="text-sm text-slate-600">
-          {apiErrorText(error, "Failed to load hub stats")}
-        </p>
+        <p className="text-sm text-slate-600">{apiErrorText(error, "Failed to load hub stats")}</p>
         <p className="mt-2 text-xs text-slate-500">
-          <Link to="/instances" className="underline hover:text-slate-300">Go to Instances</Link>
+          <Link to="/instances" className="underline hover:text-slate-300">
+            Go to Instances
+          </Link>
         </p>
       </div>
     );
@@ -98,7 +98,8 @@ export default function HubStatusPage() {
         backend restart resets these numbers.
       </p>
       <p className="mt-2 text-xs text-slate-400">
-        Central hub for monitoring all connected instances, agent activity, message throughput, and health.
+        Central hub for monitoring all connected instances, agent activity, message throughput, and
+        health.
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">

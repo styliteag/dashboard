@@ -35,6 +35,9 @@ export interface Instance {
   maintenance: boolean;
   /** While true, single-instance and bulk firmware updates are blocked. */
   firmware_locked: boolean;
+  /** Observed from box (agent): "Password protect the console menu" enabled.
+   *  We prefer this false (no password on console/serial). UI shows warning when true. */
+  console_password_protected?: boolean | null;
   /** Push mode: agent silent past its threshold — last-known sub-states are stale. */
   stale: boolean;
   stale_seconds: number | null;
@@ -214,6 +217,9 @@ export interface SystemStatus {
   // not history — shown on the Agent tab.
   collect_ms?: number | null;
   section_ms?: Record<string, number>;
+  // True when "Password protect the console menu" (disableconsolemenu) is enabled on the box.
+  // Dashboard prefers no password on console; shows warning (no alert) when true.
+  console_password_protected?: boolean;
 }
 
 export interface ConfigInfoResponse extends ConfigInfo {

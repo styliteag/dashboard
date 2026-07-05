@@ -181,6 +181,14 @@ export default function InstanceDetailPage() {
             <p className="mt-6 text-red-400">Status not available.</p>
           )}
 
+          {status?.console_password_protected && (
+            <div className="mt-4 rounded-md border border-amber-700/60 bg-amber-900/10 px-3 py-2 text-sm text-amber-300">
+              <span className="font-medium">Console password protection enabled.</span> We prefer no
+              password on the console. Disable “Password protect the console menu” under System →
+              Settings → Administration → Console / Serial Communications.
+            </div>
+          )}
+
           <NotesSection instanceId={nid} />
 
           <section className="mt-8">
