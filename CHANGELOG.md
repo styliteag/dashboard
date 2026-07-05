@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.2] - 2026-07-05
+
 ### Added
 
 - Hub "Connected agents" table: each row now carries the same WebUI (tunneled) and
