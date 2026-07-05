@@ -79,6 +79,9 @@ def status_from_agent(data: dict) -> SystemStatus:
             revision_description=config_data.get("revision_description", ""),
             revision_user=config_data.get("revision_user", ""),
         ),
+        console_password_protected=bool(
+            (data.get("system") or {}).get("console_password_protected", False)
+        ),
         disks=[
             DiskUsage(
                 device=d.get("device", ""),

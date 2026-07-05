@@ -714,6 +714,7 @@ async def _run_live_capture(
     if queue is None:
         queue = hub.open_tunnel(stream)
     try:
+
         async def agent_to_client() -> None:
             while True:
                 frame = await queue.get()

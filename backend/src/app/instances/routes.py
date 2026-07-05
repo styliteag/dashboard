@@ -85,7 +85,21 @@ async def list_all(
     rows = await service.list_instances(session, user)
     settings = effective_settings()
     now = datetime.now(UTC)
-    return [instance_response(inst, settings, now) for inst in rows]
+    resps = [instance_response(inst, settings, now) for inst in rows]
+    # Layer console-password-protected flag from live hub status (agent push) when present.
+    # Direct-poll and older snapshots default to None (no warning).
+    enriched: list[InstanceResponse] = []
+    for r in resps:
+        if r.agent_mode:
+            st = hub.get_last_status(r.id)  # type: ignore[attr-defined]
+            if st is not None and getattr(st, "console_password_protected", None):
+                cp = bool(st.console_password_protected)
+                enriched.append(r.model_copy(update={"console_password_protected": cp}))
+            else:
+                enriched.append(r)
+        else:
+            enriched.append(r)
+    return enriched
 
 
 async def _resolve_create_group(session: AsyncSession, user: User, group_id: int | None) -> int:
@@ -167,7 +181,13 @@ async def get(
     inst = await service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    return instance_response(inst, effective_settings(), datetime.now(UTC))
+    resp = instance_response(inst, effective_settings(), datetime.now(UTC))
+    if resp.agent_mode:
+        st = hub.get_last_status(resp.id)  # type: ignore[attr-defined]
+        if st is not None and getattr(st, "console_password_protected", None):
+            cp = bool(st.console_password_protected)
+            resp = resp.model_copy(update={"console_password_protected": cp})
+    return resp
 
 
 @router.patch("/{instance_id}", response_model=InstanceResponse)

@@ -206,6 +206,9 @@ class SystemStatus(BaseModel):
     # -> milliseconds. Lets the dashboard flag a slow-but-alive agent.
     collect_ms: float | None = None
     section_ms: dict[str, float] = {}
+    # "Password protect the console menu" (disableconsolemenu in <system> of config.xml).
+    # We want this OFF (no password on physical/serial console); UI warns when True.
+    console_password_protected: bool = False
 
 
 class ConnectivityResult(BaseModel):

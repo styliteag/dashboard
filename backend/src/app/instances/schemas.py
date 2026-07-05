@@ -195,6 +195,10 @@ class InstanceResponse(BaseModel):
     ping_url: str | None = None
     maintenance: bool = False
     firmware_locked: bool = False
+    # Observed from the firewall (via agent push status): whether the "Password protect
+    # the console menu" option (disableconsolemenu) is enabled. We want this OFF.
+    # UI surfaces a non-alert warning when True on /instances and instance pages.
+    console_password_protected: bool | None = None
     # Agent-staleness overlay (push mode): True once the agent has been silent past
     # its scaled threshold, so the UI can flag last-known sub-states as stale rather
     # than trust them as live. Always False for direct-poll instances.

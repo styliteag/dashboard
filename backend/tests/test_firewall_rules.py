@@ -42,9 +42,7 @@ def test_normalize_rule_renders_selected_gateway_object() -> None:
     rule = routes.normalize_rule(
         {
             "uuid": "abc",
-            "gateway": {
-                "WAN_DHCP": {"selected": "1", "value": "WAN_DHCP", "label": "WAN DHCP"}
-            },
+            "gateway": {"WAN_DHCP": {"selected": "1", "value": "WAN_DHCP", "label": "WAN DHCP"}},
         }
     )
 

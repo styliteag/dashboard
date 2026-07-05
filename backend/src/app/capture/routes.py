@@ -182,9 +182,10 @@ def _parse_pcap(data: bytes, max_packets: int = 2000) -> list[dict]:
         if incl == 0 or off + 16 + incl > len(data):
             break
         frame = data[off + 16 : off + 16 + incl]
-        ts = int.from_bytes(data[off : off + 4], "little") + int.from_bytes(
-            data[off + 4 : off + 8], "little"
-        ) / 1_000_000.0
+        ts = (
+            int.from_bytes(data[off : off + 4], "little")
+            + int.from_bytes(data[off + 4 : off + 8], "little") / 1_000_000.0
+        )
         pkt = _summarize_frame(frame, ts, idx)
         packets.append(pkt)
         off += 16 + incl
