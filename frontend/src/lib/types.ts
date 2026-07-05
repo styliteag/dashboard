@@ -537,3 +537,29 @@ export interface DashUser {
   disabled: boolean;
   totp_enabled: boolean;
 }
+
+/** One connected agent on the hub observability page (/api/hub/stats). */
+export interface HubAgent {
+  instance_id: number;
+  instance_name: string;
+  connected_at: string;
+  agent_version: string;
+  platform: string;
+  pushes: number;
+  last_push_at: string | null;
+}
+
+export interface HubRatePoint {
+  ts: string;
+  count: number;
+}
+
+/** Hub self-monitoring snapshot — all counters are in-memory since started_at. */
+export interface HubStatsResponse {
+  started_at: string;
+  uptime_seconds: number;
+  connected_agents: number;
+  counters: Record<string, number>;
+  push_rate: HubRatePoint[];
+  agents: HubAgent[];
+}

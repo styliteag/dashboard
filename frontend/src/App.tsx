@@ -16,6 +16,7 @@ import GroupsPage from "./pages/GroupsPage";
 import AlertsPage from "./pages/AlertsPage";
 import LogEventsPage from "./pages/LogEventsPage";
 import TerminalPage from "./pages/TerminalPage";
+import HubStatusPage from "./pages/HubStatusPage";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="password" element={<PasswordPage />} />
           <Route path="security" element={<SecurityPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="hub" element={<HubStatusPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="groups" element={<GroupsPage />} />
         </Route>

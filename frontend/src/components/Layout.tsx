@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import {
+  Activity,
   LogOut,
   Server,
   Shield,
@@ -86,6 +87,14 @@ export default function Layout() {
           >
             <ShieldCheck className="h-4 w-4" /> Security
           </Link>
+          {user?.is_admin && (
+            <Link
+              to="/hub"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <Activity className="h-4 w-4" /> Hub
+            </Link>
+          )}
           {user?.is_admin && (
             <Link
               to="/settings"
