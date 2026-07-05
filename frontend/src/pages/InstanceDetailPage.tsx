@@ -36,6 +36,7 @@ import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
 import LogSnapshotsSection from "../components/LogSnapshotsSection";
 import AiLogAnalysisSection from "../components/AiLogAnalysisSection";
+import PacketCaptureSection from "../components/PacketCaptureSection";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Range = (typeof RANGES)[number];
@@ -52,6 +53,7 @@ const TABS = [
   { key: "config", label: "Config" },
   { key: "checks", label: "Checks" },
   { key: "network", label: "Network" },
+  { key: "capture", label: "Capture" },
   { key: "security", label: "VPN" },
   { key: "connectivity", label: "Connectivity" },
   { key: "log", label: "Log" },
@@ -79,10 +81,10 @@ export default function InstanceDetailPage() {
   });
 
   // Securepoint is direct-only — no agent mode, so hide the agent-only tabs
-  // (Agent + Connectivity, both of which need the on-box agent).
+  // (Agent + Connectivity + Capture, all need the on-box agent).
   const isSecurepoint = instance?.device_type === "securepoint";
   const tabs = isSecurepoint
-    ? TABS.filter((t) => t.key !== "agent" && t.key !== "connectivity")
+    ? TABS.filter((t) => t.key !== "agent" && t.key !== "connectivity" && t.key !== "capture")
     : TABS;
 
   // The selected tab persists across instances; if it's not available here
@@ -252,6 +254,9 @@ export default function InstanceDetailPage() {
           <TopTalkersSection instanceId={nid} />
         </div>
       )}
+
+      {/* Capture: remote bounded tcpdump via agent + nice in-browser viewer (new tab) */}
+      {tab === "capture" && <PacketCaptureSection instanceId={nid} />}
 
       {/* VPN: IPsec tunnels */}
       {tab === "security" && (

@@ -28,6 +28,7 @@ import pwd
 import random
 import re
 import signal
+import shutil
 import ssl
 import struct
 import subprocess
@@ -51,7 +52,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.15"
+__version__ = "2.7.16"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3516,6 +3517,107 @@ def _cmd_ping(params: dict) -> dict:
     return {"success": True, "output": "pong", "agent_version": __version__}
 
 
+def _cmd_packet_capture(params: dict) -> dict:
+    """Run a bounded tcpdump on the specified interface and return the pcap.
+
+    Does **not** rely on external `timeout` binary (not always present on OPNsense/pfSense).
+    Enforces time + byte limits in Python using non-blocking reads + select so the
+    handler always returns promptly.
+    """
+    iface = str(params.get("interface") or "").strip() or "em0"
+    filt = str(params.get("filter") or "").strip()
+    max_sec = max(1, min(int(params.get("max_seconds", 30) or 30), 600))
+    max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
+
+    cmd: list[str] = ["tcpdump", "-i", iface, "-s", "0", "-w", "-"]
+    if filt:
+        cmd += filt.split()
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return {"success": False, "output": "tcpdump not found in PATH"}
+
+    data = bytearray()
+    start = time.monotonic()
+    stderr = ""
+
+    try:
+        # Make stdout non-blocking so we can check time limit even on quiet interfaces
+        import fcntl, select, os as _os  # local to avoid top-level noise
+        fd = proc.stdout.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | _os.O_NONBLOCK)
+
+        while True:
+            # Hard time limit check
+            if time.monotonic() - start > max_sec:
+                proc.terminate()
+                break
+            if len(data) >= max_b:
+                proc.terminate()
+                break
+
+            # Wait up to 0.5s for data or time to re-check
+            r, _, _ = select.select([proc.stdout], [], [], 0.5)
+            if r:
+                try:
+                    chunk = proc.stdout.read(8192) or b""
+                except BlockingIOError:
+                    chunk = b""
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if len(data) >= max_b:
+                    proc.terminate()
+                    break
+            # else: no data this interval, loop will recheck time
+
+        # Graceful wait + force kill
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=1)
+            except Exception:
+                pass
+
+        if proc.stderr:
+            try:
+                stderr = proc.stderr.read().decode("utf-8", errors="replace")[:400]
+            except Exception:
+                pass
+
+        pcap = bytes(data[:max_b])
+        return {
+            "success": True,
+            "pcap_b64": base64.b64encode(pcap).decode("ascii"),
+            "bytes": len(pcap),
+            "truncated": len(data) > max_b or (time.monotonic() - start > max_sec),
+            "interface": iface,
+            "filter": filt,
+            "max_seconds": max_sec,
+            "max_bytes": max_b,
+            "stderr": stderr,
+        }
+    except Exception as exc:  # noqa: BLE001
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return {"success": False, "output": str(exc)[:300]}
+    finally:
+        # Ensure process is dead
+        with contextlib.suppress(Exception):
+            proc.terminate()
+            proc.wait(timeout=1)
+
+
 # Dashboard action → handler. Every handler takes the command's `params` dict and
 # returns the command result dict. agent.update / agent.uninstall / status.refresh
 # are NOT here — they need the WebSocket and are handled in _listen_loop directly.
@@ -3535,6 +3637,7 @@ _COMMANDS = {
     "gui.login": _cmd_gui_login,
     "http.relay": _cmd_http_relay,
     "ping": _cmd_ping,
+    "packet_capture": _cmd_packet_capture,
 }
 
 
@@ -4321,6 +4424,8 @@ class _TunnelManager:
         self._tasks: dict[str, asyncio.Task] = {}
         # Interactive shell streams: stream_id -> {"pid": int, "fd": master_fd}.
         self._shells: dict[str, dict] = {}
+        # Live capture streams: stream_id -> subprocess.Process (tcpdump stdout pump)
+        self._captures: dict[str, "asyncio.subprocess.Process"] = {}
 
     async def handle(self, msg: dict) -> None:
         op = msg.get("op")
@@ -4331,6 +4436,13 @@ class _TunnelManager:
             if msg.get("kind") == "shell":
                 await self._open_shell(
                     stream, int(msg.get("rows") or 0), int(msg.get("cols") or 0)
+                )
+                return
+            if msg.get("kind") == "capture":
+                await self._open_capture(
+                    stream,
+                    str(msg.get("interface") or ""),
+                    str(msg.get("filter") or ""),
                 )
                 return
             # Pin the destination to the configured local GUI target; ignore any
@@ -4348,6 +4460,8 @@ class _TunnelManager:
         elif op == "close":
             if stream in self._shells:
                 self._reap_shell(stream)
+            elif stream in self._captures:
+                self._close_capture(stream)
             else:
                 self._close(stream)
 
@@ -4540,8 +4654,112 @@ class _TunnelManager:
                 writer.close()
         for stream in list(self._shells):
             self._reap_shell(stream, notify=False)
+        for stream in list(self._captures):
+            self._close_capture(stream, notify=False)
         self._tasks.clear()
         self._writers.clear()
+        self._captures.clear()
+
+    # --- live packet capture stream (pcap over tunnel) -----------------------
+
+    async def _open_capture(self, stream: str, interface: str, filt: str) -> None:
+        """Start tcpdump and stream raw pcap bytes back as tunnel data frames.
+
+        This enables live capture/view in the browser tab.
+        """
+        if stream in self._captures:
+            await self._send(stream, "close")
+            return
+        iface = interface.strip() or "em0"
+        # Robust lookup: agent's daemon env may have minimal PATH (no /usr/sbin)
+        # while interactive root shell does. Common locations on OPNsense/pfSense.
+        search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
+        tcpdump_bin = shutil.which("tcpdump", path=search_path) or "/usr/sbin/tcpdump"
+        cmd: list[str] = [tcpdump_bin, "-i", iface, "-U", "-w", "-"]
+        if filt and filt.strip():
+            cmd += filt.strip().split()
+        log.info("capture %s: exec %s", stream, " ".join(cmd))
+        try:
+            env = os.environ.copy()
+            env["PATH"] = search_path  # ensure child sees tcpdump etc.
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+            self._captures[stream] = proc
+            self._tasks[stream] = asyncio.create_task(self._pump_capture(stream, proc))
+            log.info("capture %s: started tcpdump on %s filter=%r", stream, iface, filt)
+            await self._send(stream, "started")  # confirm to dashboard that pump is running
+            # drain stderr for diagnostics (e.g. "no such interface", permission)
+            asyncio.create_task(self._drain_stderr(stream, proc))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("capture %s: failed to start: %s", stream, exc)
+            await self._send(stream, "error", str(exc)[:200])
+            await self._send(stream, "close")
+            self._captures.pop(stream, None)
+
+    async def _drain_stderr(self, stream: str, proc: "asyncio.subprocess.Process") -> None:
+        """Log any stderr from tcpdump (errors like bad interface appear here)."""
+        try:
+            assert proc.stderr is not None
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                msg = line.decode(errors="replace").strip()
+                if msg:
+                    if "listening on" in msg.lower():
+                        # Normal startup banner from tcpdump (goes to stderr), not an error.
+                        log.info("capture %s: tcpdump: %s", stream, msg)
+                    else:
+                        log.warning("capture %s: tcpdump stderr: %s", stream, msg)
+                        # surface real errors (e.g. "no such interface", permission) to UI
+                        await self._send(stream, "error", msg[:200])
+        except Exception:
+            pass
+
+    async def _pump_capture(self, stream: str, proc: "asyncio.subprocess.Process") -> None:
+        """Read tcpdump stdout (pcap stream) and forward as base64 data frames."""
+        try:
+            assert proc.stdout is not None
+            while True:
+                chunk = await proc.stdout.read(8192)
+                if not chunk:
+                    break
+                await self._send(stream, "data", base64.b64encode(chunk).decode())
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            await self._send(stream, "close")
+            self._close_capture(stream, cancel_task=False)
+
+    def _close_capture(self, stream: str, notify: bool = True, cancel_task: bool = True) -> None:
+        proc = self._captures.pop(stream, None)
+        if proc is not None:
+            with contextlib.suppress(ProcessLookupError):
+                proc.terminate()
+            # ensure it dies even if tcpdump ignores SIGTERM
+            asyncio.create_task(self._force_kill(proc, delay=2))
+        task = self._tasks.pop(stream, None)
+        if cancel_task and task is not None and task is not asyncio.current_task():
+            task.cancel()
+        if notify:
+            asyncio.create_task(self._send(stream, "close"))
+
+    @staticmethod
+    async def _force_kill(proc: "asyncio.subprocess.Process", delay: float = 2) -> None:
+        await asyncio.sleep(delay)
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            await _TunnelManager._wait_proc(proc)  # wait after kill too
+
+    @staticmethod
+    async def _wait_proc(proc: "asyncio.subprocess.Process") -> None:
+        with contextlib.suppress(Exception):
+            await proc.wait()
 
 
 async def _listen_loop(ws: WebSocket) -> None:

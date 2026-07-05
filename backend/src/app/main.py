@@ -19,6 +19,7 @@ from app.auth.bootstrap import ensure_admin, ensure_superadmin
 from app.auth.mfa_routes import router as mfa_router
 from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
+from app.capture.routes import router as capture_router
 from app.checks.routes import router as checks_router
 from app.config import Settings, get_settings
 from app.configbackup.routes import router as config_backups_router
@@ -245,6 +246,7 @@ def create_app() -> FastAPI:
     app.include_router(logs_router, prefix="/api")
     app.include_router(log_events_router, prefix="/api")
     app.include_router(config_backups_router, prefix="/api")
+    app.include_router(capture_router, prefix="/api")
     return app
 
 

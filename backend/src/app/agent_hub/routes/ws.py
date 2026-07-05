@@ -700,3 +700,109 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
                     detail={"stream": stream},
                 )
                 await session.commit()
+
+
+# --- Live packet capture stream (pcap bytes over tunnel) --------------------
+# Reuses the agent's tunnel mechanism (kind="capture").
+# Browser connects here for live view; we open a capture tunnel to the agent
+# and forward raw pcap chunks as binary frames. Client sends JSON controls.
+
+
+async def _run_live_capture(client_ws: WebSocket, agent, stream: str, queue: asyncio.Queue | None = None) -> None:
+    if queue is None:
+        queue = hub.open_tunnel(stream)
+    try:
+        async def agent_to_client() -> None:
+            while True:
+                frame = await queue.get()
+                if frame.get("op") == "close":
+                    return
+                if frame.get("op") == "started":
+                    log.info("capture.started", stream=stream)
+                    await client_ws.send_json({"type": "started"})
+                    continue
+                if frame.get("op") == "error":
+                    log.warning("capture.error_from_agent", stream=stream, err=frame.get("data"))
+                    await client_ws.send_json({"type": "error", "message": frame.get("data", "")})
+                    continue
+                if frame.get("op") == "data":
+                    raw = base64.b64decode(frame.get("data", ""))
+                    await client_ws.send_bytes(raw)  # raw pcap bytes for live parser
+
+        async def client_to_agent() -> None:
+            try:
+                while True:
+                    msg = await client_ws.receive()
+                    if msg["type"] == "websocket.disconnect":
+                        return
+                    text = msg.get("text")
+                    if text:
+                        with contextlib.suppress(Exception):
+                            ctrl = json.loads(text)
+                            if ctrl.get("type") == "stop":
+                                await agent.ws.send_json(
+                                    {"type": "tunnel", "op": "close", "stream": stream}
+                                )
+                                return
+            except Exception:
+                return
+
+        pumps = [
+            asyncio.create_task(agent_to_client()),
+            asyncio.create_task(client_to_agent()),
+            asyncio.create_task(_shell_keepalive(client_ws)),
+        ]
+        await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        for p in pumps:
+            p.cancel()
+    finally:
+        hub.close_tunnel(stream)
+        with contextlib.suppress(Exception):
+            await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
+
+
+@router.websocket("/ws/capture/{instance_id}")
+async def capture_websocket(ws: WebSocket, instance_id: int):
+    """Live pcap stream from agent to browser (new tab viewer).
+
+    Opens a capture-kind tunnel on the agent (tcpdump -U -w -), forwards the
+    pcap byte stream as binary WS frames to the client. Supports ?interface=..
+    &filter=.. on the WS URL.
+    """
+    await ws.accept()
+    agent = hub.get(instance_id)
+    if agent is None:
+        await ws.close(code=4404)
+        return
+
+    # Pull params from query string (interface, filter)
+    q = dict(ws.query_params)
+    stream = uuid.uuid4().hex
+
+    # Register receive queue BEFORE telling the agent to start pumping.
+    # This avoids dropping early data frames (race between open and first data).
+    queue = hub.open_tunnel(stream)
+
+    # Tell the agent to start the capture pump
+    log.info("capture.start", instance_id=instance_id, stream=stream, interface=q.get("interface"), filter=q.get("filter"))
+    await agent.ws.send_json(
+        {
+            "type": "tunnel",
+            "op": "open",
+            "stream": stream,
+            "kind": "capture",
+            "interface": q.get("interface", ""),
+            "filter": q.get("filter", ""),
+        }
+    )
+
+    try:
+        await _run_live_capture(ws, agent, stream, queue)  # pass the pre-opened queue
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.exception("capture.stream.error", instance_id=instance_id)
+    finally:
+        with contextlib.suppress(Exception):
+            await ws.close()

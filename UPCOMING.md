@@ -46,8 +46,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   so installation happens in the firewall GUI instead of scp + shell.
 - **Update-key rotation flow** — solve the chicken-and-egg of rotating the baked-in
   Ed25519 pubkey across the fleet (dual-key transition window).
-- **Remote packet capture** — request a bounded `tcpdump` (interface, filter, max
-  seconds/bytes) via the agent, download the pcap from the dashboard.
 - **Wake-up / on-demand refresh** — "refresh now" button that asks the agent to push
   immediately instead of waiting for the next interval.
 

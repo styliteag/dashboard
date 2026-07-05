@@ -18,6 +18,7 @@ import AlertsPage from "./pages/AlertsPage";
 import LogEventsPage from "./pages/LogEventsPage";
 import TerminalPage from "./pages/TerminalPage";
 import HubStatusPage from "./pages/HubStatusPage";
+import PacketCaptureViewer from "./pages/PacketCaptureViewer";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         {/* Standalone (no Layout chrome): opens full-screen in its own tab. */}
         <Route path="instances/:id/terminal" element={<TerminalPage />} />
+        <Route path="capture/:capId" element={<PacketCaptureViewer />} />
 
         <Route element={<Layout />}>
           <Route index element={<InstancesPage />} />

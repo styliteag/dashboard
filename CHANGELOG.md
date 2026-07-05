@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Remote packet capture** — trigger a bounded `tcpdump` (interface + BPF filter + max seconds/bytes) on the firewall via the agent (no SSH). PCAP is downloaded from the dashboard. Includes a browser packet list + hex viewer that opens in a new tab (basic Ethernet/IP/TCP/UDP dissection).
 - **Prometheus settings tab** — dedicated section under Settings → Prometheus for
   creating read-only API keys used with `GET /api/export/prometheus`. Keys use the
   same `orbit_…` mechanism (and group binding) as Checkmk keys but live in their
