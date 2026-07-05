@@ -79,14 +79,16 @@ export default function HubStatusPage() {
   const perMinute = data.push_rate.length > 1 ? data.push_rate[data.push_rate.length - 2].count : 0;
   const chart = data.push_rate.map((p) => ({ ts: fmtTimeShort(p.ts), count: p.count }));
 
-  // Aggregate CRIT (red/alert) counts by check key (the "section")
+  // Group CRIT (red) alerts by the tab that owns them, so each chip links to the
+  // page where the operator actually fixes it — not to a generic alert list.
   const critAlerts = alerts.filter((a) => a.state === 2);
-  const sectionCounts: Record<string, number> = {};
+  const tabCounts = new Map<string, { to: string; label: string; count: number }>();
   for (const a of critAlerts) {
-    const sec = a.key;
-    sectionCounts[sec] = (sectionCounts[sec] || 0) + 1;
+    const tab = alertTab(a.key);
+    const prev = tabCounts.get(tab.to);
+    tabCounts.set(tab.to, prev ? { ...prev, count: prev.count + 1 } : { ...tab, count: 1 });
   }
-  const alertSections = Object.entries(sectionCounts).sort((a, b) => b[1] - a[1]);
+  const alertTabs = [...tabCounts.values()].sort((a, b) => b.count - a.count);
 
   return (
     <div>
@@ -155,19 +157,19 @@ export default function HubStatusPage() {
         ))}
       </div>
 
-      <h2 className="mt-6 text-sm font-semibold text-slate-300">Red / CRIT alerts by section</h2>
-      {alertSections.length === 0 ? (
+      <h2 className="mt-6 text-sm font-semibold text-slate-300">Red / CRIT alerts by tab</h2>
+      {alertTabs.length === 0 ? (
         <p className="mt-2 text-sm text-slate-600">No CRIT alerts.</p>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
-          {alertSections.map(([section, count]) => (
+          {alertTabs.map((t) => (
             <Link
-              key={section}
-              to="/alerts"
+              key={t.to}
+              to={t.to}
               className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-1 text-sm hover:bg-red-900/60"
             >
-              <span className="font-mono text-red-400">{section}</span>
-              <span className="ml-2 font-semibold text-red-300">{count}</span>
+              <span className="text-red-300">{t.label}</span>
+              <span className="ml-2 font-semibold text-red-400">{t.count}</span>
             </Link>
           ))}
         </div>
@@ -226,6 +228,22 @@ export default function HubStatusPage() {
       )}
     </div>
   );
+}
+
+/** Map a granular check key to the tab that owns it, so a Hub alert links to the
+ * page where it is acted on. Categories mirror backend/src/app/checks/evaluate.py.
+ * System checks (memory/cpu/disk/service/ntp/…) have no overview tab → the alert
+ * list, which shows them per-instance. */
+function alertTab(key: string): { to: string; label: string } {
+  const cat = key.includes(":") ? key.slice(0, key.indexOf(":")) : key;
+  if (cat === "cert") return { to: "/certs", label: "Certificates" };
+  if (cat === "ipsec.tunnel" || cat === "ipsec.tunnel_ping" || cat === "ipsec.service") {
+    return { to: "/vpn", label: "VPN" };
+  }
+  if (cat === "gateway" || cat === "connectivity")
+    return { to: "/connectivity", label: "Connectivity" };
+  if (cat === "firmware") return { to: "/firmware", label: "Firmware" };
+  return { to: "/alerts", label: "System" };
 }
 
 function CounterTile({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
