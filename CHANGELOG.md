@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Packet capture viewer: TCP packets now show their control flags by name
+  (SYN, ACK, FIN, RST, PSH, URG) with a plain-language reading of the combo —
+  SYN-ACK = accepted, RST = refused (reject rule / closed port), lone SYN with no
+  reply = silently dropped/firewalled — plus a legend, so you can tell whether a
+  connection was accepted, rejected, or blocked.
 - Packet capture viewer: the packet detail pane now shows a classic hex + ASCII
   dump side by side (offset · hex bytes · printable-ASCII gutter, like `tcpdump -X`),
   so text in a packet's bytes is readable next to the hex.

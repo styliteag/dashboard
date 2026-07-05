@@ -13,6 +13,7 @@ interface Packet {
   len: number;
   info: string;
   hex: string;
+  tcpFlags?: number; // raw TCP flags byte (undefined for non-TCP)
 }
 
 interface CaptureData {
@@ -141,12 +142,9 @@ export default function PacketCaptureViewer() {
       const sport = (l4[0] << 8) | l4[1];
       const dport = (l4[2] << 8) | l4[3];
       const flags = l4.length > 13 ? l4[13] : 0;
-      let fl = "";
-      if (flags & 0x02) fl += "S";
-      if (flags & 0x10) fl += "A";
-      if (flags & 0x01) fl += "F";
-      if (flags & 0x04) fl += "R";
-      let info = `${sport}→${dport} ${fl || ""}`.trim();
+      const names = tcpFlagNames(flags);
+      let info = `${sport}→${dport}`;
+      if (names.length) info += ` ${names.join("-")}`;
       if ([80, 443, 9922].includes(dport) || [80, 443, 9922].includes(sport)) info += " HTTP/TLS?";
       return {
         idx,
@@ -157,6 +155,7 @@ export default function PacketCaptureViewer() {
         len: wireLen,
         info,
         hex: toHex(ip.slice(0, 96)),
+        tcpFlags: flags,
       };
     }
     if (proto === 17 && l4.length >= 4) {
@@ -577,6 +576,35 @@ export default function PacketCaptureViewer() {
                   <span className="text-emerald-400">#{selected.idx}</span> {selected.src} →{" "}
                   {selected.dst} <span className="text-slate-400">({selected.proto})</span>
                 </div>
+                {selected.tcpFlags !== undefined && (
+                  <div className="mb-3 rounded border border-slate-800 bg-slate-950/60 p-2">
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">
+                      TCP flags
+                    </div>
+                    <div className="mb-1 flex flex-wrap gap-1">
+                      {tcpFlagNames(selected.tcpFlags).length === 0 ? (
+                        <span className="text-xs text-slate-500">none</span>
+                      ) : (
+                        tcpFlagNames(selected.tcpFlags).map((n) => (
+                          <span
+                            key={n}
+                            className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-mono text-slate-200"
+                          >
+                            {n}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                    <div className={`text-xs ${TONE_CLASS[tcpVerdict(selected.tcpFlags).tone]}`}>
+                      {tcpVerdict(selected.tcpFlags).label}
+                    </div>
+                    <div className="mt-2 border-t border-slate-800 pt-1.5 text-[10px] leading-relaxed text-slate-500">
+                      Reading a connection: <span className="text-emerald-300">SYN → SYN-ACK</span> = accepted ·{" "}
+                      <span className="text-red-400">SYN → RST</span> = refused (reject rule / closed port) ·{" "}
+                      <span className="text-amber-300">SYN → no reply</span> = dropped / firewalled (silent block).
+                    </div>
+                  </div>
+                )}
                 <div className="text-xs mb-1 text-slate-400">Hex + ASCII</div>
                 <HexDump hex={selected.hex} />
                 <div className="mt-2 text-[10px] text-slate-500">
@@ -599,6 +627,53 @@ export default function PacketCaptureViewer() {
     </div>
   );
 }
+
+// TCP control flags ordered so combos read conventionally (SYN-ACK, RST-ACK,
+// FIN-ACK, PSH-ACK) — the significant flag first, ACK last.
+const TCP_FLAGS: [number, string][] = [
+  [0x02, "SYN"],
+  [0x01, "FIN"],
+  [0x04, "RST"],
+  [0x08, "PSH"],
+  [0x20, "URG"],
+  [0x10, "ACK"],
+];
+
+function tcpFlagNames(flags: number): string[] {
+  return TCP_FLAGS.filter(([bit]) => flags & bit).map(([, name]) => name);
+}
+
+// Plain-language reading of a TCP flag combo, tuned for "was this connection
+// accepted, refused, or silently dropped/firewalled?".
+function tcpVerdict(flags: number): { label: string; tone: "green" | "red" | "amber" | "slate" } {
+  const has = (b: number) => (flags & b) !== 0;
+  if (has(0x04)) {
+    return {
+      label: "RST — refused/reset. The peer actively rejected it: a firewall reject rule or a closed port.",
+      tone: "red",
+    };
+  }
+  if (has(0x02) && has(0x10)) {
+    return { label: "SYN-ACK — accepted. The peer is listening; the handshake is proceeding.", tone: "green" };
+  }
+  if (has(0x02)) {
+    return {
+      label: "SYN — connection attempt. If no SYN-ACK and no RST ever come back for it, the packet was silently dropped (a firewall block/drop rule, not a reject).",
+      tone: "amber",
+    };
+  }
+  if (has(0x01)) {
+    return { label: "FIN — graceful close of an established connection.", tone: "slate" };
+  }
+  return { label: "ACK / data on an already-established connection.", tone: "slate" };
+}
+
+const TONE_CLASS: Record<string, string> = {
+  green: "text-emerald-300",
+  red: "text-red-400",
+  amber: "text-amber-300",
+  slate: "text-slate-300",
+};
 
 // Classic hex dump: offset · 16 hex bytes · ASCII gutter (like `tcpdump -X`),
 // so the raw bytes and their text render side by side. `hex` is the packet's
