@@ -37,8 +37,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   state summaries: top source/dest, states per interface, without full NetFlow.
 - **SLA / availability reports** — monthly uptime per instance and per tunnel,
   rendered as PDF/e-mail for customers ("99.7 % in June").
-- **Backend self-monitoring** — hub observability (connected agents, push rate,
-  error counters) as first-class metrics page, not just logs.
 
 ## 🛰 Agent & fleet operations
 
