@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Prometheus export** (`GET /api/export/prometheus`) — sibling of the Checkmk
+  export in Prometheus text format, ready to scrape for Grafana. Emits
+  `orbit_instance_info`, `orbit_check_state` (0=OK/1=WARN/2=CRIT/3=UNKNOWN, same
+  convention as Checkmk) and `orbit_check_metric{,_warn,_crit}` perfdata series
+  for every evaluated check. Same auth + group scoping as the Checkmk export
+  (read-only API key as `Authorization: Bearer`); no selection filtering or
+  aggregation — filter in PromQL.
+
 ## [2.7.12] - 2026-07-05
 
 ### Added

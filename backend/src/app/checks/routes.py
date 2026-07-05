@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,7 @@ from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
 from app.checks.aggregate import aggregate_for_checkmk
 from app.checks.event_store import read_check_events
 from app.checks.overlay import overlay_checks
+from app.checks.prometheus import CONTENT_TYPE, render_prometheus
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances.service import get_instance, list_instances
@@ -223,6 +225,42 @@ async def export_checkmk(
             }
         )
     return {"version": 1, "instances": instances}
+
+
+@router.get("/export/prometheus", response_class=PlainTextResponse)
+async def export_prometheus(
+    session: AsyncSession = Depends(get_session),
+    principal=Depends(read_principal),
+) -> PlainTextResponse:
+    """All visible instances' checks in Prometheus text format (Grafana-ready scrape).
+
+    Same auth and group scoping as the Checkmk export: API-key callers honor the
+    key's group binding (unbound = global), session users get their groups'
+    instances. Unlike Checkmk there is no selection filtering, no aggregation and
+    no blackout — every evaluated check becomes a series; filter in PromQL. Push
+    instances read the hub cache (cheap); direct instances are polled live.
+    """
+    settings = effective_settings()
+    now = datetime.now(UTC)
+    rows = await list_instances(session, principal)
+    pairs = []
+    for inst, (
+        sys_status,
+        gateways,
+        ipsec,
+        firmware,
+        services,
+        certs,
+        connectivity,
+    ) in await gather_many(rows):
+        evaluated = overlay_checks(
+            inst,
+            evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
+            settings,
+            now,
+        )
+        pairs.append((inst, evaluated))
+    return PlainTextResponse(render_prometheus(pairs), media_type=CONTENT_TYPE)
 
 
 def _sev(s: int) -> int:

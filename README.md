@@ -34,7 +34,8 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
 - **Firmware compliance** — which boxes are up to date, which have updates pending;
   check (and stage) updates in bulk.
 - **Service checks** — each box rolled up to OK / WARN / CRIT per service, exported
-  for **Checkmk/OMD** (one piggyback host per firewall, no agent on the box).
+  for **Checkmk/OMD** (one piggyback host per firewall, no agent on the box) and as a
+  **Prometheus** scrape endpoint (`/api/export/prometheus`) for Grafana.
 - **Bulk actions + CSV export** — run `firmware_check` / `ipsec_restart` across many
   instances in parallel and export the results.
 - **Logs** — the push agent collects the box's important logs hourly (system, filter,

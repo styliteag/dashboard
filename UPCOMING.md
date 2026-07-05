@@ -28,9 +28,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   silence windows and maintenance mode.
 - **More notification channels** — e-mail digests, generic webhook, ntfy, Slack /
   Teams / Telegram. Escalation chains (notify B if A doesn't ack in 15 min).
-- **OpenMetrics / Prometheus endpoint** — sibling of the Checkmk export
-  (`/api/export/prometheus`); makes Grafana dashboards trivial and widens the
-  monitoring-integration story beyond OMD.
 - **Certificate lifecycle view** — fleet-wide cert inventory (already collected)
   with expiry timeline, ACME renewal status, and alerting.
 - **Live log streaming** — today logs arrive as hourly snapshots; add an on-demand
