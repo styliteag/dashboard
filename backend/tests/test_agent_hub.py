@@ -16,6 +16,7 @@ from app.agent_hub.converters import (
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
+    pf_top_from_agent,
     status_from_agent,
 )
 from app.agent_hub.hub import _DUP_PERSIST_POLLS, _PING_FLAP_POLLS, AgentHub
@@ -264,6 +265,65 @@ def test_firmware_from_agent_carries_check_failed() -> None:
     fw = firmware_from_agent(broken, "x")
     assert fw.check_failed is True
     assert fw.upgrade_available is False
+
+
+# --- pf state-table insight (top talkers) -------------------------------------
+
+
+# Shape produced by the agent's collect_pf_top (orbit_agent.py).
+PF_TOP_PUSH = {
+    "pf_top": {
+        "ts": "2026-07-05T10:00:00+00:00",
+        "total_states": 131,
+        "top_sources": [{"ip": "10.20.0.27", "states": 2, "bytes": 56367941}],
+        "top_dests": [{"ip": "224.0.0.251", "states": 20, "bytes": 200000}],
+        "interfaces": [{"name": "vtnet0", "states": 10, "bytes": 613344458}],
+        "protocols": [{"proto": "udp", "states": 116, "bytes": 606037803}],
+        "top_flows": [
+            {
+                "src": "10.20.0.27",
+                "sport": "5353",
+                "dst": "224.0.0.251",
+                "dport": "5353",
+                "proto": "udp",
+                "iface": "all",
+                "state": "NO_TRAFFIC:SINGLE",
+                "bytes": 56367149,
+                "pkts": 315367,
+                "age_s": 230397,
+            }
+        ],
+    }
+}
+
+
+def test_pf_top_from_agent_maps_summary() -> None:
+    s = pf_top_from_agent(PF_TOP_PUSH)
+    assert s is not None
+    assert s.total_states == 131
+    assert s.top_sources[0].ip == "10.20.0.27"
+    assert s.top_sources[0].bytes == 56367941
+    assert s.interfaces[0].name == "vtnet0"
+    assert s.protocols[0].proto == "udp"
+    assert s.top_flows[0].dport == "5353"
+    assert s.top_flows[0].age_s == 230397
+
+
+def test_pf_top_from_agent_none_when_missing_or_malformed() -> None:
+    assert pf_top_from_agent({}) is None  # older agent: no section
+    assert pf_top_from_agent({"pf_top": {}}) is None
+    assert pf_top_from_agent({"pf_top": "garbage"}) is None
+    assert pf_top_from_agent({"pf_top": {"total_states": "not-an-int"}}) is None
+
+
+def test_pf_top_hub_cache_kept_on_missing_section() -> None:
+    # A push without pf_top (older agent / interval replay glitch) must not wipe
+    # the cached summary — same guard style as gateways/services/certs.
+    h = AgentHub()
+    h._last_pf_top[5] = pf_top_from_agent(PF_TOP_PUSH)
+    assert pf_top_from_agent({"system": {}}) is None
+    assert h.get_last_pf_top(5).total_states == 131
+    assert h.get_last_pf_top(6) is None
 
 
 # --- registry identity semantics (overlapping reconnect race) -----------------

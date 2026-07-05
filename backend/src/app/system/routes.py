@@ -18,7 +18,14 @@ from app.net import client_ip
 from app.securepoint.client import SecurepointError
 from app.xsense.client import OPNsenseError
 from app.xsense.registry import registry
-from app.xsense.schemas import ActionResult, CertInfo, ConfigInfo, GatewayStatus, ServiceInfo
+from app.xsense.schemas import (
+    ActionResult,
+    CertInfo,
+    ConfigInfo,
+    GatewayStatus,
+    PfTopSummary,
+    ServiceInfo,
+)
 
 router = APIRouter(prefix="/instances/{instance_id}", tags=["system"])
 
@@ -100,6 +107,23 @@ async def services(
     if inst.agent_mode:
         return hub.get_last_services(instance_id) or []
     return []
+
+
+@router.get("/pf-top", response_model=PfTopSummary | None)
+async def pf_top(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> PfTopSummary | None:
+    """pf state-table insight: top talkers, states per interface/protocol, biggest
+    flows (agent push only, ~5-min cadence). None until the first agent push;
+    Direct/Securepoint instances have no agent → always None."""
+    inst = await inst_service.get_instance(session, instance_id, user)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if inst.agent_mode:
+        return hub.get_last_pf_top(instance_id)
+    return None
 
 
 @router.get("/gateways", response_model=list[GatewayStatus])

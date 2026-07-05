@@ -24,6 +24,7 @@ from app.xsense.schemas import (
     MemoryUsage,
     NtpStatus,
     PfStatus,
+    PfTopSummary,
     ServiceInfo,
     SystemStatus,
 )
@@ -220,6 +221,19 @@ def ipsec_from_agent(data: dict) -> IPsecServiceStatus:
             for t in ipsec_data.get("tunnels", [])
         ],
     )
+
+
+def pf_top_from_agent(data: dict) -> PfTopSummary | None:
+    """Parse the agent's ``pf_top`` push section (state-table top talkers).
+    Returns None when the section is missing (older agent) or malformed —
+    the hub then keeps its previous cache entry."""
+    raw = data.get("pf_top")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    try:
+        return PfTopSummary.model_validate(raw)
+    except Exception:  # noqa: BLE001 — a malformed section must not fail the push
+        return None
 
 
 def services_from_agent(data: dict) -> list[ServiceInfo]:

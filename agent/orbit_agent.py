@@ -16,6 +16,7 @@ import fcntl
 import glob
 import gzip
 import hashlib
+import heapq
 import http.client
 import ipaddress
 import json
@@ -1712,6 +1713,203 @@ def collect_pf() -> dict:
     return {"states_current": current, "states_limit": limit, "states_pct": round(pct, 1)}
 
 
+# --- pf state-table insight (top talkers) -----------------------------------
+#
+# `pfctl -vss` prints, per state, a header line and an indented stats line:
+#     vtnet1 tcp 10.20.1.200:26593 -> 10.20.0.24:8000       FIN_WAIT_2:FIN_WAIT_2
+#        age 10:35:08, expires in 00:00:19, 24894:13640 pkts, 21346306:689950 bytes, rule 93
+# (TCP states insert an extra sequence-number line between the two; NAT prints the
+# pre-NAT address in parens next to the wire address.) Aggregating this on-box
+# gives top source/dest talkers, states per interface/protocol and the biggest
+# individual flows — NetFlow-grade signal without running NetFlow.
+
+_PFTOP_INTERVAL = 300  # walk the state table at most every 5 min
+_PFTOP_TOP_N = 10
+_PFTOP_TIMEOUT = 30  # wall-clock cap for one pfctl walk; partial data still counts
+_pftop_cache: list = [0.0, {}]  # [monotonic ts of last walk, cached summary]
+
+_PF_STATS_RE = re.compile(r"age ([\d:]+),.*?(\d+):(\d+) pkts, (\d+):(\d+) bytes")
+
+
+def _pf_state_lines():
+    """Yield ``pfctl -vss`` output line by line WITHOUT buffering the whole dump —
+    a busy box holds 100k+ states (tens of MB of text) and the agent must not
+    balloon on a small firewall. Stops (and kills pfctl) once _PFTOP_TIMEOUT
+    wall-clock seconds pass; the partial aggregate is still useful."""
+    try:
+        proc = subprocess.Popen(
+            ["pfctl", "-vss"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (FileNotFoundError, OSError):
+        return
+    if proc.stdout is None:
+        proc.wait()
+        return
+    deadline = time.monotonic() + _PFTOP_TIMEOUT
+    try:
+        for line in proc.stdout:
+            yield line.rstrip("\n")
+            if time.monotonic() > deadline:
+                break
+    finally:
+        with contextlib.suppress(OSError):
+            proc.kill()
+        proc.wait()
+
+
+def _pf_split_host(tok: str) -> tuple:
+    """Split one pfctl address token into ``(ip, port)``. Seen forms: v4
+    ``1.2.3.4:80``, v6 ``fe80::1[546]``, bare v4/v6 without port (esp), and the
+    parenthesized pre-NAT form ``(10.0.0.5:1234)``."""
+    tok = tok.strip("()")
+    if "[" in tok:
+        ip, _, rest = tok.partition("[")
+        return ip, rest.rstrip("]")
+    if tok.count(":") == 1:  # exactly one colon = v4 with port; bare v6 has more
+        ip, _, port = tok.partition(":")
+        return ip, port
+    return tok, ""
+
+
+def _pf_parse_header(line: str) -> "dict | None":
+    """Parse a state header line into src/dst/proto/iface, or None for non-header
+    noise (ALTQ warnings, wscale lines). Direction: ``A -> B`` = A talks to B,
+    ``B <- A`` = A talks to B (pf prints inbound states destination-first)."""
+    parts = line.split()
+    if len(parts) < 5:
+        return None
+    if "->" in parts:
+        arrow, outbound = parts.index("->"), True
+    elif "<-" in parts:
+        arrow, outbound = parts.index("<-"), False
+    else:
+        return None
+    lhs, rhs = parts[2:arrow], parts[arrow + 1 : -1]
+    if not lhs or not rhs:
+        return None
+    # NAT: prefer the parenthesized pre-NAT address — the internal host is the
+    # talker of interest, not the shared WAN address it hides behind.
+    lt = lhs[1] if len(lhs) > 1 and lhs[1].startswith("(") else lhs[0]
+    rt = rhs[1] if len(rhs) > 1 and rhs[1].startswith("(") else rhs[0]
+    src_tok, dst_tok = (lt, rt) if outbound else (rt, lt)
+    src_ip, src_port = _pf_split_host(src_tok)
+    dst_ip, dst_port = _pf_split_host(dst_tok)
+    if not src_ip or not dst_ip:
+        return None
+    return {
+        "iface": parts[0],
+        "proto": parts[1],
+        "src": src_ip,
+        "sport": src_port,
+        "dst": dst_ip,
+        "dport": dst_port,
+        "state": parts[-1],
+    }
+
+
+def _pf_age_seconds(text: str) -> int:
+    """``63:54:47`` (hours may exceed 24) or ``MM:SS`` → seconds."""
+    try:
+        fields = [int(f) for f in text.split(":")]
+    except ValueError:
+        return 0
+    secs = 0
+    for f in fields:
+        secs = secs * 60 + f
+    return secs
+
+
+def _pf_bump(agg: dict, key: str, byts: int, count_state: bool) -> None:
+    entry = agg.get(key)
+    if entry is None:
+        entry = agg[key] = [0, 0]
+    if count_state:
+        entry[0] += 1
+    entry[1] += byts
+
+
+def _pf_top_entries(agg: dict, key_name: str) -> list:
+    """Rank an ``{key: [states, bytes]}`` accumulator by bytes, then states."""
+    ranked = sorted(agg.items(), key=lambda kv: (kv[1][1], kv[1][0]), reverse=True)
+    return [{key_name: k, "states": v[0], "bytes": v[1]} for k, v in ranked[:_PFTOP_TOP_N]]
+
+
+def _aggregate_pf_states(lines) -> dict:
+    """One pass over ``pfctl -vss`` lines → talker/interface/protocol summary.
+
+    States are counted from header lines; bytes (in+out over the state's
+    lifetime) come from the matching stats line, so a state whose stats line is
+    missing or truncated still counts toward the state totals."""
+    src_agg: dict = {}
+    dst_agg: dict = {}
+    if_agg: dict = {}
+    proto_agg: dict = {}
+    flows: list = []  # min-heap of (bytes, seq, flow) capped at _PFTOP_TOP_N
+    seq = 0
+    total = 0
+    cur = None  # header of the state whose stats line is still pending
+    for line in lines:
+        if not line:
+            continue
+        if line[0] not in " \t":
+            cur = _pf_parse_header(line)
+            if cur is not None:
+                total += 1
+                _pf_bump(src_agg, cur["src"], 0, True)
+                _pf_bump(dst_agg, cur["dst"], 0, True)
+                _pf_bump(if_agg, cur["iface"], 0, True)
+                _pf_bump(proto_agg, cur["proto"], 0, True)
+            continue
+        if cur is None:
+            continue
+        m = _PF_STATS_RE.search(line)
+        if m is None:  # e.g. the TCP sequence/wscale line
+            continue
+        pkts = int(m.group(2)) + int(m.group(3))
+        byts = int(m.group(4)) + int(m.group(5))
+        _pf_bump(src_agg, cur["src"], byts, False)
+        _pf_bump(dst_agg, cur["dst"], byts, False)
+        _pf_bump(if_agg, cur["iface"], byts, False)
+        _pf_bump(proto_agg, cur["proto"], byts, False)
+        if byts > 0:
+            flow = dict(cur)
+            flow["bytes"] = byts
+            flow["pkts"] = pkts
+            flow["age_s"] = _pf_age_seconds(m.group(1))
+            seq += 1
+            if len(flows) < _PFTOP_TOP_N:
+                heapq.heappush(flows, (byts, seq, flow))
+            elif byts > flows[0][0]:
+                heapq.heapreplace(flows, (byts, seq, flow))
+        cur = None
+    return {
+        "total_states": total,
+        "top_sources": _pf_top_entries(src_agg, "ip"),
+        "top_dests": _pf_top_entries(dst_agg, "ip"),
+        "interfaces": _pf_top_entries(if_agg, "name"),
+        "protocols": _pf_top_entries(proto_agg, "proto"),
+        "top_flows": [f for _, _, f in sorted(flows, reverse=True)],
+    }
+
+
+def collect_pf_top() -> dict:
+    """Lightweight traffic insight from the pf state table (see block comment
+    above). Walking every state is the expensive part, so the walk runs at most
+    every _PFTOP_INTERVAL seconds and pushes in between replay the cached summary
+    (2–3 KB) — the regular push cadence stays cheap."""
+    now = time.monotonic()
+    if _pftop_cache[0] and (now - _pftop_cache[0]) < _PFTOP_INTERVAL:
+        return _pftop_cache[1]
+    summary = _aggregate_pf_states(_pf_state_lines())
+    summary["ts"] = datetime.now(UTC).isoformat()
+    _pftop_cache[0] = now
+    _pftop_cache[1] = summary
+    return summary
+
+
 def collect_ntp() -> dict:
     """NTP sync state via ``ntpq``. ``synced`` is True only once a clock is usable
     (stratum < 16); a freshly-booted box reporting stratum 16 is NOT an error — the
@@ -2128,6 +2326,7 @@ _SNAPSHOT_SECTIONS = (
     ("memory", "collect_memory"),
     ("disks", "collect_disk"),
     ("pf", "collect_pf"),
+    ("pf_top", "collect_pf_top"),
     ("ntp", "collect_ntp"),
     ("interfaces", "collect_interfaces"),
     ("gateways", "collect_gateways"),
