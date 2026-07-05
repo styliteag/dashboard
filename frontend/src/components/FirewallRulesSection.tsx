@@ -144,6 +144,30 @@ function csv(value: unknown): string[] {
     .filter(Boolean);
 }
 
+// Multi-value fields (interface, source_net, destination_net) arrive from get_rule
+// either as a plain comma-separated string (NetworkAliasField) or as an option map
+// {token: {value, selected}} (InterfaceField). Return the selected *storable
+// tokens* (the keys, e.g. "lan,wan") — never the display labels ("LAN,WAN").
+function selectedTokens(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(selectedTokens).filter(Boolean).join(",");
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const isOptionMap = entries.some(
+      ([, v]) => v && typeof v === "object" && "selected" in (v as object),
+    );
+    if (isOptionMap) {
+      return entries
+        .filter(([, v]) => truthy((v as { selected?: unknown }).selected))
+        .map(([key]) => key)
+        .join(",");
+    }
+    return text(value);
+  }
+  return String(value);
+}
+
 function ruleToForm(rule: Record<string, unknown>): RuleForm {
   const full = { ...DEFAULT_RULE, ...rule };
   const advanced: Record<string, unknown> = {};
@@ -155,15 +179,15 @@ function ruleToForm(rule: Record<string, unknown>): RuleForm {
     log: truthy(full.log),
     quick: truthy(full.quick),
     action: text(full.action, "pass"),
-    interfaceValue: text(full.interface, "lan"),
+    interfaceValue: selectedTokens(full.interface),
     direction: text(full.direction, "in"),
     ipprotocol: text(full.ipprotocol, "inet"),
     protocol: text(full.protocol, "any"),
     source_not: truthy(full.source_not),
-    source_net: text(full.source_net, "any"),
+    source_net: selectedTokens(full.source_net) || "any",
     source_port: text(full.source_port),
     destination_not: truthy(full.destination_not),
-    destination_net: text(full.destination_net, "any"),
+    destination_net: selectedTokens(full.destination_net) || "any",
     destination_port: text(full.destination_port),
     gateway: text(full.gateway),
     categories: csv(full.categories),
@@ -553,6 +577,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           networks={networkValues}
           ports={portValues}
           aliases={aliasDetails}
+          defaultInterface={iface.startsWith("__") ? "" : iface}
           onClose={() => setEditing(null)}
           onSave={(uuid, rule) =>
             writeMutation.mutate({
@@ -595,6 +620,7 @@ function RuleDialog({
   networks,
   ports,
   aliases = [],
+  defaultInterface = "",
   onClose,
   onSave,
 }: {
@@ -605,6 +631,7 @@ function RuleDialog({
   networks: string[];
   ports: string[];
   aliases?: Array<{ name: string; address?: string | null }>;
+  defaultInterface?: string;
   onClose: () => void;
   onSave: (uuid: string | null, rule: Record<string, unknown>) => void;
 }) {
@@ -622,8 +649,14 @@ function RuleDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
-    if (detailQuery.data) setForm(ruleToForm(detailQuery.data.rule));
-  }, [detailQuery.data]);
+    if (!detailQuery.data) return;
+    const next = ruleToForm(detailQuery.data.rule);
+    // Seed a new rule's interface from the active tab (unless "All rules"/floating).
+    if (!edit.uuid && !next.interfaceValue && defaultInterface) {
+      next.interfaceValue = defaultInterface;
+    }
+    setForm(next);
+  }, [detailQuery.data, edit.uuid, defaultInterface]);
 
   const effectiveForm = form;
 
@@ -693,22 +726,24 @@ function RuleDialog({
             {/* Interface + Address Family + Protocol */}
             <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <div className="flex items-center gap-2">
-                  <label className="w-28 text-xs font-medium text-slate-400">Interface</label>
-                  <Select
-                    label=""
-                    value={effectiveForm.interfaceValue}
-                    onChange={(v) => setField("interfaceValue", v)}
-                  >
-                    {interfaces.map((item) => (
-                      <option key={`${item.type}-${item.value}`} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </Select>
+                <div className="flex items-start gap-2">
+                  <label className="mt-1 w-28 text-xs font-medium text-slate-400">Interface</label>
+                  <div className="flex-1">
+                    <MultiSelectInput
+                      label=""
+                      value={effectiveForm.interfaceValue}
+                      options={interfaces.map((i) => i.value)}
+                      labels={Object.fromEntries(interfaces.map((i) => [i.value, i.label]))}
+                      exclusive={null}
+                      emptyValue=""
+                      emptyLabel="floating (any)"
+                      placeholder="add interface…"
+                      onChange={(v) => setField("interfaceValue", v)}
+                    />
+                  </div>
                 </div>
                 <p className="mt-1 ml-28 text-[10px] text-slate-500">
-                  Choose the interface this rule applies to.
+                  One or more interfaces; leave empty for a floating rule.
                 </p>
               </div>
 
@@ -787,6 +822,7 @@ function RuleDialog({
                     value={effectiveForm.source_net}
                     options={networks}
                     aliases={aliases}
+                    placeholder="add network or alias…"
                     onChange={(v) => setField("source_net", v)}
                   />
                   <ComboInput
@@ -823,6 +859,7 @@ function RuleDialog({
                     value={effectiveForm.destination_net}
                     options={networks}
                     aliases={aliases}
+                    placeholder="add network or alias…"
                     onChange={(v) => setField("destination_net", v)}
                   />
                   <ComboInput
@@ -1237,19 +1274,33 @@ function ComboInput({
 }
 
 // Multi-value picker for OPNsense Source/Destination (the model's source_net /
-// destination_net are Multiple=Y). The value stays a comma-separated string so it
-// round-trips unchanged through ruleToForm/formToRule; "any" is exclusive.
+// destination_net and interface are all Multiple=Y). The value stays a
+// comma-separated string so it round-trips unchanged through ruleToForm/
+// formToRule. `exclusive` is a token that can't coexist with others ("any" for
+// Source/Dest); `emptyValue` is what an empty selection serialises to ("any"
+// there, "" = floating for interface). `labels` maps a stored token to its
+// display text (interface value → friendly name).
 function MultiSelectInput({
   label,
   value,
   options,
   aliases = [],
+  labels = {},
+  exclusive = "any",
+  emptyValue = "any",
+  emptyLabel = "any",
+  placeholder = "add…",
   onChange,
 }: {
   label: string;
   value: string;
   options: string[];
   aliases?: Array<{ name: string; address?: string | null }>;
+  labels?: Record<string, string>;
+  exclusive?: string | null;
+  emptyValue?: string;
+  emptyLabel?: string;
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -1257,19 +1308,20 @@ function MultiSelectInput({
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
-  const isAny = tokens.length === 0 || (tokens.length === 1 && tokens[0] === "any");
+  const isEmpty =
+    tokens.length === 0 || (!!exclusive && tokens.length === 1 && tokens[0] === exclusive);
 
   const commit = (raw: string) => {
     const v = raw.trim();
     setDraft("");
     if (!v) return;
-    if (v === "any") return onChange("any");
-    const base = tokens.filter((t) => t !== "any" && t !== v);
+    if (exclusive && v === exclusive) return onChange(exclusive);
+    const base = tokens.filter((t) => t !== exclusive && t !== v);
     onChange([...base, v].join(","));
   };
   const remove = (t: string) => {
     const next = tokens.filter((x) => x !== t);
-    onChange(next.length ? next.join(",") : "any");
+    onChange(next.length ? next.join(",") : emptyValue);
   };
 
   const listId = `fw-multi-${label.toLowerCase().replace(/\W+/g, "-")}`;
@@ -1281,15 +1333,17 @@ function MultiSelectInput({
     <label className="block text-xs font-medium text-slate-500">
       {label}
       <div className="mt-1 flex flex-wrap items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 focus-within:border-emerald-600">
-        {isAny ? (
-          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">any</span>
+        {isEmpty ? (
+          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+            {emptyLabel}
+          </span>
         ) : (
           tokens.map((t) => (
             <span
               key={t}
               className="inline-flex items-center gap-1 rounded bg-emerald-600/20 px-2 py-0.5 text-xs text-emerald-200"
             >
-              {t}
+              {labels[t] ?? t}
               <button
                 type="button"
                 onMouseDown={(e) => {
@@ -1297,7 +1351,7 @@ function MultiSelectInput({
                   remove(t);
                 }}
                 className="text-emerald-300/70 hover:text-emerald-100"
-                aria-label={`Remove ${t}`}
+                aria-label={`Remove ${labels[t] ?? t}`}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -1307,7 +1361,7 @@ function MultiSelectInput({
         <input
           value={draft}
           list={listId}
-          placeholder={isAny ? "add network or alias…" : "add…"}
+          placeholder={isEmpty ? placeholder : "add…"}
           onChange={(e) => {
             const v = e.target.value;
             if (v.endsWith(",")) commit(v.slice(0, -1));
@@ -1317,7 +1371,7 @@ function MultiSelectInput({
             if (e.key === "Enter") {
               e.preventDefault();
               commit(draft);
-            } else if (e.key === "Backspace" && !draft && !isAny && tokens.length) {
+            } else if (e.key === "Backspace" && !draft && !isEmpty && tokens.length) {
               remove(tokens[tokens.length - 1]);
             }
           }}
@@ -1326,7 +1380,7 @@ function MultiSelectInput({
         />
         <datalist id={listId}>
           {options.map((option) => (
-            <option key={option} value={option} />
+            <option key={option} value={option} label={labels[option]} />
           ))}
         </datalist>
       </div>

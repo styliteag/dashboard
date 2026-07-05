@@ -8,12 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Firewall rule editor (OPNsense): **Source and Destination are now multi-value**,
-  matching OPNsense's own `Multiple=Y` fields. Pick several networks/aliases as
-  removable chips (or type a CIDR); "any" stays exclusive. Stored as the same
-  comma-separated string OPNsense expects, so rules round-trip unchanged.
+- Firewall rule editor (OPNsense): **Source, Destination and Interface are now
+  multi-value**, matching OPNsense's own `Multiple=Y` fields. Pick several
+  networks/aliases/interfaces as removable chips (or type a CIDR); for Source/Dest
+  "any" stays exclusive, and a rule with no interface is treated as floating. A new
+  rule seeds its interface from the active tab. Values round-trip as the
+  comma-separated string OPNsense expects — including its per-field-type get_rule
+  formats (plain string for Source/Dest, selected-option map for Interface).
 
 ### Fixed
+- **Hub CRIT alerts now link to the tab that owns them.** The "Red / CRIT alerts"
+  block grouped by raw check key (many count-1 chips) and pointed every chip at the
+  generic alert list. Alerts are now grouped by destination tab — VPN, Connectivity,
+  Firmware, Certificates, System — and each chip links straight to that page.
 - **Firewall rules editor (OPNsense): Source/Destination autocomplete was empty.**
   The network/port/category option lookups and the "Apply changes" call targeted
   the abstract `filter_base` API controller, which OPNsense does not route
