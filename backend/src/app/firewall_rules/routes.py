@@ -40,6 +40,32 @@ def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on", "enabled"}
 
 
+def _field_text(value: Any) -> str:
+    """Render OPNsense form/list field values without leaking object reprs.
+
+    Several MVC select fields arrive as nested option objects depending on API
+    endpoint and OPNsense version. The UI needs the selected value/label, not
+    Python's ``{'...': ...}`` representation.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str | int | float | bool):
+        return str(value)
+    if isinstance(value, list):
+        return ", ".join(part for part in (_field_text(item) for item in value) if part)
+    if isinstance(value, dict):
+        for key in ("selected", "value", "label", "text", "__text"):
+            if key in value and not isinstance(value[key], dict | list):
+                return str(value[key])
+        for key, item in value.items():
+            if isinstance(item, dict) and _truthy(item.get("selected")):
+                return _field_text(item.get("value") or item.get("label") or key)
+        truthy_keys = [str(key) for key, item in value.items() if _truthy(item)]
+        if truthy_keys:
+            return ", ".join(truthy_keys)
+    return str(value)
+
+
 def normalize_rule(row: dict[str, Any]) -> FirewallRule:
     uuid = str(row.get("uuid") or row.get("@uuid") or "")
     legacy = _truthy(row.get("legacy")) or _truthy(row.get("internal"))
@@ -51,21 +77,21 @@ def normalize_rule(row: dict[str, Any]) -> FirewallRule:
         editable=editable,
         enabled=enabled,
         log=_truthy(row.get("log")),
-        action=str(row.get("action") or row.get("%action") or ""),
-        direction=str(row.get("direction") or row.get("%direction") or ""),
-        ip_protocol=str(row.get("ipprotocol") or row.get("%ipprotocol") or ""),
-        protocol=str(row.get("protocol") or ""),
-        interfaces=str(row.get("interface") or ""),
-        source=str(row.get("source_net") or row.get("source") or ""),
-        source_port=str(row.get("source_port") or ""),
-        destination=str(row.get("destination_net") or row.get("destination") or ""),
-        destination_port=str(row.get("destination_port") or ""),
-        gateway=str(row.get("gateway") or ""),
-        categories=str(row.get("categories") or row.get("category") or ""),
-        description=str(row.get("description") or ""),
-        sequence=str(row.get("sequence") or ""),
-        sort_order=str(row.get("sort_order") or ""),
-        prio_group=str(row.get("prio_group") or ""),
+        action=_field_text(row.get("action") or row.get("%action")),
+        direction=_field_text(row.get("direction") or row.get("%direction")),
+        ip_protocol=_field_text(row.get("ipprotocol") or row.get("%ipprotocol")),
+        protocol=_field_text(row.get("protocol")),
+        interfaces=_field_text(row.get("interface")),
+        source=_field_text(row.get("source_net") or row.get("source")),
+        source_port=_field_text(row.get("source_port")),
+        destination=_field_text(row.get("destination_net") or row.get("destination")),
+        destination_port=_field_text(row.get("destination_port")),
+        gateway=_field_text(row.get("gateway")),
+        categories=_field_text(row.get("categories") or row.get("category")),
+        description=_field_text(row.get("description")),
+        sequence=_field_text(row.get("sequence")),
+        sort_order=_field_text(row.get("sort_order")),
+        prio_group=_field_text(row.get("prio_group")),
         legacy=legacy,
         raw=row,
     )

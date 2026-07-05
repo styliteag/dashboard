@@ -38,6 +38,19 @@ def test_normalize_rule_marks_legacy_rule_read_only() -> None:
     assert rule.legacy is True
 
 
+def test_normalize_rule_renders_selected_gateway_object() -> None:
+    rule = routes.normalize_rule(
+        {
+            "uuid": "abc",
+            "gateway": {
+                "WAN_DHCP": {"selected": "1", "value": "WAN_DHCP", "label": "WAN DHCP"}
+            },
+        }
+    )
+
+    assert rule.gateway == "WAN_DHCP"
+
+
 @pytest.mark.asyncio
 async def test_search_rules_maps_dashboard_filters_to_opnsense(monkeypatch) -> None:
     inst = SimpleNamespace(id=7, device_type="opnsense", transport="direct")

@@ -102,16 +102,42 @@ const DEFAULT_RULE: Record<string, unknown> = {
   description: "",
 };
 
-function truthy(value: unknown) {
+function truthy(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   return ["1", "true", "yes", "on", "enabled"].includes(String(value ?? "").toLowerCase());
 }
 
-function text(value: unknown, fallback = "") {
+function text(value: unknown, fallback = ""): string {
+  if (Array.isArray(value))
+    return value
+      .map((item) => text(item))
+      .filter(Boolean)
+      .join(", ");
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["selected", "value", "label", "text", "__text"]) {
+      const candidate = record[key];
+      if (candidate != null && typeof candidate !== "object") return String(candidate);
+    }
+    for (const [key, candidate] of Object.entries(record)) {
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        truthy((candidate as { selected?: unknown }).selected)
+      ) {
+        const selected = candidate as Record<string, unknown>;
+        return text(selected.value ?? selected.label ?? key);
+      }
+    }
+    const truthyKeys = Object.entries(record)
+      .filter(([, candidate]) => truthy(candidate))
+      .map(([key]) => key);
+    if (truthyKeys.length > 0) return truthyKeys.join(", ");
+  }
   return String(value ?? fallback);
 }
 
-function csv(value: unknown) {
+function csv(value: unknown): string[] {
   return text(value)
     .split(",")
     .map((v) => v.trim())
@@ -325,13 +351,13 @@ export default function FirewallRulesSection({ instanceId }: Props) {
 
   return (
     <section className="mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-300">
-            <Shield className="h-4 w-4 text-emerald-400" />
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-300">
+            <Shield className="h-3.5 w-3.5 text-emerald-400" />
             Firewall rules
           </h2>
-          <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+          <div className="mt-0.5 flex flex-wrap gap-2 text-[11px] text-slate-500">
             <span>{visibleRows.length} shown</span>
             <span>{editableCount} editable</span>
             <span>{rows.length - editableCount} read-only</span>
@@ -339,15 +365,15 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {pendingApply && (
             <button
               type="button"
               onClick={() => applyMutation.mutate()}
               disabled={busy}
-              className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+              className="inline-flex h-7 items-center gap-1 rounded-md bg-amber-500 px-2.5 text-xs font-medium text-slate-950 hover:bg-amber-400 disabled:opacity-50"
             >
-              <Check className="h-4 w-4" />
+              <Check className="h-3.5 w-3.5" />
               Apply
             </button>
           )}
@@ -355,17 +381,17 @@ export default function FirewallRulesSection({ instanceId }: Props) {
             type="button"
             onClick={() => setEditing({ uuid: null, clone: false })}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-emerald-600 px-2.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             Add
           </button>
-          <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-300">
-            <ListFilter className="h-4 w-4 text-slate-500" />
+          <label className="flex h-7 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300">
+            <ListFilter className="h-3.5 w-3.5 text-slate-500" />
             <select
               value={iface}
               onChange={(event) => setIface(event.target.value)}
-              className="w-40 bg-transparent text-sm text-slate-100 outline-none"
+              className="w-32 bg-transparent text-xs text-slate-100 outline-none"
             >
               <option value="__any">All rules</option>
               {ifaces.map((item) => (
@@ -376,29 +402,29 @@ export default function FirewallRulesSection({ instanceId }: Props) {
             </select>
           </label>
 
-          <label className="inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-300">
+          <label className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300">
             <input
               type="checkbox"
               checked={showReadOnly}
               onChange={(event) => setShowReadOnly(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-600"
+              className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 text-emerald-600"
             />
             Show read-only
           </label>
 
-          <form onSubmit={submitSearch} className="flex items-center gap-2">
-            <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-300">
-              <Search className="h-4 w-4 text-slate-500" />
+          <form onSubmit={submitSearch} className="flex items-center gap-1.5">
+            <label className="flex h-7 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300">
+              <Search className="h-3.5 w-3.5 text-slate-500" />
               <input
                 value={draftSearch}
                 onChange={(event) => setDraftSearch(event.target.value)}
                 placeholder="Search"
-                className="w-44 bg-transparent text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none"
+                className="w-36 bg-transparent text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none"
               />
             </label>
             <button
               type="submit"
-              className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+              className="h-7 rounded-md border border-slate-700 px-2.5 text-xs text-slate-300 hover:bg-slate-800"
             >
               Apply
             </button>
@@ -407,10 +433,10 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           <button
             type="button"
             onClick={() => rulesQuery.refetch()}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800"
             title="Refresh rules"
           >
-            <RefreshCw className={`h-4 w-4 ${rulesQuery.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${rulesQuery.isFetching ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -439,9 +465,9 @@ export default function FirewallRulesSection({ instanceId }: Props) {
       )}
 
       {!rulesQuery.isLoading && !rulesQuery.isError && (
-        <div className="mt-4 overflow-x-auto rounded-md border border-slate-800">
-          <table className="min-w-full divide-y divide-slate-800 text-left text-sm">
-            <thead className="bg-slate-900 text-xs uppercase tracking-normal text-slate-500">
+        <div className="mt-3 overflow-x-auto rounded-md border border-slate-800">
+          <table className="min-w-full divide-y divide-slate-800 text-left text-xs">
+            <thead className="bg-slate-900 text-[10px] uppercase tracking-normal text-slate-500">
               <tr>
                 <Th>Status</Th>
                 <Th>Action</Th>
@@ -803,7 +829,7 @@ function RuleDialog({
 }
 
 function Th({ children }: { children: ReactNode }) {
-  return <th className="whitespace-nowrap px-3 py-2 font-medium">{children}</th>;
+  return <th className="whitespace-nowrap px-2 py-1.5 font-medium">{children}</th>;
 }
 
 function RuleRow({
@@ -835,18 +861,18 @@ function RuleRow({
   const source = `${display(rule.source)}${rule.source_port ? `:${rule.source_port}` : ""}`;
   return (
     <tr className={`${rule.enabled ? "" : "opacity-55"} hover:bg-slate-900/60`}>
-      <td className="whitespace-nowrap px-3 py-2 align-top">
-        <div className="flex items-center gap-2">
+      <td className="whitespace-nowrap px-2 py-1 align-middle">
+        <div className="flex items-center gap-1.5">
           {rule.editable ? (
-            <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+            <Unlock className="h-3 w-3 text-emerald-400" />
           ) : (
-            <Lock className="h-3.5 w-3.5 text-slate-500" />
+            <Lock className="h-3 w-3 text-slate-500" />
           )}
           <button
             type="button"
             disabled={!rule.editable || busy}
             onClick={onToggle}
-            className={`rounded px-1.5 py-0.5 text-xs ${
+            className={`rounded px-1.5 py-0.5 text-[11px] leading-none ${
               rule.enabled ? "bg-emerald-500/10 text-emerald-300" : "bg-slate-800 text-slate-400"
             } ${rule.editable ? "hover:ring-1 hover:ring-slate-600" : ""}`}
           >
@@ -856,7 +882,7 @@ function RuleRow({
             type="button"
             disabled={!rule.editable || busy}
             onClick={onToggleLog}
-            className={`rounded px-1.5 py-0.5 text-xs ${
+            className={`rounded px-1.5 py-0.5 text-[11px] leading-none ${
               rule.log ? "bg-sky-500/10 text-sky-300" : "bg-slate-800 text-slate-500"
             } ${rule.editable ? "hover:ring-1 hover:ring-slate-600" : ""}`}
           >
@@ -864,52 +890,52 @@ function RuleRow({
           </button>
         </div>
       </td>
-      <td className="whitespace-nowrap px-3 py-2 align-top text-slate-200">
+      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-200">
         {display(rule.action, "-")}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 align-top text-slate-300">
+      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-300">
         {display(rule.interfaces, "floating")}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 align-top text-slate-300">
+      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-300">
         {[rule.ip_protocol, rule.protocol].filter(Boolean).join(" / ") || "any"}
       </td>
-      <td className="max-w-xs px-3 py-2 align-top text-slate-300">
+      <td className="max-w-xs px-2 py-1 align-middle text-slate-300">
         <span className="break-words">{source}</span>
       </td>
-      <td className="max-w-xs px-3 py-2 align-top text-slate-300">
+      <td className="max-w-xs px-2 py-1 align-middle text-slate-300">
         <span className="break-words">{destination}</span>
       </td>
-      <td className="whitespace-nowrap px-3 py-2 align-top text-slate-400">
+      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-400">
         {display(rule.gateway, "-")}
       </td>
-      <td className="min-w-72 px-3 py-2 align-top">
+      <td className="min-w-60 px-2 py-1 align-middle">
         <div className="text-slate-200">{rule.description || "-"}</div>
-        {!rule.editable && <div className="mt-1 text-xs text-slate-500">read-only</div>}
+        {!rule.editable && <div className="text-[10px] text-slate-500">read-only</div>}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 align-top">
-        <div className="flex items-center gap-1">
+      <td className="whitespace-nowrap px-2 py-1 align-middle">
+        <div className="flex items-center gap-0.5">
           <IconButton
             label="Move up"
             disabled={!prev || busy}
             onClick={() => prev && onMoveUp(prev.uuid)}
           >
-            <ArrowUp className="h-3.5 w-3.5" />
+            <ArrowUp className="h-3 w-3" />
           </IconButton>
           <IconButton
             label="Move down"
             disabled={!next || busy}
             onClick={() => next && onMoveDown(next.uuid)}
           >
-            <ArrowDown className="h-3.5 w-3.5" />
+            <ArrowDown className="h-3 w-3" />
           </IconButton>
           <IconButton label="Edit" disabled={!rule.editable || busy} onClick={onEdit}>
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-3 w-3" />
           </IconButton>
           <IconButton label="Clone" disabled={!rule.editable || busy} onClick={onClone}>
-            <Copy className="h-3.5 w-3.5" />
+            <Copy className="h-3 w-3" />
           </IconButton>
           <IconButton label="Delete" disabled={!rule.editable || busy} onClick={onDelete} danger>
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3 w-3" />
           </IconButton>
         </div>
       </td>
@@ -936,7 +962,7 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 ${
+      className={`inline-flex h-6 w-6 items-center justify-center rounded border border-slate-800 ${
         danger ? "text-red-300 hover:bg-red-500/10" : "text-slate-400 hover:bg-slate-800"
       } disabled:cursor-not-allowed disabled:opacity-35`}
     >
