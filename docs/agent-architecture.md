@@ -454,6 +454,17 @@ First-Call-Provisioning-Latenz schlug nicht durch. Damit ist die zuvor nur-gemoc
 Path-Whitelist · Cache-Verlust mintet einen weiteren Key (Orphan-Keys; später aufräumen) ·
 Provisioning bei Agent-Start statt First-Call (falls die Latenz auf langsamen Boxen doch stört).
 
+## 17. Remote Packet Capture (Live + Snapshot) — über den bestehenden Tunnel
+
+Der `push`-Tunnel (und der Relay-Mechanismus) wird auch für **Packet Capture** genutzt:
+
+- **Live Capture** (`/ws/capture/{id}`): Browser öffnet WS → Backend sendet `tunnel` `open` mit `kind="capture"` + interface + BPF-Filter → Agent startet `tcpdump -i IF -U -w - [filter]`, pumpt stdout (raw pcap) als base64-`data` Frames zurück. Browser parsed on-the-fly (global header + per-packet) und rendert Tabelle + Hex-View. "Stop" sendet `close` → Agent terminiert den Prozess (graceful + 2s force-kill).
+- **Snapshot** (bounded): `POST /api/instances/{id}/capture` → Agent-Command `packet_capture` mit `max_seconds` (bis 600), `max_bytes` (bis 20 MiB), Interface + Filter. Rückgabe Base64-PCAP + Meta. Download als .pcap.
+- **BPF-Bequemlichkeit**: UI hat Presets (z. B. `not vlan`, `esp or ah or udp port 500 or udp port 4500` für IPsec on WAN, `ether host …`). Agent hängt **automatisch** `and not port <dashboard-ws-port>` an (aus eigener `dashboard_url`), damit der Capture-Datenstrom und Agent-Metriken nicht miterfasst werden.
+- **Sicherheit / Cleanup**: Kein SSH. tcpdump wird per `terminate()` + `kill()` nach 2 s sauber beendet, auch bei Tab-Close (`beforeunload` + WS-Close → Tunnel-Close).
+
+Der Capture-Stream nutzt denselben WS-Frame-Typ wie GUI-Relay (`tunnel`/`data`/`close`/`started`/`error`). Keine neuen Ports, keine neuen Creds.
+
 ## 16. Plan-Update / Entscheidungen (2026-06-24, nach Relay-§15)
 
 Userentscheid zu den §15-Offenen + Backlog. Recon bestätigt: keine Status-Snapshot-Tabelle,

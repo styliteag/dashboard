@@ -26,6 +26,9 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
 
 ## What it does
 
+- **Hub** (default landing page) — central operations overview with connected agents,
+  push rates, error counters, and **CRIT alerts broken down by section** (checks, IPsec,
+  connectivity, firmware, …). Quick access to the full fleet.
 - **Instances** — register firewalls, see live status (CPU, memory, disk, uptime,
   interfaces and throughput) and recent history.
 - **VPN / IPsec overview** — tunnel state across the fleet, with human-readable
@@ -45,6 +48,12 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
   A global **Logs** page rolls the whole fleet up to critical events: lines are rated by
   syslog severity (plus curated patterns for PRI-less logs), noise-filtered, and
   aggregated into one row per message pattern with a count.
+- **Remote Packet Capture** — live pcap streaming and one-shot snapshots via the agent
+  (no SSH required). Supports arbitrary BPF filters with convenient presets (exclude
+  agent traffic automatically, `not vlan`, IPsec on WAN, `ether host`, etc.). Live
+  viewer has packet list + hex dump (Ethernet/IP/TCP/UDP). Snapshots support up to
+  600 s / 20 MiB. tcpdump is terminated cleanly on viewer close. The Hub page (default
+  landing) now surfaces CRIT alerts grouped by section/check key.
 - **Groups & permissions** — every instance belongs to exactly one group; users only
   see (and act on) instances of their groups, across every view, bulk action, export
   and the GUI proxy. **SuperAdmins** manage groups, users and memberships — rights
@@ -69,7 +78,8 @@ In **push** mode a small stdlib-only Python agent runs on the firewall (FreeBSD)
 opens an outbound WebSocket to the dashboard, and pushes metrics on an interval. It
 also exposes an optional **relay** — the dashboard tunnels HTTP requests to the box's
 own REST API through the agent connection, so the dashboard needs no inbound access
-and no stored API key. The agent supports dashboard-triggered **self-update**,
+and no stored API key. The same tunnel is reused for **live packet capture** (raw
+pcap streaming) and **GUI proxy**. The agent supports dashboard-triggered **self-update**,
 one-time **enrollment** (trade a code for a token), and **uninstall**. See
 [`docs/agent-architecture.md`](docs/agent-architecture.md) for the full design.
 

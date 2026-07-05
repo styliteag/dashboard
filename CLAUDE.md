@@ -10,6 +10,8 @@ STYLiTE Orbit — multi-firewall dashboard (OPNsense, pfSense, Securepoint UTM).
 - `frontend/` — React 18 + Vite + TypeScript (npm)
 - `agent/` — stdlib-only WebSocket push agent that runs **on OPNsense/pfSense (FreeBSD)**; also does relay tunneling, dashboard-triggered self-update, enrollment, and uninstall
 
+**Recent additions:** Remote live + snapshot packet capture (via agent tunnel, with BPF presets, automatic agent-traffic exclusion, up to 600s/20 MiB, clean process termination on viewer close); Hub is now the primary default landing page (first tab) with per-section CRIT alert visibility.
+
 Not a monorepo — three independent apps orchestrated by `compose.yml` (production, single combined image) or `compose-dev.yml` (development, backend + frontend split with src bind mounts). Two more stdlib-only sidecars live alongside: `checkmk/` (special-agent plugin pulling `/api/export/checkmk`) and `scripts/sign_agent.py` (Ed25519 signing for agent self-update).
 
 ## Commands (use `just`)
@@ -59,6 +61,8 @@ When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates
 ## Frontend
 
 TypeScript **strict mode** is enabled (`noUnusedLocals`, `noUnusedParameters` on). Path alias `@/*` → `src/*`. Three gates:
+
+**Navigation / Hub:** The top-level "Hub" tab (admin-only) is intentionally first in the nav and the default route after login (`/` → `HubStatusPage`). Regular users land on `/instances`. The Hub aggregates live agent health + CRIT alerts grouped by check key/section (from `/api/checks`). Packet capture UI lives under instance tabs ("Capture") + dedicated live viewer (`/capture/:id`).
 
 - `just frontend-build` — `tsc -b && vite build` (type-check + production bundle)
 - `just frontend-lint` — ESLint flat config (`eslint.config.js`), React + react-hooks rules, prettier-aware
