@@ -40,7 +40,12 @@ export default function Layout() {
         </Link>
 
         <nav className="flex items-center gap-4 text-sm">
-          <Link to="/" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+          {user?.is_admin && (
+            <Link to="/hub" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
+              <Activity className="h-4 w-4" /> Hub
+            </Link>
+          )}
+          <Link to="/instances" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
             <Server className="h-4 w-4" /> Instances
           </Link>
           <Link to="/vpn" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100">
@@ -94,14 +99,6 @@ export default function Layout() {
           >
             <ShieldCheck className="h-4 w-4" /> Security
           </Link>
-          {user?.is_admin && (
-            <Link
-              to="/hub"
-              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
-            >
-              <Activity className="h-4 w-4" /> Hub
-            </Link>
-          )}
           {user?.is_admin && (
             <Link
               to="/settings"

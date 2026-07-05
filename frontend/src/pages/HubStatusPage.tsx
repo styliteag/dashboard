@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Activity } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../lib/use-auth";
 import {
   Area,
   AreaChart,
@@ -14,7 +16,7 @@ import KpiTile from "../components/KpiTile";
 import { api, apiErrorText } from "../lib/api";
 import { fmtDateTime, fmtRelative, fmtTimeShort } from "../lib/datetime";
 import { fmtDuration } from "../lib/format";
-import type { HubStatsResponse } from "../lib/types";
+import type { HubStatsResponse, ServiceAlert } from "../lib/types";
 
 /** Counters that indicate something is wrong — rendered red when non-zero. */
 const ERROR_COUNTERS: [string, string][] = [
@@ -35,18 +37,37 @@ const TRAFFIC_COUNTERS: [string, string][] = [
 ];
 
 export default function HubStatusPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, isLoading, error } = useQuery({
     queryKey: ["hub-stats"],
     queryFn: () => api.get<HubStatsResponse>("/api/hub/stats"),
     refetchInterval: 10_000,
   });
 
-  if (error) {
+  const { data: alerts = [] } = useQuery({
+    queryKey: ["alerts"],
+    queryFn: () => api.get<ServiceAlert[]>("/api/checks"),
+    refetchInterval: 30_000,
+  });
+
+  useEffect(() => {
+    if (error && user && !user.is_admin) {
+      navigate("/instances", { replace: true });
+    }
+  }, [error, user, navigate]);
+
+  if (error && !(user && !user.is_admin)) {
     // Direct navigation by a non-admin lands here (403) — the nav link is gated.
     return (
-      <p className="py-8 text-center text-sm text-slate-600">
-        {apiErrorText(error, "Failed to load hub stats")}
-      </p>
+      <div className="py-8 text-center">
+        <p className="text-sm text-slate-600">
+          {apiErrorText(error, "Failed to load hub stats")}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          <Link to="/instances" className="underline hover:text-slate-300">Go to Instances</Link>
+        </p>
+      </div>
     );
   }
   if (isLoading || !data) {
@@ -58,6 +79,15 @@ export default function HubStatusPage() {
   const perMinute = data.push_rate.length > 1 ? data.push_rate[data.push_rate.length - 2].count : 0;
   const chart = data.push_rate.map((p) => ({ ts: fmtTimeShort(p.ts), count: p.count }));
 
+  // Aggregate CRIT (red/alert) counts by check key (the "section")
+  const critAlerts = alerts.filter((a) => a.state === 2);
+  const sectionCounts: Record<string, number> = {};
+  for (const a of critAlerts) {
+    const sec = a.key;
+    sectionCounts[sec] = (sectionCounts[sec] || 0) + 1;
+  }
+  const alertSections = Object.entries(sectionCounts).sort((a, b) => b[1] - a[1]);
+
   return (
     <div>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -66,6 +96,9 @@ export default function HubStatusPage() {
       <p className="mt-1 text-xs text-slate-500">
         In-memory since {fmtDateTime(data.started_at)} (up {fmtDuration(data.uptime_seconds)}) — a
         backend restart resets these numbers.
+      </p>
+      <p className="mt-2 text-xs text-slate-400">
+        Central hub for monitoring all connected instances, agent activity, message throughput, and health.
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
@@ -120,6 +153,24 @@ export default function HubStatusPage() {
           <CounterTile key={key} label={label} value={data.counters[key] ?? 0} alert />
         ))}
       </div>
+
+      <h2 className="mt-6 text-sm font-semibold text-slate-300">Red / CRIT alerts by section</h2>
+      {alertSections.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">No CRIT alerts.</p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {alertSections.map(([section, count]) => (
+            <Link
+              key={section}
+              to="/alerts"
+              className="rounded-lg border border-red-900 bg-red-950/40 px-3 py-1 text-sm hover:bg-red-900/60"
+            >
+              <span className="font-mono text-red-400">{section}</span>
+              <span className="ml-2 font-semibold text-red-300">{count}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <h2 className="mt-6 text-sm font-semibold text-slate-300">Message counters</h2>
       <div className="mt-2 grid gap-3 sm:grid-cols-6">

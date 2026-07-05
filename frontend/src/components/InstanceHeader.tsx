@@ -86,7 +86,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
     <div>
       {/* Identity row */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link to="/" className="text-slate-500 hover:text-slate-300" aria-label="Back to instances">
+        <Link to="/instances" className="text-slate-500 hover:text-slate-300" aria-label="Back to instances">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-xl font-semibold">{instance?.name ?? `Instance ${fallbackId}`}</h1>

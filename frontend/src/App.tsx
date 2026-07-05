@@ -31,7 +31,8 @@ export default function App() {
         <Route path="capture/:capId" element={<PacketCaptureViewer />} />
 
         <Route element={<Layout />}>
-          <Route index element={<InstancesPage />} />
+          <Route index element={<HubStatusPage />} />
+          <Route path="instances" element={<InstancesPage />} />
           <Route path="instances/:id" element={<InstanceDetailPage />} />
           <Route path="vpn" element={<VPNOverviewPage />} />
           <Route path="connectivity" element={<ConnectivityOverviewPage />} />
@@ -49,7 +50,7 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/hub" replace />} />
     </Routes>
   );
 }
