@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Hub "Connected agents" table: each row now carries the same WebUI (tunneled) and
+  Console (root terminal) icon links as the other list views, next to the instance
+  name — so operators can jump straight into a box's GUI or shell from the Hub.
+
 ### Changed
 
 - Prometheus and Checkmk exports now serve direct-poll (OPNsense/pfSense direct,

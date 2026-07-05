@@ -13,9 +13,12 @@ import {
   YAxis,
 } from "recharts";
 import KpiTile from "../components/KpiTile";
+import { ShellIconLink } from "../components/ShellIconLink";
+import { WebUiIconLink } from "../components/WebUiIconLink";
 import { api, apiErrorText } from "../lib/api";
 import { fmtDateTime, fmtRelative, fmtTimeShort } from "../lib/datetime";
 import { fmtDuration } from "../lib/format";
+import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
 import type { HubStatsResponse, ServiceAlert } from "../lib/types";
 
 /** Counters that indicate something is wrong — rendered red when non-zero. */
@@ -50,6 +53,8 @@ export default function HubStatusPage() {
     queryFn: () => api.get<ServiceAlert[]>("/api/checks"),
     refetchInterval: 30_000,
   });
+  const agentMode = useAgentModeMap();
+  const shellEnabled = useShellEnabledMap();
 
   useEffect(() => {
     if (error && user && !user.is_admin) {
@@ -204,9 +209,22 @@ export default function HubStatusPage() {
               {data.agents.map((a) => (
                 <tr key={a.instance_id} className="border-t border-slate-800">
                   <td className="px-3 py-2">
-                    <Link to={`/instances/${a.instance_id}`} className="hover:text-emerald-400">
-                      {a.instance_name}
-                    </Link>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Link to={`/instances/${a.instance_id}`} className="hover:text-emerald-400">
+                        {a.instance_name}
+                      </Link>
+                      <WebUiIconLink
+                        instanceId={a.instance_id}
+                        instanceName={a.instance_name}
+                        agentMode={agentMode.get(a.instance_id) ?? true}
+                      />
+                      <ShellIconLink
+                        instanceId={a.instance_id}
+                        instanceName={a.instance_name}
+                        eligible={agentMode.get(a.instance_id) ?? true}
+                        shellEnabled={shellEnabled.get(a.instance_id) ?? false}
+                      />
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-slate-400">{a.platform || "—"}</td>
                   <td className="px-3 py-2 text-slate-400">{a.agent_version || "—"}</td>
