@@ -136,8 +136,8 @@ export default function TopTalkersSection({ instanceId }: { instanceId: number }
                 <th className="px-3 py-2">Proto</th>
                 <th className="px-3 py-2">Interface</th>
                 <th className="px-3 py-2 text-right">Bytes</th>
-                <th className="px-3 py-2 text-right">Pakete</th>
-                <th className="px-3 py-2 text-right">Alter</th>
+                <th className="px-3 py-2 text-right">Packets</th>
+                <th className="px-3 py-2 text-right">Age</th>
               </tr>
             </thead>
             <tbody>
@@ -149,7 +149,7 @@ export default function TopTalkersSection({ instanceId }: { instanceId: number }
                   <td className="px-3 py-2 text-slate-400">{f.iface}</td>
                   <td className="px-3 py-2 text-right font-mono text-xs">{fmtBytes(f.bytes)}</td>
                   <td className="px-3 py-2 text-right font-mono text-xs">
-                    {f.pkts.toLocaleString("de-DE")}
+                    {f.pkts.toLocaleString("en-US")}
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-xs">{fmtDuration(f.age_s)}</td>
                 </tr>
