@@ -21,6 +21,7 @@ from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
 from app.checks.routes import router as checks_router
 from app.config import Settings, get_settings
+from app.configbackup.routes import router as config_backups_router
 from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firmware.routes import router as firmware_router
@@ -243,6 +244,7 @@ def create_app() -> FastAPI:
     app.include_router(llm_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
     app.include_router(log_events_router, prefix="/api")
+    app.include_router(config_backups_router, prefix="/api")
     return app
 
 

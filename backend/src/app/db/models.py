@@ -20,7 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.dialects.mysql import MEDIUMBLOB, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -622,6 +622,38 @@ class Logfile(Base):
     content: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
 
     __table_args__ = (Index("ix_logfile_lookup", "instance_id", "name", "collected_at"),)
+
+
+class ConfigBackup(Base):
+    """A versioned config.xml snapshot pushed by the agent on change.
+
+    The agent pushes only when the file's sha256 actually changed, and the store
+    dedupes against the newest stored version, so rows appear per real config
+    change (plus one baseline per fresh agent). ``content_enc`` is the Fernet
+    token of the full XML text — config.xml carries secrets (password hashes,
+    PSKs, API keys), so it is never stored in plaintext. MEDIUMBLOB so a
+    multi-MB encrypted config fits (plain BLOB tops out at 64 KB). Pruned to
+    the newest ``KEEP_PER_INSTANCE`` per instance on write.
+    """
+
+    __tablename__ = "config_backups"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    collected_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, server_default=func.now(), nullable=False
+    )
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Plaintext size in bytes (the encrypted token is larger).
+    bytes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="agent")
+    content_enc: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(MEDIUMBLOB(), "mysql"), nullable=False
+    )
+
+    __table_args__ = (Index("ix_config_backup_lookup", "instance_id", "collected_at"),)
 
 
 class LogEvent(Base):

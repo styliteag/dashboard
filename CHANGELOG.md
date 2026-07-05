@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON frames, handler/WS errors, unknown message types). All numbers are
   in-memory since backend start — a restart resets them, and the page says so.
   The agent list is group-scoped like every other instance surface.
+- **Config backup & versioning (agent 2.7.15).** The agent now pushes
+  `config.xml` whenever it actually changes (mtime + sha256 gated, gzip
+  transport); the dashboard stores encrypted, versioned copies (Fernet at
+  rest, newest 30 per instance, sha256-deduped). New per-instance "Config
+  Backups" section with a diff viewer ("what changed between two versions?")
+  and one-click download of any version for disaster recovery
+  (`GET /api/instances/{id}/config-backups[/{bid}/download|/diff]`).
+  OPNsense/pfSense agent mode only for now — Securepoint has no on-box agent.
 
 ## [2.7.12] - 2026-07-05
 

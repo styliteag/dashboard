@@ -31,6 +31,7 @@ from app.checks.evaluate import evaluate_checks
 from app.checks.event_store import record_availability_event, record_check_events
 from app.checks.history import current_states, diff_checks
 from app.checks.models import CheckState, ServiceCheck
+from app.configbackup.store import record_config_backup
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.ipsec.event_store import record_tunnel_events
@@ -556,6 +557,10 @@ class AgentHub:
             # prunes to the newest few per name so this table never grows unbounded.
             if data.get("logfiles"):
                 await record_logfiles(session, instance_id, data["logfiles"])
+            # Store a pushed config.xml version (agent sends it only on change;
+            # the store dedupes by sha256 so re-pushed baselines are no-ops).
+            if data.get("config_backup"):
+                await record_config_backup(session, instance_id, data["config_backup"])
             inst.last_success_at = ts
             inst.last_error_at = None
             inst.last_error_message = None

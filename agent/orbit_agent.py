@@ -14,6 +14,7 @@ import base64
 import contextlib
 import fcntl
 import glob
+import gzip
 import hashlib
 import http.client
 import ipaddress
@@ -49,7 +50,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.14"
+__version__ = "2.7.15"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -164,6 +165,11 @@ class _AgentState:
         # Certificate parse cache, keyed on config.xml mtime (see collect_certificates).
         self.certs_cache: list = []
         self.certs_cache_mtime: float = -1.0
+        # Config-backup push state (see collect_config_backup): last pushed file
+        # mtime + sha256. Reset on every `welcome` frame so each new connection
+        # re-pushes one baseline (the server dedupes by sha256).
+        self.config_push_mtime: float = -1.0
+        self.config_push_sha: str = ""
         # Probation healthiness signal — set on the first server frame after a
         # self-update; the watchdog rolls back if it never fires (see §5).
         self.healthy: "asyncio.Event | None" = None
@@ -2062,6 +2068,41 @@ def collect_logfiles() -> list:
     return out
 
 
+# Plaintext cap for a config-backup push; matches the backend store's MAX_BYTES
+# and stays well under the 10 MB WS frame ceiling even after gzip+base64.
+_CONFIG_PUSH_MAX = 8_000_000
+
+
+def collect_config_backup() -> dict:
+    """config.xml as a versioned backup — pushed only when the file changed.
+
+    mtime gates the cheap path (nothing is read or hashed on the ~30s cycles
+    where the file is untouched); sha256 gates the push (a no-op save that only
+    touches mtime pushes nothing). The dashboard dedupes by sha256 as well, so
+    the per-connection baseline re-push (see the `welcome` handler) is free."""
+    mtime = _config_mtime()
+    if mtime < 0 or mtime == _STATE.config_push_mtime:
+        return {}
+    try:
+        with open(_CONFIG_XML, "rb") as f:
+            raw = f.read(_CONFIG_PUSH_MAX + 1)
+    except OSError:
+        return {}
+    _STATE.config_push_mtime = mtime
+    if len(raw) > _CONFIG_PUSH_MAX:
+        log.warning("config backup skipped: config.xml exceeds %d bytes", _CONFIG_PUSH_MAX)
+        return {}
+    sha = hashlib.sha256(raw).hexdigest()
+    if sha == _STATE.config_push_sha:
+        return {}
+    _STATE.config_push_sha = sha
+    return {
+        "sha256": sha,
+        "size": len(raw),
+        "content_gz_b64": base64.b64encode(gzip.compress(raw)).decode(),
+    }
+
+
 def _timed(timings: dict, name: str, fn, *args):
     """Run ``fn(*args)``, record its wall-clock milliseconds in ``timings[name]``,
     return its result. ``finally`` records even on error, and the exception still
@@ -2098,6 +2139,7 @@ _SNAPSHOT_SECTIONS = (
     ("services", "collect_services"),
     ("certificates", "collect_certificates"),
     ("logfiles", "collect_logfiles"),
+    ("config_backup", "collect_config_backup"),
 )
 
 
@@ -4328,6 +4370,11 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 # Dashboard may pin our push cadence (per-instance override or the
                 # global default); the push loop reads cfg each cycle, so it sticks.
                 _apply_push_interval(msg.get("push_interval"))
+                # Force one config-backup baseline push per connection — a send
+                # that died mid-flight on the old connection is otherwise lost
+                # (the server dedupes by sha256, so this is cheap when in sync).
+                _STATE.config_push_mtime = -1.0
+                _STATE.config_push_sha = ""
                 # Dashboard accepted us. If we just self-updated, probation passes.
                 if os.path.exists(_marker_path()):
                     _clear_probation()

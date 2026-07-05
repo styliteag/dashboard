@@ -166,6 +166,24 @@ export interface ConfigInfoResponse extends ConfigInfo {
   last_backup_at: string | null;
 }
 
+// One stored config.xml version (agent pushes on change; content stays server-side).
+export interface ConfigBackupItem {
+  id: number;
+  collected_at: string;
+  sha256: string;
+  bytes: number;
+  source: string;
+}
+
+export interface ConfigBackupDiff {
+  from_id: number;
+  to_id: number;
+  from_collected_at: string;
+  to_collected_at: string;
+  diff: string;
+  truncated: boolean;
+}
+
 export interface ServiceInfo {
   name: string;
   description: string;
