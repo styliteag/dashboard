@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.agent_hub.hub as hub_mod
@@ -144,6 +145,31 @@ def test_hello_unknown_platform_ignored(monkeypatch) -> None:
     with TestClient(main_mod.create_app()) as client:
         _handshake(client, "unknown")
     assert inst.device_type == "opnsense"
+
+
+def test_capture_ws_rejects_unauthenticated(monkeypatch) -> None:
+    """Live packet-capture WS must authenticate + scope before touching the agent.
+
+    Regression: the endpoint once ran ``ws.accept()`` → ``hub.get(instance_id)``
+    with no auth and no group scoping, so any origin could tcpdump any
+    agent-connected firewall. An unauthenticated connect (no session cookie) must
+    close *before* ``hub.get`` — proven by asserting the hub is never consulted
+    (distinguishes the auth gate from a plain "no agent connected" close).
+    """
+    from starlette.websockets import WebSocketDisconnect
+
+    _patch(monkeypatch, _instance())
+    consulted: list[int] = []
+    monkeypatch.setattr(hub, "get", lambda iid: consulted.append(iid) or None)
+
+    with (
+        TestClient(main_mod.create_app()) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/api/ws/capture/7") as ws,
+    ):
+        ws.receive_bytes()  # server closed the socket after the auth gate
+
+    assert consulted == []  # auth/scope ran first — capture never started
 
 
 def test_missing_token_rejected(monkeypatch) -> None:

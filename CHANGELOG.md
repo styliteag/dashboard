@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Live packet-capture WebSocket was unauthenticated and unscoped.**
+  `GET /api/ws/capture/{instance_id}` accepted the connection and started an agent
+  `tcpdump` stream without any auth, origin, or group-scope check — any origin could
+  make any agent-connected firewall capture and stream its full raw traffic. It now
+  requires a write role + valid session and enforces instance visibility (mirroring
+  the shell/tunnel WebSockets and the pcap-download path), and opens are audited.
+
 ## [2.9.0] - 2026-07-05
 
 ### Added

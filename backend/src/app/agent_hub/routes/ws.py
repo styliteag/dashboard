@@ -773,6 +773,21 @@ async def capture_websocket(ws: WebSocket, instance_id: int):
     &filter=.. on the WS URL.
     """
     await ws.accept()
+    source_ip = client_ip(ws)
+    async with get_sessionmaker()() as session:
+        # Live capture streams the box's full raw packet contents — gate it exactly
+        # like the pcap-download path: a write role + valid session, plus group
+        # visibility. (Origin, disabled account and MFA are all enforced inside
+        # _ws_authenticate.) Without this the endpoint was unauthenticated and
+        # unscoped — any origin could tcpdump any agent-connected firewall.
+        user = await _ws_authenticate(ws, session, write=True)
+        if user is None:
+            return
+        inst = await get_instance(session, instance_id, user)
+    if inst is None:
+        await ws.close(code=4403)
+        return
+
     agent = hub.get(instance_id)
     if agent is None:
         await ws.close(code=4404)
@@ -781,6 +796,23 @@ async def capture_websocket(ws: WebSocket, instance_id: int):
     # Pull params from query string (interface, filter)
     q = dict(ws.query_params)
     stream = uuid.uuid4().hex
+
+    async with get_sessionmaker()() as session:
+        await write_audit(
+            session,
+            action="capture.open",
+            result="ok",
+            user_id=user.id,
+            target_type="instance",
+            target_id=instance_id,
+            source_ip=source_ip,
+            detail={
+                "stream": stream,
+                "interface": q.get("interface", ""),
+                "filter": q.get("filter", ""),
+            },
+        )
+        await session.commit()
 
     # Register receive queue BEFORE telling the agent to start pumping.
     # This avoids dropping early data frames (race between open and first data).
