@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Packet capture viewer: the packet detail pane now shows a classic hex + ASCII
+  dump side by side (offset · hex bytes · printable-ASCII gutter, like `tcpdump -X`),
+  so text in a packet's bytes is readable next to the hex.
+
 ## [2.9.2] - 2026-07-05
 
 ### Added

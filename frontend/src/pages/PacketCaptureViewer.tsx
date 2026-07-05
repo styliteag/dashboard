@@ -577,10 +577,8 @@ export default function PacketCaptureViewer() {
                   <span className="text-emerald-400">#{selected.idx}</span> {selected.src} →{" "}
                   {selected.dst} <span className="text-slate-400">({selected.proto})</span>
                 </div>
-                <div className="text-xs mb-1 text-slate-400">Hex dump</div>
-                <pre className="bg-black/60 p-2 rounded text-[11px] font-mono overflow-auto max-h-[260px] whitespace-pre-wrap break-all border border-slate-800">
-                  {selected.hex}
-                </pre>
+                <div className="text-xs mb-1 text-slate-400">Hex + ASCII</div>
+                <HexDump hex={selected.hex} />
                 <div className="mt-2 text-[10px] text-slate-500">
                   {selected.info} len={selected.len}
                 </div>
@@ -595,9 +593,46 @@ export default function PacketCaptureViewer() {
         <div className="mt-6 text-xs text-slate-500">
           {isLive
             ? "Live pcap stream from the agent (tcpdump -U). Packets appear as they arrive. Use Stop + Save Buffer."
-            : "Lightweight viewer (basic decode + hex). Download the PCAP for full analysis."}
+            : "Lightweight viewer (basic decode + hex/ASCII). Download the PCAP for full analysis."}
         </div>
       </div>
     </div>
+  );
+}
+
+// Classic hex dump: offset · 16 hex bytes · ASCII gutter (like `tcpdump -X`),
+// so the raw bytes and their text render side by side. `hex` is the packet's
+// space-separated hex string; non-printable bytes show as ".".
+function HexDump({ hex }: { hex: string }) {
+  const bytes = hex
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((h) => parseInt(h, 16))
+    .filter((n) => !Number.isNaN(n));
+
+  if (bytes.length === 0) {
+    return <div className="text-xs text-slate-500">No bytes captured for this packet.</div>;
+  }
+
+  const rows = [];
+  for (let off = 0; off < bytes.length; off += 16) {
+    const slice = bytes.slice(off, off + 16);
+    const cols = slice.map((b) => b.toString(16).padStart(2, "0"));
+    while (cols.length < 16) cols.push("  "); // pad so the ASCII gutter stays aligned
+    const hexStr = `${cols.slice(0, 8).join(" ")}  ${cols.slice(8).join(" ")}`;
+    const ascii = slice.map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".")).join("");
+    rows.push({ off: off.toString(16).padStart(4, "0"), hexStr, ascii });
+  }
+
+  return (
+    <pre className="max-h-[260px] overflow-auto whitespace-pre rounded border border-slate-800 bg-black/60 p-2 text-[11px] leading-relaxed font-mono">
+      {rows.map((r) => (
+        <div key={r.off}>
+          <span className="text-slate-500">{r.off}</span> <span className="text-slate-200">{r.hexStr}</span>{" "}
+          <span className="text-emerald-300">{r.ascii}</span>
+        </div>
+      ))}
+    </pre>
   );
 }
