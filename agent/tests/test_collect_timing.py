@@ -23,6 +23,7 @@ _SECTIONS = {
     "services": [],
     "certificates": [],
     "logfiles": {},
+    "config_backup": {},
 }
 
 _STUB_FN = {
@@ -44,6 +45,7 @@ _STUB_FN = {
     "services": "collect_services",
     "certificates": "collect_certificates",
     "logfiles": "collect_logfiles",
+    "config_backup": "collect_config_backup",
 }
 
 

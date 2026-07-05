@@ -24,6 +24,7 @@ import NotesSection from "../components/NotesSection";
 import CheckHistorySection from "../components/CheckHistorySection";
 import SystemHealthSection from "../components/SystemHealthSection";
 import ServicesSection from "../components/ServicesSection";
+import ConfigBackupsSection from "../components/ConfigBackupsSection";
 import ConfigSection from "../components/ConfigSection";
 import CertificatesSection from "../components/CertificatesSection";
 import GatewaySection from "../components/GatewaySection";
@@ -223,6 +224,8 @@ export default function InstanceDetailPage() {
           <CheckHistorySection instanceId={nid} />
 
           <ConfigSection instanceId={nid} />
+
+          <ConfigBackupsSection instanceId={nid} />
 
           <CertificatesSection instanceId={nid} />
 
