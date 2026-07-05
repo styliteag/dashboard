@@ -86,6 +86,30 @@ export default function PacketCaptureSection({ instanceId }: Props) {
               className="mt-1 w-full rounded bg-slate-950 border border-slate-700 px-2 py-1 text-sm font-mono"
               disabled={capMut.isPending}
             />
+            <div className="mt-1 flex flex-wrap gap-1">
+              {[
+                "port 80 or port 443",
+                "host 10.0.0.5",
+                "not port 22",
+                "not vlan",
+                "ether host 00:11:22:33:44:55",
+                "esp or ah or udp port 500 or udp port 4500",
+                "udp port 53",
+                "icmp",
+                "tcp",
+              ].map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => setFilter(ex)}
+                  disabled={capMut.isPending}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-0.5">Agent traffic is excluded by default.</p>
           </label>
 
           <label className="block">

@@ -3530,8 +3530,18 @@ def _cmd_packet_capture(params: dict) -> dict:
     max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
 
     cmd: list[str] = ["tcpdump", "-i", iface, "-s", "0", "-w", "-"]
-    if filt:
-        cmd += filt.split()
+    user_filt = (filt or "").strip()
+    agent_excl = _agent_ws_exclude_bpf()
+    if user_filt and agent_excl:
+        final_filt = f"({user_filt}) and {agent_excl}"
+    elif user_filt:
+        final_filt = user_filt
+    elif agent_excl:
+        final_filt = agent_excl
+    else:
+        final_filt = ""
+    if final_filt:
+        cmd += final_filt.split()
 
     try:
         proc = subprocess.Popen(
@@ -4407,6 +4417,20 @@ def _shell_allowed() -> bool:
     operator can locally hard-disable it with ORBIT_AGENT_SHELL=0. Checked per open."""
     return os.environ.get("ORBIT_AGENT_SHELL", "1") != "0"
 
+
+def _agent_ws_exclude_bpf() -> str:
+    """Return a BPF filter fragment that excludes the agent's own dashboard
+    WebSocket traffic (so we don't capture the capture data itself, metrics, etc.)."""
+    try:
+        if _STATE.config and _STATE.config.dashboard_url:
+            p = urlsplit(_STATE.config.dashboard_url)
+            port = p.port or (443 if p.scheme == "wss" else 80)
+            return f"not port {port}"
+    except Exception:
+        pass
+    return ""
+
+
 # Fallback PATH for the login shell (a proper login sources the box profile, which
 # normally sets its own; this just guarantees the essentials pre-profile).
 _SHELL_PATH = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin"
@@ -4676,8 +4700,18 @@ class _TunnelManager:
         search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
         tcpdump_bin = shutil.which("tcpdump", path=search_path) or "/usr/sbin/tcpdump"
         cmd: list[str] = [tcpdump_bin, "-i", iface, "-U", "-w", "-"]
-        if filt and filt.strip():
-            cmd += filt.strip().split()
+        user_filt = (filt or "").strip()
+        agent_excl = _agent_ws_exclude_bpf()
+        if user_filt and agent_excl:
+            final_filt = f"({user_filt}) and {agent_excl}"
+        elif user_filt:
+            final_filt = user_filt
+        elif agent_excl:
+            final_filt = agent_excl
+        else:
+            final_filt = ""
+        if final_filt:
+            cmd += final_filt.split()
         log.info("capture %s: exec %s", stream, " ".join(cmd))
         try:
             env = os.environ.copy()
