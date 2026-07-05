@@ -245,6 +245,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
   const [pendingApply, setPendingApply] = useState(false);
   const [editing, setEditing] = useState<{ uuid: string | null; clone: boolean } | null>(null);
   const [lastResult, setLastResult] = useState<FirewallActionResult | null>(null);
+  const [showReadOnly, setShowReadOnly] = useState(false);
 
   const optionsQuery = useQuery({
     queryKey: ["firewall-rule-options", instanceId],
@@ -313,6 +314,8 @@ export default function FirewallRulesSection({ instanceId }: Props) {
 
   const rows = rulesQuery.data?.rows ?? [];
   const editableCount = rows.filter((r) => r.editable).length;
+  const visibleRows = showReadOnly ? rows : rows.filter((r) => r.editable);
+  const hiddenReadOnlyCount = rows.length - visibleRows.length;
   const busy = writeMutation.isPending || applyMutation.isPending;
 
   const mutate = (path: string, body?: unknown) =>
@@ -329,9 +332,10 @@ export default function FirewallRulesSection({ instanceId }: Props) {
             Firewall rules
           </h2>
           <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-            <span>{rulesQuery.data?.total ?? rows.length} shown</span>
+            <span>{visibleRows.length} shown</span>
             <span>{editableCount} editable</span>
             <span>{rows.length - editableCount} read-only</span>
+            {!showReadOnly && hiddenReadOnlyCount > 0 && <span>{hiddenReadOnlyCount} hidden</span>}
           </div>
         </div>
 
@@ -370,6 +374,16 @@ export default function FirewallRulesSection({ instanceId }: Props) {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={showReadOnly}
+              onChange={(event) => setShowReadOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-600"
+            />
+            Show read-only
           </label>
 
           <form onSubmit={submitSearch} className="flex items-center gap-2">
@@ -441,12 +455,12 @@ export default function FirewallRulesSection({ instanceId }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-900 bg-slate-950">
-              {rows.map((rule, index) => (
+              {visibleRows.map((rule, index) => (
                 <RuleRow
                   key={rule.uuid || `${rule.sort_order}-${rule.description}`}
                   rule={rule}
-                  prev={previousMovable(rows, index)}
-                  next={nextMovable(rows, index)}
+                  prev={previousMovable(visibleRows, index)}
+                  next={nextMovable(visibleRows, index)}
                   busy={busy}
                   onEdit={() => setEditing({ uuid: rule.uuid, clone: false })}
                   onClone={() => setEditing({ uuid: rule.uuid, clone: true })}
@@ -474,10 +488,10 @@ export default function FirewallRulesSection({ instanceId }: Props) {
                   onMoveDown={(nextUuid) => moveRule(nextUuid, rule.uuid)}
                 />
               ))}
-              {rows.length === 0 && (
+              {visibleRows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-3 py-8 text-center text-sm text-slate-500">
-                    No rules.
+                    {rows.length === 0 ? "No rules." : "Only read-only rules match this view."}
                   </td>
                 </tr>
               )}
