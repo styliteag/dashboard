@@ -52,7 +52,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.16"
+__version__ = "2.7.18"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1647,6 +1647,21 @@ def collect_uptime() -> str:
     return out
 
 
+def _console_password_protected() -> bool:
+    """Return True when "Password protect the console menu" is enabled.
+
+    This is stored as <disableconsolemenu/> (or <disableconsolemenu>1</disableconsolemenu>)
+    under <system> in config.xml on both OPNsense and pfSense. Presence means the
+    console menu requires the admin password (we prefer the opposite: no password
+    on console).
+    """
+    try:
+        root = ElementTree.parse(_CONFIG_XML).getroot()
+        return root.find("./system/disableconsolemenu") is not None
+    except (OSError, ElementTree.ParseError, AttributeError):
+        return False
+
+
 def collect_system_info() -> dict:
     """Basic system identification."""
     return {
@@ -1654,6 +1669,7 @@ def collect_system_info() -> dict:
         "os": _run(["uname", "-r"]).strip(),
         "platform": detect_platform(),
         "agent_version": __version__,
+        "console_password_protected": _console_password_protected(),
     }
 
 
@@ -3628,6 +3644,29 @@ def _cmd_packet_capture(params: dict) -> dict:
             proc.wait(timeout=1)
 
 
+def _cmd_get_aliases(params: dict) -> dict:
+    """Return alias names (and basic address if present) for Source/Dest alias completion.
+
+    Parses /conf/config.xml . Works on OPNsense and pfSense.
+    """
+    try:
+        import xml.etree.ElementTree as ET
+        path = "/conf/config.xml"
+        if not os.path.exists(path):
+            return {"success": False, "output": "config.xml not found"}
+        tree = ET.parse(path)
+        root = tree.getroot()
+        aliases: list[dict] = []
+        for alias in root.findall(".//aliases/alias"):
+            name = (alias.findtext("name") or "").strip()
+            address = (alias.findtext("address") or "").strip()
+            if name:
+                aliases.append({"name": name, "address": address or None})
+        return {"success": True, "aliases": aliases}
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "output": str(exc)[:300]}
+
+
 # Dashboard action → handler. Every handler takes the command's `params` dict and
 # returns the command result dict. agent.update / agent.uninstall / status.refresh
 # are NOT here — they need the WebSocket and are handled in _listen_loop directly.
@@ -3648,6 +3687,7 @@ _COMMANDS = {
     "http.relay": _cmd_http_relay,
     "ping": _cmd_ping,
     "packet_capture": _cmd_packet_capture,
+    "get_aliases": _cmd_get_aliases,
 }
 
 

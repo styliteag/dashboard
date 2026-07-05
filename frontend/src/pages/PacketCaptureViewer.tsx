@@ -240,31 +240,53 @@ export default function PacketCaptureViewer() {
   }, [allPackets]);
 
   // Fetch rule options to get aliases for completion and resolution (Address or Alias like pfSense)
-  const { data: ruleOptions } = useQuery({
+  const { data: ruleOptions } = useQuery<{
+    aliases?: string[];
+    networks?: Record<string, unknown>;
+  }>({
     queryKey: ["firewall-rule-options", instanceId],
-    queryFn: () => api.get(`/api/instances/${instanceId}/firewall/rules/options`),
+    queryFn: () => api.get(`/api/instances/${instanceId}/firewall/aliases`),
     enabled: !!instanceId,
   });
 
   const aliasSuggestions = useMemo(() => {
-    if (!ruleOptions?.networks) return [];
-    const aliases: string[] = [];
-    const traverse = (obj: any) => {
-      if (typeof obj === "string" && obj) {
-        // skip generic ones, keep user aliases and special nets
-        if (!["any", "lan", "wan", "loopback"].some((g) => obj.toLowerCase().includes(g))) {
-          aliases.push(obj);
-        }
-      } else if (obj && typeof obj === "object") {
-        Object.values(obj).forEach(traverse);
+    const base: string[] = [
+      // Common pfSense/OPNsense aliases (always available for completion, even without fetch)
+      "lan_subnets",
+      "wan_subnets",
+      "vpn_networks",
+      "negate_networks",
+      "tonatsubnets",
+      "lan",
+      "wan",
+      "any",
+      "loopback",
+      "this_firewall",
+      "pptp_clients",
+      "l2tp_clients",
+    ];
+    if (Array.isArray(ruleOptions?.aliases)) {
+      base.push(...ruleOptions.aliases);
+    }
+    // Fallback for networks shape (OPNsense rules/options)
+    if (ruleOptions?.networks) {
+      for (const section of Object.values(ruleOptions.networks ?? {})) {
+        if (!section || typeof section !== "object" || !("items" in section)) continue;
+        const items = (section as { items?: Record<string, unknown> }).items;
+        if (!items || typeof items !== "object" || Array.isArray(items)) continue;
+        Object.keys(items).forEach((k) => {
+          const lower = k.toLowerCase();
+          if (!["any", "lan", "wan", "loopback"].some((g) => lower.includes(g))) {
+            base.push(k);
+          }
+        });
       }
-    };
-    traverse(ruleOptions.networks);
-    return [...new Set(aliases)].sort();
+    }
+    return [...new Set(base)].sort();
   }, [ruleOptions]);
 
   const allFilterSuggestions = useMemo(() => {
-    return [...new Set([...srcDestSuggestions, ...aliasSuggestions])].sort();
+    return [...new Set<string>([...srcDestSuggestions, ...aliasSuggestions])].sort();
   }, [srcDestSuggestions, aliasSuggestions]);
 
   useEffect(() => {

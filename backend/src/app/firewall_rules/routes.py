@@ -143,9 +143,7 @@ async def _relay_json(instance_id: int, method: str, path: str, body: dict | Non
         ) from exc
 
 
-async def _opnsense_json(
-    inst: Instance, method: str, path: str, body: dict | None = None
-) -> Any:
+async def _opnsense_json(inst: Instance, method: str, path: str, body: dict | None = None) -> Any:
     if inst.transport in {Transport.PUSH.value, Transport.RELAY.value}:
         return await _relay_json(inst.id, method, path, body)
 
@@ -203,9 +201,7 @@ async def _audit_rule_write(
     await session.commit()
 
 
-async def _get_opnsense_instance(
-    session: AsyncSession, instance_id: int, user: User
-) -> Instance:
+async def _get_opnsense_instance(session: AsyncSession, instance_id: int, user: User) -> Instance:
     inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
@@ -441,3 +437,55 @@ async def apply_rules(
     result = _action_result(await _opnsense_json(inst, "POST", "/api/firewall/filter_base/apply"))
     await _audit_rule_write(session, request, user, "firewall.rule.apply", instance_id, result)
     return result
+
+
+@router.get("/aliases", response_model=dict)
+async def get_aliases(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    """Return alias names for address/alias completion (used by packet viewer etc).
+
+    Tries OPNsense API first, falls back to agent command "get_aliases".
+    """
+    inst = await inst_service.get_instance(session, instance_id, user)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    # Try OPNsense style via the options endpoint
+    if inst.device_type == DeviceType.OPNSENSE.value:
+        try:
+            data = await _opnsense_json(
+                inst, "GET", "/api/firewall/filter_base/list_network_select_options"
+            )
+            aliases: list[str] = []
+            if isinstance(data, dict):
+                for section in data.values():
+                    if isinstance(section, dict) and isinstance(section.get("items"), dict):
+                        for k in section["items"]:
+                            low = k.lower()
+                            if k and not any(g in low for g in ("any", "lan", "wan", "loopback")):
+                                aliases.append(k)
+            if aliases:
+                return {"aliases": sorted(set(aliases))}
+        except Exception:
+            pass
+
+    # Fallback to agent (works for pfSense too)
+    agent = hub.get(instance_id)
+    if agent:
+        try:
+            res = await agent.send_command("get_aliases", {})
+            if res.get("success") and isinstance(res.get("aliases"), list):
+                names = []
+                for a in res["aliases"]:
+                    if isinstance(a, str):
+                        names.append(a)
+                    elif isinstance(a, dict) and a.get("name"):
+                        names.append(a["name"])
+                return {"aliases": sorted(set(names))}
+        except Exception:
+            pass
+
+    return {"aliases": []}
