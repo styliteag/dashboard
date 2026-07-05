@@ -34,6 +34,7 @@ import IPsecSection from "../components/IPsecSection";
 import ConnectivitySection from "../components/ConnectivitySection";
 import FirmwareSection from "../components/FirmwareSection";
 import FirewallLogSection from "../components/FirewallLogSection";
+import FirewallRulesSection from "../components/FirewallRulesSection";
 import LogSnapshotsSection from "../components/LogSnapshotsSection";
 import AiLogAnalysisSection from "../components/AiLogAnalysisSection";
 
@@ -52,6 +53,7 @@ const TABS = [
   { key: "config", label: "Config" },
   { key: "checks", label: "Checks" },
   { key: "network", label: "Network" },
+  { key: "firewall", label: "Firewall" },
   { key: "security", label: "VPN" },
   { key: "connectivity", label: "Connectivity" },
   { key: "log", label: "Log" },
@@ -79,11 +81,15 @@ export default function InstanceDetailPage() {
   });
 
   // Securepoint is direct-only — no agent mode, so hide the agent-only tabs
-  // (Agent + Connectivity, both of which need the on-box agent).
+  // (Agent + Connectivity, both of which need the on-box agent). The firewall
+  // rule editor is OPNsense-specific until the pfSense API path is mapped.
   const isSecurepoint = instance?.device_type === "securepoint";
-  const tabs = isSecurepoint
-    ? TABS.filter((t) => t.key !== "agent" && t.key !== "connectivity")
-    : TABS;
+  const supportsFirewallRules = instance?.device_type === "opnsense";
+  const tabs = TABS.filter((t) => {
+    if (isSecurepoint && (t.key === "agent" || t.key === "connectivity")) return false;
+    if (t.key === "firewall" && !supportsFirewallRules) return false;
+    return true;
+  });
 
   // The selected tab persists across instances; if it's not available here
   // (e.g. "agent" on a Securepoint box), fall back to overview.
@@ -250,6 +256,13 @@ export default function InstanceDetailPage() {
           <InterfacesSection instanceId={nid} />
           <GatewaySection instanceId={nid} />
           <TopTalkersSection instanceId={nid} />
+        </div>
+      )}
+
+      {/* Firewall: OPNsense firewall rules through the core API */}
+      {tab === "firewall" && supportsFirewallRules && (
+        <div>
+          <FirewallRulesSection instanceId={nid} />
         </div>
       )}
 

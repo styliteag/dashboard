@@ -1,0 +1,417 @@
+"""OPNsense firewall rule editor endpoints."""
+
+from __future__ import annotations
+
+import base64
+from typing import Any
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent_hub.hub import hub
+from app.audit.log import write_audit
+from app.auth.deps import current_user, require_write
+from app.db.base import get_session
+from app.db.models import Instance, User
+from app.devices.types import DeviceType, Transport
+from app.firewall_rules.schemas import (
+    FirewallActionResult,
+    FirewallRule,
+    FirewallRuleDetail,
+    FirewallRuleMove,
+    FirewallRuleMutation,
+    FirewallRuleOptions,
+    FirewallRuleSearchResponse,
+)
+from app.instances import service as inst_service
+from app.net import client_ip
+from app.xsense.client import OPNsenseClient, OPNsenseError
+from app.xsense.registry import registry
+
+router = APIRouter(prefix="/instances/{instance_id}/firewall", tags=["firewall-rules"])
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on", "enabled"}
+
+
+def normalize_rule(row: dict[str, Any]) -> FirewallRule:
+    uuid = str(row.get("uuid") or row.get("@uuid") or "")
+    legacy = _truthy(row.get("legacy")) or _truthy(row.get("internal"))
+    disabled = _truthy(row.get("disabled"))
+    enabled = _truthy(row.get("enabled")) if "enabled" in row else not disabled
+    editable = bool(uuid) and not legacy
+    return FirewallRule(
+        uuid=uuid,
+        editable=editable,
+        enabled=enabled,
+        log=_truthy(row.get("log")),
+        action=str(row.get("action") or row.get("%action") or ""),
+        direction=str(row.get("direction") or row.get("%direction") or ""),
+        ip_protocol=str(row.get("ipprotocol") or row.get("%ipprotocol") or ""),
+        protocol=str(row.get("protocol") or ""),
+        interfaces=str(row.get("interface") or ""),
+        source=str(row.get("source_net") or row.get("source") or ""),
+        source_port=str(row.get("source_port") or ""),
+        destination=str(row.get("destination_net") or row.get("destination") or ""),
+        destination_port=str(row.get("destination_port") or ""),
+        gateway=str(row.get("gateway") or ""),
+        categories=str(row.get("categories") or row.get("category") or ""),
+        description=str(row.get("description") or ""),
+        sequence=str(row.get("sequence") or ""),
+        sort_order=str(row.get("sort_order") or ""),
+        prio_group=str(row.get("prio_group") or ""),
+        legacy=legacy,
+        raw=row,
+    )
+
+
+def _query_path(path: str, params: dict[str, Any]) -> str:
+    clean = {k: v for k, v in params.items() if v not in (None, [])}
+    return f"{path}?{urlencode(clean, doseq=True)}" if clean else path
+
+
+async def _relay_json(instance_id: int, method: str, path: str, body: dict | None = None) -> Any:
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+    raw_body = b""
+    if body is not None:
+        import json
+
+        raw_body = json.dumps(body).encode()
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    result = await agent.send_command(
+        "http.relay",
+        {
+            "method": method,
+            "path": path.lstrip("/"),
+            "headers": headers,
+            "body": base64.b64encode(raw_body).decode(),
+        },
+        timeout=30,
+    )
+    if not result or result.get("status", 0) == 0:
+        detail = result.get("output", "relay failed") if result else "relay failed"
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+    status_code = int(result.get("status") or 0)
+    if status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"HTTP {status_code}")
+    try:
+        import json
+
+        data = base64.b64decode(result.get("body") or "")
+        return json.loads(data.decode() or "{}")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="invalid JSON response"
+        ) from exc
+
+
+async def _opnsense_json(
+    inst: Instance, method: str, path: str, body: dict | None = None
+) -> Any:
+    if inst.transport in {Transport.PUSH.value, Transport.RELAY.value}:
+        return await _relay_json(inst.id, method, path, body)
+
+    client = await registry.get(inst)
+    if not isinstance(client, OPNsenseClient):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="firewall rules are only supported for OPNsense instances",
+        )
+    try:
+        if method == "GET":
+            return await client.api_get(path)
+        return await client.api_post(path, body)
+    except OPNsenseError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+def _action_result(data: Any) -> FirewallActionResult:
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="invalid API response")
+    return FirewallActionResult(
+        result=str(data.get("result") or ""),
+        status=str(data.get("status") or ""),
+        uuid=str(data["uuid"]) if data.get("uuid") else None,
+        changed=bool(data["changed"]) if "changed" in data else None,
+        validations=data.get("validations"),
+        raw=data,
+    )
+
+
+def _action_ok(result: FirewallActionResult) -> bool:
+    token = (result.result or result.status).lower()
+    return token in {"saved", "deleted", "enabled", "disabled", "ok", "ok\n", "done"}
+
+
+async def _audit_rule_write(
+    session: AsyncSession,
+    request: Request,
+    user: User,
+    action: str,
+    instance_id: int,
+    result: FirewallActionResult,
+    uuid: str | None = None,
+) -> None:
+    await write_audit(
+        session,
+        action=action,
+        result="ok" if _action_ok(result) else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=client_ip(request),
+        detail={"uuid": uuid or result.uuid, "upstream": result.raw},
+    )
+    await session.commit()
+
+
+async def _get_opnsense_instance(
+    session: AsyncSession, instance_id: int, user: User
+) -> Instance:
+    inst = await inst_service.get_instance(session, instance_id, user)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    if inst.device_type != DeviceType.OPNSENSE.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="firewall rules are only supported for OPNsense instances",
+        )
+    return inst
+
+
+@router.get("/rules", response_model=FirewallRuleSearchResponse)
+async def search_rules(
+    instance_id: int,
+    interface: str | None = Query(default=None),
+    category: list[str] = Query(default_factory=list),
+    search: str = "",
+    show_all: bool = True,
+    current: int = 1,
+    row_count: int = 200,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> FirewallRuleSearchResponse:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+
+    params: dict[str, Any] = {"show_all": "1" if show_all else None}
+    if interface == "__floating":
+        params["interface"] = ""
+    elif interface and interface != "__any":
+        params["interface"] = interface
+    if category:
+        params["category"] = category
+
+    path = _query_path("/api/firewall/filter/search_rule", params)
+    data = await _opnsense_json(
+        inst,
+        "POST",
+        path,
+        {
+            "current": current,
+            "rowCount": row_count,
+            "sort": {},
+            "searchPhrase": search,
+        },
+    )
+    rows = [normalize_rule(row) for row in data.get("rows", []) if isinstance(row, dict)]
+    return FirewallRuleSearchResponse(
+        total=int(data.get("total") or len(rows)),
+        row_count=int(data.get("rowCount") or len(rows)),
+        current=int(data.get("current") or current),
+        rows=rows,
+    )
+
+
+@router.get("/rules/options", response_model=FirewallRuleOptions)
+async def rule_options(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> FirewallRuleOptions:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+
+    async def get(path: str) -> dict[str, Any]:
+        try:
+            data = await _opnsense_json(inst, "GET", path)
+            return data if isinstance(data, dict) else {}
+        except HTTPException:
+            return {}
+
+    return FirewallRuleOptions(
+        interfaces=await get("/api/firewall/filter/get_interface_list"),
+        networks=await get("/api/firewall/filter_base/list_network_select_options"),
+        ports=await get("/api/firewall/filter_base/list_port_select_options"),
+        categories=await get("/api/firewall/filter_base/list_categories"),
+    )
+
+
+@router.get("/rules/template", response_model=FirewallRuleDetail)
+async def rule_template(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> FirewallRuleDetail:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    data = await _opnsense_json(inst, "GET", "/api/firewall/filter/get_rule")
+    rule = data.get("rule", {}) if isinstance(data, dict) else {}
+    return FirewallRuleDetail(rule=rule if isinstance(rule, dict) else {})
+
+
+@router.get("/rules/{rule_uuid}", response_model=FirewallRuleDetail)
+async def get_rule(
+    instance_id: int,
+    rule_uuid: str,
+    copy: bool = False,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> FirewallRuleDetail:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    path = f"/api/firewall/filter/get_rule/{rule_uuid}"
+    if copy:
+        path += "?fetchmode=copy"
+    data = await _opnsense_json(inst, "GET", path)
+    rule = data.get("rule", {}) if isinstance(data, dict) else {}
+    return FirewallRuleDetail(uuid=rule_uuid, rule=rule if isinstance(rule, dict) else {})
+
+
+@router.post("/rules", response_model=FirewallActionResult)
+async def add_rule(
+    instance_id: int,
+    payload: FirewallRuleMutation,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(
+        await _opnsense_json(inst, "POST", "/api/firewall/filter/add_rule", {"rule": payload.rule})
+    )
+    await _audit_rule_write(session, request, user, "firewall.rule.add", instance_id, result)
+    return result
+
+
+@router.put("/rules/{rule_uuid}", response_model=FirewallActionResult)
+async def set_rule(
+    instance_id: int,
+    rule_uuid: str,
+    payload: FirewallRuleMutation,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(
+        await _opnsense_json(
+            inst, "POST", f"/api/firewall/filter/set_rule/{rule_uuid}", {"rule": payload.rule}
+        )
+    )
+    await _audit_rule_write(
+        session, request, user, "firewall.rule.set", instance_id, result, rule_uuid
+    )
+    return result
+
+
+@router.delete("/rules/{rule_uuid}", response_model=FirewallActionResult)
+async def delete_rule(
+    instance_id: int,
+    rule_uuid: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(
+        await _opnsense_json(inst, "POST", f"/api/firewall/filter/del_rule/{rule_uuid}")
+    )
+    await _audit_rule_write(
+        session, request, user, "firewall.rule.delete", instance_id, result, rule_uuid
+    )
+    return result
+
+
+@router.post("/rules/{rule_uuid}/toggle", response_model=FirewallActionResult)
+async def toggle_rule(
+    instance_id: int,
+    rule_uuid: str,
+    request: Request,
+    enabled: bool | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    suffix = "" if enabled is None else f"/{1 if enabled else 0}"
+    result = _action_result(
+        await _opnsense_json(inst, "POST", f"/api/firewall/filter/toggle_rule/{rule_uuid}{suffix}")
+    )
+    await _audit_rule_write(
+        session, request, user, "firewall.rule.toggle", instance_id, result, rule_uuid
+    )
+    return result
+
+
+@router.post("/rules/{rule_uuid}/toggle-log", response_model=FirewallActionResult)
+async def toggle_rule_log(
+    instance_id: int,
+    rule_uuid: str,
+    request: Request,
+    log: bool,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(
+        await _opnsense_json(
+            inst, "POST", f"/api/firewall/filter/toggle_rule_log/{rule_uuid}/{1 if log else 0}"
+        )
+    )
+    await _audit_rule_write(
+        session, request, user, "firewall.rule.toggle_log", instance_id, result, rule_uuid
+    )
+    return result
+
+
+@router.post("/rules/move", response_model=FirewallActionResult)
+async def move_rule(
+    instance_id: int,
+    payload: FirewallRuleMove,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(
+        await _opnsense_json(
+            inst,
+            "POST",
+            f"/api/firewall/filter/move_rule_before/{payload.selected_uuid}/{payload.target_uuid}",
+        )
+    )
+    await _audit_rule_write(
+        session, request, user, "firewall.rule.move", instance_id, result, payload.selected_uuid
+    )
+    return result
+
+
+@router.post("/rules/apply", response_model=FirewallActionResult)
+async def apply_rules(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> FirewallActionResult:
+    inst = await _get_opnsense_instance(session, instance_id, user)
+    result = _action_result(await _opnsense_json(inst, "POST", "/api/firewall/filter_base/apply"))
+    await _audit_rule_write(session, request, user, "firewall.rule.apply", instance_id, result)
+    return result

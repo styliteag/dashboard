@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OPNsense firewall rules editor.** OPNsense instance pages now have a
+  Firewall tab backed by the core `firewall/filter` API, over either direct API
+  credentials or the agent relay. It lists rules, marks legacy/internal rows as
+  read-only, and supports add, edit, clone, delete, enable/disable, log toggle,
+  move-before reordering and explicit apply, with audit entries for every write.
 - **Prometheus settings tab** — dedicated section under Settings → Prometheus for
   creating read-only API keys used with `GET /api/export/prometheus`. Keys use the
   same `orbit_…` mechanism (and group binding) as Checkmk keys but live in their

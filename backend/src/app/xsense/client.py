@@ -103,6 +103,19 @@ class OPNsenseClient:
         except ValueError as exc:
             raise OPNsenseError(f"POST {path}: invalid JSON response") from exc
 
+    async def api_get(self, path: str) -> Any:
+        """Run a raw OPNsense API GET and return decoded JSON.
+
+        Feature-specific routes use this for endpoints that are not part of the
+        polling protocol. Keeping it here preserves the same auth, TLS and error
+        wrapping as the typed client methods.
+        """
+        return await self._get(path)
+
+    async def api_post(self, path: str, body: dict | None = None) -> Any:
+        """Run a raw OPNsense API POST and return decoded JSON."""
+        return await self._post(path, body)
+
     # ----- diagnostics ----------------------------------------------------
 
     async def system_information(self) -> SystemInformation:
