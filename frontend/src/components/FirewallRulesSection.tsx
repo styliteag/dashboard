@@ -208,7 +208,11 @@ function interfaceOptions(options?: FirewallRuleOptions): InterfaceOption[] {
       const value = text((item as { value?: unknown }).value);
       const label = text((item as { label?: unknown }).label, value);
       const type = text((item as { type?: unknown }).type);
-      if (value) out.push({ value, label, type });
+      // The "All rules" (__any) tab is rendered separately and pinned first —
+      // skip OPNsense's own copy so it doesn't appear twice.
+      if (!value || type === "any") continue;
+      // Shorten OPNsense's verbose enc0 label.
+      out.push({ value, label: label === "IPsec encapsulation" ? "IPsec" : label, type });
     }
   }
   return out;
@@ -279,12 +283,23 @@ export default function FirewallRulesSection({ instanceId }: Props) {
       api.get<FirewallRuleOptions>(`/api/instances/${instanceId}/firewall/rules/options`),
     retry: 1,
   });
+  const aliasesQuery = useQuery({
+    queryKey: ["firewall-aliases", instanceId],
+    queryFn: () => api.get<{ aliases: Array<{ name: string; address?: string | null }> }>(`/api/instances/${instanceId}/firewall/aliases`),
+    retry: 1,
+  });
+  const aliasDetails = useMemo(() => {
+    const list = aliasesQuery.data?.aliases ?? [];
+    return list.map((a) => ({ name: a.name, address: a.address || null }));
+  }, [aliasesQuery.data]);
+
   const ifaces = useMemo(() => interfaceOptions(optionsQuery.data), [optionsQuery.data]);
   const categories = useMemo(() => categoryOptions(optionsQuery.data), [optionsQuery.data]);
-  const networkValues = useMemo(
-    () => groupedItems(optionsQuery.data?.networks),
-    [optionsQuery.data],
-  );
+  const networkValues = useMemo(() => {
+    const fromOptions = groupedItems(optionsQuery.data?.networks);
+    const fromAliases = aliasDetails.map((a) => a.name);
+    return [...new Set([...fromOptions, ...fromAliases])].sort((a, b) => a.localeCompare(b));
+  }, [optionsQuery.data, aliasDetails]);
   const portValues = useMemo(() => groupedItems(optionsQuery.data?.ports), [optionsQuery.data]);
 
   const rulesQuery = useQuery({
@@ -514,6 +529,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
                   onMoveUp={(targetUuid) => moveRule(rule.uuid, targetUuid)}
                   onMoveDown={(nextUuid) => moveRule(nextUuid, rule.uuid)}
                   onDragReorder={(sourceUuid, targetUuid) => moveRule(sourceUuid, targetUuid)}
+                  aliases={aliasDetails}
                 />
               ))}
               {visibleRows.length === 0 && (
@@ -536,6 +552,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           categories={categories}
           networks={networkValues}
           ports={portValues}
+          aliases={aliasDetails}
           onClose={() => setEditing(null)}
           onSave={(uuid, rule) =>
             writeMutation.mutate({
@@ -577,6 +594,7 @@ function RuleDialog({
   categories,
   networks,
   ports,
+  aliases = [],
   onClose,
   onSave,
 }: {
@@ -586,6 +604,7 @@ function RuleDialog({
   categories: CategoryOption[];
   networks: string[];
   ports: string[];
+  aliases?: Array<{ name: string; address?: string | null }>;
   onClose: () => void;
   onSave: (uuid: string | null, rule: Record<string, unknown>) => void;
 }) {
@@ -763,10 +782,11 @@ function RuleDialog({
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <ComboInput
+                  <MultiSelectInput
                     label="Source"
                     value={effectiveForm.source_net}
                     options={networks}
+                    aliases={aliases}
                     onChange={(v) => setField("source_net", v)}
                   />
                   <ComboInput
@@ -798,10 +818,11 @@ function RuleDialog({
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <ComboInput
+                  <MultiSelectInput
                     label="Destination"
                     value={effectiveForm.destination_net}
                     options={networks}
+                    aliases={aliases}
                     onChange={(v) => setField("destination_net", v)}
                   />
                   <ComboInput
@@ -944,6 +965,7 @@ function RuleRow({
   prev,
   next,
   busy,
+  aliases = [],
   onEdit,
   onClone,
   onDelete,
@@ -957,6 +979,7 @@ function RuleRow({
   prev: FirewallRule | null;
   next: FirewallRule | null;
   busy: boolean;
+  aliases?: Array<{ name: string; address?: string | null }>;
   onEdit: () => void;
   onClone: () => void;
   onDelete: () => void;
@@ -966,8 +989,16 @@ function RuleRow({
   onMoveDown: (nextUuid: string) => void;
   onDragReorder?: (sourceUuid: string, targetUuid: string) => void;
 }) {
-  const destination = `${display(rule.destination)}${rule.destination_port ? `:${rule.destination_port}` : ""}`;
-  const source = `${display(rule.source)}${rule.source_port ? `:${rule.source_port}` : ""}`;
+  const resolveAlias = (val: string) => {
+    if (!val || val === "any") return val;
+    const match = aliases.find((a) => a.name === val);
+    if (match && match.address) {
+      return `${val} (${match.address})`;
+    }
+    return val;
+  };
+  const destination = `${resolveAlias(display(rule.destination))}${rule.destination_port ? `:${rule.destination_port}` : ""}`;
+  const source = `${resolveAlias(display(rule.source))}${rule.source_port ? `:${rule.source_port}` : ""}`;
   const handleDragStart = (e: React.DragEvent<HTMLTableRowElement>) => {
     if (!rule.editable) return;
     e.dataTransfer.setData("text/plain", rule.uuid);
@@ -1201,6 +1232,109 @@ function ComboInput({
           <option key={option} value={option} />
         ))}
       </datalist>
+    </label>
+  );
+}
+
+// Multi-value picker for OPNsense Source/Destination (the model's source_net /
+// destination_net are Multiple=Y). The value stays a comma-separated string so it
+// round-trips unchanged through ruleToForm/formToRule; "any" is exclusive.
+function MultiSelectInput({
+  label,
+  value,
+  options,
+  aliases = [],
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  aliases?: Array<{ name: string; address?: string | null }>;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const tokens = value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const isAny = tokens.length === 0 || (tokens.length === 1 && tokens[0] === "any");
+
+  const commit = (raw: string) => {
+    const v = raw.trim();
+    setDraft("");
+    if (!v) return;
+    if (v === "any") return onChange("any");
+    const base = tokens.filter((t) => t !== "any" && t !== v);
+    onChange([...base, v].join(","));
+  };
+  const remove = (t: string) => {
+    const next = tokens.filter((x) => x !== t);
+    onChange(next.length ? next.join(",") : "any");
+  };
+
+  const listId = `fw-multi-${label.toLowerCase().replace(/\W+/g, "-")}`;
+  const expansions = tokens
+    .map((t) => aliases.find((a) => a.name === t && a.address))
+    .filter((a): a is { name: string; address?: string | null } => Boolean(a));
+
+  return (
+    <label className="block text-xs font-medium text-slate-500">
+      {label}
+      <div className="mt-1 flex flex-wrap items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 focus-within:border-emerald-600">
+        {isAny ? (
+          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">any</span>
+        ) : (
+          tokens.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 rounded bg-emerald-600/20 px-2 py-0.5 text-xs text-emerald-200"
+            >
+              {t}
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  remove(t);
+                }}
+                className="text-emerald-300/70 hover:text-emerald-100"
+                aria-label={`Remove ${t}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))
+        )}
+        <input
+          value={draft}
+          list={listId}
+          placeholder={isAny ? "add network or alias…" : "add…"}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v.endsWith(",")) commit(v.slice(0, -1));
+            else setDraft(v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit(draft);
+            } else if (e.key === "Backspace" && !draft && !isAny && tokens.length) {
+              remove(tokens[tokens.length - 1]);
+            }
+          }}
+          onBlur={() => commit(draft)}
+          className="min-w-[7rem] flex-1 bg-transparent px-1 py-0.5 text-sm text-slate-100 outline-none"
+        />
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      </div>
+      {expansions.length > 0 && (
+        <div className="mt-0.5 text-[10px] text-emerald-400">
+          {expansions.map((a) => `${a.name} → ${a.address}`).join("; ")}
+        </div>
+      )}
     </label>
   );
 }

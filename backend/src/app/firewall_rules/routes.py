@@ -273,9 +273,9 @@ async def rule_options(
 
     return FirewallRuleOptions(
         interfaces=await get("/api/firewall/filter/get_interface_list"),
-        networks=await get("/api/firewall/filter_base/list_network_select_options"),
-        ports=await get("/api/firewall/filter_base/list_port_select_options"),
-        categories=await get("/api/firewall/filter_base/list_categories"),
+        networks=await get("/api/firewall/filter/list_network_select_options"),
+        ports=await get("/api/firewall/filter/list_port_select_options"),
+        categories=await get("/api/firewall/filter/list_categories"),
     )
 
 
@@ -434,9 +434,31 @@ async def apply_rules(
     user: User = Depends(require_write),
 ) -> FirewallActionResult:
     inst = await _get_opnsense_instance(session, instance_id, user)
-    result = _action_result(await _opnsense_json(inst, "POST", "/api/firewall/filter_base/apply"))
+    result = _action_result(await _opnsense_json(inst, "POST", "/api/firewall/filter/apply"))
     await _audit_rule_write(session, request, user, "firewall.rule.apply", instance_id, result)
     return result
+
+
+def _alias_from_row(row: object) -> dict | None:
+    """Map one OPNsense ``alias/search_item`` row to ``{name, address}``.
+
+    ``content`` is newline-joined addresses for host/network aliases and empty
+    for external/URL tables (bogons); the address is surfaced as the "expands
+    to" hint, so an empty one stays ``None``.
+    """
+    if not isinstance(row, dict):
+        return None
+    name = str(row.get("name") or "").strip()
+    # OPNsense auto-generates ``__<if>_network`` internal aliases; those duplicate
+    # the clean interface-network entries (lan, wan, …) already in the network
+    # select options, so keep them out of the alias list.
+    if not name or name.startswith("__"):
+        return None
+    content = row.get("content") or ""
+    if isinstance(content, list):
+        content = ", ".join(str(c) for c in content if c)
+    content = str(content).replace("\n", ", ").strip(", ").strip()
+    return {"name": name, "address": content or None}
 
 
 @router.get("/aliases", response_model=dict)
@@ -445,46 +467,39 @@ async def get_aliases(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> dict:
-    """Return alias names for address/alias completion (used by packet viewer etc).
+    """Return alias name + address pairs for Source/Dest alias completion.
 
-    Tries OPNsense API first, falls back to agent command "get_aliases".
+    OPNsense uses its alias API (``alias/search_item``, reachable directly or
+    tunneled through a push agent's relay). pfSense has no such API, so its push
+    agent parses ``config.xml`` and answers the ``get_aliases`` command. An empty
+    but successful agent reply must not mask the API path, so the agent is only
+    used when it actually returns entries.
     """
     inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    # Try OPNsense style via the options endpoint
+    # OPNsense: the alias search returns name + resolved content (addresses).
     if inst.device_type == DeviceType.OPNSENSE.value:
         try:
             data = await _opnsense_json(
-                inst, "GET", "/api/firewall/filter_base/list_network_select_options"
+                inst, "GET", "/api/firewall/alias/search_item?rowCount=1000"
             )
-            aliases: list[str] = []
-            if isinstance(data, dict):
-                for section in data.values():
-                    if isinstance(section, dict) and isinstance(section.get("items"), dict):
-                        for k in section["items"]:
-                            low = k.lower()
-                            if k and not any(g in low for g in ("any", "lan", "wan", "loopback")):
-                                aliases.append(k)
+            rows = data.get("rows", []) if isinstance(data, dict) else []
+            aliases = [a for a in (_alias_from_row(r) for r in rows) if a]
             if aliases:
-                return {"aliases": sorted(set(aliases))}
+                return {"aliases": aliases}
         except Exception:
             pass
 
-    # Fallback to agent (works for pfSense too)
+    # pfSense (and OPNsense without a direct API): the agent parses config.xml.
     agent = hub.get(instance_id)
     if agent:
         try:
             res = await agent.send_command("get_aliases", {})
-            if res.get("success") and isinstance(res.get("aliases"), list):
-                names = []
-                for a in res["aliases"]:
-                    if isinstance(a, str):
-                        names.append(a)
-                    elif isinstance(a, dict) and a.get("name"):
-                        names.append(a["name"])
-                return {"aliases": sorted(set(names))}
+            aliases = res.get("aliases") if res.get("success") else None
+            if isinstance(aliases, list) and aliases:
+                return {"aliases": aliases}
         except Exception:
             pass
 

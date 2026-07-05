@@ -217,19 +217,50 @@ export default function PacketCaptureViewer() {
     string | number | boolean | undefined
   >;
 
+  // Fetch aliases for completion and resolution (Address or Alias like pfSense).
+  const { data: aliasData } = useQuery<{
+    aliases?: Array<{ name: string; address?: string | null } | string>;
+  }>({
+    queryKey: ["firewall-aliases", instanceId],
+    queryFn: () => api.get(`/api/instances/${instanceId}/firewall/aliases`),
+    enabled: !!instanceId,
+  });
+
+  const aliasList = useMemo(() => {
+    const out: Array<{ name: string; address: string | null }> = [];
+    const seen = new Set<string>();
+    for (const a of aliasData?.aliases ?? []) {
+      const name = typeof a === "string" ? a : a?.name;
+      if (typeof name !== "string" || !name || seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, address: typeof a === "string" ? null : a.address || null });
+    }
+    return out;
+  }, [aliasData]);
+
   const filtered = useMemo(() => {
     const q = filter.toLowerCase().trim();
     if (!q) return allPackets;
-    return allPackets.filter(
-      (p) =>
-        (p.src || "").toLowerCase().includes(q) ||
-        (p.dst || "").toLowerCase().includes(q) ||
-        (p.info || "").toLowerCase().includes(q) ||
-        (p.proto || "").toLowerCase().includes(q),
-    );
-  }, [allPackets, filter]);
+    return allPackets.filter((p) => {
+      const src = (p.src || "").toLowerCase();
+      const dst = (p.dst || "").toLowerCase();
+      const info = (p.info || "").toLowerCase();
+      const proto = (p.proto || "").toLowerCase();
+      if (src.includes(q) || dst.includes(q) || info.includes(q) || proto.includes(q)) {
+        return true;
+      }
+      // Filter by alias name → resolve to its addresses and match those.
+      for (const a of aliasList) {
+        if (a.address && a.name.toLowerCase().includes(q)) {
+          const addr = a.address.toLowerCase();
+          if (src.includes(addr) || dst.includes(addr)) return true;
+        }
+      }
+      return false;
+    });
+  }, [allPackets, filter, aliasList]);
 
-  // Collect unique Source/Dest values for alias-style completion in the filter
+  // Collect unique Source/Dest values for alias-style completion in the filter.
   const srcDestSuggestions = useMemo(() => {
     const s = new Set<string>();
     allPackets.forEach((p) => {
@@ -239,55 +270,22 @@ export default function PacketCaptureViewer() {
     return Array.from(s).sort();
   }, [allPackets]);
 
-  // Fetch rule options to get aliases for completion and resolution (Address or Alias like pfSense)
-  const { data: ruleOptions } = useQuery<{
-    aliases?: string[];
-    networks?: Record<string, unknown>;
-  }>({
-    queryKey: ["firewall-rule-options", instanceId],
-    queryFn: () => api.get(`/api/instances/${instanceId}/firewall/aliases`),
-    enabled: !!instanceId,
-  });
-
-  const aliasSuggestions = useMemo(() => {
-    const base: string[] = [
-      // Common pfSense/OPNsense aliases (always available for completion, even without fetch)
-      "lan_subnets",
-      "wan_subnets",
-      "vpn_networks",
-      "negate_networks",
-      "tonatsubnets",
-      "lan",
-      "wan",
-      "any",
-      "loopback",
-      "this_firewall",
-      "pptp_clients",
-      "l2tp_clients",
-    ];
-    if (Array.isArray(ruleOptions?.aliases)) {
-      base.push(...ruleOptions.aliases);
-    }
-    // Fallback for networks shape (OPNsense rules/options)
-    if (ruleOptions?.networks) {
-      for (const section of Object.values(ruleOptions.networks ?? {})) {
-        if (!section || typeof section !== "object" || !("items" in section)) continue;
-        const items = (section as { items?: Record<string, unknown> }).items;
-        if (!items || typeof items !== "object" || Array.isArray(items)) continue;
-        Object.keys(items).forEach((k) => {
-          const lower = k.toLowerCase();
-          if (!["any", "lan", "wan", "loopback"].some((g) => lower.includes(g))) {
-            base.push(k);
-          }
-        });
-      }
-    }
-    return [...new Set(base)].sort();
-  }, [ruleOptions]);
+  const aliasSuggestions = useMemo(() => aliasList.map((a) => a.name), [aliasList]);
 
   const allFilterSuggestions = useMemo(() => {
     return [...new Set<string>([...srcDestSuggestions, ...aliasSuggestions])].sort();
   }, [srcDestSuggestions, aliasSuggestions]);
+
+  const resolveAlias = (val: string): string => {
+    if (!val) return val;
+    const ip = val.split(":")[0];
+    for (const a of aliasList) {
+      if (a.address && (a.address === ip || a.address.includes(ip))) {
+        return `${a.name} (${val})`;
+      }
+    }
+    return val;
+  };
 
   useEffect(() => {
     if (!selected && filtered.length) setSelected(filtered[0]);
@@ -549,13 +547,13 @@ export default function PacketCaptureViewer() {
                       className="px-2 py-0.5 font-mono text-xs text-emerald-300 truncate"
                       title={p.src}
                     >
-                      {p.src}
+                      {resolveAlias(p.src)}
                     </td>
                     <td
                       className="px-2 py-0.5 font-mono text-xs text-sky-300 truncate"
                       title={p.dst}
                     >
-                      {p.dst}
+                      {resolveAlias(p.dst)}
                     </td>
                     <td className="px-2 py-0.5">
                       <span className="rounded bg-slate-800 px-1 text-[10px]">{p.proto}</span>

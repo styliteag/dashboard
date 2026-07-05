@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Firewall rule editor (OPNsense): **Source and Destination are now multi-value**,
+  matching OPNsense's own `Multiple=Y` fields. Pick several networks/aliases as
+  removable chips (or type a CIDR); "any" stays exclusive. Stored as the same
+  comma-separated string OPNsense expects, so rules round-trip unchanged.
+
+### Fixed
+- **Firewall rules editor (OPNsense): Source/Destination autocomplete was empty.**
+  The network/port/category option lookups and the "Apply changes" call targeted
+  the abstract `filter_base` API controller, which OPNsense does not route
+  ("Endpoint not found"), so the responses were silently swallowed to empty. All
+  now use the concrete `filter` controller — Source/Destination suggest the
+  interface networks (LAN net, WAN net, opt…) and defined aliases, port fields
+  suggest named ports, and **Apply changes actually applies** (it never did before).
+- **Firewall alias completion returned nothing.** The alias lookup used the
+  non-existent `alias/search_alias` endpoint (correct is `alias/search_item`), and
+  an empty-but-successful push-agent reply short-circuited the OPNsense API path.
+  Aliases now resolve with their expansion (address) for the Source/Dest hint;
+  OPNsense-internal `__<if>_network` aliases are filtered out as duplicates of the
+  network options.
+- **Packet capture viewer failed to build** (`aliasList` used before declaration)
+  and suggested fabricated alias names; the alias list is now driven solely by the
+  instance's real aliases.
+- Firewall rules editor: the interface tab bar no longer shows "All rules" twice
+  (OPNsense's own `__any` entry duplicated the pinned tab), and the verbose
+  "IPsec encapsulation" tab (enc0) is shortened to "IPsec".
+
 ### Changed
 - Added non-alert warning under /instances (small "Console PW" badge) and on the instance Overview tab (amber note) when "Password protect the console menu" is enabled on a firewall. The team prefers console access without password protection (the disableconsolemenu flag absent in config.xml). No check/alert or notification is emitted for this condition. Agent 2.7.17+ surfaces the flag via status; direct-poll boxes default to no warning.
 

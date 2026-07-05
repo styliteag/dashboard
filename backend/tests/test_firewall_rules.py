@@ -194,7 +194,7 @@ async def test_set_rule_posts_to_uuid_endpoint(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_apply_rules_calls_filter_base_apply(monkeypatch) -> None:
+async def test_apply_rules_calls_filter_apply(monkeypatch) -> None:
     inst = SimpleNamespace(id=7, device_type="opnsense", transport="direct")
     paths: list[str] = []
 
@@ -220,4 +220,111 @@ async def test_apply_rules_calls_filter_base_apply(monkeypatch) -> None:
     )
 
     assert result.status == "OK"
-    assert paths == ["/api/firewall/filter_base/apply"]
+    assert paths == ["/api/firewall/filter/apply"]
+
+
+def test_alias_from_row_maps_name_and_content() -> None:
+    assert routes._alias_from_row({"name": "webservers", "content": "10.0.0.1\n10.0.0.2"}) == {
+        "name": "webservers",
+        "address": "10.0.0.1, 10.0.0.2",
+    }
+    # External/URL tables (bogons) carry no content → address stays None.
+    assert routes._alias_from_row({"name": "bogons", "content": ""}) == {
+        "name": "bogons",
+        "address": None,
+    }
+    assert routes._alias_from_row({"name": ""}) is None
+    assert routes._alias_from_row("nope") is None
+    # OPNsense internal __<if>_network aliases are dropped (networks cover them).
+    assert routes._alias_from_row({"name": "__lan_network", "content": ""}) is None
+
+
+@pytest.mark.asyncio
+async def test_rule_options_uses_filter_controller_paths(monkeypatch) -> None:
+    # filter_base is the abstract base controller and is not routable — every
+    # select-options call must go through the concrete `filter` controller.
+    inst = SimpleNamespace(id=7, device_type="opnsense", transport="direct")
+    paths: list[str] = []
+
+    async def fake_get_instance(_session, _instance_id, _user):
+        return inst
+
+    async def fake_opnsense_json(_instance, _method, path, _body=None):
+        paths.append(path)
+        return {}
+
+    monkeypatch.setattr(routes.inst_service, "get_instance", fake_get_instance)
+    monkeypatch.setattr(routes, "_opnsense_json", fake_opnsense_json)
+
+    await routes.rule_options(instance_id=7, session=object(), user=object())
+
+    assert not any("filter_base" in p for p in paths)
+    assert "/api/firewall/filter/list_network_select_options" in paths
+    assert "/api/firewall/filter/list_port_select_options" in paths
+    assert "/api/firewall/filter/list_categories" in paths
+
+
+@pytest.mark.asyncio
+async def test_get_aliases_opnsense_uses_search_item(monkeypatch) -> None:
+    inst = SimpleNamespace(id=7, device_type="opnsense", transport="direct")
+    paths: list[str] = []
+
+    async def fake_get_instance(_session, _instance_id, _user):
+        return inst
+
+    async def fake_opnsense_json(_instance, _method, path, _body=None):
+        paths.append(path)
+        return {"rows": [{"name": "webservers", "content": "10.0.0.1"}]}
+
+    monkeypatch.setattr(routes.inst_service, "get_instance", fake_get_instance)
+    monkeypatch.setattr(routes, "_opnsense_json", fake_opnsense_json)
+    monkeypatch.setattr(routes.hub, "get", lambda _id: None)
+
+    result = await routes.get_aliases(instance_id=7, session=object(), user=object())
+
+    assert result == {"aliases": [{"name": "webservers", "address": "10.0.0.1"}]}
+    assert paths[0].startswith("/api/firewall/alias/search_item")
+
+
+@pytest.mark.asyncio
+async def test_get_aliases_empty_agent_reply_does_not_mask_api(monkeypatch) -> None:
+    # A push agent that answers get_aliases with an empty list must not suppress
+    # the OPNsense alias API (regression: empty-but-successful reply short-circuited).
+    inst = SimpleNamespace(id=7, device_type="opnsense", transport="push")
+
+    async def fake_get_instance(_session, _instance_id, _user):
+        return inst
+
+    async def fake_opnsense_json(_instance, _method, _path, _body=None):
+        return {"rows": [{"name": "lan_hosts", "content": "192.168.1.0/24"}]}
+
+    class FakeAgent:
+        async def send_command(self, _cmd, _params):
+            return {"success": True, "aliases": []}
+
+    monkeypatch.setattr(routes.inst_service, "get_instance", fake_get_instance)
+    monkeypatch.setattr(routes, "_opnsense_json", fake_opnsense_json)
+    monkeypatch.setattr(routes.hub, "get", lambda _id: FakeAgent())
+
+    result = await routes.get_aliases(instance_id=7, session=object(), user=object())
+
+    assert result == {"aliases": [{"name": "lan_hosts", "address": "192.168.1.0/24"}]}
+
+
+@pytest.mark.asyncio
+async def test_get_aliases_pfsense_uses_agent(monkeypatch) -> None:
+    inst = SimpleNamespace(id=8, device_type="pfsense", transport="push")
+
+    async def fake_get_instance(_session, _instance_id, _user):
+        return inst
+
+    class FakeAgent:
+        async def send_command(self, _cmd, _params):
+            return {"success": True, "aliases": [{"name": "vpn_net", "address": "10.8.0.0/24"}]}
+
+    monkeypatch.setattr(routes.inst_service, "get_instance", fake_get_instance)
+    monkeypatch.setattr(routes.hub, "get", lambda _id: FakeAgent())
+
+    result = await routes.get_aliases(instance_id=8, session=object(), user=object())
+
+    assert result == {"aliases": [{"name": "vpn_net", "address": "10.8.0.0/24"}]}
