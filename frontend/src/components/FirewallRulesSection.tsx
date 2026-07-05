@@ -600,6 +600,7 @@ function RuleDialog({
   });
   const [form, setForm] = useState<RuleForm | null>(null);
   const [jsonError, setJsonError] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (detailQuery.data) setForm(ruleToForm(detailQuery.data.rule));
@@ -633,9 +634,9 @@ function RuleDialog({
           <h3 className="text-sm font-semibold text-slate-200">
             {edit.uuid
               ? edit.clone
-                ? "Clone firewall rule"
-                : "Edit firewall rule"
-              : "Add firewall rule"}
+                ? "Clone Firewall Rule"
+                : "Edit Firewall Rule"
+              : "Add Firewall Rule"}
           </h3>
           <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-200">
             <X className="h-5 w-5" />
@@ -650,127 +651,204 @@ function RuleDialog({
         )}
 
         {effectiveForm && (
-          <>
-            <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-              <Select
-                label="Action"
-                value={effectiveForm.action}
-                onChange={(v) => setField("action", v)}
-              >
-                <option value="pass">Pass</option>
-                <option value="block">Block</option>
-                <option value="reject">Reject</option>
-              </Select>
-              <Select
-                label="Interface"
-                value={effectiveForm.interfaceValue}
-                onChange={(v) => setField("interfaceValue", v)}
-              >
-                {interfaces.map((item) => (
-                  <option key={`${item.type}-${item.value}`} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Direction"
-                value={effectiveForm.direction}
-                onChange={(v) => setField("direction", v)}
-              >
-                <option value="in">In</option>
-                <option value="out">Out</option>
-                <option value="any">Both</option>
-              </Select>
-              <Select
-                label="IP version"
-                value={effectiveForm.ipprotocol}
-                onChange={(v) => setField("ipprotocol", v)}
-              >
-                <option value="inet">IPv4</option>
-                <option value="inet6">IPv6</option>
-                <option value="inet46">Any</option>
-              </Select>
-              <Select
-                label="Protocol"
-                value={effectiveForm.protocol}
-                onChange={(v) => setField("protocol", v)}
-              >
-                <option value="any">any</option>
-                <option value="TCP">TCP</option>
-                <option value="UDP">UDP</option>
-                <option value="TCP/UDP">TCP/UDP</option>
-                <option value="ICMP">ICMP</option>
-                <option value="IGMP">IGMP</option>
-                <option value="ESP">ESP</option>
-                <option value="AH">AH</option>
-                <option value="GRE">GRE</option>
-              </Select>
-              <TextInput
-                label="Description"
-                value={effectiveForm.description}
-                onChange={(v) => setField("description", v)}
-              />
-              <ComboInput
-                label="Source"
-                value={effectiveForm.source_net}
-                options={networks}
-                onChange={(v) => setField("source_net", v)}
-              />
-              <ComboInput
-                label="Source port"
-                value={effectiveForm.source_port}
-                options={ports}
-                onChange={(v) => setField("source_port", v)}
-              />
-              <ComboInput
-                label="Destination"
-                value={effectiveForm.destination_net}
-                options={networks}
-                onChange={(v) => setField("destination_net", v)}
-              />
-              <ComboInput
-                label="Destination port"
-                value={effectiveForm.destination_port}
-                options={ports}
-                onChange={(v) => setField("destination_port", v)}
-              />
+          <div className="p-5 space-y-6 text-sm">
+            {/* Action */}
+            <div>
+              <div className="flex items-center gap-2">
+                <label className="w-28 text-xs font-medium text-slate-400">Action</label>
+                <Select
+                  label=""
+                  value={effectiveForm.action}
+                  onChange={(v) => setField("action", v)}
+                >
+                  <option value="pass">Pass</option>
+                  <option value="block">Block</option>
+                  <option value="reject">Reject</option>
+                </Select>
+              </div>
+              <p className="mt-1 ml-28 text-[10px] text-slate-500">
+                Choose what to do with packets that match the criteria below.
+              </p>
+            </div>
+
+            {/* Interface + Address Family + Protocol */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="w-28 text-xs font-medium text-slate-400">Interface</label>
+                  <Select
+                    label=""
+                    value={effectiveForm.interfaceValue}
+                    onChange={(v) => setField("interfaceValue", v)}
+                  >
+                    {interfaces.map((item) => (
+                      <option key={`${item.type}-${item.value}`} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <p className="mt-1 ml-28 text-[10px] text-slate-500">Choose the interface this rule applies to.</p>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="w-28 text-xs font-medium text-slate-400">Address Family</label>
+                  <Select
+                    label=""
+                    value={effectiveForm.ipprotocol}
+                    onChange={(v) => setField("ipprotocol", v)}
+                  >
+                    <option value="inet">IPv4</option>
+                    <option value="inet6">IPv6</option>
+                    <option value="inet46">Any</option>
+                  </Select>
+                </div>
+                <p className="mt-1 ml-28 text-[10px] text-slate-500">Select IPv4, IPv6 or Any.</p>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="w-28 text-xs font-medium text-slate-400">Protocol</label>
+                  <Select
+                    label=""
+                    value={effectiveForm.protocol}
+                    onChange={(v) => setField("protocol", v)}
+                  >
+                    <option value="any">any</option>
+                    <option value="TCP">TCP</option>
+                    <option value="UDP">UDP</option>
+                    <option value="TCP/UDP">TCP/UDP</option>
+                    <option value="ICMP">ICMP</option>
+                    <option value="IGMP">IGMP</option>
+                    <option value="ESP">ESP</option>
+                    <option value="AH">AH</option>
+                    <option value="GRE">GRE</option>
+                  </Select>
+                </div>
+                <p className="mt-1 ml-28 text-[10px] text-slate-500">Choose the IP protocol to match.</p>
+              </div>
+            </div>
+
+            {/* Disabled */}
+            <div>
+              <div className="flex items-center gap-2">
+                <label className="w-28 text-xs font-medium text-slate-400">Disabled</label>
+                <Checkbox
+                  label="Disable this rule"
+                  checked={!effectiveForm.enabled}
+                  onChange={(v) => setField("enabled", !v)}
+                />
+              </div>
+              <p className="mt-1 ml-28 text-[10px] text-slate-500">
+                Set this option to disable the rule without removing it.
+              </p>
+            </div>
+
+            {/* Source Section */}
+            <div className="rounded border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">Source</div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    label="Invert match"
+                    checked={effectiveForm.source_not}
+                    onChange={(v) => setField("source_not", v)}
+                  />
+                  <span className="text-[10px] text-slate-500">Invert source match</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <ComboInput
+                    label="Source"
+                    value={effectiveForm.source_net}
+                    options={networks}
+                    onChange={(v) => setField("source_net", v)}
+                  />
+                  <ComboInput
+                    label="Source Port Range"
+                    value={effectiveForm.source_port}
+                    options={ports}
+                    onChange={(v) => setField("source_port", v)}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  The Source Port Range is typically random. In most cases leave as "any".
+                </p>
+              </div>
+            </div>
+
+            {/* Destination Section */}
+            <div className="rounded border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">Destination</div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    label="Invert match"
+                    checked={effectiveForm.destination_not}
+                    onChange={(v) => setField("destination_not", v)}
+                  />
+                  <span className="text-[10px] text-slate-500">Invert destination match</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <ComboInput
+                    label="Destination"
+                    value={effectiveForm.destination_net}
+                    options={networks}
+                    onChange={(v) => setField("destination_net", v)}
+                  />
+                  <ComboInput
+                    label="Destination Port Range"
+                    value={effectiveForm.destination_port}
+                    options={ports}
+                    onChange={(v) => setField("destination_port", v)}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Specify the destination address or network and optional port range.
+                </p>
+              </div>
+            </div>
+
+            {/* Gateway + Description */}
+            <div className="grid gap-4 md:grid-cols-2">
               <TextInput
                 label="Gateway"
                 value={effectiveForm.gateway}
                 onChange={(v) => setField("gateway", v)}
               />
-              <div className="flex flex-wrap items-end gap-4">
+              <TextInput
+                label="Description"
+                value={effectiveForm.description}
+                onChange={(v) => setField("description", v)}
+              />
+            </div>
+
+            {/* Extra Options */}
+            <div className="rounded border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-3 text-xs font-semibold tracking-wide text-slate-300">Extra Options</div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
                 <Checkbox
-                  label="Enabled"
-                  checked={effectiveForm.enabled}
-                  onChange={(v) => setField("enabled", v)}
-                />
-                <Checkbox
-                  label="Log"
+                  label="Log packets that are handled by this rule"
                   checked={effectiveForm.log}
                   onChange={(v) => setField("log", v)}
                 />
                 <Checkbox
-                  label="Quick"
+                  label="Quick (first match)"
                   checked={effectiveForm.quick}
                   onChange={(v) => setField("quick", v)}
                 />
-                <Checkbox
-                  label="Invert source"
-                  checked={effectiveForm.source_not}
-                  onChange={(v) => setField("source_not", v)}
-                />
-                <Checkbox
-                  label="Invert destination"
-                  checked={effectiveForm.destination_not}
-                  onChange={(v) => setField("destination_not", v)}
-                />
               </div>
+              <p className="mt-2 text-[10px] text-slate-500">
+                Log: enable logging for this rule. Quick: apply this rule immediately (first match wins).
+              </p>
             </div>
 
+            {/* Categories */}
             {categories.length > 0 && (
-              <div className="border-t border-slate-900 px-5 py-4">
-                <div className="mb-2 text-xs font-medium text-slate-500">Categories</div>
+              <div>
+                <div className="mb-2 text-xs font-medium text-slate-400">Categories</div>
                 <div className="flex flex-wrap gap-2">
                   {categories.map((cat) => (
                     <button
@@ -795,18 +873,34 @@ function RuleDialog({
               </div>
             )}
 
-            <div className="border-t border-slate-900 px-5 py-4">
-              <label className="block text-xs font-medium text-slate-500">Advanced fields</label>
-              <textarea
-                value={effectiveForm.advanced}
-                onChange={(event) => setField("advanced", event.target.value)}
-                rows={8}
-                spellCheck={false}
-                className="mt-2 w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-emerald-600"
-              />
-              {jsonError && <p className="mt-2 text-xs text-red-400">{jsonError}</p>}
+            {/* Advanced */}
+            <div className="border-t border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="inline-flex items-center gap-1.5 rounded border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-emerald-300 hover:bg-slate-800"
+              >
+                ⚙ Display Advanced
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-400">Advanced fields (JSON)</label>
+                  <textarea
+                    value={effectiveForm.advanced}
+                    onChange={(event) => setField("advanced", event.target.value)}
+                    rows={7}
+                    spellCheck={false}
+                    className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-emerald-600"
+                  />
+                  {jsonError && <p className="mt-1 text-xs text-red-400">{jsonError}</p>}
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Advanced OPNsense-specific fields (e.g. source OS, TCP flags, etc.) live here.
+                  </p>
+                </div>
+              )}
             </div>
-          </>
+          </div>
         )}
 
         <div className="flex justify-end gap-2 border-t border-slate-800 px-5 py-4">
@@ -1031,6 +1125,15 @@ function TextInput({
   value: string;
   onChange: (value: string) => void;
 }) {
+  if (!label) {
+    return (
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-600"
+      />
+    );
+  }
   return (
     <label className="block text-xs font-medium text-slate-500">
       {label}
@@ -1054,6 +1157,24 @@ function ComboInput({
   options: string[];
   onChange: (value: string) => void;
 }) {
+  if (!label) {
+    const listId = `fw-combo-${Math.random().toString(36).slice(2)}`;
+    return (
+      <>
+        <input
+          value={value}
+          list={listId}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-600"
+        />
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      </>
+    );
+  }
   const listId = `fw-${label.toLowerCase().replace(/\W+/g, "-")}`;
   return (
     <label className="block text-xs font-medium text-slate-500">
@@ -1084,6 +1205,17 @@ function Select({
   onChange: (value: string) => void;
   children: ReactNode;
 }) {
+  if (!label) {
+    return (
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-600"
+      >
+        {children}
+      </select>
+    );
+  }
   return (
     <label className="block text-xs font-medium text-slate-500">
       {label}
