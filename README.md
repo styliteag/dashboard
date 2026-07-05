@@ -30,12 +30,21 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
   push rates, error counters, and **CRIT alerts broken down by section** (checks, IPsec,
   connectivity, firmware, …). Quick access to the full fleet.
 - **Instances** — register firewalls, see live status (CPU, memory, disk, uptime,
-  interfaces and throughput) and recent history.
+  interfaces and throughput) and recent history; tag and annotate each box
+  (customer/site labels + free-form notes).
 - **VPN / IPsec overview** — tunnel state across the fleet, with human-readable
   connection names pulled from each box's `config.xml`; restart a tunnel from the UI.
 - **Gateways** — per-gateway up/down and latency.
+- **Top talkers** — per-box traffic insight from the `pf` state table (top
+  sources/destinations/flows by bytes, per interface) — no NetFlow, no extra agent.
 - **Firmware compliance** — which boxes are up to date, which have updates pending;
   check (and stage) updates in bulk.
+- **Firewall rules editor** (OPNsense) — browse rules per interface tab, and
+  add/edit/clone/delete/reorder/enable them with an apply step. Source, Destination
+  and Interface are multi-value (networks, aliases, CIDRs); ports suggest named
+  services and port aliases. Every write is group-scoped, write-role gated and audited.
+- **Certificates** — fleet-wide certificate inventory with an expiry timeline and
+  filters, so nothing silently lapses.
 - **Service checks** — each box rolled up to OK / WARN / CRIT per service, exported
   for **Checkmk/OMD** (one piggyback host per firewall, no agent on the box) and as a
   **Prometheus** scrape endpoint (`/api/export/prometheus`) for Grafana.
@@ -54,6 +63,9 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
   viewer has packet list + hex dump (Ethernet/IP/TCP/UDP). Snapshots support up to
   600 s / 20 MiB. tcpdump is terminated cleanly on viewer close. The Hub page (default
   landing) now surfaces CRIT alerts grouped by section/check key.
+- **Config backups** — the push agent ships each box's `config.xml` whenever it
+  changes; the dashboard keeps the newest versions **encrypted at rest** (Fernet),
+  with a version list and a diff viewer to see what changed between two points.
 - **Groups & permissions** — every instance belongs to exactly one group; users only
   see (and act on) instances of their groups, across every view, bulk action, export
   and the GUI proxy. **SuperAdmins** manage groups, users and memberships — rights

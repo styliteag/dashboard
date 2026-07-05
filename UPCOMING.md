@@ -10,8 +10,6 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 ---
 
 ## 🔧 Quick wins & polish
-- **Instance tags & notes** — free-form labels (customer, site, SLA class) +
-  markdown notes per instance; filterable everywhere.
 - **Global search** — one search box: instances, devices, VPN tunnels, log events,
   users. Keyboard-first (Cmd-K palette).
 - **CSV/JSON export buttons** — on every table (instances, devices, log events,
@@ -83,9 +81,10 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 - **More vendors** — the platform abstraction (agent collectors + Securepoint-style
   pollers) is designed for this: Sophos XG(S), MikroTik (REST API), FortiGate,
   UniFi gateways. Each vendor = poller module + normalized status mapping.
-- **Config push (write path)** — carefully scoped write operations: edit an alias,
-  add a firewall rule from a template, sync an object across the fleet. Huge value,
-  huge blast radius — needs approval workflow, dry-run/diff, and rollback story first.
+- **Config push (write path)** — the OPNsense **firewall rules editor** shipped the
+  first slice (add/edit/clone/delete/reorder/apply rules, group-scoped + audited).
+  Remaining: alias editing, syncing an object across the fleet, and — for anything
+  higher-blast-radius — an approval workflow, dry-run/diff and rollback story.
 - **HA / horizontal scaling** — agent hub is in-memory today; move hub state to
   Redis pub/sub so multiple backend replicas can share the WS fleet, plus status
   persistence across restarts (fixes the "backend restart = blind" gap).
@@ -102,5 +101,10 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   executes — a known-good fix via the agent, fully audited.
 
 ---
+
+Shipped since this list was last pruned (see `CHANGELOG.md`): Prometheus export,
+certificate lifecycle view, hub observability, config backup & versioning, top
+talkers / pf state-table, remote packet capture, the OPNsense firewall rules editor,
+Checkmk/Prometheus API-key split, and per-instance tags & notes.
 
 *Last updated: 2026-07-05*

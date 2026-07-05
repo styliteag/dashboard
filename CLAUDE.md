@@ -57,6 +57,15 @@ When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates
 - **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
 - **`agent/` runs on FreeBSD** (OPNsense/pfSense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
 - **Every user-facing instance query is group-scoped.** Apply `scope_clause(principal)` (list/aggregate queries) or `can_access(principal, inst)` (by-id fetches) from `backend/src/app/auth/scope.py` — new endpoints that return instance data without one of these leak across groups. Two invariants, never "simplify" them: a **User** with zero group memberships sees NOTHING, an **ApiKey** with zero bindings is GLOBAL (keys predate groups); and **superadmin grants rights management only, no instance access** — there is no superadmin bypass in scoping.
+- **WebSocket endpoints that touch an instance must authenticate + scope themselves.** `/ws/*` routes bypass the REST `Depends(...)` gates, so each one must — right after `ws.accept()` — call `_ws_authenticate(ws, session, write=...)` and then `get_instance(session, instance_id, user)` **before** reaching for `hub.get(...)`, mirroring `shell_websocket`/`tunnel_websocket` in `backend/src/app/agent_hub/routes/ws.py`. Auth and group-scoping are not inherited. (Regression: `/ws/capture/{id}` once did neither and would stream any agent-connected box's raw traffic to any origin.)
+
+## OPNsense firewall rules editor (`backend/src/app/firewall_rules/`)
+
+The write path onto OPNsense's MVC firewall API. Hard-won gotchas:
+
+- **Use the `filter` controller, never `filter_base`.** `FilterBaseController` is the abstract base and is **not routed** — `/api/firewall/filter_base/…` returns `{"errorMessage":"Endpoint not found"}`, which `_opnsense_json` silently swallows to `{}` (empty dropdowns, a no-op "Apply"). Correct paths: `filter/list_network_select_options`, `filter/list_port_select_options`, `filter/list_categories`, `filter/apply`; aliases via `alias/search_item` (not `search_alias`).
+- **`source_net`, `destination_net`, `interface` are `Multiple=Y`** — multi-value, stored as a comma-joined string (`"lan,wan"`). Ports are single-value (port / `from-to` range / service name / **port** alias). `get_rule` serialises per field type: `NetworkAliasField` (source/dest) comes back as a plain string, but `InterfaceField` comes back as a selected-option map `{token:{value,selected}}` — parse the selected **keys**, never the display labels (`selectedTokens` in `FirewallRulesSection.tsx`).
+- **Machine-driven exports share a TTL cache.** The Checkmk and Prometheus exports both go through `gather_many_cached` (`checks/routes.py`) so direct-poll appliances aren't hammered on every scrape/pull; push instances read the hub cache, the interactive Alerts page and single-instance `/checks` stay live.
 
 ## Frontend
 

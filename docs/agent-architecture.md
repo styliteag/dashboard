@@ -965,3 +965,33 @@ SSH-PTY, Marker round-trip); der Agent-Pfad (OPNsense-Menü) unverändert grün.
 
 **Noch offen:** Recording-Retention/Viewer-UI/Verschlüsselung; xterm.js lazy-loaden
 (Bundle +295 KB / ~73 KB gzip); optional Read-only-/Bestätigungs-Modus.
+
+## 23. Config-Backup & Versionierung (✅ agent 2.7.15+, `app/configbackup/`)
+
+Der Agent sichert die Box-Konfiguration bei jeder Änderung, das Dashboard hält
+versionierte, verschlüsselte Kopien mit Diff.
+
+- **Agent-Collector `collect_config_backup`** (in `_SNAPSHOT_SECTIONS` als `config_backup`):
+  liest `/conf/config.xml`, gzip+base64, pusht **nur bei Änderung** (mtime-Gate →
+  sha256-Gate). Pro Connection wird die Baseline im `welcome`-Handler zurückgesetzt
+  (Re-Push nach Reconnect). Oversize/Fehler → `{}`, kann den Push-Loop nie werfen.
+- **Backend `app/configbackup/store.py`:** Inhalt **Fernet-verschlüsselt at rest**
+  (`ConfigBackup.content_enc`, `MEDIUMBLOB`), Migration 036. Behält die neuesten
+  `KEEP_PER_INSTANCE=30` pro Instanz (dedupe per sha gegen die letzte Version),
+  gzip-Bomb-Cap + sha-Verifikation. Liste/Download/Diff sind `current_user` +
+  `get_instance`-scoped und audit-logged (`config.backup` / `config.diff`); der Diff
+  hat einen 150k-Zeilen-DoS-Guard. Klartext wird nie in Listen-Responses geliefert.
+- **UI:** `ConfigBackupsSection` (Versionsliste + Diff-Viewer zweier Stände) im
+  Instance-Detail unter *Config*. Remountet pro Instanz (kein State-Übertrag).
+
+## 24. Top-Talkers / pf-State-Table (✅ agent 2.7.15+)
+
+Leichter Traffic-Einblick ohne NetFlow, rein aus der `pf`-State-Table.
+
+- **Agent-Collector `collect_pf_top`** (in `_SNAPSHOT_SECTIONS` als `pf_top`): streamt
+  `pfctl -vss`, aggregiert Top-Sources/-Dests/-Flows nach Bytes je Interface. 5-Minuten-
+  Cache, 30s-Deadline, FreeBSD-nativ. Fehlendes Binary/leere Ausgabe → genullte Summary.
+  „Bytes" sind Lifetime-Totale je State, keine Raten.
+- **Backend:** `system/routes.py` `pf_top` (`current_user` + `get_instance`), `PfTop*`-
+  Schemas in `xsense/`, Hub-Cache für Push-Boxen. **UI:** `TopTalkersSection` im
+  Instance-Detail unter *Interfaces*.
