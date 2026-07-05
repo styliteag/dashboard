@@ -12,6 +12,7 @@ import GeneralSettings from "../components/settings/GeneralSettings";
 import RestartBackend from "../components/settings/RestartBackend";
 import SelectionTree from "../components/settings/SelectionTree";
 import CheckmkApiKeys from "../components/settings/CheckmkApiKeys";
+import PrometheusApiKeys from "../components/settings/PrometheusApiKeys";
 import LlmProviderTests from "../components/settings/LlmProviderTests";
 import MuteToggle from "../components/settings/MuteToggle";
 
@@ -27,7 +28,8 @@ const MUTE_KEY: Record<string, string> = {
  *  - General: runtime-overridable .env defaults (polling, retention, …).
  *  - One tab per notification channel (Mattermost / Telegram / Email): its
  *    connection config + which alert categories it receives.
- *  - Checkmk: API key + export config.
+ *  - Checkmk: API key + export config (selection, aggregate, blackout).
+ *  - Prometheus: dedicated read-only API key creation for /api/export/prometheus.
  */
 const TABS = [
   { key: "general", label: "General" },
@@ -36,6 +38,7 @@ const TABS = [
   { key: "email", label: "Email" },
   { key: "ai", label: "AI" },
   { key: "checkmk", label: "Checkmk" },
+  { key: "prometheus", label: "Prometheus" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -177,6 +180,20 @@ export default function SettingsPage() {
             />
             <CheckmkApiKeys />
             <SelectionTree consumer="checkmk" />
+          </div>
+        </section>
+      )}
+
+      {tab === "prometheus" && (
+        <section className="mt-6">
+          <p className="text-sm text-slate-400">
+            Scrape{" "}
+            <code className="rounded bg-slate-800 px-1 py-0.5 text-xs">/api/export/prometheus</code>{" "}
+            for Grafana / Prometheus. Returns all checks (no selection rules; filter in PromQL). Use
+            a read-only API key below. See README.md for the endpoint details.
+          </p>
+          <div className="mt-4">
+            <PrometheusApiKeys />
           </div>
         </section>
       )}

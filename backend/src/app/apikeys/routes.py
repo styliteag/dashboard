@@ -38,6 +38,9 @@ class ApiKeyCreate(BaseModel):
     # Group binding. None/empty = global key (superadmin only); a non-superadmin
     # admin MUST bind to a non-empty subset of his own groups.
     group_ids: list[int] | None = None
+    # Optional purpose to organize keys by integration ("checkmk", "prometheus", …).
+    # Purely for UI filtering in Settings; has no effect on auth or exports.
+    purpose: str | None = None
 
 
 class ApiKeyCreated(BaseModel):
@@ -58,6 +61,7 @@ class ApiKeyResponse(BaseModel):
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
+    purpose: str | None = None
 
 
 class ApiKeyRevealed(BaseModel):
@@ -110,6 +114,7 @@ async def create_apikey(
         prefix=prefix,
         revealable=payload.revealable,
         key_enc=encrypt(token) if payload.revealable else None,
+        purpose=payload.purpose,
         groups=groups,
     )
     session.add(key)
@@ -125,6 +130,7 @@ async def create_apikey(
         detail={
             "name": payload.name,
             "revealable": payload.revealable,
+            "purpose": payload.purpose,
             "group_ids": sorted(g.id for g in groups),
         },
     )

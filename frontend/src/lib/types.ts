@@ -440,6 +440,8 @@ export interface ApiKey {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+  /** Optional purpose/tag ("checkmk", "prometheus", …) for UI separation in Settings. */
+  purpose?: string | null;
 }
 
 export interface ApiKeyCreated {

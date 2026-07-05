@@ -49,6 +49,8 @@ const METRICS = [
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "config", label: "Config" },
+  { key: "checks", label: "Checks" },
   { key: "network", label: "Network" },
   { key: "security", label: "VPN" },
   { key: "connectivity", label: "Connectivity" },
@@ -129,7 +131,7 @@ export default function InstanceDetailPage() {
         ))}
       </div>
 
-      {/* Overview: KPIs + metrics + service checks */}
+      {/* Overview: KPIs + metrics + system health + certificates + services */}
       {tab === "overview" && (
         <>
           {statusLoading ? (
@@ -220,18 +222,26 @@ export default function InstanceDetailPage() {
 
           <SystemHealthSection instanceId={nid} />
 
-          <ChecksSection instanceId={nid} />
-
-          <CheckHistorySection instanceId={nid} />
-
-          <ConfigSection instanceId={nid} />
-
-          <ConfigBackupsSection instanceId={nid} />
-
           <CertificatesSection instanceId={nid} />
 
           <ServicesSection instanceId={nid} />
         </>
+      )}
+
+      {/* Config: last revision + versioned encrypted backups with diff viewer */}
+      {tab === "config" && (
+        <div className="space-y-6">
+          <ConfigSection instanceId={nid} />
+          <ConfigBackupsSection instanceId={nid} />
+        </div>
+      )}
+
+      {/* Checks: current service check states (with per-box notify/export toggles) + recent state transition history */}
+      {tab === "checks" && (
+        <div>
+          <ChecksSection instanceId={nid} />
+          <CheckHistorySection instanceId={nid} />
+        </div>
       )}
 
       {/* Network: interfaces (live throughput) + gateways + state-table top talkers */}

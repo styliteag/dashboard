@@ -369,7 +369,8 @@ apikey_groups = Table(
 
 
 class ApiKey(Base):
-    """Read-only API key for service accounts (e.g. the Checkmk special agent).
+    """Read-only API key for service accounts (e.g. the Checkmk special agent or
+    Prometheus scraper).
 
     Stores only the SHA-256 of the token (the token is high-entropy random, so a
     fast hash is fine); the full token is shown once at creation.
@@ -392,6 +393,10 @@ class ApiKey(Base):
         default=False, nullable=False, server_default=text("false")
     )
     key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # Optional purpose/tag to separate keys by integration (e.g. "checkmk",
+    # "prometheus"). Used only for UI grouping/filtering in Settings; auth treats
+    # any valid non-revoked key the same.
+    purpose: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # selectin: bindings load with the key_hash select in read_principal, so
     # ``group_id_set`` is synchronously available in app.auth.scope
