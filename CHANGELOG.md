@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-07-05
+
 ### Added
 - Firewall rule editor (OPNsense): **Source, Destination and Interface are now
   multi-value**, matching OPNsense's own `Multiple=Y` fields. Pick several
