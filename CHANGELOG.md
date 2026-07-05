@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prometheus settings tab** — dedicated section under Settings → Prometheus for
+  creating read-only API keys used with `GET /api/export/prometheus`. Keys use the
+  same `orbit_…` mechanism (and group binding) as Checkmk keys but live in their
+  own tab with a Prometheus-specific scrape config example.
 - **Prometheus export** (`GET /api/export/prometheus`) — sibling of the Checkmk
   export in Prometheus text format, ready to scrape for Grafana. Emits
   `orbit_instance_info`, `orbit_check_state` (0=OK/1=WARN/2=CRIT/3=UNKNOWN, same
@@ -49,6 +53,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without NetFlow. New group-scoped endpoint
   `GET /api/instances/{id}/pf-top` and a "Top Talkers" section on the
   instance page's Network tab (OPNsense/pfSense agent mode only).
+
+### Changed
+
+- Instance detail now has a dedicated **Config** tab containing the versioned
+  config backups list, diff viewer ("what changed between Tue and Wed?"), and
+  one-click downloads. The high-value backup & recovery feature is no longer
+  hidden behind a collapsed section under Overview.
+- "Service Checks" (current states + notify/export toggles) and "Check history"
+  are now in their own **Checks** tab on the instance page (split out of Overview
+  for the same reason as Config).
 
 ## [2.7.12] - 2026-07-05
 
