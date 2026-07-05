@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Service checks: `ipsec.service` no longer reports CRIT ("IPsec service NOT
+  running") on boxes that don't use IPsec at all. strongSwan legitimately isn't
+  running there, so the check was a permanent false alert (it inflated the Hub's
+  VPN alert count and the Checkmk/Prometheus exports). The service is now only
+  evaluated when the box has IPsec tunnels configured; a genuine daemon crash on an
+  IPsec box still surfaces (its tunnels stay listed and go CRIT).
+
 ### Added
 
 - Packet capture viewer: the packet detail pane now shows a classic hex + ASCII

@@ -249,8 +249,20 @@ def test_ipsec_service_and_tunnels() -> None:
     assert checks["ipsec.tunnel:down-tunnel"].state == CheckState.CRIT
 
 
-def test_ipsec_service_down_is_crit() -> None:
-    assert ipsec_checks(IPsecServiceStatus(running=False))[0].state == CheckState.CRIT
+def test_ipsec_service_down_with_tunnels_is_crit() -> None:
+    # A box that uses IPsec (has tunnels) but whose daemon is down → real CRIT.
+    ip = IPsecServiceStatus(
+        running=False,
+        tunnels=[IPsecTunnel(id="1", description="t", phase1_status="down")],
+    )
+    checks = {c.key: c for c in ipsec_checks(ip)}
+    assert checks["ipsec.service"].state == CheckState.CRIT
+
+
+def test_ipsec_service_omitted_when_no_tunnels() -> None:
+    # A box that does not use IPsec runs no strongSwan; don't flag that as CRIT.
+    assert ipsec_checks(IPsecServiceStatus(running=False)) == []
+    assert ipsec_checks(IPsecServiceStatus(running=True)) == []
 
 
 def test_firmware_update_warns() -> None:
@@ -295,7 +307,9 @@ def test_evaluate_aggregates_and_skips_missing() -> None:
     full = evaluate_checks(
         status,
         gateways=[GatewayStatus(name="WAN", status="online", loss="0%")],
-        ipsec=IPsecServiceStatus(running=True),
+        ipsec=IPsecServiceStatus(
+            running=True, tunnels=[IPsecTunnel(id="1", phase1_status="ESTABLISHED")]
+        ),
         firmware=FirmwareStatus(product_version="25.7", upgrade_available=False),
     )
     keys = {c.key for c in full}

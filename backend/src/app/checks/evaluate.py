@@ -254,13 +254,20 @@ def gateway_checks(gateways: list[GatewayStatus]) -> list[ServiceCheck]:
 
 
 def ipsec_checks(ipsec: IPsecServiceStatus) -> list[ServiceCheck]:
-    out = [
-        ServiceCheck(
-            key="ipsec.service",
-            state=int(CheckState.OK if ipsec.running else CheckState.CRIT),
-            summary="IPsec service running" if ipsec.running else "IPsec service NOT running",
+    out: list[ServiceCheck] = []
+    # Only report the IPsec service when the box actually uses IPsec (has tunnels
+    # configured). A box with no IPsec config legitimately runs no strongSwan, so
+    # "service NOT running" there is a permanent false CRIT, not a real outage.
+    # Configured tunnels stay listed (config-derived) even when the daemon is down,
+    # so a genuine service crash on an IPsec box still surfaces here.
+    if ipsec.tunnels:
+        out.append(
+            ServiceCheck(
+                key="ipsec.service",
+                state=int(CheckState.OK if ipsec.running else CheckState.CRIT),
+                summary="IPsec service running" if ipsec.running else "IPsec service NOT running",
+            )
         )
-    ]
     for t in ipsec.tunnels:
         up = str(t.phase1_status).strip().lower() in _IPSEC_UP
         label = t.description or t.id or "?"
