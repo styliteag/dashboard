@@ -183,6 +183,36 @@ export interface CertInfo {
   issuer: string;
 }
 
+export type CertStatus = "ok" | "warning" | "critical" | "expired";
+
+export interface CertEntry {
+  instance_id: number;
+  instance_name: string;
+  location: string | null;
+  refid: string;
+  name: string;
+  type: string; // "cert" | "ca"
+  is_gui: boolean;
+  subject: string;
+  issuer: string;
+  not_after: string;
+  days_remaining: number;
+  acme: boolean; // issued by an ACME CA (Let's Encrypt et al.)
+  acme_overdue: boolean; // ACME cert past its auto-renew window — renewal likely failing
+  status: CertStatus;
+}
+
+export interface CertOverviewResponse {
+  certs: CertEntry[];
+  total: number;
+  ok: number;
+  warning: number;
+  critical: number;
+  expired: number;
+  acme: number;
+  acme_overdue: number;
+}
+
 export interface CheckHistoryEvent {
   ts: string;
   check_key: string;

@@ -6,6 +6,7 @@ import {
   KeyRound,
   FileText,
   Package,
+  BadgeCheck,
   Settings,
   AlertTriangle,
   FolderTree,
@@ -55,6 +56,12 @@ export default function Layout() {
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
           >
             <Package className="h-4 w-4" /> Firmware
+          </Link>
+          <Link
+            to="/certs"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+          >
+            <BadgeCheck className="h-4 w-4" /> Certs
           </Link>
           <Link
             to="/alerts"

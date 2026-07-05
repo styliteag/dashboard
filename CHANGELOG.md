@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for every evaluated check. Same auth + group scoping as the Checkmk export
   (read-only API key as `Authorization: Bearer`); no selection filtering or
   aggregation — filter in PromQL.
+- **Certificate lifecycle view** — a fleet-wide certificate inventory at `/certs`
+  (nav: "Certs"). Aggregates every agent-collected cert/CA across the caller's
+  visible instances into one page: KPI tiles (total, OK, expiring < 30d,
+  critical/expired, ACME renewal-overdue), an expiry-runway timeline bucketed by
+  how soon each cert lapses, and a searchable/sortable table (instance, cert,
+  issuer, expiry, remaining) with GUI/CA badges and deep links. ACME (Let's
+  Encrypt et al.) certs are derived from the issuer and flagged **renewal overdue**
+  when they sit inside their auto-renew window (< 21 days) — a strong "renewal is
+  failing" signal. Backed by a new `GET /api/certs/overview`; reuses the existing
+  per-cert expiry alerting (`cert_checks`, CRIT < 7d / WARN < 30d). Certs are
+  agent-push only, so direct-poll and Securepoint boxes contribute nothing.
 
 ## [2.7.12] - 2026-07-05
 
