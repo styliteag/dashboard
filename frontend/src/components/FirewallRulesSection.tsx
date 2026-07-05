@@ -5,7 +5,7 @@ import {
   ArrowUp,
   Check,
   Copy,
-  ListFilter,
+  GripVertical,
   Lock,
   Pencil,
   Plus,
@@ -356,6 +356,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-300">
             <Shield className="h-3.5 w-3.5 text-emerald-400" />
             Firewall rules
+            <span className="ml-1 text-[10px] font-normal text-slate-500">— drag to reorder</span>
           </h2>
           <div className="mt-0.5 flex flex-wrap gap-2 text-[11px] text-slate-500">
             <span>{visibleRows.length} shown</span>
@@ -386,21 +387,6 @@ export default function FirewallRulesSection({ instanceId }: Props) {
             <Plus className="h-3.5 w-3.5" />
             Add
           </button>
-          <label className="flex h-7 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300">
-            <ListFilter className="h-3.5 w-3.5 text-slate-500" />
-            <select
-              value={iface}
-              onChange={(event) => setIface(event.target.value)}
-              className="w-32 bg-transparent text-xs text-slate-100 outline-none"
-            >
-              <option value="__any">All rules</option>
-              {ifaces.map((item) => (
-                <option key={`${item.type}-${item.value}`} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
 
           <label className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300">
             <input
@@ -440,6 +426,21 @@ export default function FirewallRulesSection({ instanceId }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Interface tabs (pfSense-style primary navigation, dark/slate theme) */}
+      {ifaces.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          <Tab active={iface === "__any"} onClick={() => setIface("__any")} label="All rules" />
+          {ifaces.map((item) => (
+            <Tab
+              key={`${item.type}-${item.value}`}
+              active={iface === item.value}
+              onClick={() => setIface(item.value)}
+              label={item.label}
+            />
+          ))}
+        </div>
+      )}
 
       {(lastResult || writeMutation.error || applyMutation.error) && (
         <div
@@ -512,6 +513,7 @@ export default function FirewallRulesSection({ instanceId }: Props) {
                   }
                   onMoveUp={(targetUuid) => moveRule(rule.uuid, targetUuid)}
                   onMoveDown={(nextUuid) => moveRule(nextUuid, rule.uuid)}
+                  onDragReorder={(sourceUuid, targetUuid) => moveRule(sourceUuid, targetUuid)}
                 />
               ))}
               {visibleRows.length === 0 && (
@@ -844,6 +846,7 @@ function RuleRow({
   onToggleLog,
   onMoveUp,
   onMoveDown,
+  onDragReorder,
 }: {
   rule: FirewallRule;
   prev: FirewallRule | null;
@@ -856,13 +859,46 @@ function RuleRow({
   onToggleLog: () => void;
   onMoveUp: (targetUuid: string) => void;
   onMoveDown: (nextUuid: string) => void;
+  onDragReorder?: (sourceUuid: string, targetUuid: string) => void;
 }) {
   const destination = `${display(rule.destination)}${rule.destination_port ? `:${rule.destination_port}` : ""}`;
   const source = `${display(rule.source)}${rule.source_port ? `:${rule.source_port}` : ""}`;
+  const handleDragStart = (e: React.DragEvent<HTMLTableRowElement>) => {
+    if (!rule.editable) return;
+    e.dataTransfer.setData("text/plain", rule.uuid);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLTableRowElement>) => {
+    if (rule.editable) e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLTableRowElement>) => {
+    e.preventDefault();
+    const sourceUuid = e.dataTransfer.getData("text/plain");
+    if (sourceUuid && sourceUuid !== rule.uuid && rule.editable && onDragReorder) {
+      onDragReorder(sourceUuid, rule.uuid);
+    }
+  };
+
   return (
-    <tr className={`${rule.enabled ? "" : "opacity-55"} hover:bg-slate-900/60`}>
+    <tr
+      className={`${rule.enabled ? "" : "opacity-55"} hover:bg-slate-900/60 ${rule.editable ? "cursor-move" : ""}`}
+      draggable={rule.editable}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <td className="whitespace-nowrap px-2 py-1 align-middle">
         <div className="flex items-center gap-1.5">
+          {rule.editable && (
+            <span
+              title="Drag to reorder"
+              className="cursor-grab text-slate-500 hover:text-slate-300 active:cursor-grabbing"
+            >
+              <GripVertical className="h-3 w-3" />
+            </span>
+          )}
           {rule.editable ? (
             <Unlock className="h-3 w-3 text-emerald-400" />
           ) : (
@@ -890,11 +926,26 @@ function RuleRow({
           </button>
         </div>
       </td>
-      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-200">
-        {display(rule.action, "-")}
+      <td className="whitespace-nowrap px-2 py-1 align-middle">
+        {(() => {
+          const a = (rule.action || "-").toLowerCase();
+          const cls =
+            a === "pass"
+              ? "bg-emerald-500/10 text-emerald-300"
+              : a === "block" || a === "reject"
+                ? "bg-red-500/10 text-red-300"
+                : "bg-slate-700 text-slate-300";
+          return (
+            <span className={`inline-block rounded px-1.5 py-px text-[10px] font-medium ${cls}`}>
+              {display(rule.action, "-")}
+            </span>
+          );
+        })()}
       </td>
-      <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-300">
-        {display(rule.interfaces, "floating")}
+      <td className="whitespace-nowrap px-2 py-1 align-middle">
+        <span className="inline-block rounded bg-slate-800 px-1.5 py-px text-[10px] text-slate-300">
+          {display(rule.interfaces, "floating")}
+        </span>
       </td>
       <td className="whitespace-nowrap px-2 py-1 align-middle text-slate-300">
         {[rule.ip_protocol, rule.protocol].filter(Boolean).join(" / ") || "any"}
@@ -1066,5 +1117,21 @@ function Checkbox({
       />
       {label}
     </label>
+  );
+}
+
+function Tab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded border px-2.5 py-0.5 text-xs transition-colors ${
+        active
+          ? "border-slate-600 bg-slate-800 text-slate-100"
+          : "border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

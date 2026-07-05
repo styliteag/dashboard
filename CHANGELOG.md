@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Firewall rules editor (OPNsense): added prominent interface tabs for primary navigation (Floating/WAN/LAN/... + All), matching preferred pfSense-style organization while staying in the app's dark/slate theme. Native HTML5 drag-and-drop row reordering with grip handle (drops move the rule before the target; arrows remain as fallback). Action column now uses colored badges (pass=green, block/reject=red). Interface shown as subtle pills. "Drag to reorder" hint in header. Removed duplicate interface dropdown in favor of tabs. (Stats and category-based sections intentionally omitted.)
+
 ## [2.8.6] - 2026-07-05
 
 ## [2.8.5] - 2026-07-05
