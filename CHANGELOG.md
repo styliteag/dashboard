@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failing" signal. Backed by a new `GET /api/certs/overview`; reuses the existing
   per-cert expiry alerting (`cert_checks`, CRIT < 7d / WARN < 30d). Certs are
   agent-push only, so direct-poll and Securepoint boxes contribute nothing.
+- **Hub observability page (backend self-monitoring).** New admin-only page
+  (nav "Hub", `/hub`) backed by `GET /api/hub/stats`: connected agents (with
+  per-connection push count and last-push time), a pushes-per-minute chart for
+  the last hour, and hub counters (connects/disconnects, auth failures, bad
+  JSON frames, handler/WS errors, unknown message types). All numbers are
+  in-memory since backend start — a restart resets them, and the page says so.
+  The agent list is group-scoped like every other instance surface.
 
 ## [2.7.12] - 2026-07-05
 

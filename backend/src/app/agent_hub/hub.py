@@ -26,6 +26,7 @@ from app.agent_hub.converters import (
     services_from_agent,
     status_from_agent,
 )
+from app.agent_hub.stats import stats
 from app.checks.evaluate import evaluate_checks
 from app.checks.event_store import record_availability_event, record_check_events
 from app.checks.history import current_states, diff_checks
@@ -84,6 +85,9 @@ class ConnectedAgent:
         # update restarts the agent → fresh connection).
         self.last_update_error: str | None = None
         self.last_update_version: str | None = None
+        # Per-connection push bookkeeping for the hub observability page.
+        self.pushes: int = 0
+        self.last_push_at: datetime | None = None
         self._pending_commands: dict[str, asyncio.Future] = {}
 
     async def send_command(
@@ -207,6 +211,8 @@ class AgentHub:
                 "platform": a.platform,
                 "last_update_error": a.last_update_error,
                 "last_update_version": a.last_update_version,
+                "pushes": a.pushes,
+                "last_push_at": a.last_push_at.isoformat() if a.last_push_at else None,
             }
             for a in self._agents.values()
         ]
@@ -220,6 +226,7 @@ class AgentHub:
 
         agent = ConnectedAgent(ws, instance_id, instance_name)
         self._agents[instance_id] = agent
+        stats.record("connects")
         log.info("agent.connected", instance=instance_name, instance_id=instance_id)
         return agent
 
@@ -237,6 +244,7 @@ class AgentHub:
         if agent is not None and current is not agent:
             return
         self._agents.pop(instance_id, None)
+        stats.record("disconnects")
         log.info("agent.disconnected", instance=current.instance_name)
 
     def get_last_status(self, instance_id: int) -> SystemStatus | None:

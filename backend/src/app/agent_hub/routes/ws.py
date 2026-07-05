@@ -17,6 +17,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from app.agent_hub.hub import hub
+from app.agent_hub.stats import stats
 from app.audit.log import write_audit
 from app.auth.roles import WRITE_ROLES
 from app.config import get_settings
@@ -82,6 +83,7 @@ async def agent_websocket(ws: WebSocket):
     token = auth.replace("Bearer ", "").strip() if auth.startswith("Bearer") else ""
 
     if not token:
+        stats.record("auth_failures")
         await ws.send_json({"type": "error", "message": "missing token"})
         await ws.close(code=4001)
         return
@@ -100,6 +102,7 @@ async def agent_websocket(ws: WebSocket):
         ).scalar_one_or_none()
 
     if inst is None:
+        stats.record("auth_failures")
         await ws.send_json({"type": "error", "message": "invalid token"})
         await ws.close(code=4003)
         return
@@ -145,14 +148,28 @@ async def agent_websocket(ws: WebSocket):
 
         # Main message loop
         async for raw in ws.iter_text():
+            # Pre-bound: the generic handler below logs msg_type, which would
+            # otherwise be unbound if json.loads itself raised.
+            msg_type = ""
             try:
                 msg = json.loads(raw)
+                if not isinstance(msg, dict):
+                    # Valid JSON but not an object — msg.get would raise and
+                    # (via the log call) tear down the connection.
+                    stats.record("unknown_messages")
+                    continue
                 msg_type = msg.get("type", "")
 
                 if msg_type == "metrics":
+                    # Count the push as received even if the handler fails below —
+                    # handler failures have their own counter.
+                    stats.record_push()
+                    agent.pushes += 1
+                    agent.last_push_at = datetime.now(UTC)
                     await hub.handle_metrics(instance_id, msg.get("data", {}))
 
                 elif msg_type == "command_result":
+                    stats.record("command_results")
                     agent.resolve_command(
                         msg.get("request_id", ""),
                         msg.get("result", {}),
@@ -160,21 +177,27 @@ async def agent_websocket(ws: WebSocket):
 
                 elif msg_type == "tunnel":
                     # GUI-proxy bytes from the firewall → route to the client handler.
+                    stats.record("tunnel_frames")
                     hub.deliver_tunnel(msg.get("stream", ""), msg)
 
                 elif msg_type == "pong":
-                    pass
+                    stats.record("pongs")
+
+                else:
+                    stats.record("unknown_messages")
 
             except json.JSONDecodeError:
-                pass
+                stats.record("json_errors")
             except Exception:
                 # A single bad message (e.g. a converter/DB error on one push)
                 # must NOT disconnect the agent — log it and keep the connection.
+                stats.record("handler_errors")
                 log.exception("agent.message_error", instance_id=instance_id, msg_type=msg_type)
 
     except WebSocketDisconnect:
         pass
     except Exception:
+        stats.record("ws_errors")
         log.exception("agent.ws_error", instance_id=instance_id)
     finally:
         # Identity-aware: only this connection unregisters itself, so a stale old
