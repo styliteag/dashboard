@@ -15,6 +15,7 @@ from app.agent_hub.converters import (
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
+    pf_top_from_agent,
     status_from_agent,
 )
 from app.agent_hub.hub import _PING_FLAP_POLLS, AgentHub
@@ -45,6 +46,15 @@ SAMPLE = {
         "tunnels": [{"id": "con1", "description": "t", "status": "established"}],
     },
     "firewall_log": [{"raw": "block in ..."}],
+    "pf_top": {
+        "ts": "2026-07-05T10:00:00+00:00",
+        "total_states": 42,
+        "top_sources": [{"ip": "10.0.0.5", "states": 3, "bytes": 999}],
+        "top_dests": [],
+        "interfaces": [{"name": "em0", "states": 42, "bytes": 999}],
+        "protocols": [{"proto": "udp", "states": 40, "bytes": 900}],
+        "top_flows": [],
+    },
 }
 
 
@@ -55,6 +65,7 @@ def _populate(hub: AgentHub, iid: int, *, hostname: str = "fw7") -> None:
     hub._last_ipsec[iid] = ipsec_from_agent(data)
     hub._last_firmware[iid] = firmware_from_agent(data, "2026-06-24T00:00:00+00:00")
     hub._last_firewall_log[iid] = data["firewall_log"]
+    hub._last_pf_top[iid] = pf_top_from_agent(data)
 
 
 def test_snapshot_roundtrip_through_hydrate() -> None:
@@ -74,6 +85,8 @@ def test_snapshot_roundtrip_through_hydrate() -> None:
     assert len(h2.get_last_gateways(7)) == 1
     assert h2.get_last_ipsec(7).running is True
     assert h2.get_last_firewall_log(7) == SAMPLE["firewall_log"]
+    assert h2.get_last_pf_top(7).total_states == 42
+    assert h2.get_last_pf_top(7).top_sources[0].ip == "10.0.0.5"
 
 
 def test_snapshot_none_without_status() -> None:

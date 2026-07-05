@@ -23,6 +23,7 @@ from app.agent_hub.converters import (
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
+    pf_top_from_agent,
     services_from_agent,
     status_from_agent,
 )
@@ -43,6 +44,7 @@ from app.xsense.schemas import (
     FirmwareStatus,
     GatewayStatus,
     IPsecServiceStatus,
+    PfTopSummary,
     ServiceInfo,
     SystemStatus,
 )
@@ -147,6 +149,7 @@ class AgentHub:
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
         self._last_certs: dict[int, list[CertInfo]] = {}
+        self._last_pf_top: dict[int, PfTopSummary] = {}
         # Timestamp of the previous metrics push per instance — the time base for
         # deriving per-interface error *rates* (counters are cumulative). In-memory
         # only (not hydrated), so the first push after a restart gets one no-data round.
@@ -266,6 +269,9 @@ class AgentHub:
     def get_last_certs(self, instance_id: int) -> list[CertInfo] | None:
         return self._last_certs.get(instance_id)
 
+    def get_last_pf_top(self, instance_id: int) -> PfTopSummary | None:
+        return self._last_pf_top.get(instance_id)
+
     # --- restart persistence (DB snapshot) -----------------------------------
 
     def _snapshot_for(self, instance_id: int) -> dict | None:
@@ -295,6 +301,9 @@ class AgentHub:
         certs = self._last_certs.get(instance_id)
         if certs is not None:
             snap["certificates"] = [c.model_dump(mode="json") for c in certs]
+        pf_top = self._last_pf_top.get(instance_id)
+        if pf_top is not None:
+            snap["pf_top"] = pf_top.model_dump(mode="json")
         check_states = self._last_check_states.get(instance_id)
         if check_states is not None:
             snap["check_states"] = check_states
@@ -349,6 +358,8 @@ class AgentHub:
                 self._last_certs[instance_id] = [
                     CertInfo.model_validate(c) for c in snapshot["certificates"]
                 ]
+            if snapshot.get("pf_top"):
+                self._last_pf_top[instance_id] = PfTopSummary.model_validate(snapshot["pf_top"])
             if snapshot.get("check_states"):
                 self._last_check_states[instance_id] = {
                     str(k): int(v) for k, v in snapshot["check_states"].items()
@@ -499,6 +510,12 @@ class AgentHub:
         # Cache certificates — same guard (empty list = collector failure, keep cache).
         if data.get("certificates"):
             self._last_certs[instance_id] = certs_from_agent(data)
+
+        # Cache pf state-table insight — converter returns None for a missing
+        # (older agent) or malformed section, keeping the previous entry.
+        pf_top = pf_top_from_agent(data)
+        if pf_top is not None:
+            self._last_pf_top[instance_id] = pf_top
 
         # Cache firmware data from agent push
         if data.get("firmware"):

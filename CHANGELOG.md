@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Top talkers / state-table insight (agent 2.7.15).** The agent aggregates
+  `pfctl -vss` on-box every 5 minutes (streaming parse, capped memory) into top
+  source/destination talkers by state-lifetime bytes, states per
+  interface/protocol and the ten biggest flows — lightweight traffic insight
+  without NetFlow. New group-scoped endpoint
+  `GET /api/instances/{id}/pf-top` and a "Top Talkers" section on the
+  instance page's Network tab (OPNsense/pfSense agent mode only).
+
 ## [2.7.12] - 2026-07-05
 
 ### Added

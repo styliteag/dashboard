@@ -69,6 +69,58 @@ class PfStatus(BaseModel):
     states_pct: float = 0.0
 
 
+class PfTopTalker(BaseModel):
+    """One aggregated talker (source or destination IP) from the pf state table.
+    ``bytes`` is the in+out total over each state's lifetime — not a rate."""
+
+    ip: str = ""
+    states: int = 0
+    bytes: int = 0
+
+
+class PfTopInterface(BaseModel):
+    name: str = ""
+    states: int = 0
+    bytes: int = 0
+
+
+class PfTopProtocol(BaseModel):
+    proto: str = ""
+    states: int = 0
+    bytes: int = 0
+
+
+class PfTopFlow(BaseModel):
+    """One individual state (flow) ranked into the top list by lifetime bytes."""
+
+    src: str = ""
+    sport: str = ""
+    dst: str = ""
+    dport: str = ""
+    proto: str = ""
+    iface: str = ""
+    state: str = ""
+    bytes: int = 0
+    pkts: int = 0
+    age_s: int = 0
+
+
+class PfTopSummary(BaseModel):
+    """On-box aggregation of ``pfctl -vss`` (agent push only, ~5-min cadence):
+    top talkers, states per interface/protocol and the biggest flows — traffic
+    insight without NetFlow. ``ts`` is when the agent walked the state table."""
+
+    model_config = ConfigDict(extra="allow")
+
+    ts: str = ""
+    total_states: int = 0
+    top_sources: list[PfTopTalker] = []
+    top_dests: list[PfTopTalker] = []
+    interfaces: list[PfTopInterface] = []
+    protocols: list[PfTopProtocol] = []
+    top_flows: list[PfTopFlow] = []
+
+
 class NtpStatus(BaseModel):
     """NTP sync state (agent push only). ``stratum==-1`` means no data; ``stratum==16``
     is a reachable-but-unsynced clock (a soft state, never CRIT)."""
