@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Instance detail: the Packet Capture and Config Backups sections kept their local
+  state across an instance switch, so after capturing on one box another box's
+  Capture tab showed the first box's result (with download/view links pointing at
+  the wrong capture), and a carried-over backup-version selection fired a diff under
+  the wrong instance. Both sections now remount per instance.
+
 ### Security
 
 - **Live packet-capture WebSocket was unauthenticated and unscoped.**

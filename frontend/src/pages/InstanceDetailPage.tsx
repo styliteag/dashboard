@@ -249,7 +249,9 @@ export default function InstanceDetailPage() {
       {tab === "config" && (
         <div className="space-y-6">
           <ConfigSection instanceId={nid} />
-          <ConfigBackupsSection instanceId={nid} />
+          {/* key: remount on instance switch so a carried-over version selection
+              doesn't fire a diff under the wrong instance. */}
+          <ConfigBackupsSection key={nid} instanceId={nid} />
         </div>
       )}
 
@@ -271,7 +273,9 @@ export default function InstanceDetailPage() {
       )}
 
       {/* Capture: remote bounded tcpdump via agent + nice in-browser viewer (new tab) */}
-      {tab === "capture" && <PacketCaptureSection instanceId={nid} />}
+      {/* key: remount on instance switch so a prior capture's result (and its
+          capture-scoped download/view links) can't show under another instance. */}
+      {tab === "capture" && <PacketCaptureSection key={nid} instanceId={nid} />}
 
       {/* Firewall: OPNsense firewall rules through the core API */}
       {tab === "firewall" && supportsFirewallRules && (
