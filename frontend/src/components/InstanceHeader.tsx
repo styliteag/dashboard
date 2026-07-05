@@ -44,6 +44,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const [rebootOpen, setRebootOpen] = useState(false);
   const id = instance?.id ?? Number(fallbackId);
   const agentMode = instance?.agent_mode ?? false;
+  const isSecurepoint = instance?.device_type === "securepoint";
 
   const flash = (m: { ok: boolean; text: string }) => {
     setMsg(m);
@@ -55,7 +56,9 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
     queryKey: ["agent-status", id],
     queryFn: () => api.get<AgentStatus>(`/api/instances/${id}/agent/status`),
     refetchInterval: 10_000,
-    enabled: agentMode && Number.isFinite(id),
+    // Also for Securepoint: the endpoint returns the global shell_enabled flag for
+    // any visible instance (agent_connected just comes back false).
+    enabled: (agentMode || isSecurepoint) && Number.isFinite(id),
   });
 
   const guiMut = useMutation({
@@ -69,9 +72,12 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const version = status?.version?.trim();
   const showGui = agentMode && agent?.gui_proxy_enabled && agent?.agent_connected;
   // Two-level gate: server-wide feature (agent.shell_enabled) AND per-box opt-in
-  // (instance.shell_enabled), and the agent must be connected.
+  // (instance.shell_enabled), plus a reachable transport — a connected agent, or a
+  // Securepoint box that has SSH enrichment configured (backend opens the PTY).
   const showShell =
-    agentMode && agent?.shell_enabled && instance?.shell_enabled && agent?.agent_connected;
+    !!agent?.shell_enabled &&
+    !!instance?.shell_enabled &&
+    ((agentMode && agent?.agent_connected) || (isSecurepoint && instance?.ssh_enabled));
 
   const btn =
     "flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50";

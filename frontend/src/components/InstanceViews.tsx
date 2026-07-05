@@ -217,7 +217,7 @@ export function InstanceCard({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            agentMode={inst.agent_mode}
+            eligible={inst.agent_mode || (inst.device_type === "securepoint" && inst.ssh_enabled)}
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
@@ -300,7 +300,7 @@ export function InstanceRow({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            agentMode={inst.agent_mode}
+            eligible={inst.agent_mode || (inst.device_type === "securepoint" && inst.ssh_enabled)}
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />

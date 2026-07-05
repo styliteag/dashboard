@@ -98,12 +98,17 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       };
       if (agentMode) {
         body.gui_login_enabled = form.gui_login_enabled;
-        body.shell_enabled = form.shell_enabled;
       } else {
         body.ssl_verify = form.ssl_verify;
         // Only send secrets if the user typed something new (US-2.2).
         if (form.api_key) body.api_key = form.api_key;
         if (form.api_secret) body.api_secret = form.api_secret;
+      }
+      // Terminal opt-in (agent boxes + SSH-reachable Securepoint). Only send it when
+      // actually changed — the field is admin-gated server-side, so sending it
+      // unchanged would 403 a non-admin editing anything else.
+      if (form.shell_enabled !== instance.shell_enabled) {
+        body.shell_enabled = form.shell_enabled;
       }
       if (isSecurepoint) {
         body.ssh_enabled = form.ssh_enabled;
@@ -242,7 +247,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             in (requires GUI proxy)
           </label>
         )}
-        {agentMode && (
+        {(agentMode || isSecurepoint) && (
           <label className="flex items-center gap-2 text-sm text-amber-300/80">
             <input
               type="checkbox"
@@ -250,8 +255,8 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
               onChange={(e) => setForm((f) => ({ ...f, shell_enabled: e.target.checked }))}
               className="rounded border-slate-600"
             />
-            Terminal (root shell) — allow a browser terminal to a root shell on this box (requires
-            the server-wide shell feature)
+            Terminal (root shell) — allow a browser terminal to a root shell on this box (needs the
+            server-wide shell feature{isSecurepoint ? "; Securepoint uses SSH" : ""})
           </label>
         )}
         {isSecurepoint && (

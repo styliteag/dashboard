@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Browser terminal for agent-less Securepoint boxes (over SSH).** The terminal
+  now works for Securepoint UTM instances that have SSH enrichment configured: the
+  backend opens a host-key-verified interactive PTY to the box via asyncssh and
+  bridges it to the same xterm.js terminal. `shell_websocket` picks the transport
+  automatically (connected agent → agent PTY; else SSH). Same gating (per-instance
+  `shell_enabled` + global + write/MFA), and fail-closed on an unpinned host key.
+  The Terminal button/icon now appears for SSH-reachable Securepoint boxes too.
+
 ## [2.7.11] - 2026-07-05
 
 ## [2.7.10] - 2026-07-05

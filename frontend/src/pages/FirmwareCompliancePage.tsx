@@ -366,7 +366,7 @@ export default function FirmwareCompliancePage() {
                       <ShellIconLink
                         instanceId={e.instance_id}
                         instanceName={e.instance_name}
-                        agentMode={agentMode.get(e.instance_id) ?? false}
+                        eligible={agentMode.get(e.instance_id) ?? false}
                         shellEnabled={shellEnabled.get(e.instance_id) ?? false}
                       />
                       {e.firmware_locked && (

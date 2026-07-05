@@ -187,7 +187,7 @@ export default function AlertsPage() {
                         <ShellIconLink
                           instanceId={a.instance_id}
                           instanceName={a.instance_name}
-                          agentMode={agentMode.get(a.instance_id) ?? false}
+                          eligible={agentMode.get(a.instance_id) ?? false}
                           shellEnabled={shellEnabled.get(a.instance_id) ?? false}
                         />
                       </span>

@@ -940,5 +940,17 @@ xterm.js  ──ws binary──▶  /api/ws/shell/{id}  ──tunnel-Frame──
 - **Forensik:** stream-id im Audit-detail; optionales Session-Recording des Box-Outputs
   (`shell_record_dir`, capped 8 MB/Session, default aus).
 
+**Securepoint / SSH-Transport (✅ 2026-07-05):** agentlose Boxen (Securepoint UTM,
+Pull-Modell) bekommen dasselbe Terminal über **SSH** statt über den Agent-Tunnel.
+`shell_websocket` erkennt den Transport: verbundener Agent → Agent-PTY; sonst
+Securepoint mit `ssh_enabled` + gepinntem Host-Key → das **Backend** öffnet per
+`asyncssh` eine host-key-verifizierte Login-PTY (`securepoint/ssh.open_interactive`,
+`create_process(term_type="xterm-256color", encoding=None)`) und bridged sie. Fail-
+closed: ohne gepinnten Host-Key kein Shell. Alle WS-Schutzmechanismen (Auth,
+Origin, Limits, Watchdog, Keepalive, Recording, Audit) gelten transport-unabhängig.
+Securepoint-root bekommt eine echte interaktive `sh` mit nativem Prompt
+(`root@<box>:<ver>:~#`). E2E gegen die bensheim-Box verifiziert (Login → WS →
+SSH-PTY, Marker round-trip); der Agent-Pfad (OPNsense-Menü) unverändert grün.
+
 **Noch offen:** Recording-Retention/Viewer-UI/Verschlüsselung; xterm.js lazy-loaden
 (Bundle +295 KB / ~73 KB gzip); optional Read-only-/Bestätigungs-Modus.

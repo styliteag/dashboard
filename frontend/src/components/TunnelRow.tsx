@@ -113,7 +113,7 @@ export default function TunnelRow({
             <ShellIconLink
               instanceId={t.instance_id}
               instanceName={t.instance_name}
-              agentMode={t.agent_mode ?? false}
+              eligible={t.agent_mode ?? false}
               shellEnabled={shellEnabled}
             />
           </span>

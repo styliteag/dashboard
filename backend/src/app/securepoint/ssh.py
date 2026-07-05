@@ -116,6 +116,30 @@ async def _connect(
     return conn, server_line
 
 
+async def open_interactive(
+    cfg: SSHConfig, rows: int, cols: int
+) -> tuple[asyncssh.SSHClientConnection, asyncssh.SSHClientProcess]:
+    """Open a host-key-verified connection + an interactive login PTY to the box.
+
+    Returns (conn, process) with byte I/O (``encoding=None``). The caller pumps
+    ``process.stdout`` → client and client → ``process.stdin``, and MUST close the
+    process then the connection when the session ends — otherwise a root shell
+    lingers on the box. Fail-closed: ``_connect`` refuses an unpinned host key.
+    """
+    conn, _ = await _connect(cfg.host, cfg.port, cfg.user, cfg.private_key, cfg.host_key)
+    try:
+        proc = await conn.create_process(
+            term_type="xterm-256color",
+            term_size=(cols or 80, rows or 24),
+            encoding=None,  # raw bytes both ways — we bridge to xterm.js verbatim
+        )
+    except asyncssh.Error as exc:
+        conn.close()
+        await conn.wait_closed()
+        raise SecurepointSSHError(f"open interactive shell failed: {exc}") from exc
+    return conn, proc
+
+
 async def probe_host_key(host: str, port: int, user: str, private_key_pem: str) -> str:
     """Connect once (unpinned) and return the box's host key for storage (TOFU)."""
     conn, server_line = await _connect(

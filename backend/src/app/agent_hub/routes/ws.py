@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+import asyncssh
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
@@ -20,12 +21,14 @@ from app.audit.log import write_audit
 from app.auth.roles import WRITE_ROLES
 from app.config import get_settings
 from app.connectivity import service as conn_service
+from app.crypto.secrets import decrypt
 from app.db.base import get_sessionmaker
 from app.db.models import Instance, User
 from app.devices.types import DeviceType, Transport
 from app.instances.service import get_instance
 from app.ipsec import ping_service
 from app.net import client_ip
+from app.securepoint.ssh import SecurepointSSHError, SSHConfig, open_interactive
 
 log = structlog.get_logger("app.agent_hub.routes")
 
@@ -461,15 +464,117 @@ async def _shell_client_to_agent(client_ws: WebSocket, agent, stream: str, state
         return
 
 
+async def _ssh_proc_to_client(ws: WebSocket, proc, rec) -> None:
+    """Forward the box's PTY output (over SSH) to the terminal, teeing to recorder."""
+    try:
+        while True:
+            data = await proc.stdout.read(65536)
+            if not data:  # EOF — the shell exited
+                return
+            if rec is not None:
+                rec.out(data)
+            await ws.send_bytes(data)
+    except (asyncssh.Error, WebSocketDisconnect, RuntimeError, ConnectionError):
+        return
+
+
+async def _ssh_client_to_proc(ws: WebSocket, proc, state: dict) -> None:
+    """Forward keystrokes (binary) and resize control (JSON text) to the SSH PTY.
+
+    Updates ``state["last"]`` on keystrokes (not pong/resize) for the idle watchdog.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                return
+            data = msg.get("bytes")
+            if data is not None:
+                state["last"] = loop.time()
+                proc.stdin.write(data)
+                with contextlib.suppress(Exception):
+                    await proc.stdin.drain()
+                continue
+            text = msg.get("text")
+            if text is not None:
+                with contextlib.suppress(Exception):
+                    ctrl = json.loads(text)
+                    if ctrl.get("type") == "resize":
+                        proc.change_terminal_size(
+                            int(ctrl.get("cols") or 0) or 80, int(ctrl.get("rows") or 0) or 24
+                        )
+    except (WebSocketDisconnect, RuntimeError, asyncssh.Error, ConnectionError):
+        return
+
+
+async def _run_agent_shell(ws: WebSocket, agent, stream: str, rec, state: dict) -> None:
+    """Shell backend for agent-mode boxes: the agent forks the PTY, we multiplex
+    `tunnel` frames over its WebSocket (same path as the GUI proxy)."""
+    queue = hub.open_tunnel(stream)
+    try:
+        await agent.ws.send_json(
+            {
+                "type": "tunnel",
+                "op": "open",
+                "stream": stream,
+                "kind": "shell",
+                "rows": 24,
+                "cols": 80,
+            }
+        )
+        pumps = [
+            asyncio.create_task(_shell_keepalive(ws)),
+            asyncio.create_task(_shell_client_to_agent(ws, agent, stream, state)),
+            asyncio.create_task(_shell_agent_to_client(ws, queue, rec)),
+            asyncio.create_task(_shell_watchdog(state)),
+        ]
+        _, pending = await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+    finally:
+        hub.close_tunnel(stream)
+        with contextlib.suppress(Exception):
+            await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
+
+
+async def _run_ssh_shell(ws: WebSocket, cfg: SSHConfig, rec, state: dict) -> None:
+    """Shell backend for agent-less boxes (Securepoint): the BACKEND opens a
+    host-key-verified SSH PTY to the box and bridges it. Closes the SSH channel on
+    teardown so no root shell lingers on the box."""
+    try:
+        conn, proc = await open_interactive(cfg, rows=24, cols=80)
+    except SecurepointSSHError as exc:
+        with contextlib.suppress(Exception):
+            await ws.send_bytes(f"\r\n\x1b[31mSSH connection failed: {exc}\x1b[0m\r\n".encode())
+        return
+    try:
+        pumps = [
+            asyncio.create_task(_shell_keepalive(ws)),
+            asyncio.create_task(_ssh_client_to_proc(ws, proc, state)),
+            asyncio.create_task(_ssh_proc_to_client(ws, proc, rec)),
+            asyncio.create_task(_shell_watchdog(state)),
+        ]
+        _, pending = await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+    finally:
+        with contextlib.suppress(Exception):
+            proc.close()
+        with contextlib.suppress(Exception):
+            conn.close()
+            await conn.wait_closed()
+
+
 @router.websocket("/ws/shell/{instance_id}")
 async def shell_websocket(ws: WebSocket, instance_id: int):
-    """Bridge an xterm.js terminal to a root shell on the firewall via the agent.
+    """Bridge an xterm.js terminal to a root shell on the box.
 
-    The agent forks a login PTY and streams its output back as `tunnel` data
-    frames (same multiplex as the GUI proxy). ARBITRARY ROOT RCE on the box —
-    gated by ``settings.shell_enabled`` (off by default) and, like the GUI tunnel,
-    full session validation plus group-scoped instance visibility. Every open and
-    close is audited with the acting user and source IP.
+    Two transports, same WS: an **agent** box forks the PTY and multiplexes it over
+    its WebSocket; an agent-less **Securepoint** box (SSH-enriched, host key pinned)
+    gets a PTY that the backend opens over asyncssh. ARBITRARY ROOT RCE — gated by
+    ``settings.shell_enabled`` + per-instance ``shell_enabled`` + a write role, full
+    session validation and a pinned host key (SSH). Open/close are audited.
     """
     await ws.accept()
     # Feature gate first — never even hint the capability exists when disabled.
@@ -497,8 +602,16 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
     if not inst.shell_enabled:
         await ws.close(code=4403)
         return
+    # Transport: a connected agent, else a Securepoint box reachable over a pinned
+    # SSH key. Neither → nothing to attach to.
     agent = hub.get(instance_id)
-    if agent is None:
+    ssh_ready = (
+        inst.device_type == DeviceType.SECUREPOINT.value
+        and inst.ssh_enabled
+        and inst.ssh_key_enc is not None
+        and inst.ssh_host_key is not None
+    )
+    if agent is None and not ssh_ready:
         await ws.close(code=4404)
         return
     if not _shell_slot_acquire(user.id, instance_id):
@@ -516,34 +629,31 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
             target_type="instance",
             target_id=instance_id,
             source_ip=source_ip,
-            detail={"stream": stream},
+            detail={"stream": stream, "transport": "agent" if agent else "ssh"},
         )
         await session.commit()
-    log.info("shell.open", instance_id=instance_id, user_id=user.id, stream=stream, ip=source_ip)
+    log.info(
+        "shell.open",
+        instance_id=instance_id,
+        user_id=user.id,
+        stream=stream,
+        ip=source_ip,
+        transport="agent" if agent else "ssh",
+    )
     rec = _open_recorder(stream, instance_id, user.id)
-
-    queue = hub.open_tunnel(stream)
     state = {"last": asyncio.get_event_loop().time()}
     try:
-        await agent.ws.send_json(
-            {
-                "type": "tunnel",
-                "op": "open",
-                "stream": stream,
-                "kind": "shell",
-                "rows": 24,
-                "cols": 80,
-            }
-        )
-        pumps = [
-            asyncio.create_task(_shell_keepalive(ws)),
-            asyncio.create_task(_shell_client_to_agent(ws, agent, stream, state)),
-            asyncio.create_task(_shell_agent_to_client(ws, queue, rec)),
-            asyncio.create_task(_shell_watchdog(state)),
-        ]
-        _, pending = await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
+        if agent is not None:
+            await _run_agent_shell(ws, agent, stream, rec, state)
+        else:
+            cfg = SSHConfig(
+                host=inst.ssh_host,
+                port=inst.ssh_port,
+                user=inst.ssh_user,
+                private_key=decrypt(inst.ssh_key_enc),
+                host_key=inst.ssh_host_key,
+            )
+            await _run_ssh_shell(ws, cfg, rec, state)
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -552,9 +662,6 @@ async def shell_websocket(ws: WebSocket, instance_id: int):
         _shell_slot_release(user.id, instance_id)
         if rec is not None:
             rec.close()
-        hub.close_tunnel(stream)
-        with contextlib.suppress(Exception):
-            await agent.ws.send_json({"type": "tunnel", "op": "close", "stream": stream})
         with contextlib.suppress(Exception):
             await ws.close()
         with contextlib.suppress(Exception):

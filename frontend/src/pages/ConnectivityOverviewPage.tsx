@@ -150,7 +150,7 @@ export default function ConnectivityOverviewPage() {
                       <ShellIconLink
                         instanceId={m.instance_id}
                         instanceName={m.instance_name}
-                        agentMode={agentMode.get(m.instance_id) ?? false}
+                        eligible={agentMode.get(m.instance_id) ?? false}
                         shellEnabled={shellEnabled.get(m.instance_id) ?? false}
                       />
                     </span>
