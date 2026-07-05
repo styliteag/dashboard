@@ -78,6 +78,60 @@ export interface TestConnectionResult {
   error: string | null;
 }
 
+// ----- OPNsense firewall rules --------------------------------------------
+
+export interface FirewallRule {
+  uuid: string;
+  editable: boolean;
+  enabled: boolean;
+  log: boolean;
+  action: string;
+  direction: string;
+  ip_protocol: string;
+  protocol: string;
+  interfaces: string;
+  source: string;
+  source_port: string;
+  destination: string;
+  destination_port: string;
+  gateway: string;
+  categories: string;
+  description: string;
+  sequence: string;
+  sort_order: string;
+  prio_group: string;
+  legacy: boolean;
+  raw: Record<string, unknown>;
+}
+
+export interface FirewallRuleSearchResponse {
+  total: number;
+  rowCount: number;
+  current: number;
+  rows: FirewallRule[];
+}
+
+export interface FirewallRuleOptions {
+  interfaces: Record<string, unknown>;
+  networks: Record<string, unknown>;
+  ports: Record<string, unknown>;
+  categories: Record<string, unknown>;
+}
+
+export interface FirewallRuleDetail {
+  uuid: string | null;
+  rule: Record<string, unknown>;
+}
+
+export interface FirewallActionResult {
+  result: string;
+  status: string;
+  uuid: string | null;
+  changed: boolean | null;
+  validations: unknown;
+  raw: Record<string, unknown>;
+}
+
 // ----- System status -------------------------------------------------------
 
 export interface CpuStatus {

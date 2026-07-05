@@ -304,6 +304,9 @@ export default function PacketCaptureViewer() {
       }
       wsRef.current = null;
     };
+    // The parser reads from refs and appends to state; changing its identity must
+    // not reconnect the live capture websocket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, capId, liveIface, liveFilter]);
 
   const stopLive = () => {

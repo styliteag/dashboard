@@ -25,6 +25,7 @@ from app.config import Settings, get_settings
 from app.configbackup.routes import router as config_backups_router
 from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
+from app.firewall_rules.routes import router as firewall_rules_router
 from app.firmware.routes import router as firmware_router
 from app.groups.channels import router as group_channels_router
 from app.groups.routes import router as groups_router
@@ -229,6 +230,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router, prefix="/api")
     app.include_router(ipsec_router, prefix="/api")
     app.include_router(firmware_router, prefix="/api")
+    app.include_router(firewall_rules_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
     app.include_router(views_router, prefix="/api")
     app.include_router(system_router, prefix="/api")
