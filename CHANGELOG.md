@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Prometheus and Checkmk exports now serve direct-poll (OPNsense/pfSense direct,
+  Securepoint) appliance status from a short shared TTL cache instead of polling the
+  box on every request. Push instances are unaffected (already read from the hub
+  cache). This stops frequent Prometheus scrapes — and a fleet running both
+  integrations — from hammering the same appliances; the interactive Alerts page and
+  single-instance checks stay live.
+
+### Fixed
+
+- Top talkers table: German column headers ("Pakete"/"Alter") and a hardcoded German
+  number locale in the otherwise-English UI are now English ("Packets"/"Age").
+
 ## [2.9.1] - 2026-07-05
 
 ### Fixed

@@ -88,7 +88,7 @@ async def test_export_prometheus_route(monkeypatch) -> None:
         return [inst]
 
     monkeypatch.setattr(checks_routes, "list_instances", fake_list_instances)
-    monkeypatch.setattr(checks_routes, "gather_many", fake_gather_many)
+    monkeypatch.setattr(checks_routes, "gather_many_cached", fake_gather_many)
     monkeypatch.setattr(checks_routes, "effective_settings", lambda: SimpleNamespace())
     monkeypatch.setattr(checks_routes, "evaluate_checks", lambda *aspects: [])
     monkeypatch.setattr(
@@ -101,3 +101,33 @@ async def test_export_prometheus_route(monkeypatch) -> None:
     assert resp.headers["content-type"] == CONTENT_TYPE
     body = resp.body.decode()
     assert 'orbit_check_state{instance_id="1",instance_name="opn1",key="memory"} 1' in body
+
+
+@pytest.mark.asyncio
+async def test_gather_many_cached_caches_direct_not_push(monkeypatch) -> None:
+    from app.checks import routes as checks_routes
+
+    checks_routes._export_aspect_cache.clear()
+    polled: list[int] = []
+
+    async def fake_gather(inst, iid):
+        polled.append(iid)
+        return (None, None, None, None, None, None, None)
+
+    monkeypatch.setattr(checks_routes, "_gather", fake_gather)
+    monkeypatch.setattr(
+        checks_routes, "effective_settings", lambda: SimpleNamespace(poll_concurrency=4)
+    )
+
+    direct = _inst(id=10, name="sp1", device_type="securepoint", agent_mode=False)
+    push = _inst(id=11, name="opn2", agent_mode=True)
+
+    await checks_routes.gather_many_cached([direct, push], ttl=100.0)
+    await checks_routes.gather_many_cached([direct, push], ttl=100.0)
+
+    assert polled.count(10) == 1  # direct polled once, then served from the TTL cache
+    assert polled.count(11) == 2  # push always read live (hub cache is already cheap)
+
+    # Past the TTL the direct instance is polled again.
+    await checks_routes.gather_many_cached([direct], ttl=-1.0)
+    assert polled.count(10) == 2

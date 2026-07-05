@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -110,6 +111,43 @@ async def gather_many(rows: list[Instance]) -> list[tuple[Instance, GatheredAspe
     return list(await asyncio.gather(*(one(inst) for inst in rows)))
 
 
+# Shared TTL cache for the machine-driven export paths (Checkmk pull + Prometheus
+# scrape). Both poll direct/Securepoint appliances live via ``_gather`` (push
+# instances come from the cheap hub cache) — and a fleet running both integrations,
+# each on its own cadence (Prometheus commonly every 15–60 s, plus possible
+# replicas), would otherwise poll the same box several times over. Caching the
+# *direct* per-instance aspects for a short TTL coalesces all of those into one poll
+# per box per TTL. The cached value is scope-independent (just the box's polled
+# status), so the key is the instance id alone. The interactive single-instance
+# ``/checks`` and the Alerts page stay live/uncached.
+_EXPORT_CACHE_TTL = 20.0  # seconds
+_export_aspect_cache: dict[int, tuple[float, GatheredAspects]] = {}
+
+
+async def gather_many_cached(
+    rows: list[Instance], ttl: float = _EXPORT_CACHE_TTL
+) -> list[tuple[Instance, GatheredAspects]]:
+    """Like :func:`gather_many`, but a direct instance polled within ``ttl`` reuses
+    its last aspects instead of re-polling the appliance. Push instances are always
+    read live from the hub cache. Shared by the Checkmk and Prometheus exports.
+    """
+    sem = asyncio.Semaphore(max(1, effective_settings().poll_concurrency))
+
+    async def one(inst: Instance) -> tuple[Instance, GatheredAspects]:
+        if inst.agent_mode:  # hub-cache read — already cheap and current
+            return inst, await _gather(inst, inst.id)
+        now = time.monotonic()
+        cached = _export_aspect_cache.get(inst.id)
+        if cached is not None and now - cached[0] < ttl:
+            return inst, cached[1]
+        async with sem:
+            aspects = await _gather(inst, inst.id)
+        _export_aspect_cache[inst.id] = (now, aspects)
+        return inst, aspects
+
+    return list(await asyncio.gather(*(one(inst) for inst in rows)))
+
+
 @router.get("/instances/{instance_id}/checks", response_model=list[ServiceCheck])
 async def instance_checks(
     instance_id: int,
@@ -179,8 +217,9 @@ async def export_checkmk(
     API-key callers honor the key's group binding (unbound = global); a session
     user only gets their groups' instances.
 
-    Push instances use the hub cache (cheap); direct instances are polled live,
-    which can be slow with many of them (caching direct status is a follow-up).
+    Push instances use the hub cache (cheap); direct instances are polled live but
+    cached for a short TTL, shared with the Prometheus export so the two integrations
+    don't each poll the same appliance.
     """
     settings = effective_settings()
     # Maintenance blackout: return no instances so Checkmk sees every service go
@@ -203,7 +242,7 @@ async def export_checkmk(
         services,
         certs,
         connectivity,
-    ) in await gather_many(rows):
+    ) in await gather_many_cached(rows):
         evaluated = overlay_checks(
             inst,
             evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
@@ -238,7 +277,8 @@ async def export_prometheus(
     key's group binding (unbound = global), session users get their groups'
     instances. Unlike Checkmk there is no selection filtering, no aggregation and
     no blackout — every evaluated check becomes a series; filter in PromQL. Push
-    instances read the hub cache (cheap); direct instances are polled live.
+    instances read the hub cache (cheap); direct instances are polled live but
+    cached for a short TTL so frequent scrapes don't hammer the appliances.
     """
     settings = effective_settings()
     now = datetime.now(UTC)
@@ -252,7 +292,7 @@ async def export_prometheus(
         services,
         certs,
         connectivity,
-    ) in await gather_many(rows):
+    ) in await gather_many_cached(rows):
         evaluated = overlay_checks(
             inst,
             evaluate_checks(sys_status, gateways, ipsec, firmware, services, certs, connectivity),
