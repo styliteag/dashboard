@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Log Events page: the table now spans the full window width instead of being capped
+  at 1280px, so all columns fit and the message-pattern column absorbs the extra space
+  on wide screens.
+
 ## [2.9.4] - 2026-07-06
 
 ### Fixed

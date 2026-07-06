@@ -59,7 +59,7 @@ export default function LogEventsPage() {
     : events;
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-6">
+    <div className="w-full px-6 py-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <ScrollText className="h-5 w-5 text-emerald-500" /> Log Events
@@ -112,7 +112,7 @@ export default function LogEventsPage() {
                 <th className="px-2 py-1.5">Instance</th>
                 <th className="px-2 py-1.5">Log</th>
                 <th className="px-2 py-1.5">Program</th>
-                <th className="px-2 py-1.5">Message pattern</th>
+                <th className="w-full px-2 py-1.5">Message pattern</th>
                 <th className="px-2 py-1.5 text-right">Count</th>
                 <th className="px-2 py-1.5">Last seen</th>
               </tr>
