@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.4] - 2026-07-06
+
 ### Fixed
 
 - Agent on pfSense **2.6**: relay-credential and boot-persistence provisioning died
