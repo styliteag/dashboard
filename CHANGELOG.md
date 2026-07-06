@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Timestamps rendering in the future (e.g. Log Events "last seen: in 1h") on
+  deployments where the database container's `TZ` was set to a non-UTC zone. Columns
+  defaulted with `NOW()` / `CURRENT_TIMESTAMP` were written in the DB session's local
+  zone but then labelled UTC, offsetting every such timestamp by the `TZ` offset. The
+  DB session is now pinned to UTC on connect, so `NOW()` always equals `UTC_TIMESTAMP()`
+  regardless of `TZ`. Existing rows written under a non-UTC session keep their old
+  offset until next rewritten.
+
 ## [2.9.5] - 2026-07-06
 
 ### Changed
