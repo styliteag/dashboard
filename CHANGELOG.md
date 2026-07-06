@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Instance list/grid **Status** column showed "Online" for agent-mode instances even
+  when the agent was disconnected — it read the (stale) last-poll timestamps, which
+  agent-mode instances don't refresh. Status now reflects the live agent connection for
+  agent-mode instances (the same source as the Agent/Mode column, so the two can no
+  longer disagree); the Online/Offline filter buckets them the same way. API-mode
+  instances keep the poll-timestamp status.
+
+### Added
+
+- Agent card gains two on-demand buttons (admin, connected agents): **Refresh now**
+  forces the agent to re-collect its interval-throttled metrics immediately — logfiles
+  (hourly), firmware (~12h) and the config backup — and push a fresh snapshot, so views
+  like Log Events heal at once instead of waiting for the next hourly tick; **Reconnect**
+  drops and re-establishes the agent's dashboard WebSocket (back within a few seconds).
+
 ## [2.9.6] - 2026-07-06
 
 ### Fixed

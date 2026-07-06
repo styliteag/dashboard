@@ -239,6 +239,35 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
     onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Could not generate code") }),
   });
 
+  const refreshMut = useMutation({
+    mutationFn: () => api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/refresh`),
+    onSuccess: (data) => {
+      setMsg({
+        ok: data.result.success,
+        text: data.result.success
+          ? "Fresh snapshot pushed (logs, firmware and config backup re-collected)."
+          : `Refresh failed: ${data.result.output}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
+      queryClient.invalidateQueries({ queryKey: ["log-events"] });
+    },
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Refresh failed") }),
+  });
+
+  const reconnectMut = useMutation({
+    mutationFn: () => api.post<AgentActionResponse>(`/api/instances/${instanceId}/agent/reconnect`),
+    onSuccess: (data) => {
+      setMsg({
+        ok: data.result.success,
+        text: data.result.success
+          ? "Agent is reconnecting; it should be back within a few seconds."
+          : `Reconnect failed: ${data.result.output}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["agent-status", instanceId] });
+    },
+    onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Reconnect failed") }),
+  });
+
   // Pre-filled config (dashboard URL baked in). With a one-time code the agent
   // trades it for the token on first start; otherwise the token is embedded.
   const cfg = enrollCode
@@ -408,6 +437,26 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                     className="rounded-lg border border-amber-700/50 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-900/20 disabled:opacity-50"
                   >
                     {updateMut.isPending ? "Updating…" : `Update agent → ${status.served_version}`}
+                  </button>
+                )}
+                {connected && (
+                  <button
+                    onClick={() => refreshMut.mutate()}
+                    disabled={refreshMut.isPending}
+                    className="rounded-lg border border-emerald-700/50 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-900/20 disabled:opacity-50"
+                    title="Force the agent to re-collect logs, firmware and config backup now"
+                  >
+                    {refreshMut.isPending ? "Refreshing…" : "Refresh now"}
+                  </button>
+                )}
+                {connected && (
+                  <button
+                    onClick={() => reconnectMut.mutate()}
+                    disabled={reconnectMut.isPending}
+                    className="rounded-lg border border-sky-700/50 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-900/20 disabled:opacity-50"
+                    title="Drop and re-establish the agent's dashboard WebSocket"
+                  >
+                    {reconnectMut.isPending ? "Reconnecting…" : "Reconnect"}
                   </button>
                 )}
                 <button

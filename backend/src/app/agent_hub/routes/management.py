@@ -229,6 +229,69 @@ async def send_agent_command(
     return result
 
 
+async def _dispatch_agent_action(
+    instance_id: int,
+    action: str,
+    audit_action: str,
+    timeout: int,
+    request: Request,
+    session: AsyncSession,
+    user: User,
+) -> dict:
+    """Shared guard + send + audit for the fixed-action agent buttons."""
+    if await get_instance(session, instance_id, user) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+    result = await agent.send_command(action, {}, timeout=timeout)
+    await write_audit(
+        session,
+        action=audit_action,
+        result="ok" if result.get("success") else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=client_ip(request),
+        detail={"result": _redact_audit(result)},
+    )
+    await session.commit()
+    return {"sent": True, "result": result}
+
+
+@router.post("/instances/{instance_id}/agent/refresh")
+async def refresh_agent(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> dict:
+    """Force the agent to re-collect its interval-gated metrics now.
+
+    logfiles (hourly), firmware (~12h) and the config backup are normally
+    throttled; this pushes a fresh full snapshot on demand (e.g. to heal a
+    Log-Events view after a fix, instead of waiting for the next hourly tick).
+    """
+    return await _dispatch_agent_action(
+        instance_id, "refresh.full", "agent.refresh", 60, request, session, user
+    )
+
+
+@router.post("/instances/{instance_id}/agent/reconnect")
+async def reconnect_agent(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> dict:
+    """Ask the agent to drop and re-establish its dashboard WebSocket."""
+    return await _dispatch_agent_action(
+        instance_id, "reconnect", "agent.reconnect", 15, request, session, user
+    )
+
+
 @router.get("/instances/{instance_id}/agent/token")
 async def get_agent_token(
     instance_id: int,

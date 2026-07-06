@@ -52,7 +52,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.19"
+__version__ = "2.9.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4959,6 +4959,42 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                         "result": result,
                     }))
                     continue
+
+                if action == "refresh.full":
+                    # Like status.refresh, but first zero the interval gates so the
+                    # normally-throttled collectors run now: logfiles (hourly),
+                    # firmware (~12h) and the config-backup dedupe. Then push one
+                    # fresh snapshot before acking.
+                    _last_log_ts[0] = 0.0
+                    _STATE.fw_check_ts = 0.0
+                    _STATE.config_push_mtime = -1.0
+                    _STATE.config_push_sha = ""
+                    try:
+                        snapshot = await asyncio.get_event_loop().run_in_executor(
+                            None, collect_all
+                        )
+                        await ws.send(json.dumps({"type": "metrics", "data": snapshot}))
+                        result = {"success": True, "output": "full snapshot pushed"}
+                    except Exception as exc:  # noqa: BLE001 — report, keep the loop alive
+                        result = {"success": False, "output": str(exc)[:500]}
+                    await ws.send(json.dumps({
+                        "type": "command_result",
+                        "request_id": request_id,
+                        "action": action,
+                        "result": result,
+                    }))
+                    continue
+
+                if action == "reconnect":
+                    # Ack first, then leave the listen loop so the outer supervisor
+                    # tears this connection down and reconnects (5s backoff + jitter).
+                    await ws.send(json.dumps({
+                        "type": "command_result",
+                        "request_id": request_id,
+                        "action": action,
+                        "result": {"success": True, "output": "reconnecting"},
+                    }))
+                    return
 
                 # Execute in thread pool to not block the event loop
                 result = await asyncio.get_event_loop().run_in_executor(
