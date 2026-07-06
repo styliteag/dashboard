@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent on pfSense **2.6**: relay-credential and boot-persistence provisioning died
+  with `Call to undefined function config_get_path()` (that accessor + `config_set_path`
+  were only added in pfSense CE 2.7), leaving the `orbit` user, WebUI auto-login and
+  reboot autostart unprovisioned on the older boxes. The generated PHP now shims both
+  accessors over the global `$config` array when they're absent (one code path for 2.6
+  through 2.8) and guards every `write_config()` on a populated config so a failed
+  config load is a safe no-op instead of stubbing out `config.xml`.
+
 ## [2.9.3] - 2026-07-05
 
 ### Fixed

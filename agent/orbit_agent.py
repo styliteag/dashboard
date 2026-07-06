@@ -52,7 +52,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.7.18"
+__version__ = "2.7.19"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2515,6 +2515,41 @@ def _cache_credentials(key: str, secret: str) -> None:
     _write_private(Path(_APIKEY_CACHE), json.dumps({"user": "orbit", "key": key, "secret": secret}))
 
 
+# pfSense's config_get_path()/config_set_path() accessors were added in CE 2.7 — the
+# older 2.6 boxes still in the fleet don't have them, so the provisioning / boot-
+# persistence PHP below died with "Call to undefined function config_get_path()",
+# leaving relay creds + reboot autostart unprovisioned. Those boxes DO ship config.inc,
+# which populates the global $config at include time (`$config = parse_config()` runs
+# top-level on RELENG_2_6_0), so a function_exists shim over the global array gives one
+# code path for 2.6 through 2.8: native accessors on 2.7+, the array fallback on 2.6.
+# Callers still guard writes on a populated $config (a config that failed to load must
+# be a safe no-op, never a write_config() that stubs out config.xml).
+_PF_CONFIG_COMPAT = r"""
+if (!function_exists('config_get_path')) {
+    function config_get_path($path, $default = null) {
+        global $config;
+        $ref = $config;
+        foreach (explode('/', $path) as $k) {
+            if (is_array($ref) && array_key_exists($k, $ref)) { $ref = $ref[$k]; }
+            else { return $default; }
+        }
+        return $ref;
+    }
+    function config_set_path($path, $value) {
+        global $config;
+        $keys = explode('/', $path);
+        $last = array_pop($keys);
+        $ref = &$config;
+        foreach ($keys as $k) {
+            if (!isset($ref[$k]) || !is_array($ref[$k])) { $ref[$k] = array(); }
+            $ref = &$ref[$k];
+        }
+        $ref[$last] = $value;
+    }
+}
+"""
+
+
 # pfSense has no native REST API — the dashboard-triggered relay.enable installs the
 # community pfRest package (pfrest/pfSense-pkg-RESTAPI), whose default auth is
 # BasicAuth against the pfSense local user DB. So here we just create a dedicated
@@ -2523,9 +2558,15 @@ def _cache_credentials(key: str, secret: str) -> None:
 # Basic auth as for OPNsense, only the credential differs. Idempotent: resets the
 # password if the user already exists. (local_user_set_password expects an
 # ['item'=>…] wrapper and silently no-ops otherwise, so we set bcrypt-hash directly.)
-_PROVISION_PF_PHP = r"""<?php
+_PROVISION_PF_PHP = (
+    r"""<?php
 require_once("config.inc");
 require_once("auth.inc");
+"""
+    + _PF_CONFIG_COMPAT
+    + r"""if (!is_array(config_get_path("system/user"))) {
+    echo json_encode(["error"=>"config not loaded"]); exit;
+}
 $pw = base64_encode(random_bytes(24));
 $hash = password_hash($pw, PASSWORD_BCRYPT);
 $users = config_get_path("system/user", []);
@@ -2552,6 +2593,7 @@ config_set_path("system/user", $users);
 write_config("orbit relay user");
 echo json_encode(["key"=>"orbit","secret"=>$pw]);
 """
+)
 
 # pfRest release assets are per-pfSense-version (pfSense-<ver>-pkg-RESTAPI.pkg). The
 # release is PINNED (not `latest`) so a compromised future `latest` can't be
@@ -2672,8 +2714,12 @@ def _run_provision_php(php: str) -> tuple[str, str] | None:
 # pipe immediately (the agent still logs to /var/log/orbit_agent.log via daemon -o).
 _PF_BOOT_CMD_BARE = "/usr/local/etc/rc.d/orbit_agent onestart"
 _PF_BOOT_CMD = _PF_BOOT_CMD_BARE + " >/dev/null 2>&1"
-_PF_PERSIST_PHP = r"""<?php
+_PF_PERSIST_PHP = (
+    r"""<?php
 require_once("config.inc");
+"""
+    + _PF_CONFIG_COMPAT
+    + r"""if (!is_array(config_get_path("system"))) { echo "config not loaded"; exit; }
 $cmd = "__CMD__";
 $bare = "__BARE__";
 $cur = (string) config_get_path("system/afterbootupshellcmd", "");
@@ -2692,6 +2738,7 @@ config_set_path("system/afterbootupshellcmd", $new);
 write_config("orbit: persist agent autostart across reboot");
 echo "set";
 """
+)
 
 
 def _ensure_pfsense_boot_persistence() -> None:
@@ -4178,9 +4225,13 @@ echo "removed=$removed";
 """
 
 # Remove the auto-provisioned `orbit` pfSense user (reverse of the pfSense provision).
-_DEPROVISION_PF_PHP = r"""<?php
+_DEPROVISION_PF_PHP = (
+    r"""<?php
 require_once("config.inc");
 require_once("auth.inc");
+"""
+    + _PF_CONFIG_COMPAT
+    + r"""if (!is_array(config_get_path("system/user"))) { echo "config not loaded"; exit; }
 $users = config_get_path("system/user", []);
 $kept = [];
 foreach ($users as $u) {
@@ -4191,6 +4242,7 @@ config_set_path("system/user", $kept);
 write_config("remove orbit relay user");
 echo "removed";
 """
+)
 
 
 def _build_uninstall_script(
