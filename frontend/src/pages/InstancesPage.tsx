@@ -16,7 +16,10 @@ import KpiTile from "../components/KpiTile";
 // number shows exactly the rows it counted — the row badge's simpler
 // timestamp-only status would drift from the tile numbers.
 type StatusBucket = "online" | "degraded" | "offline";
-const statusBucket = (i: Instance): StatusBucket => {
+const statusBucket = (i: Instance, connected: boolean): StatusBucket => {
+  // Agent-mode instances aren't polled — bucket them by the live agent
+  // connection so the Online/Offline filter matches the row's status badge.
+  if (i.agent_mode) return connected ? "online" : "offline";
   const cutoff = Date.now() - 5 * 60_000;
   const succ = i.last_success_at ? Date.parse(i.last_success_at) : null;
   const err = i.last_error_at ? Date.parse(i.last_error_at) : null;
@@ -155,7 +158,8 @@ export default function InstancesPage() {
       (i.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (i.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()));
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
-    const matchStatus = statusFilter === "all" || statusBucket(i) === statusFilter;
+    const matchStatus =
+      statusFilter === "all" || statusBucket(i, agentByInstance.has(i.id)) === statusFilter;
     const matchMaintenance = !maintenanceOnly || i.maintenance;
     return matchSearch && matchTag && matchStatus && matchMaintenance;
   });

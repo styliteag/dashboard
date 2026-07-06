@@ -29,8 +29,23 @@ interface StatusMeta {
   color: string;
 }
 
-/** Derive a connection status from the instance's last poll/error timestamps. */
-function statusMeta(inst: Instance): StatusMeta {
+/** Derive a connection status. Agent-mode instances aren't polled, so their
+ *  liveness is the agent's live push connection — not the (often stale) last
+ *  poll timestamps; API-mode instances fall back to those timestamps. */
+function statusMeta(inst: Instance, agent?: ConnectedAgent): StatusMeta {
+  if (inst.agent_mode) {
+    return agent
+      ? {
+          icon: <Wifi className="h-4 w-4 text-emerald-400" />,
+          label: "Online",
+          color: "text-emerald-400",
+        }
+      : {
+          icon: <WifiOff className="h-4 w-4 text-red-400" />,
+          label: "Offline",
+          color: "text-red-400",
+        };
+  }
   if (inst.last_error_at && !inst.last_success_at) {
     return {
       icon: <WifiOff className="h-4 w-4 text-red-400" />,
@@ -60,8 +75,16 @@ function statusMeta(inst: Instance): StatusMeta {
 }
 
 /** Status badge — links to the instance detail page, same as clicking the name. */
-function StatusBadge({ inst, compact }: { inst: Instance; compact?: boolean }) {
-  const status = statusMeta(inst);
+function StatusBadge({
+  inst,
+  agent,
+  compact,
+}: {
+  inst: Instance;
+  agent?: ConnectedAgent;
+  compact?: boolean;
+}) {
+  const status = statusMeta(inst, agent);
   return (
     <span className="inline-flex items-center gap-1.5">
       <Link
@@ -212,7 +235,7 @@ export function InstanceCard({
             title={inst.firmware_locked ? "Firmware updates locked" : undefined}
             className="rounded border-slate-600"
           />
-          <StatusBadge inst={inst} compact />
+          <StatusBadge inst={inst} agent={agent} compact />
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
           </Link>
@@ -289,7 +312,7 @@ export function InstanceRow({
         />
       </td>
       <td className="px-3 py-2">
-        <StatusBadge inst={inst} />
+        <StatusBadge inst={inst} agent={agent} />
       </td>
       <td className="px-3 py-2">
         <span className="inline-flex items-center gap-1.5">
