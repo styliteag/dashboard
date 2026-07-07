@@ -1,95 +1,481 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Operating manual for coding agents working in this repository. Every rule in here is
+backed by a real incident, a test, or a design record — when a rule contradicts your
+instincts or your global preferences, **the rule wins**. When something here seems
+wrong, verify against the code and say so; don't silently deviate.
 
 ## Project
 
-STYLiTE Orbit — multi-firewall dashboard (OPNsense, pfSense, Securepoint UTM). Three deployable apps in one repo:
+STYLiTE Orbit — multi-firewall dashboard (OPNsense, pfSense, Securepoint UTM) for a
+German MSP fleet (~70 boxes). Three deployable apps in one repo (not a monorepo —
+orchestrated by `compose.yml` prod / `compose-dev.yml` dev):
 
-- `backend/` — FastAPI + async SQLAlchemy on **MariaDB** (Python 3.12)
-- `frontend/` — React 18 + Vite + TypeScript (npm)
-- `agent/` — stdlib-only WebSocket push agent that runs **on OPNsense/pfSense (FreeBSD)**; also does relay tunneling, dashboard-triggered self-update, enrollment, and uninstall
+- `backend/` — FastAPI + **async** SQLAlchemy on **MariaDB** (Python 3.12, `uv` + ruff)
+- `frontend/` — React 18 + Vite + TypeScript strict + Tailwind + TanStack Query v5 (npm)
+- `agent/` — **one stdlib-only file** (`orbit_agent.py`) running as root on
+  OPNsense/pfSense (FreeBSD, **Python 3.8 floor**); WebSocket push, relay tunneling,
+  signed self-update, enrollment, packet capture, PTY shell
+- Sidecars: `checkmk/` (special-agent plugin) and `scripts/sign_agent.py` (Ed25519 signing)
 
-**Recent additions:** Remote live + snapshot packet capture (via agent tunnel, with BPF presets, automatic agent-traffic exclusion, up to 600s/20 MiB, clean process termination on viewer close); Hub is now the primary default landing page (first tab) with per-section CRIT alert visibility.
+The UI is English. `docs/agent-architecture.md` (the living design record, numbered
+§sections + DR-1..DR-7) is German. Code, comments, commits: English.
 
-Not a monorepo — three independent apps orchestrated by `compose.yml` (production, single combined image) or `compose-dev.yml` (development, backend + frontend split with src bind mounts). Two more stdlib-only sidecars live alongside: `checkmk/` (special-agent plugin pulling `/api/export/checkmk`) and `scripts/sign_agent.py` (Ed25519 signing for agent self-update).
+## Rules that override your defaults
 
-## Commands (use `just`)
+A generic model's reflexes are wrong here. Repo reality beats the user's global
+CLAUDE.md and beats common practice:
 
-All workflows go through the `justfile`. Don't invent ad-hoc invocations — read `justfile` first if a recipe seems missing.
+| Your reflex | This repo |
+|---|---|
+| `{success, data, error, meta}` envelope | **No envelope.** Flat Pydantic models, `{"ok": true}` acks, `items/total/page/page_size` pagination |
+| TDD + 80% coverage + Playwright | **Zero frontend tests by policy** (`tsc -b` is the gate); backend tests are DB-free unit tests; no coverage tooling exists |
+| Many small files (200–400 lines) | `orbit_agent.py` is 5000+ lines **on purpose** (self-update swaps exactly one file); big cohesive Sections are accepted |
+| black, isort, mypy, bandit | **uv + ruff only** (`ruff check` E,F,I,B,UP,SIM; `ruff format`). Don't add or run other gates |
+| `alembic revision --autogenerate` | **Hand-written** sequential `NNN_*.py` migrations |
+| Postgres idioms (JSONB, partial indexes, ON CONFLICT, time_bucket) | MariaDB: `INSERT IGNORE`, `FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV n * n)` bucketing, batched `DELETE … ORDER BY ts LIMIT n` |
+| Add i18n / German labels for German users | UI strings hardcoded English, `en-US` locale (exception: `fmtRelative` in `lib/datetime.ts` is deliberately German — leave it) |
+| `git add -A`, amend, rebase | **Forbidden** — shared working tree (see Git section) |
+| "superadmin = root" | Superadmin = rights management **only**, zero instance access |
+
+## Commands (use `just` — nothing else)
+
+All workflows go through the `justfile`. Read it first if a recipe seems missing.
 
 - Backend: `just backend-install` · `just backend-run` · `just backend-test` · `just backend-lint` · `just backend-fmt`
-- Agent / sidecars: `just agent-test` · `just checkmk-test` · `just sign-agent` (needs the offline Ed25519 key)
+- Agent / sidecars: `just agent-test` · `just checkmk-test` · `just sign-agent` (key auto-loads from gitignored `.env`)
 - Frontend: `just frontend-install` · `just frontend-dev` · `just frontend-build` · `just frontend-lint` · `just frontend-fmt`
-- Prod stack: `just up` · `just down` · `just logs`
-- Dev stack: `just dev-up` · `just dev-down` · `just dev-logs`
-- Release: `just release patch|minor|major` (bumps `VERSION`, promotes the `CHANGELOG.md` `[Unreleased]` section, tags, pushes — CI publishes image to Docker Hub + GHCR). See [CHANGELOG](#changelog) — release does **not** generate entries.
-- Misc: `just gen-key`
+- Stacks: `just up|down|logs` (prod, combined image) · `just dev-up|dev-down|dev-logs` (dev, bind-mounted src, hot reload)
+- Release: `just release patch|minor|major` — **only when the user explicitly asks**; it's interactive (y/N), re-signs the agent, tags, pushes
+- Deps changed: `just notices` regenerates THIRD-PARTY-NOTICES.md + sbom.cdx.json (license obligation, baked into the image)
+- Misc: `just gen-key` (Fernet master key), `just gen-ssh-key` (Securepoint enrichment)
 
-`backend-test` runs `pytest -q` against `backend/tests/`. There are **no frontend tests** — `just frontend-build` (which runs `tsc -b`) is the only frontend gate.
+**There is no CI on pushes to main.** `.github/workflows/release.yml` fires only on
+version tags. The local `just` gates are the *only* safety net — skipping them ships
+broken code in the next tag. To retry a failed release build: `gh workflow run
+release.yml -f tag=X.Y.Z`; never delete or move a pushed tag.
 
-## Done-criteria for backend changes
+Dev loop: `just dev-up` → backend hot-reloads from `backend/src` bind mount, Vite HMR on
+:5173, migrations auto-apply on backend container start (`alembic upgrade head` in the
+container CMD / `docker/start.sh`). To apply a new migration: **restart the backend
+container**, never run alembic manually (wrong-DB risk via `.env`, races the boot-time
+run for its advisory lock). Never touch the `GET_LOCK` + `connection.commit()` block in
+`backend/alembic/env.py` — removing the commit makes migrations re-run every boot
+(real incident, commit 9767355).
 
-Run all three before declaring a backend task done:
+## Git: shared working tree
 
-1. `just backend-lint` (ruff: `E,F,I,B,UP,SIM`, line-length 100, py312)
-2. `just backend-test`
-3. If any SQLAlchemy model in `backend/src/app/**` changed: a new Alembic revision must exist in `backend/alembic/versions/` (numbered `NNN_*.py`, sequential).
+This checkout on `main` is **shared live** with a colleague and other agent sessions.
 
-Migrations run automatically via `alembic upgrade head` in `docker/start.sh` (combined prod container) and in the dev backend's `Dockerfile.dev` CMD — never call it manually inside dev workflows.
+- Stage explicit paths only: `git add <file> <file>`. Never `git add -A` / `-u` / `.`
+  (would sweep others' in-flight edits and gitignored-but-present secrets).
+- Never amend, rebase, or force-push. Never switch branches. Worktrees only after asking.
+- Before committing: `git diff <path>` per staged file — confirm it holds only your change.
+- Before committing a migration: re-check `ls backend/alembic/versions | sort | tail -1`
+  — another session may have claimed your number. Exactly one alembic head, always.
+- Commit format: `<type>(<scope>): <lowercase imperative>` — types
+  feat|fix|chore|docs|refactor|perf|test|style|security; scopes are feature areas
+  (agent, frontend, backend, hub, capture, checks, ui, security, export, firewall, …).
+  No co-authored-by trailers. Fix bodies are mini postmortems: symptom → root cause →
+  fix → proof (test name, lab-box evidence, or measured numbers).
+- One commit = code + regression test + CHANGELOG bullet (for behavioral/user-visible
+  changes). Agent commits additionally contain the `__version__` bump + refreshed `.sig`.
+- `chore: bump version to X.Y.Z` commits are authored **only** by release.sh.
+- Formatting/lint sweeps of unrelated files go in separate chore/style commits, never
+  inside feature commits.
 
-## Done-criteria for agent changes
+## Hard security invariants
 
-When you touch `agent/orbit_agent.py`: **bump `__version__`** (self-update gates on a version diff — an unchanged version means the fix never deploys to a box) and run `just agent-test`. Likewise run `just checkmk-test` after any `checkmk/` change.
+1. **Group scoping on every user-facing instance query.** `scope_clause(principal)`
+   for lists/aggregates, `get_instance(session, id, principal)` (→ `can_access`) for
+   by-id — from `backend/src/app/auth/scope.py`. Out-of-scope answers **404, never
+   403** (no existence oracle). The empty-set semantics are *inverted* and must never
+   be merged: **User with zero groups sees NOTHING; ApiKey with zero bindings is
+   GLOBAL**. There is **no superadmin bypass** — superadmin is rights management only.
+   `None` principal = trusted internal caller (poller, hub) and is unscoped:
+   `get_instance(session, id)` without the third argument **silently disables scoping**
+   — always pass the principal in routes.
+2. **WebSocket routes authenticate themselves.** FastAPI `Depends` gates do NOT run on
+   `@router.websocket`. Every `/ws/*` route touching an instance must, in this order:
+   `await ws.accept()` → feature gate (close 4403) → `_ws_authenticate(ws, session,
+   write=…)` (return if None) → `get_instance(session, instance_id, user)` (close 4403
+   if None) → per-instance opt-in flag → only then `hub.get(...)` (close 4404).
+   Mirror `shell_websocket`/`capture_websocket` in `backend/src/app/agent_hub/routes/ws.py`.
+   Regression b622b6f: `/ws/capture/{id}` shipped without this and streamed any box's
+   raw traffic to any origin. Close codes: 4401 unauth, 4403 forbidden, 4404 no agent,
+   4008 concurrency cap.
+3. **Secrets are Fernet-encrypted at rest** (`backend/src/app/crypto/`, key =
+   `DASH_MASTER_KEY`) into `*_enc` columns; decrypt only at client construction; API
+   responses expose booleans (`ssh_key_set`), never values; update schemas treat
+   empty/omitted as "keep existing". Audit `detail` is built from the allowlist
+   `_SAFE_AUDIT_FIELDS` — extend the allowlist for new fields, never flip to a denylist.
+   Agent command results pass `_redact_audit` before audit storage.
+4. **Only anonymized text reaches an external LLM** (`app/llm/anonymize`, char caps in
+   `logs/context.py`). Raw log content is admin-only. The anonymizer deliberately keeps
+   RFC1918 IPs — don't "anonymize harder".
+5. **Hub state is unscoped in-memory data.** Any endpoint iterating
+   `hub.list_connected()` or `hub._last_*` must filter through
+   `_visible_instance_ids(session, user)` first.
+6. Privileged agent actions (mint credentials, curated params: `agent.update`,
+   `gui.login`, `relay.enable`, …) get dedicated routes AND their action string added
+   to `_INTERNAL_AGENT_ACTIONS` so the generic command passthrough rejects them.
 
-- **The agent must run on Python 3.8.** Older pfSense boxes (2.6/2.7-era, FreeBSD) ship Python 3.8 — newer OPNsense/pfSense run 3.11, so a 3.9+ feature passes every test box yet silently bricks the old ones on self-update. Before declaring an agent change done, scan for **runtime** 3.9+ APIs: `str.removeprefix`/`removesuffix` (3.9), `dict |` merge (3.9), `math.lcm`/`isqrt`, `int.bit_count` (3.10), `match`/`case` (3.10), `zoneinfo`/`graphlib`, `functools.cache`. The file has `from __future__ import annotations`, so `list[dict]` / `X | None` **annotations** are fine (stored as strings, never evaluated) — only real *calls/statements* break. Past incident: `str.removesuffix()` in the cert collector took a 3.8 pfSense agent permanently silent ("agent silent for >120s"). If you can't test on a 3.8 box, `python3.8 -W error -c "import ast,sys; ast.parse(open('agent/orbit_agent.py').read())"` catches syntax-level breaks at least.
+## Backend conventions
 
-## CHANGELOG
+- Feature packages: `app/<feature>/{routes.py, schemas.py, service.py|store.py}`;
+  router `APIRouter(prefix="/<feature>", tags=[...])` registered in `create_app()` with
+  `prefix="/api"`. Literal sub-paths (`/instances/defaults`) before `/{instance_id}`.
+- Auth dependency ladder (`app/auth/deps.py`): `current_user` (any session) →
+  `require_write` (every operational mutation) → `require_admin` (config surfaces);
+  `require_superadmin` / `require_admin_or_superadmin` only for rights management.
+  Machine-consumed reads: `read_principal` (session OR `orbit_` API key; API keys are
+  read-only by construction). `test_role_guards.py` enumerates all routes and fails any
+  mutation guarded by bare `current_user`.
+- Mutations: mutate → `write_audit(action="noun.verb", result=..., source_ip=
+  client_ip(request), detail=<allowlisted>)` → `await session.commit()`. Audit denied/
+  error paths too. Services `flush()`, routes own `commit()`. Returning an ORM object
+  after commit: `await session.refresh(obj)` first (else MissingGreenlet).
+  `IntegrityError` → rollback → HTTP 409, lowercase human detail.
+- Time: columns use the `UtcDateTime` TypeDecorator (never plain `DateTime`); Python
+  side always `datetime.now(UTC)`. MariaDB DATETIME reads back **naive-but-UTC** — tag
+  with `as_utc()`/`_iso_utc` helpers before comparing or serializing. Never remove the
+  `_pin_session_utc` connect listener in `db/base.py` (incident 195e9da: "last seen: in 1h").
+- Settings: env defaults in `config.py` (`DASH_` prefix), editable keys get a
+  `SettingDef` in `app/settings/registry.py` and are read via `effective_settings()`
+  (DB overrides), never `get_settings()`. New `DASH_` vars must be wired into
+  `.env.example` + `compose.yml` + `compose-dev.yml` in the same change (incident
+  9767355: a var only in dev-compose is impossible to enable in prod).
+- Client IP only via `app.net.client_ip(request)`. Logging: structlog only,
+  `log = structlog.get_logger("app.<module>")`, dotted event names + kwargs. No print().
+- After mutating instance credentials/base_url/SSH fields: `await
+  registry.invalidate(inst.id)` or polling continues with stale clients.
+- Blocking/CPU work (Fernet on MB blobs, diffs) leaves the event loop via
+  `asyncio.to_thread`. Notifications only via `dispatch_async()` **after** the session
+  is closed/committed — never awaited on ingest/poll paths.
+- Middleware: pure ASGI only (`BaseHTTPMiddleware` breaks streaming/WS).
+- Process-local singletons (settings cache, LoginLimiter, export TTL cache, agent hub)
+  assume ONE worker. Don't add uvicorn workers/replicas.
+- Comments are load-bearing incident documentation ("Do not remove.", "Regression: …").
+  Never strip them in refactors; when you add a guard, add the why-comment naming the
+  failure it prevents.
 
-`CHANGELOG.md` is kept and follows [Keep a Changelog](https://keepachangelog.com/) + SemVer. For any user-visible change, add a bullet under `## [Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` …) **as part of the same change** — don't leave it for later.
+## Database & migrations
 
-`just release` (via `release.sh`) only **promotes** `[Unreleased]` to a dated `[X.Y.Z]` section and opens a fresh empty `[Unreleased]`; it does **not** read git history or generate entries. An empty `[Unreleased]` ships empty release notes. Never delete the file or hand-edit already-released sections.
+- MariaDB, async-only: `AsyncSession` + `aiomysql`. Never import sync `Session`.
+- Migrations: hand-written `backend/alembic/versions/NNN_snake_name.py`, `revision="NNN"`
+  (zero-padded string), `down_revision="NNN-1"`, why-docstring, real `downgrade()`.
+  Current head must always be exactly one. Heavy DDL must be re-runnable
+  (`IF NOT EXISTS` / `IF EXISTS`) — replicas race `upgrade head` at boot. Use
+  `/new-migration` to scaffold.
+- Big payloads: `mysql.MEDIUMBLOB`/`MEDIUMTEXT` variants (TEXT/BLOB cap at 64KB).
+  Counters/rates: `Double`, not `Float` (single precision flatlined byte counters).
+- Any table pruned by time needs a **standalone index on `ts`** and batched deletes
+  (`_prune_before` pattern: `DELETE … ORDER BY ts LIMIT 10000` + commit + pause).
+  Incident: an unbounded DELETE gap-locked the metrics table and 500'd the API for
+  ~80s every hour, flapping the whole fleet offline.
+- MariaDB downgrade trap: drop FK **before** index (errors 1091/1553).
+- There is **no metrics rollup table** — migration 008 dropped `metrics_5m`;
+  `read_metrics` buckets the raw table on the fly. Don't recreate it.
+- Scheduled jobs: function in `maintenance/jobs.py`, own session via
+  `get_sessionmaker()`, idempotent, registered in `start_scheduler()` with explicit
+  `id=` and `max_instances=1`, retention windows from `effective_settings()`.
 
-## Hard rules
+## Checks, alerts, exports
 
-- **Database is MariaDB, async-only.** Use `AsyncSession` + `aiomysql` (`mysql+aiomysql://`). Never import the sync `Session`, and don't reach for Postgres/TimescaleDB-isms — metrics retention + the 5-min rollup are plain scheduler jobs (`backend/src/app/maintenance/`), use MariaDB equivalents.
-- **Settings prefix is `DASH_`** (pydantic-settings). All env vars and config keys use it; don't introduce another prefix.
-- **OPNsense API secrets are encrypted at rest** with the Fernet helper in `backend/src/app/crypto/`. Never store, log, or return them in plaintext.
-- **`agent/` runs on FreeBSD** (OPNsense/pfSense base). Keep its dependencies minimal and avoid Linux-only assumptions (no `/proc` parsing, no glibc-specific calls, no systemd hooks).
-- **Every user-facing instance query is group-scoped.** Apply `scope_clause(principal)` (list/aggregate queries) or `can_access(principal, inst)` (by-id fetches) from `backend/src/app/auth/scope.py` — new endpoints that return instance data without one of these leak across groups. Two invariants, never "simplify" them: a **User** with zero group memberships sees NOTHING, an **ApiKey** with zero bindings is GLOBAL (keys predate groups); and **superadmin grants rights management only, no instance access** — there is no superadmin bypass in scoping.
-- **WebSocket endpoints that touch an instance must authenticate + scope themselves.** `/ws/*` routes bypass the REST `Depends(...)` gates, so each one must — right after `ws.accept()` — call `_ws_authenticate(ws, session, write=...)` and then `get_instance(session, instance_id, user)` **before** reaching for `hub.get(...)`, mirroring `shell_websocket`/`tunnel_websocket` in `backend/src/app/agent_hub/routes/ws.py`. Auth and group-scoping are not inherited. (Regression: `/ws/capture/{id}` once did neither and would stream any agent-connected box's raw traffic to any origin.)
+- A check is a **pure, DB-free** function in `checks/evaluate.py` returning
+  `ServiceCheck | None`, wired into `evaluate_checks()`. **Never emit a check for
+  absent data** — return None on the no-data sentinels (swap_total_mb<=0, cores<=0,
+  stratum<0, err_rate<0, empty tunnel list, service not present …). Incident c37de13:
+  ipsec.service CRIT'd fleet-wide on boxes without IPsec.
+- States: Checkmk convention 0=OK 1=WARN 2=CRIT 3=UNKNOWN; UNKNOWN sorts *below* WARN.
+  "Could not check" is WARN, never OK, never CRIT. CPU deliberately can't CRIT.
+- New check family = three registrations: `CHECK_CATEGORIES`
+  (`selection/model.py`), `CATEGORY_LABELS` (`frontend/.../SelectionTree.tsx`), and —
+  for colon-keyed families — `_AGG` (`checks/aggregate.py`). Keys are
+  `family:stable-id` (DB id, never a user-editable name).
+- Every consumer wraps results as `overlay_checks(inst, evaluate_checks(...),
+  effective_settings(), now)` — staleness cap, probe checks, maintenance ceiling. All
+  four surfaces (Checkmk export, Prometheus export, Alerts page, per-instance checks)
+  must show identical services.
+- Machine-driven exports go through `gather_many_cached` (20s TTL,
+  `checks/routes.py`) — never `gather_many`/`poll_status` per request (incident
+  fce8ccc: scrapes hammered every direct-poll appliance). Interactive views stay live.
+- Single-measurement checks (ping-like) get flap debounce (N consecutive fails before
+  CRIT, instant recovery) **and** hydrate re-seeding of streaks, or every backend
+  restart fires false recovered/CRIT storms.
+- Hub cache ingest (`handle_metrics`): every section write is guarded — truthy-guard
+  when empty = collector failure, presence-guard when empty is legitimate
+  (connectivity). Never unconditional overwrite. New sections go into `_snapshot_for`
+  AND `hydrate_instance` symmetrically. Never mutate cached pydantic objects — always
+  `model_copy(update={...})`.
+- Prometheus: label with `instance_id`/`instance_name` (never `instance` — reserved),
+  register HELP text in `_HELP` or the family is never emitted.
+- Logs pipeline: agent pushes hourly; `logs/store.py` keeps 3 snapshots per
+  (instance, name), `log_events` replaced per ingest. Severity rules in
+  `logs/events.py` are calibrated against real prod data — real fleets have **zero
+  sev≤2 lines**, never make crit-only the default anywhere.
 
-## OPNsense firewall rules editor (`backend/src/app/firewall_rules/`)
+## Agent (`agent/orbit_agent.py`) — the highest-blast-radius file
 
-The write path onto OPNsense's MVC firewall API. Hard-won gotchas:
+It runs as **root on customer firewalls** and updates itself. Use `/ship-agent-change`
+for the full done-pipeline. The non-negotiables:
 
-- **Use the `filter` controller, never `filter_base`.** `FilterBaseController` is the abstract base and is **not routed** — `/api/firewall/filter_base/…` returns `{"errorMessage":"Endpoint not found"}`, which `_opnsense_json` silently swallows to `{}` (empty dropdowns, a no-op "Apply"). Correct paths: `filter/list_network_select_options`, `filter/list_port_select_options`, `filter/list_categories`, `filter/apply`; aliases via `alias/search_item` (not `search_alias`).
-- **`source_net`, `destination_net`, `interface` are `Multiple=Y`** — multi-value, stored as a comma-joined string (`"lan,wan"`). Ports are single-value (port / `from-to` range / service name / **port** alias). `get_rule` serialises per field type: `NetworkAliasField` (source/dest) comes back as a plain string, but `InterfaceField` comes back as a selected-option map `{token:{value,selected}}` — parse the selected **keys**, never the display labels (`selectedTokens` in `FirewallRulesSection.tsx`).
-- **Machine-driven exports share a TTL cache.** The Checkmk and Prometheus exports both go through `gather_many_cached` (`checks/routes.py`) so direct-poll appliances aren't hammered on every scrape/pull; push instances read the hub cache, the interactive Alerts page and single-instance `/checks` stay live.
+- **Bump `__version__`** (top of file) in every commit that changes the file — strictly
+  newer, purely numeric dotted (`2.9.8`; a `-rc1` suffix makes the anti-rollback parser
+  refuse ALL updates). Unchanged version = the fix never deploys (backend no-ops the
+  push; the agent refuses same-version). Re-align to the next product release version
+  when known.
+- **Python 3.8 floor.** Test boxes run 3.11+, the test suite runs 3.13 — *no local gate
+  catches 3.9+ runtime APIs*. `from __future__ import annotations` makes annotations
+  safe; runtime calls break: `removeprefix/removesuffix`, `dict |`/`|=` merge,
+  `match/case`, `functools.cache`, `zoneinfo`, `asyncio.to_thread`,
+  `from datetime import UTC`, `math.lcm/isqrt`, `int.bit_count`. Incidents: removesuffix
+  silenced a pfSense agent; `datetime.UTC` crash-looped 3.8 agents (recovery = manual
+  scp per box, because a crash-looping agent cannot self-update).
+- **Stdlib only, one file.** No pip deps, no second module, no Linux-isms (no /proc,
+  no systemd, no GNU flag spellings — FreeBSD `ping -t/-S`, no `timeout` binary).
+- **Re-sign in the same commit**: `just sign-agent` then verify; stage
+  `agent/orbit_agent.py.sig` with the `.py`. A stale served .sig makes the whole fleet
+  reject all future updates. (Dev stack auto-re-signs via `_sign-if-key` — that .sig
+  diff is legitimate, commit it with the agent change, don't revert it.)
+- New collector: zero-arg `collect_<name>()`, registered as a **name string** pair in
+  `_SNAPSHOT_SECTIONS` (globals()-resolved so tests can monkeypatch); extend
+  `test_collect_timing._SECTIONS`/`_STUB_FN`; interval-throttled gates must be zeroed
+  in the `refresh.full` handler or "Refresh now" silently serves stale data. Per-item
+  try/except inside multi-item collectors — a raising collector blanks the whole push.
+- New command: sync `_cmd_<name>(params) -> {"success": bool, "output": str, ...}` in
+  `_COMMANDS` (executor-run, must not touch the WS); actions needing the WebSocket or
+  process lifecycle are inline branches in `_listen_loop_inner`.
+- Platform dispatch via `detect_platform()`; pfSense PHP must `function_exists`-guard
+  2.7+ accessors (CE 2.6 fleet!) and guard `write_config()` on a populated `$config`;
+  anything registered to run at boot keeps its `>/dev/null 2>&1` redirect (removing it
+  **hangs pfSense boot** — incident b218830).
+- Secrets on disk via `_write_private()`; root-run /tmp scripts via
+  `_write_root_script()` (fixed /tmp names = symlink attack on FreeBSD).
+- `run-agent.sh`, `rc.d/orbit_agent`, `install.sh` are **outside the self-update path**
+  — changes there need an explicit manual rollout plan; prefer self-healing from inside
+  orbit_agent.py. Supervisor contract: exit 42 = update respawn; marker + <60s runtime
+  + `.bak` = rollback. Don't rename hello/welcome frames or marker files.
+- Security gates are re-read per use (function call), never captured at import
+  (incident 37d74e1). Tunnel destinations are pinned on-box; never honor
+  server-supplied host/port. IPsec is never restarted via `service strongswan restart`
+  (drops every tunnel) — `configctl ipsec reload` / `ipsec_configure()`.
+- Rollout: canary ONE box (`POST /instances/{id}/agent/update`), confirm probation
+  passes and the new version appears in `/agents/connected`, then update-all.
 
-## Frontend
+## Frontend conventions
 
-TypeScript **strict mode** is enabled (`noUnusedLocals`, `noUnusedParameters` on). Path alias `@/*` → `src/*`. Three gates:
+- **Imports are relative** (`../lib/api`). The `@/*` tsconfig alias is a trap: it
+  type-checks but `vite build` fails (no `resolve.alias` configured). Zero files use it.
+- All HTTP through the `api` wrapper (`lib/api.ts` — cookie + Bearer fallback, 401 →
+  `dash:unauthorized` broadcast, error flattening). Only sanctioned bypass:
+  `<a href="/api/...">` downloads and Blob URLs. Errors render via
+  `apiErrorText(e, fallback)`.
+- Server state only in TanStack Query v5 (object signature). `refetchInterval` tiers:
+  10s live agent/hub status, 30s standard, 60s metrics/heavy, 300s slow; <10s only for
+  an in-flight user-initiated operation. Reuse shared query keys (`["instances"]`,
+  `["agents-connected"]`, `["instance", id]`, …).
+- Pages: `src/pages/*Page.tsx` routed in `App.tsx` inside `<ProtectedRoute>` (+
+  `<Layout>` unless full-screen). Instance-tab content: `src/components/*Section.tsx`
+  taking `instanceId: number`; register in the `TABS` const + device-capability filter
+  in `InstanceDetailPage.tsx`. Sections holding non-query per-instance state get
+  `key={nid}` at the render site (regression 397b4ff: box A's capture results shown
+  under box B).
+- Security is the backend's 403. Frontend does exactly three things: hide the nav link
+  by role, gate queries with `enabled:`, render a readable fallback/redirect on 403.
+- WS clients: `wss://${window.location.host}/api/ws/...` — session cookie + backend
+  Origin allowlist, **never a token in the URL**; map close codes 4401/4403/4404 to
+  readable text; effect cleanup nulls `onopen/onmessage/onclose` **before** `ws.close()`
+  (StrictMode double-mount ghost socket).
+- Backend WS routes must live under `/api/ws/` — nginx only upgrades that prefix in
+  prod; dev Vite proxies all of `/api`, so a mis-prefixed route is a prod-only failure.
+- Types are manual mirrors of backend Pydantic schemas: shared ones in `lib/types.ts`
+  ("update both sides together"), single-consumer payloads component-local. `tsc -b`
+  is the contract check.
+- Component files export only components (Fast Refresh); hooks/contexts/helpers in
+  JSX-free `src/lib/*.ts`. Timestamps via `lib/datetime.ts` helpers, relative body +
+  absolute `title=` tooltip. Styling: inline Tailwind, slate-950/900/800 surfaces,
+  emerald accent, amber=warn red=crit; icons lucide-react; charts recharts. Dark-only.
 
-**Navigation / Hub:** The top-level "Hub" tab (admin-only) is intentionally first in the nav and the default route after login (`/` → `HubStatusPage`). Regular users land on `/instances`. The Hub aggregates live agent health + CRIT alerts grouped by check key/section (from `/api/checks`). Packet capture UI lives under instance tabs ("Capture") + dedicated live viewer (`/capture/:id`).
+## Docs & CHANGELOG
 
-- `just frontend-build` — `tsc -b && vite build` (type-check + production bundle)
-- `just frontend-lint` — ESLint flat config (`eslint.config.js`), React + react-hooks rules, prettier-aware
-- `just frontend-fmt` — Prettier rewrite (config: `.prettierrc.json`, line width 100, double quotes, trailing commas)
+- `CHANGELOG.md` follows Keep-a-Changelog: every user-visible change adds a bullet
+  under `## [Unreleased]` **in the same commit**, symptom-first operator prose.
+  `just release` only promotes the section — it never generates entries. Never edit
+  dated sections. Never hand-write bump commits.
+- `UPCOMING.md` = non-committal idea backlog; never implement from it unprompted;
+  prune items when they ship. Known-gap backlog lives in `docs/agent-architecture.md`
+  §11/§14. Don't recreate TODO.md.
+- Significant agent architecture changes append to `docs/agent-architecture.md`
+  (German, with live-verification evidence), never rewrite its history.
 
-`src/` is Prettier-formatted (initial mass-format 2026-07-04) — `just frontend-fmt` should only touch files you changed. Don't bundle format-only rewrites of unrelated files into a feature commit.
+## Named mistakes a model will make here
 
-## Logs pipeline (agent → UI)
+Each has happened or nearly happened. Name → wrong move → rule.
 
-The agent pushes the box's important logs **hourly** (`collect_logfiles`, 250 KB per log / 1 MB total). `app/logs/store.py` keeps the newest **3 snapshots** per `(instance, name)` in `logfiles` and, on every ingest, re-extracts critical lines into `log_events` (one row per normalized message pattern, per-`(instance, log)` replace — idempotent, no history beyond the snapshot window). The extraction rules live in `app/logs/events.py` and are **calibrated against real prod data**: syslog `<PRI>` severity where present (OPNsense + most pfSense), curated patterns for PRI-less BSD lines, and a hardcoded noise list (dpinger `sendto error`, filterdns `failed to resolve` — steady-state on half the fleet). Real fleets have **zero sev≤2 lines** — don't make crit-only the default anywhere. Raw snapshot content is admin-only viewable; the LLM analysis path must only ever send the **anonymized** text (`app/llm/anonymize`).
+**Security**
+1. *Naked WS route* — new `/ws/...` goes accept()→hub.get(), trusting Depends. → Follow
+   the exact WS order (invariant 2) + regression test asserting the hub was never
+   consulted on an unauthenticated connect.
+2. *Two-arg get_instance* — `get_instance(session, id)` compiles, passes tests, and
+   disables scoping (None principal = internal). → grep new routes for two-arg calls.
+3. *Scope "simplification"* — merging the ApiKey/User branches in `scope.py` or adding
+   a superadmin bypass. → scope.py is change-frozen; `test_group_scoping.py` must keep
+   asserting both empty-set semantics and no bypass.
+4. *403 for out-of-scope* — creates an existence oracle. → Same 404 for missing and
+   forbidden.
+5. *Secret in response/log/audit* — returning key material "for convenience". →
+   booleans only (`ssh_key_set`), allowlisted audit detail, `_redact_audit` on command
+   results.
 
-## Required env (`.env` at repo root)
+**Agent**
+6. *Silent non-deploy* — agent edited, `__version__` unchanged; all tests green, fix
+   never reaches any box. → version bump in the same diff, always.
+7. *3.9+ runtime call* — passes every local gate, bricks the 3.8 pfSense fleet on
+   self-update. → scan the diff against the API list above; `/ship-agent-change` runs it.
+8. *Stale .sig* — fleet rejects all future updates. → `just sign-agent` + `--verify`,
+   .sig staged in the same commit.
+9. *Supervisor edit "deploys itself"* — run-agent.sh/rc.d never ride self-update. →
+   explicit rollout plan or solve it inside orbit_agent.py.
+10. *Lab-box survivorship* — works on 2.8.1/3.11 lab boxes, breaks the 2.6/3.8 fleet.
+    → `function_exists` shims, version-agnostic interpreter resolution, state the
+    tested version range in the commit body.
 
-`DASH_MASTER_KEY` (generate with `just gen-key`), `DASH_ADMIN_PASSWORD`, `DASH_SUPERADMIN_PASSWORD` (seeds the rights-management account), the MariaDB vars `DB_PASSWORD` / `DB_ROOT_PASSWORD` (and optionally `DB_USER` / `DB_NAME`), and `DASH_ENV`. Note the DB vars are **un-prefixed** — they're consumed by the MariaDB container and composed into `DASH_DATABASE_URL` in compose; only the app's own settings use the `DASH_` prefix. See `.env.example` for the full list. Both `compose.yml` and `compose-dev.yml` read this file via Docker Compose's default `.env` loader.
+**Database**
+11. *Autogenerated migration* — hash revision IDs, possibly wrong-DB diff. → hand-write
+    `NNN_*.py`; `/new-migration`.
+12. *Second alembic head* — another session took your number. → re-check the tail +
+    single head immediately before committing.
+13. *Manual `alembic upgrade head`* — can hit the prod-copy DB on :3307 or race the
+    boot-time run. → restart the dev backend container instead.
+14. *Naive datetime* — comparing/serializing MariaDB datetimes raw, or "cleaning up"
+    `_pin_session_utc`. → `UtcDateTime` columns, `as_utc()` helpers, listener stays.
+15. *Unbounded DELETE* — gap-locks the table, fleet flaps offline. → batched
+    oldest-first deletes + standalone ts index.
 
-## CI
+**Checks / data plane**
+16. *CRIT on absent feature* — "no data → alarm" monitoring reflex. → no-data branch
+    returns None + a not-configured test.
+17. *TTL-cache bypass* — new export live-polls appliances per scrape. →
+    `gather_many_cached` for anything machine-cadenced.
+18. *Cache wipe on empty push* — one failed collector erases known-good state and fires
+    alert pairs. → guarded section writes (truthy vs presence), documented per section.
+19. *Alert without debounce* — one dropped ping pages someone. → streak debounce +
+    hydrate re-seed.
+20. *Forgotten overlay / unregistered family* — new surface disagrees with the other
+    four; Checkmk explodes into per-item services. → `overlay_checks` wrapper + the
+    three-place registration.
 
-`.github/workflows/release.yml` triggers on `*.*.*` tags (created by `./release.sh` / `just release`). Builds multi-arch (`linux/amd64,linux/arm64`) and publishes to `docker.io/styliteag/dashboard` and `ghcr.io/styliteag/dashboard`. No CI runs on push to `main` — local `just backend-test` + `just frontend-build` are the gates.
+**Frontend**
+21. *`@/` import* — type-checks, breaks `vite build`. → relative imports; `just
+    frontend-build` before done.
+22. *Raw fetch()* — loses auth fallback, 401 broadcast, error flattening. → `api.*` only.
+23. *German label creep* (or "fixing" fmtRelative's deliberate German). → English
+    labels, en-US locale; leave fmtRelative alone.
+24. *Missing `key={nid}`* — one customer's data rendered under another's instance page.
+25. *Inventing test/build infra* — vitest/Playwright/code-splitting/envelope scaffolds
+    the maintainer will not run. → the gates are exactly `frontend-lint` + `frontend-build`.
 
+**Process**
+26. *`git add -A` / amend / branch switch* — clobbers the shared tree. → explicit paths,
+    roll forward, stay on main.
+27. *Changelog theater* — editing released sections, hand-writing bump commits, running
+    release unprompted. → your job ends at a non-empty `[Unreleased]`.
+28. *WS route outside `/api/ws/`* — works in dev, 502s in prod nginx.
+29. *Stale notices* — runtime dep changed without `just notices` (license obligation).
+30. *Trusting this file over the code* — docs drift. → verify, then fix the doc in a
+    `docs:` commit.
+
+## Quality bars per deliverable (checkable)
+
+**Backend change** — done when:
+- [ ] `just backend-lint` exits 0 · `just backend-test` exits 0
+- [ ] Model changed → new sequential `NNN_*.py` migration, exactly one alembic head
+- [ ] New instance-data endpoint → `scope_clause`/`get_instance(…, principal)` present;
+      out-of-scope test asserting 404/None exists
+- [ ] Mutation → correct dep from the ladder (test_role_guards stays green), audit
+      before commit, refresh before returning ORM
+- [ ] Behavioral fix → regression test in the same commit that **fails on pre-fix
+      code**, docstring naming the incident
+- [ ] User-visible → `[Unreleased]` bullet in the same commit
+
+**Backend tests** — done when:
+- [ ] DB-free house style: no conftest.py, no engine/sqlite; `_FakeSession` +
+      `SimpleNamespace` principals; external HTTP via respx; SQL asserted as
+      captured/compiled text
+- [ ] TestClient tests patch `start_scheduler`/`ensure_admin`/`ensure_superadmin`
+      first; WS tests patch `get_sessionmaker` in BOTH `routes.ws` and `hub`
+- [ ] Env-var tests clear `get_settings.cache_clear()` (+ `_fernet.cache_clear()`)
+- [ ] Suite stays fast (whole backend suite runs in single-digit seconds)
+
+**Agent change** — done when `/ship-agent-change` passes end-to-end:
+- [ ] `__version__` bumped (strictly newer, numeric dotted) in the same diff
+- [ ] `just agent-test` exits 0 (never raw pytest — asyncio_mode comes from the recipe)
+- [ ] Diff clean of 3.9+ runtime APIs; no new non-stdlib import; no Linux-isms
+- [ ] `just sign-agent` run, `--verify` OK, `.sig` staged with the `.py`
+- [ ] New collector/command wired per the checklists above; FreeBSD commands verified
+      on a lab box; `[Unreleased]` bullet present; version noted in the commit message
+
+**Frontend change** — done when:
+- [ ] `just frontend-lint` exits 0 · `just frontend-build` exits 0 (the only gates)
+- [ ] `git diff --name-only` shows no unrelated Prettier churn; no console.log in diff
+- [ ] Types mirror updated in the same change; English labels; refetch tier from the
+      table; `key={nid}` where sections hold per-instance state
+
+**New check/export** — done when:
+- [ ] No-data branch returns None + not-configured test
+- [ ] Family registered in all three places (colon families also in `_AGG`)
+- [ ] All four surfaces show the identical service (via `overlay_checks`)
+- [ ] Machine paths through `gather_many_cached`; flap-prone checks debounced +
+      hydrate-re-seeded
+
+**Commit** — done when:
+- [ ] `<type>(<scope>): lowercase imperative`; fix body = symptom → cause → fix → proof
+- [ ] Only explicitly named paths staged; changelog rides along when user-visible
+
+**Release** (only on explicit user request) — preflight:
+- [ ] Tree clean; `[Unreleased]` non-empty; `sign_agent.py --verify` OK
+- [ ] `just backend-lint && just backend-test && just agent-test && just checkmk-test
+      && just frontend-build` all green (there is no CI to catch you)
+- [ ] Run `just release <type>`, answer its interactive prompt; expect one bump commit
+      + annotated tag; CI publishes images
+
+**Live verification** (agent behavior, firewall APIs, tunnels, firmware): use
+`/lab-verify`. Lab: opn1=10.20.1.198, opn2=10.20.1.199 (OPNsense 2.6.11),
+pf1=10.20.1.200 (pfSense CE 2.8.1); ssh port 9922 (root shell is tcsh); GUI/API on
+:4444. Shared with other developers — record what you verified in the commit body.
+
+## When uncertain: escalation rules
+
+**Stop and ask the user before:**
+- Editing semantic content of the change-frozen zones: `auth/scope.py`,
+  `alembic/env.py` connection handling, `db/base.py` listeners, `crypto/`,
+  `_UPDATE_PUBKEY`/anti-rollback/probation logic in the agent, bootstrap-account logic.
+- Running `just release`, pushing tags, or anything that publishes (Docker Hub/GHCR).
+- Creating a worktree or touching any branch (CLAUDE.local.md rule).
+- Changing `run-agent.sh` / `rc.d/` / `install.sh` (no self-update path — needs a
+  fleet rollout plan).
+- Rotating/altering `DASH_MASTER_KEY` or the agent signing key — both are
+  fleet-bricking operations.
+- Adding a DB dependency to tests, a new lint/test framework, uvicorn workers, an API
+  response envelope, or an i18n layer — all are deliberate non-choices here.
+- Destructive operations on the lab boxes (reboot, firmware apply, uninstall) when
+  others might be using them; copy `/tmp` evidence off a box before any reboot.
+- Anything involving the prod-DB copy on :3307 beyond read-only queries; never commit
+  `compose-db2.yml` or echo its passwords.
+
+**Decide yourself (don't ask) when:**
+- The repo already shows the pattern — copy the neighboring file/test/commit style.
+- A gate fails because of your change — fix it and re-run; never skip/xfail to pass.
+- CLAUDE.md and the code disagree — trust the code, note the doc drift.
+
+**Default-deny when unsure about security semantics:** pick the stricter reading
+(scoped, 404, write-gated, audited), implement it, and flag the assumption in your
+summary and the commit body — assumptions the user hasn't confirmed are called out,
+not buried.
+
+**If you find a security hole:** stop feature work, write the failing regression test,
+fix it, grep for the same pattern elsewhere (the b622b6f fix pattern), add a CHANGELOG
+`### Security` entry, and say clearly what was exposed and since when.
 
 @CLAUDE.local.md

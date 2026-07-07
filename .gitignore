@@ -221,7 +221,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Local Claude Code config
-.claude/
+#.claude/
 
 # Local secrets / env (root .env already covered above; backend/.env kept for ad-hoc tooling)
 backend/.env
