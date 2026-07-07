@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.8] - 2026-07-07
+
 ### Fixed
 
 - Agent (`2.9.8`): pfSense firmware update check no longer reports the **beta**
