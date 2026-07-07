@@ -282,6 +282,39 @@ def test_pfsense_newer_branch_rejects_degenerate_active_id(fake_fs: dict) -> Non
     assert agent._pfsense_newer_branch("0000") == ("", "")
 
 
+def test_pfsense_newer_branch_skips_numeric_beta_train(fake_fs: dict) -> None:
+    # Regression (cvo-gigu, captured live 2026-07-07): pfSense Plus drops the NEXT
+    # release as a NUMERIC train (26_07) that sorts ABOVE the installed stable one.
+    # A box pinned to Previous Stable 26_03 must be offered Current Stable 26_03_1,
+    # never the Beta 26_07 — the .descr says "Beta Version (26.07)" and the repo
+    # host is …-beta.netgate.com.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg-beta.netgate.com/pfSense_plus-v26_07_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.descr"] = "Beta Version (26.07)\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_1_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.descr"] = "Current Stable Version (26.03.1)\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0002.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0002.descr"] = "Previous Stable Version (26.03)\n"
+    assert agent._pfsense_newer_branch("26_03") == ("26_03_1", "26.03.1")
+
+
+def test_pfsense_newer_branch_skips_beta_without_descr(fake_fs: dict) -> None:
+    # .descr can be momentarily absent mid pfSense-repoc rewrite; the -beta. repo
+    # host must still keep the numeric beta train from being offered as an update.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg-beta.netgate.com/pfSense_plus-v26_07_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    assert agent._pfsense_newer_branch("26_03") == ("", "")
+
+
 def test_collect_firmware_pfsense_flags_newer_train(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:

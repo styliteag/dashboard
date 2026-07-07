@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent (`2.9.8`): pfSense firmware update check no longer reports the **beta**
+  train as an available update. pfSense Plus publishes the next release as its own
+  numeric pkg train (e.g. `26_07`) that sorts above the installed stable one, so the
+  cross-train "newer release" detection flagged an upgrade to the beta even on a box
+  pinned to a stable branch (reported on Plus boxes on 26.03 showing "update to
+  26.07"). Beta/development trains are now excluded (via the `.descr` branch label and
+  the `…-beta.` / `pfSense_master` repo host); a genuine newer **stable** train
+  (e.g. 26.03.1) is still surfaced, matching the box's own System Information widget.
+
 ## [2.9.7] - 2026-07-06
 
 ### Fixed
