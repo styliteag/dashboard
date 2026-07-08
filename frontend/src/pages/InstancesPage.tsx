@@ -8,6 +8,7 @@ import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
 import { InstanceCard, InstanceRow } from "../components/InstanceViews";
+import { useInstanceAlertSummaryMap } from "../lib/instances";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
 import KpiTile from "../components/KpiTile";
@@ -71,6 +72,7 @@ export default function InstancesPage() {
   const outdated = agents.filter((a) => a.update_available);
   const servedVersion = outdated[0]?.served_version ?? null;
   const agentByInstance = new Map(agents.map((a) => [a.instance_id, a]));
+  const alertsByInstance = useInstanceAlertSummaryMap();
 
   const updateAllMut = useMutation({
     mutationFn: () =>
@@ -383,6 +385,7 @@ export default function InstancesPage() {
               key={inst.id}
               instance={inst}
               agent={agentByInstance.get(inst.id)}
+              alerts={alertsByInstance.get(inst.id)}
               selected={selected.has(inst.id)}
               onToggleSelect={() => toggleSelect(inst.id)}
               onEdit={() => setEditTarget(inst)}
@@ -422,6 +425,7 @@ export default function InstancesPage() {
                   key={inst.id}
                   instance={inst}
                   agent={agentByInstance.get(inst.id)}
+                  alerts={alertsByInstance.get(inst.id)}
                   selected={selected.has(inst.id)}
                   onToggleSelect={() => toggleSelect(inst.id)}
                   onEdit={() => setEditTarget(inst)}

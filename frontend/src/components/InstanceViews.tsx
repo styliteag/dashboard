@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle, Lock } from "lucide-react";
 import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/types";
+import type { InstanceAlertSummary } from "../lib/instances";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
 import { WebUiIconLink } from "./WebUiIconLink";
@@ -10,6 +11,7 @@ import { ShellIconLink } from "./ShellIconLink";
 export interface InstanceViewProps {
   instance: Instance;
   agent?: ConnectedAgent;
+  alerts?: InstanceAlertSummary;
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
@@ -78,10 +80,12 @@ function statusMeta(inst: Instance, agent?: ConnectedAgent): StatusMeta {
 function StatusBadge({
   inst,
   agent,
+  alerts,
   compact,
 }: {
   inst: Instance;
   agent?: ConnectedAgent;
+  alerts?: InstanceAlertSummary;
   compact?: boolean;
 }) {
   const status = statusMeta(inst, agent);
@@ -94,6 +98,18 @@ function StatusBadge({
         {status.icon}
         {!compact && status.label}
       </Link>
+      {alerts && (alerts.crit > 0 || alerts.warn > 0) && (
+        <Link
+          to={`/alerts?q=${encodeURIComponent(inst.name)}`}
+          className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+            alerts.crit > 0 ? "bg-red-600/20 text-red-400" : "bg-amber-600/20 text-amber-400"
+          }`}
+          title={`${alerts.crit} CRIT, ${alerts.warn} WARN service check(s) — click to view in Alerts`}
+        >
+          <AlertTriangle className="h-2.5 w-2.5" />
+          {alerts.crit > 0 ? `${alerts.crit} CRIT` : `${alerts.warn} WARN`}
+        </Link>
+      )}
       {inst.maintenance && (
         <span
           className="rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-400"
@@ -214,6 +230,7 @@ function InstanceActions({
 export function InstanceCard({
   instance: inst,
   agent,
+  alerts,
   selected,
   onToggleSelect,
   onEdit,
@@ -235,7 +252,7 @@ export function InstanceCard({
             title={inst.firmware_locked ? "Firmware updates locked" : undefined}
             className="rounded border-slate-600"
           />
-          <StatusBadge inst={inst} agent={agent} compact />
+          <StatusBadge inst={inst} agent={agent} alerts={alerts} compact />
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
           </Link>
@@ -294,6 +311,7 @@ export function InstanceCard({
 export function InstanceRow({
   instance: inst,
   agent,
+  alerts,
   selected,
   onToggleSelect,
   onEdit,
@@ -312,7 +330,7 @@ export function InstanceRow({
         />
       </td>
       <td className="px-3 py-2">
-        <StatusBadge inst={inst} agent={agent} />
+        <StatusBadge inst={inst} agent={agent} alerts={alerts} />
       </td>
       <td className="px-3 py-2">
         <span className="inline-flex items-center gap-1.5">

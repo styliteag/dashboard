@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Instances overview (list and grid) now shows a WARN/CRIT bubble next to each
+  instance's status, mirroring the existing "Console PW" badge style — red with the
+  CRIT count when any service check is critical, amber with the WARN count
+  otherwise. Clicking it opens the Alerts page pre-filtered to that instance, so a
+  problem is visible without opening every box's detail page.
+
 ## [2.9.8] - 2026-07-07
 
 ### Fixed
