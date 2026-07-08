@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.9] - 2026-07-08
+
 ### Added
 
 - Instances overview (list and grid) now shows a WARN/CRIT bubble next to each
