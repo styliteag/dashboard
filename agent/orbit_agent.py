@@ -52,7 +52,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.8"
+__version__ = "2.9.10"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -172,6 +172,11 @@ class _AgentState:
         # re-pushes one baseline (the server dedupes by sha256).
         self.config_push_mtime: float = -1.0
         self.config_push_sha: str = ""
+        # Public IPv4/IPv6 cache + throttle window (see collect_external_ip). The
+        # box's internet-facing address as reported by an echo service, probed at
+        # most every _EXTIP_INTERVAL and cached so every push carries it.
+        self.extip_cache: dict = {}
+        self.extip_ts: float = 0.0
         # Probation healthiness signal — set on the first server frame after a
         # self-update; the watchdog rolls back if it never fires (see §5).
         self.healthy: "asyncio.Event | None" = None
@@ -2350,6 +2355,58 @@ def collect_config_backup() -> dict:
     }
 
 
+# Public-IP discovery. The box's own interfaces only show its *local* WAN address
+# (an RFC1918 lease when the box sits behind upstream/carrier NAT), so the real
+# internet-facing address has to come from an outside echo. ipify exposes
+# family-pinned hostnames (api = A-only, api6 = AAAA-only), so one call yields a
+# clean IPv4 and the other a clean IPv6 with no address-family guessing. This is
+# the ONLY collector that reaches a third party; kept to verified HTTPS + a short
+# timeout. NAT detection itself is derived backend-side (compare this against the
+# box's interface addresses / the source IP the hub saw on connect).
+_EXTIP_INTERVAL = 900  # re-probe at most every 15 min — the public IP rarely moves
+_EXTIP_V4_URL = "https://api.ipify.org"
+_EXTIP_V6_URL = "https://api6.ipify.org"
+
+
+def _probe_public_ip(url: str, want_version: int) -> str | None:
+    """Fetch the box's public IP from an echo service, or None on any failure.
+
+    Validates the body is a bare IP address of the expected family, so a captive
+    portal / HTML error page can never be mistaken for an address."""
+    try:
+        status, _headers, body = _http_request(url, "GET", {}, None, timeout=5)
+        if status != 200:
+            return None
+        ip = ipaddress.ip_address(body.decode("ascii", "ignore").strip())
+        return str(ip) if ip.version == want_version else None
+    except Exception:  # noqa: BLE001 — unreachable / timeout / non-IP body = no result
+        return None
+
+
+def collect_external_ip() -> dict:
+    """The box's public IPv4/IPv6 as seen from the internet (ipify echo).
+
+    Throttled to _EXTIP_INTERVAL and cached so every push carries the last known
+    value — probing on each ~30s cycle would hammer the echo service and add
+    latency to the common push. Each family is probed independently, so a box
+    with no IPv6 route still reports its IPv4. A probe that fails keeps the
+    previous value for that family: the public IP is sticky, and a transient
+    timeout must not blank it (the backend truthy-guards an all-empty section on
+    top of this). Returns a fresh dict so the cached one is never mutated."""
+    now = time.monotonic()
+    if _STATE.extip_ts and (now - _STATE.extip_ts) < _EXTIP_INTERVAL:
+        return dict(_STATE.extip_cache)
+    prev = _STATE.extip_cache
+    result = {
+        "ipv4": _probe_public_ip(_EXTIP_V4_URL, 4) or prev.get("ipv4"),
+        "ipv6": _probe_public_ip(_EXTIP_V6_URL, 6) or prev.get("ipv6"),
+        "checked_at": datetime.now(UTC).isoformat(),
+    }
+    _STATE.extip_cache = result
+    _STATE.extip_ts = now
+    return dict(result)
+
+
 def _timed(timings: dict, name: str, fn, *args):
     """Run ``fn(*args)``, record its wall-clock milliseconds in ``timings[name]``,
     return its result. ``finally`` records even on error, and the exception still
@@ -2379,6 +2436,7 @@ _SNAPSHOT_SECTIONS = (
     ("ntp", "collect_ntp"),
     ("interfaces", "collect_interfaces"),
     ("gateways", "collect_gateways"),
+    ("external_ip", "collect_external_ip"),
     ("ipsec", "collect_ipsec"),
     ("connectivity", "collect_connectivity"),
     ("firmware", "collect_firmware"),
@@ -5001,6 +5059,7 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                     _STATE.fw_check_ts = 0.0
                     _STATE.config_push_mtime = -1.0
                     _STATE.config_push_sha = ""
+                    _STATE.extip_ts = 0.0
                     try:
                         snapshot = await asyncio.get_event_loop().run_in_executor(
                             None, collect_all
