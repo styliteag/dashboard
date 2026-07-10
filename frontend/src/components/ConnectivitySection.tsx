@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import type { ConnectivityState } from "../lib/types";
 import ConnectivityMonitorDialog from "./ConnectivityMonitorDialog";
 import CheckHistoryDialog from "./CheckHistoryDialog";
+import { EntityCommentBadge } from "./CommentBadge";
 
 function PingPill({ m }: { m: ConnectivityState }) {
   const ps = m.ping_state;
@@ -109,9 +110,18 @@ export default function ConnectivitySection({
             </thead>
             <tbody>
               {monitors.map((m) => (
-                <tr key={m.id} className="border-t border-slate-800">
+                // group: reveals the row's comment pencil on hover (CommentBadge)
+                <tr key={m.id} className="group border-t border-slate-800">
                   <td className="px-3 py-2 font-medium">
-                    {m.name}
+                    <span className="inline-flex items-center gap-1.5">
+                      {m.name}
+                      <EntityCommentBadge
+                        instanceId={instanceId}
+                        kind="connectivity"
+                        entityKey={String(m.id)}
+                        scope="instance"
+                      />
+                    </span>
                     {!m.enabled && <span className="ml-2 text-xs text-slate-500">(disabled)</span>}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">

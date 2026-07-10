@@ -5,6 +5,7 @@ import { BadgeCheck, CheckCircle, AlertTriangle, XCircle, Search, RefreshCw } fr
 import { api } from "../lib/api";
 import { useAgentModeMap } from "../lib/instances";
 import { fmtDate } from "../lib/datetime";
+import { EntityCommentBadge } from "../components/CommentBadge";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import { useSort, type Accessors } from "../lib/use-sort";
 import SortHeader from "../components/SortHeader";
@@ -215,7 +216,8 @@ export default function CertificatesPage() {
                 return (
                   <tr
                     key={`${c.instance_id}-${c.refid}`}
-                    className="border-t border-slate-800 hover:bg-slate-900/50"
+                    // group: reveals the row's comment pencil on hover (CommentBadge)
+                    className="group border-t border-slate-800 hover:bg-slate-900/50"
                   >
                     <td className="px-3 py-2">
                       <span className={`inline-flex items-center gap-1.5 ${meta.cls}`}>
@@ -251,6 +253,12 @@ export default function CertificatesPage() {
                             CA
                           </span>
                         )}
+                        <EntityCommentBadge
+                          instanceId={c.instance_id}
+                          kind="cert"
+                          entityKey={c.refid || c.name}
+                          scope="all"
+                        />
                       </span>
                     </td>
                     <td className="px-3 py-2">

@@ -12,6 +12,7 @@ import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
 import { WebUiIconLink } from "../components/WebUiIconLink";
 import { ShellIconLink } from "../components/ShellIconLink";
 import CheckHistoryDialog from "../components/CheckHistoryDialog";
+import { EntityCommentBadge } from "../components/CommentBadge";
 import KpiTile from "../components/KpiTile";
 import type { GlobalConnMonitor, GlobalConnectivityResponse } from "../lib/types";
 
@@ -135,7 +136,8 @@ export default function ConnectivityOverviewPage() {
                 <tr
                   key={`${m.instance_id}-${m.id}`}
                   onClick={() => openInstance(m.instance_id)}
-                  className={`cursor-pointer border-t border-slate-800 hover:bg-slate-900/60 ${
+                  // group: reveals the row's comment pencil on hover (CommentBadge)
+                  className={`group cursor-pointer border-t border-slate-800 hover:bg-slate-900/60 ${
                     m.stale ? "opacity-60" : ""
                   }`}
                 >
@@ -155,7 +157,17 @@ export default function ConnectivityOverviewPage() {
                       />
                     </span>
                   </td>
-                  <td className="px-3 py-2">{m.name}</td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      {m.name}
+                      <EntityCommentBadge
+                        instanceId={m.instance_id}
+                        kind="connectivity"
+                        entityKey={String(m.id)}
+                        scope="all"
+                      />
+                    </span>
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-400">
                     {m.source || "auto"} → {m.destination}
                   </td>

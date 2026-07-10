@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Editable operator **comments** on VPN tunnels (per phase 1), connectivity
+  monitors, firmware (one note per box) and certificates — a pencil appears on row
+  hover and opens a small multiline editor (Ctrl+Enter or click away saves, Esc
+  cancels, saving empty deletes); an existing comment shows as a speech-bubble
+  icon with the text (and author) as tooltip. Available on the
+  per-instance tabs and the global overviews (VPN, Connectivity, Firmware
+  compliance, Certificates). The instance comment (Notes) is now also editable
+  inline from the Instances overview, list and grid. Edits require the write role
+  and are audited.
+
 ## [2.9.10] - 2026-07-10
 
 ### Added

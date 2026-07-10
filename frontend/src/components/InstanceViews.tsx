@@ -5,6 +5,7 @@ import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/type
 import type { InstanceAlertSummary } from "../lib/instances";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
 import TestConnectionButton from "./TestConnectionButton";
+import { InstanceNotesBadge } from "./CommentBadge";
 import { WebUiIconLink } from "./WebUiIconLink";
 import { ShellIconLink } from "./ShellIconLink";
 
@@ -237,8 +238,9 @@ export function InstanceCard({
   onDelete,
 }: InstanceViewProps) {
   return (
+    // group: reveals the card's comment pencil on hover (CommentBadge)
     <div
-      className={`rounded-xl border p-4 shadow ${
+      className={`group rounded-xl border p-4 shadow ${
         selected ? "border-emerald-600 bg-emerald-900/10" : "border-slate-800 bg-slate-900/60"
       }`}
     >
@@ -269,6 +271,7 @@ export function InstanceCard({
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
+          <InstanceNotesBadge inst={inst} />
         </div>
         <Tags tags={inst.tags} />
       </div>
@@ -318,7 +321,8 @@ export function InstanceRow({
   onDelete,
 }: InstanceViewProps) {
   return (
-    <tr className={`border-t border-slate-800 ${selected ? "bg-emerald-900/10" : ""}`}>
+    // group: reveals the row's comment pencil on hover (CommentBadge)
+    <tr className={`group border-t border-slate-800 ${selected ? "bg-emerald-900/10" : ""}`}>
       <td className="px-3 py-2">
         <input
           type="checkbox"
@@ -353,6 +357,7 @@ export function InstanceRow({
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
+          <InstanceNotesBadge inst={inst} />
         </span>
         {inst.last_error_message && (
           <p className="mt-0.5 max-w-xs truncate text-xs text-red-400">{inst.last_error_message}</p>

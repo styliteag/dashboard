@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
+import { EntityCommentBadge } from "./CommentBadge";
 import {
   LipMismatchNote,
   Phase2Badge,
@@ -102,7 +103,8 @@ export default function TunnelRow({
   const shellEnabled = useShellEnabledMap().get(t.instance_id) ?? false;
   return (
     <Fragment>
-      <tr className={`border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
+      {/* group: reveals the row's comment pencil on hover (CommentBadge) */}
+      <tr className={`group border-t border-slate-800 ${inGroup ? "bg-emerald-500/10" : ""}`}>
         <td className={`px-3 py-2 ${inGroup ? "border-l-4 border-emerald-500" : ""}`}>
           <span className={`inline-flex items-center gap-1.5 ${inGroup ? "pl-4" : ""}`}>
             <Link to={`/instances/${t.instance_id}`} className="text-emerald-400 hover:underline">
@@ -161,6 +163,12 @@ export default function TunnelRow({
             <PingSummary entries={t.children ?? []} />
             <Phase2DupNote entries={t.children ?? []} />
             <LipMismatchNote local={t.local} mismatch={t.local_ip_mismatch} />
+            <EntityCommentBadge
+              instanceId={t.instance_id}
+              kind="ipsec"
+              entityKey={t.tunnel_id}
+              scope="all"
+            />
           </div>
         </td>
         <td className="px-3 py-2 font-mono text-xs text-slate-400">

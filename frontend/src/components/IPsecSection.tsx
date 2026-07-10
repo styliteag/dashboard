@@ -23,6 +23,7 @@ import type {
   TunnelActionResponse,
   ActionResult,
 } from "../lib/types";
+import { EntityCommentBadge } from "./CommentBadge";
 import {
   LipMismatchNote,
   Phase2Badge,
@@ -282,7 +283,8 @@ export default function IPsecSection({
                 const hasChildren = (t.children?.length ?? 0) > 0;
                 return (
                   <Fragment key={t.id}>
-                    <tr className="border-t border-slate-800">
+                    {/* group: reveals the row's comment pencil on hover (CommentBadge) */}
+                    <tr className="group border-t border-slate-800">
                       <td className="px-3 py-2">
                         <button
                           onClick={() => toggleExpand(t.id)}
@@ -313,6 +315,12 @@ export default function IPsecSection({
                           <PingSummary entries={t.children ?? []} />
                           <Phase2DupNote entries={t.children ?? []} />
                           <LipMismatchNote local={t.local} mismatch={t.local_ip_mismatch} />
+                          <EntityCommentBadge
+                            instanceId={instanceId}
+                            kind="ipsec"
+                            entityKey={t.id}
+                            scope="instance"
+                          />
                         </div>
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-slate-400">

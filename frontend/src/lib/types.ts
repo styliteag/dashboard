@@ -312,6 +312,22 @@ export interface MetricResponse {
   points: MetricPoint[];
 }
 
+// ----- Entity comments --------------------------------------------------------
+
+// Mirror of backend CommentRead (app/comments/schemas.py). Operator notes on
+// non-DB entities, keyed (instance_id, kind, entity_key). Instance comments live
+// on Instance.notes instead (PATCH /instances/{id}).
+export type CommentKind = "ipsec" | "connectivity" | "firmware" | "cert";
+
+export interface EntityComment {
+  instance_id: number;
+  kind: string;
+  entity_key: string;
+  comment: string;
+  updated_by: string;
+  updated_at: string | null;
+}
+
 // ----- External IP / NAT ----------------------------------------------------
 
 // Mirror of backend ExternalIpInfo (app/metrics/routes.py). Public IPs the box

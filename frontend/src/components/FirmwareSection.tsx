@@ -7,6 +7,7 @@ import { Download, RefreshCw, Package, AlertTriangle, Lock } from "lucide-react"
 import { api, apiErrorText } from "../lib/api";
 import { useAuth, canWrite } from "../lib/use-auth";
 import type { FirmwareStatus, ActionResult, FirmwareUpgradeStatus, Instance } from "../lib/types";
+import { EntityCommentBadge } from "./CommentBadge";
 
 interface Props {
   instanceId: number;
@@ -107,8 +108,15 @@ export default function FirmwareSection({
   return (
     <section className="mt-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-400">
+        {/* group: reveals the comment pencil on header hover (CommentBadge) */}
+        <h2 className="group flex items-center gap-2 text-sm font-semibold text-slate-400">
           <Package className="h-4 w-4" /> Firmware
+          <EntityCommentBadge
+            instanceId={instanceId}
+            kind="firmware"
+            entityKey=""
+            scope="instance"
+          />
         </h2>
         {canWr ? (
           <label className="flex items-center gap-1.5 text-xs text-slate-400">

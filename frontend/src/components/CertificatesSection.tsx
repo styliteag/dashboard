@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { fmtDate } from "../lib/datetime";
 import type { CertInfo } from "../lib/types";
+import { EntityCommentBadge } from "./CommentBadge";
 
 function expiryClass(days: number): string {
   if (days < 7) return "text-red-400";
@@ -47,14 +48,23 @@ export default function CertificatesSection({ instanceId }: { instanceId: number
           </thead>
           <tbody>
             {sorted.map((c) => (
-              <tr key={`${c.type}:${c.refid || c.name}`} className="border-t border-slate-800">
+              // group: reveals the row's comment pencil on hover (CommentBadge)
+              <tr key={`${c.type}:${c.refid || c.name}`} className="group border-t border-slate-800">
                 <td className="px-3 py-2 font-medium">
-                  {c.name}
-                  {c.is_gui && (
-                    <span className="ml-2 rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] text-sky-300">
-                      GUI
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1.5">
+                    {c.name}
+                    {c.is_gui && (
+                      <span className="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] text-sky-300">
+                        GUI
+                      </span>
+                    )}
+                    <EntityCommentBadge
+                      instanceId={instanceId}
+                      kind="cert"
+                      entityKey={c.refid || c.name}
+                      scope="instance"
+                    />
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-slate-400">{c.type.toUpperCase()}</td>
                 <td className="px-3 py-2 font-mono text-xs text-slate-400">

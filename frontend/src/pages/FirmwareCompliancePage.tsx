@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
+import { EntityCommentBadge } from "../components/CommentBadge";
 import { ShellIconLink } from "../components/ShellIconLink";
 import { useAuth, canWrite } from "../lib/use-auth";
 import { WebUiIconLink } from "../components/WebUiIconLink";
@@ -319,7 +320,8 @@ export default function FirmwareCompliancePage() {
             </thead>
             <tbody>
               {sorted.map((e) => (
-                <tr key={e.instance_id} className="border-t border-slate-800">
+                // group: reveals the row's comment pencil on hover (CommentBadge)
+                <tr key={e.instance_id} className="group border-t border-slate-800">
                   {canWr && (
                     <td className="px-3 py-2">
                       <input
@@ -375,6 +377,12 @@ export default function FirmwareCompliancePage() {
                           aria-label="Firmware updates locked"
                         />
                       )}
+                      <EntityCommentBadge
+                        instanceId={e.instance_id}
+                        kind="firmware"
+                        entityKey=""
+                        scope="all"
+                      />
                     </span>
                   </td>
                   <td className="px-3 py-2 text-slate-400">{e.location || "—"}</td>
