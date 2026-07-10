@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.11] - 2026-07-10
+
 ### Added
 
 - Editable operator **comments** on VPN tunnels (per phase 1), connectivity
