@@ -115,6 +115,12 @@ async def agent_websocket(ws: WebSocket):
     )
 
     agent = await hub.register(ws, instance_id, instance_name)
+    # Record the peer IP the hub saw on this handshake — the box's public egress
+    # IP as observed by the server (honours trusted_proxy_hops behind nginx). A
+    # WebSocket is HTTPConnection-shaped, so client_ip's .headers/.client access
+    # applies. Surfaced on the network tab as a NAT signal beside the agent's own
+    # ipify probe.
+    agent.source_ip = client_ip(ws)
 
     try:
         # Wait for hello

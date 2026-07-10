@@ -60,6 +60,9 @@ class GlobalTunnel(BaseModel):
     children: list[IPsecChild] = []
     ike_init_spi: str = ""
     ike_resp_spi: str = ""
+    # Dashboard-only "lip-mismatch" note: the configured public local endpoint IP
+    # no longer matches the box's external IP (hub-derived; agent path only).
+    local_ip_mismatch: bool = False
     # The matched other end of this tunnel (another managed instance), if found.
     peer_instance_id: int | None = None
     peer_instance_name: str | None = None
@@ -158,6 +161,7 @@ async def global_vpn_overview(
                     children=t.children,
                     ike_init_spi=t.ike_init_spi,
                     ike_resp_spi=t.ike_resp_spi,
+                    local_ip_mismatch=t.local_ip_mismatch,
                 )
                 for t in status.tunnels
             ]

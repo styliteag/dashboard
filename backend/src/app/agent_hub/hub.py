@@ -17,9 +17,11 @@ from sqlalchemy import select
 
 from app.agent_hub.converters import (
     annotate_iface_error_rates,
+    annotate_local_ip_mismatch,
     certs_from_agent,
     check_alert,
     connectivity_from_agent,
+    external_ip_from_agent,
     firmware_from_agent,
     gateways_from_agent,
     ipsec_from_agent,
@@ -43,6 +45,7 @@ from app.notifications.notifier import dispatch_async
 from app.xsense.schemas import (
     CertInfo,
     ConnectivityResult,
+    ExternalIp,
     FirmwareStatus,
     GatewayStatus,
     IPsecServiceStatus,
@@ -91,6 +94,11 @@ class ConnectedAgent:
         # Per-connection push bookkeeping for the hub observability page.
         self.pushes: int = 0
         self.last_push_at: datetime | None = None
+        # Peer IP the hub saw when this agent connected (via client_ip → honours
+        # trusted_proxy_hops behind nginx). This is the box's public egress IP as
+        # observed by the server — a NAT signal independent of the agent's own
+        # ipify probe. Live-connection only; not persisted in the snapshot.
+        self.source_ip: str | None = None
         self._pending_commands: dict[str, asyncio.Future] = {}
 
     async def send_command(
@@ -151,6 +159,7 @@ class AgentHub:
         # ``_debounce_ping_checks``. In-memory only, same trade-off as the dup streak.
         self._ping_fail_streak: dict[int, dict[str, int]] = {}
         self._last_connectivity: dict[int, list[ConnectivityResult]] = {}
+        self._last_external_ip: dict[int, ExternalIp] = {}
         self._last_firewall_log: dict[int, list[dict]] = {}
         self._last_services: dict[int, list[ServiceInfo]] = {}
         self._last_certs: dict[int, list[CertInfo]] = {}
@@ -269,6 +278,14 @@ class AgentHub:
     def get_last_connectivity(self, instance_id: int) -> list[ConnectivityResult] | None:
         return self._last_connectivity.get(instance_id)
 
+    def get_last_external_ip(self, instance_id: int) -> ExternalIp | None:
+        return self._last_external_ip.get(instance_id)
+
+    def get_source_ip(self, instance_id: int) -> str | None:
+        """Peer IP seen on the currently-connected agent's WS handshake, or None."""
+        agent = self._agents.get(instance_id)
+        return agent.source_ip if agent else None
+
     def get_last_firewall_log(self, instance_id: int) -> list[dict] | None:
         return self._last_firewall_log.get(instance_id)
 
@@ -301,6 +318,9 @@ class AgentHub:
         connectivity = self._last_connectivity.get(instance_id)
         if connectivity is not None:
             snap["connectivity"] = [c.model_dump(mode="json") for c in connectivity]
+        ext_ip = self._last_external_ip.get(instance_id)
+        if ext_ip is not None:
+            snap["external_ip"] = ext_ip.model_dump(mode="json")
         fwl = self._last_firewall_log.get(instance_id)
         if fwl is not None:
             snap["firewall_log"] = fwl
@@ -357,6 +377,10 @@ class AgentHub:
                 self._last_connectivity[instance_id] = [
                     ConnectivityResult.model_validate(c) for c in snapshot["connectivity"]
                 ]
+            if snapshot.get("external_ip"):
+                self._last_external_ip[instance_id] = ExternalIp.model_validate(
+                    snapshot["external_ip"]
+                )
             if snapshot.get("firewall_log"):
                 self._last_firewall_log[instance_id] = snapshot["firewall_log"]
             if snapshot.get("services"):
@@ -482,6 +506,15 @@ class AgentHub:
         self._last_status[instance_id] = status
         self._last_metrics_ts[instance_id] = ts
 
+        # Cache the box's public IPv4/IPv6. Truthy-guard on "any address present":
+        # an all-empty section means both ipify probes failed this cycle (the agent
+        # only sends it when the section is present), so keep the last known IP
+        # rather than blank the NAT signal. Cached BEFORE the IPsec block below so
+        # the lip-mismatch annotation compares against the freshest external IP.
+        ext_ip = external_ip_from_agent(data)
+        if ext_ip is not None and (ext_ip.ipv4 or ext_ip.ipv6):
+            self._last_external_ip[instance_id] = ext_ip
+
         # Cache gateways — only update when the agent actually sent entries;
         # an empty list most likely means the collector failed, not that all
         # gateways were removed. This prevents wiping the cache on a failure.
@@ -496,6 +529,13 @@ class AgentHub:
         if data.get("ipsec"):
             prev_ipsec = self._last_ipsec.get(instance_id)
             new_ipsec = self._annotate_dup_persistence(instance_id, ipsec_from_agent(data))
+            # Dashboard-only "lip-mismatch" note: tunnel pins a public local IP that
+            # no longer matches the box's external IP. Deterministic, so unlike the
+            # dup streak it needs no per-instance state. diff_ipsec ignores this
+            # field, so toggling it emits no history events (note, not an alert).
+            new_ipsec = annotate_local_ip_mismatch(
+                new_ipsec, self._last_external_ip.get(instance_id)
+            )
             self._last_ipsec[instance_id] = new_ipsec
             tunnel_events = diff_ipsec(prev_ipsec, new_ipsec)
 

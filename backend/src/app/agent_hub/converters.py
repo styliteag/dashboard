@@ -7,6 +7,7 @@ onto our domain schemas. Keep them in sync with the agent's output shape.
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 
 from app.xsense.schemas import (
     CertInfo,
@@ -14,6 +15,7 @@ from app.xsense.schemas import (
     ConnectivityResult,
     CpuUsage,
     DiskUsage,
+    ExternalIp,
     FirmwareStatus,
     GatewayStatus,
     InterfaceStats,
@@ -164,6 +166,62 @@ def connectivity_from_agent(data: dict) -> list[ConnectivityResult]:
         with contextlib.suppress(Exception):
             out.append(ConnectivityResult.model_validate(c))
     return out
+
+
+def external_ip_from_agent(data: dict) -> ExternalIp | None:
+    """Parse the agent's ``external_ip`` push section, or None when absent/malformed.
+
+    Returns None for an older agent that never sends the section (so the caller
+    keeps the previous cache) — distinct from an ExternalIp with both families
+    None, which a modern agent sends when both probes failed this cycle."""
+    raw = data.get("external_ip")
+    if not isinstance(raw, dict):
+        return None
+    with contextlib.suppress(Exception):
+        return ExternalIp.model_validate(raw)
+    return None
+
+
+def _local_ip_mismatch(local: str, ext_v4: str | None, ext_v6: str | None) -> bool:
+    """True when ``local`` is a public IP that differs from the box's external IP
+    of the same family. False for anything we can't confidently compare.
+
+    Deliberately scoped to a *global* local endpoint: a private local address is
+    the normal behind-NAT / NAT-T case where local≠public is expected, so flagging
+    it would be noise. When the external IP for that family is unknown we can't
+    judge, so we default off rather than guess."""
+    try:
+        ip = ipaddress.ip_address((local or "").strip())
+    except ValueError:
+        return False  # "%any", an interface name, or empty → nothing to compare
+    if not ip.is_global:
+        return False
+    ext = ext_v4 if ip.version == 4 else ext_v6
+    if not ext:
+        return False
+    try:
+        return ip != ipaddress.ip_address(ext)
+    except ValueError:
+        return False
+
+
+def annotate_local_ip_mismatch(
+    status: IPsecServiceStatus, external: ExternalIp | None
+) -> IPsecServiceStatus:
+    """Return a copy of ``status`` with ``local_ip_mismatch`` set on each tunnel
+    whose configured local endpoint IP no longer matches the box's real external
+    IP — the dashboard-only "lip-mismatch" note. Pure and immutable (per-tunnel
+    ``model_copy``), sibling to the hub's ``_annotate_dup_persistence`` but
+    stateless: it's a single deterministic compare, so no streak/debounce."""
+    ext_v4 = external.ipv4 if external else None
+    ext_v6 = external.ipv6 if external else None
+    tunnels = [
+        t
+        if (mismatch := _local_ip_mismatch(t.local, ext_v4, ext_v6)) == t.local_ip_mismatch
+        else t.model_copy(update={"local_ip_mismatch": mismatch})
+        for t in status.tunnels
+    ]
+    return status.model_copy(update={"tunnels": tunnels})
 
 
 def gateways_from_agent(data: dict) -> list[GatewayStatus]:

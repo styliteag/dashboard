@@ -211,6 +211,22 @@ class SystemStatus(BaseModel):
     console_password_protected: bool = False
 
 
+class ExternalIp(BaseModel):
+    """The box's public IPv4/IPv6 as reported by an external echo (agent push).
+
+    ``None`` per family = not known this cycle (no route / probe failed); the agent
+    keeps the last successful value sticky, so a populated field is the box's real
+    internet-facing address. ``checked_at`` is the agent-side ISO timestamp of the
+    last probe cycle. NAT detection is derived from this on read (compare against
+    the box's own interface addresses)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    ipv4: str | None = None
+    ipv6: str | None = None
+    checked_at: str | None = None
+
+
 class ConnectivityResult(BaseModel):
     """One standalone connectivity-ping result pushed by the agent.
 
@@ -295,6 +311,13 @@ class IPsecTunnel(BaseModel):
     # IKE cookie pair — IDENTICAL on both tunnel ends; NAT-proof pairing key (agent path).
     ike_init_spi: str = ""
     ike_resp_spi: str = ""
+    # Set by the hub when this tunnel pins a *public* local endpoint IP (``local``)
+    # that differs from the box's real external IP — a dashboard-only "lip-mismatch"
+    # (local-IP mismatch) note, sibling to the phase-2 ``dup`` note. Deterministic
+    # (single compare, no debounce); stays False when the local endpoint is private
+    # (NAT-T is normal there) or the external IP is unknown. See
+    # ``annotate_local_ip_mismatch``.
+    local_ip_mismatch: bool = False
 
 
 class IPsecServiceStatus(BaseModel):

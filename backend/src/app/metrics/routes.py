@@ -7,6 +7,7 @@ GET /api/overview                 — global KPI tiles
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -35,6 +36,22 @@ class OverviewResponse(BaseModel):
     online: int
     offline: int
     degraded: int  # had a recent error but also a recent success
+
+
+class ExternalIpInfo(BaseModel):
+    """Public IP(s) + NAT signal for the network tab.
+
+    ``ipv4``/``ipv6`` are the agent's ipify probe (last known, sticky). ``source_ip``
+    is the peer IP the hub saw on the agent's WS connect (None when disconnected).
+    ``behind_nat`` is True when the box's public IPv4 is not one of its own
+    interface addresses — a NAT gateway owns the public address."""
+
+    ipv4: str | None = None
+    ipv6: str | None = None
+    checked_at: str | None = None
+    source_ip: str | None = None
+    behind_nat: bool = False
+    connected: bool = False
 
 
 class MetricPoint(BaseModel):
@@ -91,6 +108,50 @@ async def instance_status(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"poll failed: {exc}",
         ) from exc
+
+
+def _is_ipv4(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        return ipaddress.ip_address(value).version == 4
+    except ValueError:
+        return False
+
+
+@router.get("/instances/{instance_id}/external-ip", response_model=ExternalIpInfo)
+async def instance_external_ip(
+    instance_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> ExternalIpInfo:
+    """The box's public IPv4/IPv6 + a NAT indicator (agent mode).
+
+    Composes the agent's ipify probe (hub cache) with the source IP the hub saw on
+    connect and derives ``behind_nat``. Out-of-scope/missing instances 404 (no
+    existence oracle) — same scope gate as ``/status``."""
+    inst = await get_instance(session, instance_id, user)
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+    ext = hub.get_last_external_ip(instance_id)
+    source_ip = hub.get_source_ip(instance_id)
+    status_snap = hub.get_last_status(instance_id)
+    iface_addrs = {i.address for i in status_snap.interfaces if i.address} if status_snap else set()
+    ipv4 = ext.ipv4 if ext else None
+    # NAT judgement is IPv4-only (interface stats carry no IPv6): behind NAT when the
+    # public IPv4 isn't configured on any interface. Prefer the ipify IPv4; fall back
+    # to the observed source IP only when that is itself IPv4.
+    candidate = ipv4 or (source_ip if _is_ipv4(source_ip) else None)
+    behind_nat = bool(candidate and candidate not in iface_addrs)
+    return ExternalIpInfo(
+        ipv4=ipv4,
+        ipv6=ext.ipv6 if ext else None,
+        checked_at=ext.checked_at if ext else None,
+        source_ip=source_ip,
+        behind_nat=behind_nat,
+        connected=hub.is_connected(instance_id),
+    )
 
 
 @router.get("/instances/{instance_id}/metrics", response_model=MetricResponse)
