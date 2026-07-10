@@ -532,6 +532,40 @@ class ConnectivityMonitor(Base):
     __table_args__ = (UniqueConstraint("instance_id", "name", name="uq_connectivity_monitor"),)
 
 
+class EntityComment(Base):
+    """Free-text operator comment on a non-DB entity (see migration 038).
+
+    Instances have their own ``notes`` column; this table covers the entity kinds
+    that have no DB row of their own — keyed (instance_id, kind, entity_key):
+    ``ipsec`` → tunnel connection name (stable across rekeys, unlike unique_id),
+    ``connectivity`` → monitor id as string, ``cert`` → OPNsense refid (survives
+    in-place renewal), ``firmware`` → "" (one note per instance). A comment whose
+    entity vanishes (tunnel removed, cert re-imported) simply stops being rendered;
+    rows die with their instance via the FK cascade.
+    """
+
+    __tablename__ = "entity_comments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_key: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("instance_id", "kind", "entity_key", name="uq_entity_comment"),
+    )
+
+
 class IPsecTunnelEvent(Base):
     """One recorded IPsec tunnel state transition (history behind the GUI popup).
 

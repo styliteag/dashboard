@@ -21,6 +21,7 @@ from app.auth.routes import router as auth_router
 from app.bulk.routes import router as bulk_router
 from app.capture.routes import router as capture_router
 from app.checks.routes import router as checks_router
+from app.comments.routes import router as comments_router
 from app.config import Settings, get_settings
 from app.configbackup.routes import router as config_backups_router
 from app.connectivity.routes import router as connectivity_router
@@ -238,6 +239,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_router, prefix="/api")
     app.include_router(checks_router, prefix="/api")
     app.include_router(connectivity_router, prefix="/api")
+    app.include_router(comments_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(users_router, prefix="/api")
