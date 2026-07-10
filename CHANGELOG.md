@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The **Network** tab of each instance now shows a **Public IP** block at the top:
+  the box's external IPv4 and IPv6 (reported by the agent via an ipify echo), the
+  source IP the dashboard saw when the agent connected, and a **Behind NAT / Direct**
+  indicator. NAT is detected when the box's public IPv4 is not one of its own
+  interface addresses — so boxes sitting behind an upstream/carrier NAT are visible
+  at a glance. Agent (`2.9.10`) adds the external-IP probe (throttled to ~15 min,
+  cached and sticky through transient failures; the only collector that reaches an
+  outside service, over verified HTTPS).
+- IPsec tunnels now carry a dashboard-only **lip-mismatch** note (amber, beside the
+  existing `dup` note) when a tunnel pins a *public* local endpoint IP that no longer
+  matches the box's real external IP — i.e. the configured local address drifted
+  (box moved behind NAT, or its WAN IP changed). Shown on both the per-instance IPsec
+  view and the global VPN overview. Purely informational: no alert, no notification.
+
 ## [2.9.9] - 2026-07-08
 
 ### Added

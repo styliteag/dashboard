@@ -13,7 +13,13 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
-import { Phase2Badge, Phase2ChildList, Phase2DupNote, PingSummary } from "./IPsecPhase2";
+import {
+  LipMismatchNote,
+  Phase2Badge,
+  Phase2ChildList,
+  Phase2DupNote,
+  PingSummary,
+} from "./IPsecPhase2";
 import { WebUiIconLink } from "./WebUiIconLink";
 import { ShellIconLink } from "./ShellIconLink";
 import { useShellEnabledMap } from "../lib/instances";
@@ -154,6 +160,7 @@ export default function TunnelRow({
             <Phase2Badge up={t.phase2_up} total={t.phase2_total} />
             <PingSummary entries={t.children ?? []} />
             <Phase2DupNote entries={t.children ?? []} />
+            <LipMismatchNote local={t.local} mismatch={t.local_ip_mismatch} />
           </div>
         </td>
         <td className="px-3 py-2 font-mono text-xs text-slate-400">

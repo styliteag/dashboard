@@ -312,6 +312,19 @@ export interface MetricResponse {
   points: MetricPoint[];
 }
 
+// ----- External IP / NAT ----------------------------------------------------
+
+// Mirror of backend ExternalIpInfo (app/metrics/routes.py). Public IPs the box
+// reports via ipify + the source IP the hub saw on connect + a derived NAT flag.
+export interface ExternalIpInfo {
+  ipv4: string | null;
+  ipv6: string | null;
+  checked_at: string | null; // agent-side ISO timestamp of the last probe
+  source_ip: string | null; // peer IP the hub saw on the agent's WS connect
+  behind_nat: boolean; // public IPv4 is not one of the box's own interface addresses
+  connected: boolean; // agent currently connected (source_ip is live)
+}
+
 // ----- IPsec ---------------------------------------------------------------
 
 export type PingState = "none" | "ok" | "fail" | "error";
@@ -347,6 +360,7 @@ export interface IPsecTunnel {
   bytes_out: number;
   unique_id: string; // active IKE_SA id — used to Disconnect (terminate); empty when down
   children: IPsecChild[]; // per-Phase-2 detail (agent mode)
+  local_ip_mismatch?: boolean; // public local endpoint IP ≠ box's external IP — "lip-mismatch" note
 }
 
 export interface IPsecPingMonitor {

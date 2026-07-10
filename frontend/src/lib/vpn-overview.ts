@@ -28,6 +28,7 @@ export interface GlobalTunnel {
   children: IPsecChild[];
   ike_init_spi?: string;
   ike_resp_spi?: string;
+  local_ip_mismatch?: boolean; // public local endpoint IP ≠ box's external IP ("lip-mismatch")
   peer_instance_id?: number | null;
   peer_instance_name?: string | null;
   peer_tunnel_id?: string | null;

@@ -3,7 +3,7 @@
  * the ping-monitor affordance. Used by both the instance IPsec view and the
  * global VPN overview so Phase 2 + its ping status look identical everywhere.
  */
-import { Activity, Copy, Settings2 } from "lucide-react";
+import { Activity, AlertTriangle, Copy, Settings2 } from "lucide-react";
 import type { IPsecChild, IPsecPingMonitor } from "../lib/types";
 import { findMonitor, worstPing } from "../lib/ipsec-ping";
 
@@ -53,6 +53,26 @@ export function Phase2DupNote({ entries }: { entries: IPsecChild[] }) {
     >
       <Copy className="h-3 w-3" />
       dup
+    </span>
+  );
+}
+
+/**
+ * Always-visible note when a tunnel pins a public local endpoint IP that no longer
+ * matches the box's external IP (backend-derived "lip-mismatch"). Amber rather than
+ * the neutral dup sky, because unlike a duplicate SA this is usually an actionable
+ * config discrepancy — the configured local address drifted from the box's real
+ * public IP (box moved behind NAT, or its WAN IP changed). Null unless flagged.
+ */
+export function LipMismatchNote({ local, mismatch }: { local: string; mismatch?: boolean }) {
+  if (!mismatch) return null;
+  return (
+    <span
+      title={`Configured local endpoint ${local} does not match this box's external IP — the tunnel is pinned to a stale public address (behind NAT, or the WAN IP changed).`}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-amber-600/20 px-1.5 py-0.5 text-xs text-amber-400"
+    >
+      <AlertTriangle className="h-3 w-3" />
+      lip-mismatch
     </span>
   );
 }

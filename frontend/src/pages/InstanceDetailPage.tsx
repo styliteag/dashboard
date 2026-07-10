@@ -27,6 +27,7 @@ import ServicesSection from "../components/ServicesSection";
 import ConfigBackupsSection from "../components/ConfigBackupsSection";
 import ConfigSection from "../components/ConfigSection";
 import CertificatesSection from "../components/CertificatesSection";
+import ExternalIpSection from "../components/ExternalIpSection";
 import GatewaySection from "../components/GatewaySection";
 import InterfacesSection from "../components/InterfacesSection";
 import TopTalkersSection from "../components/TopTalkersSection";
@@ -263,9 +264,10 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Network: interfaces (live throughput) + gateways + state-table top talkers */}
+      {/* Network: public IP / NAT + interfaces (live throughput) + gateways + top talkers */}
       {tab === "network" && (
         <div>
+          <ExternalIpSection instanceId={nid} />
           <InterfacesSection instanceId={nid} />
           <GatewaySection instanceId={nid} />
           <TopTalkersSection instanceId={nid} />
