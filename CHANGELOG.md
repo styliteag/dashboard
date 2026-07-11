@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Agent tab's installation guide was wrong for Linux nodes (it showed
+  the FreeBSD steps: `fetch`, rc.d, `sysrc`/`service`, 30s interval). Linux
+  instances now get their own guide — curl downloads (including the bundled
+  Checkmk agent and the systemd unit, both now served by the dashboard),
+  `printf` config with 120s interval and chmod 600, `systemctl enable
+  --now`, `journalctl -f` for logs — and the firewall-only GUI/local-API
+  box is hidden there.
+
 ## [3.0.0] - 2026-07-11
 
 ### Fixed
