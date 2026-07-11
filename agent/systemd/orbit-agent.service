@@ -1,0 +1,24 @@
+# orbit-agent.service — STYLiTE Orbit agent on generic Linux servers (§25).
+#
+# systemd starts the same run-agent.sh supervisor the FreeBSD rc.d script uses,
+# so the self-update contract (exit 42 = update respawn; marker + short runtime
+# + .bak = rollback) stays one implementation. Restart=always only guards the
+# supervisor itself — the supervisor handles agent respawns.
+
+[Unit]
+Description=STYLiTE Orbit agent (supervisor)
+Documentation=https://github.com/stylite/dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/orbit-agent/run-agent.sh
+Restart=always
+RestartSec=5
+# The agent runs as root (package updates, tcpdump, PTY shell) — same contract
+# as on the firewalls. Keep a private /tmp anyway.
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

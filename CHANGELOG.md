@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sections for now) into the regular snapshot shapes, so Linux nodes show
   real CPU %, load, RAM/swap, disk usage and uptime in the instance views,
   metrics history and checks — no separate Linux code path downstream.
+- New `agent/install-linux.sh` + systemd unit: installs the agent, the
+  run-agent.sh supervisor (same self-update/rollback contract as on
+  FreeBSD) and the bundled Checkmk agent on a Linux server. The FreeBSD
+  `install.sh` is untouched.
 
 ## [2.9.11] - 2026-07-10
 
