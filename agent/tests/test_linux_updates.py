@@ -145,6 +145,42 @@ def test_cmd_firmware_update_linux_without_pkg_manager_fails(monkeypatch) -> Non
     assert result["success"] is False
 
 
+def test_upgrade_status_running_while_apt_active(monkeypatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda cmd, timeout=5: "1234\n" if "pgrep" in cmd[-1] else "log line\n",
+    )
+    agent._STATE.fw_check_ts = 999.0
+    result = agent._cmd_upgrade_status({})
+    assert result["success"] is True and result["status"] == "running"
+    assert result["log"] == ["log line"]
+    # Throttle untouched while still running.
+    assert agent._STATE.fw_check_ts == 999.0
+
+
+def test_upgrade_status_done_rearms_check_throttle(monkeypatch) -> None:
+    """After the background upgrade finishes the pending counts must refresh
+    on the next push — not after the 12h window."""
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda cmd, timeout=5: "" if "pgrep" in cmd[-1] else "2026-07-11 installed x\n",
+    )
+    agent._STATE.fw_check_ts = 999.0
+    result = agent._cmd_upgrade_status({})
+    assert result["status"] == "done"
+    assert agent._STATE.fw_check_ts == 0.0
+
+
+def test_upgrade_status_non_linux_is_unknown(monkeypatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    result = agent._cmd_upgrade_status({})
+    assert result["success"] is False and result["status"] == "unknown"
+
+
 def test_linux_update_check_serializes_concurrent_callers(monkeypatch) -> None:
     """Push loop + manual firmware.check run on different threads; concurrent
     apt-get invocations fought over the dpkg lists lock (live on ubn1)."""

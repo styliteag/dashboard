@@ -209,10 +209,24 @@ async def firmware_upgrade_status(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> FirmwareUpgradeStatus:
-    """Poll upgrade progress. Agent mode: not supported (returns empty)."""
+    """Poll upgrade progress.
+
+    Agent mode: ask the agent (linux answers running/done from apt/dpkg
+    process state + dpkg log tail, §25); firewall agents predate the command
+    and answer unknown-action → degrade to the historic "unknown" so the UI
+    behaves as before.
+    """
     inst = await _get_instance(instance_id, session, user)
 
     if inst.agent_mode:
+        agent = hub.get(instance_id)
+        if agent is not None:
+            result = await agent.send_command("firmware.upgrade_status", {}, timeout=15)
+            if result.get("success") and result.get("status") in ("running", "done"):
+                return FirmwareUpgradeStatus(
+                    status=result["status"],
+                    log=[str(line) for line in result.get("log") or []],
+                )
         return FirmwareUpgradeStatus(status="unknown", log=[])
 
     try:

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Start update" on a Linux node no longer tracks progress forever (agent
+  2.9.17): the agent reports the background apt/dnf upgrade as running/done
+  from live process state plus the dpkg log tail, the banner completes, and
+  the pending-update counts refresh on the next push instead of after the
+  12h check window. Firewall agents keep the previous behavior.
 - Linux nodes no longer show a WebGUI globe icon in the instance lists and
   hub status (there is no web UI to open); the backend refuses
   `/gui/open` for such device types outright. The Terminal button works

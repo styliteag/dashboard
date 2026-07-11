@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.16"
+__version__ = "2.9.17"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3965,6 +3965,37 @@ def _cmd_firmware_update(params: dict) -> dict:
     return {"success": True, "output": "update started in background"}
 
 
+def _cmd_upgrade_status(params: dict) -> dict:
+    """Progress of a background package upgrade (linux, §25).
+
+    "running" while apt/dpkg/dnf processes exist, else "done" — with the dpkg
+    (or dnf) log tail as the visible log. On done the update-check throttle is
+    re-armed so the next push reports fresh pending counts instead of serving
+    the pre-upgrade verdict for up to 12h.
+    """
+    if detect_platform() != "linux":
+        return {"success": False, "output": "unsupported platform", "status": "unknown", "log": []}
+    procs = _run(
+        ["sh", "-c", "pgrep -x apt-get; pgrep -x apt; pgrep -x dpkg; pgrep -x dnf"], timeout=10
+    )
+    running = bool(procs.strip())
+    tail = _run(
+        [
+            "sh",
+            "-c",
+            "tail -n 20 /var/log/dpkg.log 2>/dev/null || tail -n 20 /var/log/dnf.rpm.log",
+        ],
+        timeout=10,
+    )
+    if not running:
+        _STATE.fw_check_ts = 0.0
+    return {
+        "success": True,
+        "status": "running" if running else "done",
+        "log": tail.splitlines()[-20:],
+    }
+
+
 def _cmd_config_backup(params: dict) -> dict:
     config_path = "/conf/config.xml"
     if os.path.exists(config_path):
@@ -4149,6 +4180,7 @@ _COMMANDS = {
     "reboot": _cmd_reboot,
     "relay.enable": _cmd_relay_enable,
     "checkmk.update": _cmd_checkmk_update,
+    "firmware.upgrade_status": _cmd_upgrade_status,
     "gui.login": _cmd_gui_login,
     "http.relay": _cmd_http_relay,
     "ping": _cmd_ping,
