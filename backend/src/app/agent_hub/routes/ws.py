@@ -35,9 +35,14 @@ log = structlog.get_logger("app.agent_hub.routes")
 
 router = APIRouter(tags=["agent"])
 
-# The two firewall kinds the agent's detect_platform() can report. Only these
-# may self-heal below — other device types must never flip on an agent's word.
-_AGENT_PLATFORMS = {DeviceType.OPNSENSE.value, DeviceType.PFSENSE.value}
+# The device kinds the agent's detect_platform() can report. Only these may
+# self-heal below — other device types (securepoint, proxmox, …) must never
+# flip on an agent's word.
+_AGENT_PLATFORMS = {
+    DeviceType.OPNSENSE.value,
+    DeviceType.PFSENSE.value,
+    DeviceType.LINUX.value,
+}
 
 
 async def _sync_device_type(instance_id: int, platform: str) -> None:
@@ -46,8 +51,9 @@ async def _sync_device_type(instance_id: int, platform: str) -> None:
     Instances default to OPNsense on creation, so a pfSense (Plus) box enrolled
     without correcting the type dropdown is stored wrong — mislabeling the UI
     and building OPNsense deep links to pfSense pages. The agent runs on the
-    box and knows better; trust it, but only within the opnsense↔pfsense pair.
-    Best-effort: a failure here must never tear down the agent connection.
+    box and knows better; trust it, but only within the agent-platform set
+    (opnsense/pfsense/linux). Best-effort: a failure here must never tear down
+    the agent connection.
     """
     if platform not in _AGENT_PLATFORMS:
         return

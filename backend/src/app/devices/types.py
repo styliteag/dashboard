@@ -26,3 +26,5 @@ class DeviceType(StrEnum):
     TRUENAS = "truenas"
     QNAP = "qnap"
     SECUREPOINT = "securepoint"
+    # Generic Linux server: push-only (agent, no direct API / web UI) — §25, DR-9.
+    LINUX = "linux"

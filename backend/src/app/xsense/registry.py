@@ -10,6 +10,7 @@ import asyncio
 
 from app.crypto.secrets import decrypt
 from app.db.models import Instance
+from app.devices.capabilities import device_caps
 from app.devices.protocol import DeviceClient
 from app.devices.types import DeviceType
 from app.securepoint.client import SecurepointClient
@@ -40,6 +41,11 @@ class ClientRegistry:
 
     @classmethod
     def _build(cls, instance: Instance) -> DeviceClient:
+        # Push-only types (linux) have no HTTP API. The poller skips push
+        # transports, so reaching this is a caller bug — fail loudly instead
+        # of building an OPNsense client against an empty base_url.
+        if not device_caps(instance.device_type).direct_api:
+            raise ValueError(f"no direct API client for device type {instance.device_type!r}")
         if instance.device_type == DeviceType.SECUREPOINT.value:
             return SecurepointClient(
                 base_url=instance.primary_base_url,

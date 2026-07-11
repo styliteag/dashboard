@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New device type **Linux** (generic Linux server, e.g. customer app servers or
+  MSP infrastructure hosts): push-only via the orbit agent — created without a
+  base URL/API key, enrolled exactly like a firewall, with a calmer 120s default
+  push interval. Firewall-only surfaces (VPN, web-UI proxy, firewall rules) are
+  hidden for this type; test-connection reports it as push-only instead of
+  probing. Full data collection (metrics, checks, updates, logs) lands in the
+  following releases via the bundled Checkmk agent.
+
 ## [2.9.11] - 2026-07-10
 
 ### Added

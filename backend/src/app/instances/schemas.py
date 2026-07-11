@@ -9,8 +9,9 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.devices.capabilities import device_caps
 from app.devices.types import DeviceType, Transport
 from app.instances.slug import is_valid_slug
 
@@ -72,7 +73,9 @@ class InstanceCreate(BaseModel):
     group_id: int | None = None
     # Optional: omit to auto-derive a URL-safe slug from ``name`` (§18 GUI proxy).
     slug: str | None = Field(default=None, max_length=63)
-    base_url: str
+    # Required for direct-API device types; push-only types (linux) have no
+    # web UI/API and must omit it — see _apply_device_class_rules below.
+    base_url: str | None = None
     # API key/secret are optional when using agent mode (agent collects data locally).
     api_key: str | None = None
     api_secret: str | None = None
@@ -101,8 +104,8 @@ class InstanceCreate(BaseModel):
 
     @field_validator("base_url")
     @classmethod
-    def _check_base_url(cls, v: str) -> str:
-        return _normalize_base_urls(v)
+    def _check_base_url(cls, v: str | None) -> str | None:
+        return _normalize_base_urls(v) if v is not None else None
 
     @field_validator("slug")
     @classmethod
@@ -113,6 +116,29 @@ class InstanceCreate(BaseModel):
     @classmethod
     def _validate_ping_url(cls, v: str | None) -> str | None:
         return _check_ping_url(v)
+
+    @model_validator(mode="after")
+    def _apply_device_class_rules(self) -> InstanceCreate:
+        """Enforce the capability contract at the API boundary (DR-9).
+
+        Direct-API types keep requiring a base_url. Push-only types (linux)
+        are the inverse: no base_url, transport forced to push, and the
+        class default push cadence applied when the operator set none.
+        """
+        caps = device_caps(self.device_type)
+        if caps.direct_api:
+            if not self.base_url:
+                raise ValueError("base_url is required for this device type")
+            return self
+        if self.base_url:
+            raise ValueError(f"{self.device_type.value} instances have no base_url (push-only)")
+        if self.transport not in (None, Transport.PUSH):
+            raise ValueError(f"{self.device_type.value} instances are push-only")
+        self.transport = Transport.PUSH
+        self.base_url = ""
+        if self.push_interval_seconds is None:
+            self.push_interval_seconds = caps.default_push_interval
+        return self
 
 
 class InstanceUpdate(BaseModel):

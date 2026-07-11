@@ -23,6 +23,8 @@ export interface DeviceCaps {
   connectivity: boolean;
   /** SSH enrichment without an agent: shell fallback + IPsec status (Securepoint). */
   sshEnrichment: boolean;
+  /** Dashboard can reach an HTTP API on the box (test connection, base_url field). */
+  directApi: boolean;
   /** Label of the update surface ("Firmware" for appliances). */
   updatesLabel: "Firmware" | "Updates";
 }
@@ -35,6 +37,7 @@ const FIREWALL_DEFAULTS: DeviceCaps = {
   capture: true,
   connectivity: true,
   sshEnrichment: false,
+  directApi: true,
   updatesLabel: "Firmware",
 };
 
@@ -51,6 +54,14 @@ export const DEVICE_CAPS: Record<string, DeviceCaps> = {
     capture: false,
     connectivity: false,
     sshEnrichment: true,
+  },
+  // Generic Linux server (DR-9): push-only, no web UI/tunnels/rule editor.
+  linux: {
+    ...FIREWALL_DEFAULTS,
+    tunnels: false,
+    webif: false,
+    directApi: false,
+    updatesLabel: "Updates",
   },
 };
 

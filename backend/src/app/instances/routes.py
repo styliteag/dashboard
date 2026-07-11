@@ -20,6 +20,7 @@ from app.auth.deps import current_user, require_admin_or_superadmin, require_wri
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Group, Instance, User
+from app.devices.capabilities import device_caps
 from app.instances import service
 from app.instances.schemas import (
     InstanceCreate,
@@ -207,6 +208,13 @@ async def update(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="admin role required to change terminal access",
+        )
+    # Push-only device types (linux) have no direct API — a base_url must not
+    # sneak in via update either (create already rejects it, DR-9).
+    if payload.base_url and not device_caps(inst.device_type).direct_api:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="push-only device type has no base_url",
         )
     try:
         await service.update_instance(session, inst, payload)

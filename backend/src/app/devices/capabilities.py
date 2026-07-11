@@ -26,7 +26,13 @@ class DeviceCaps:
     capture: bool = True
     connectivity: bool = True
     ssh_enrichment: bool = False
+    # The dashboard can reach an HTTP API on the box (poller, test-connection,
+    # relay). False = push-only: base_url is optional and no client is built.
+    direct_api: bool = True
     updates_label: str = "Firmware"
+    # Per-instance push cadence applied at creation when the operator sets none.
+    # None = inherit the global DASH_PUSH_INTERVAL_SECONDS default.
+    default_push_interval: int | None = None
 
 
 DEVICE_CAPS: dict[DeviceType, DeviceCaps] = {
@@ -41,6 +47,15 @@ DEVICE_CAPS: dict[DeviceType, DeviceCaps] = {
         capture=False,
         connectivity=False,
         ssh_enrichment=True,
+    ),
+    # Generic Linux server (§25, DR-9): push-only, no web UI/tunnels/rule editor;
+    # servers push calmer than firewalls (120s vs the global 30s default).
+    DeviceType.LINUX: DeviceCaps(
+        tunnels=False,
+        webif=False,
+        direct_api=False,
+        updates_label="Updates",
+        default_push_interval=120,
     ),
 }
 

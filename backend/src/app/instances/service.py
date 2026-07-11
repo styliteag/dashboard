@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.scope import Principal, can_access, scope_clause
 from app.crypto.secrets import decrypt, encrypt
 from app.db.models import Instance
+from app.devices.capabilities import device_caps
 from app.devices.types import DeviceType, Transport
 from app.instances.schemas import InstanceCreate, InstanceUpdate
 from app.instances.slug import MAX_SLUG_LEN, is_valid_slug, slugify_name
@@ -124,7 +125,8 @@ async def create_instance(
         name=payload.name,
         group_id=group_id,
         slug=slug,
-        base_url=payload.base_url,
+        # Push-only device types (linux) carry no URL; the column is NOT NULL.
+        base_url=payload.base_url or "",
         api_key_enc=placeholder,
         api_secret_enc=placeholder_secret,
         ca_bundle=payload.ca_bundle,
@@ -246,6 +248,9 @@ async def _test_securepoint(inst: Instance) -> tuple[bool, int | None, int | Non
 async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
     """Open a *fresh* client (not the cached one) and probe reachability."""
     from app.crypto.secrets import decrypt
+
+    if not device_caps(inst.device_type).direct_api:
+        return False, None, None, "push-only device type — no direct API to test"
 
     if inst.device_type == DeviceType.SECUREPOINT.value:
         return await _test_securepoint(inst)

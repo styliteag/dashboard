@@ -141,3 +141,111 @@ def test_device_caps_rows_are_immutable() -> None:
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         device_caps("opnsense").agent = False  # type: ignore[misc]
+
+
+# --- Generic Linux node (§25, DR-9): push-only, agent-collected -----------------
+
+
+def test_device_caps_linux_is_push_only() -> None:
+    from app.devices.capabilities import device_caps
+
+    caps = device_caps(DeviceType.LINUX)
+    assert caps.agent is True
+    assert caps.direct_api is False
+    assert caps.tunnels is False
+    assert caps.webif is False
+    assert caps.firewall_rules is False
+    assert caps.updates_label == "Updates"
+    assert caps.default_push_interval == 120
+
+
+def test_instance_create_linux_defaults_push_and_interval() -> None:
+    """linux: no base_url needed; transport forced to push; 120s push default."""
+    from app.instances.schemas import InstanceCreate
+
+    m = InstanceCreate(name="srv", device_type=DeviceType.LINUX)
+    assert m.transport is Transport.PUSH
+    assert m.base_url == ""
+    assert m.push_interval_seconds == 120
+
+
+def test_instance_create_linux_explicit_interval_wins() -> None:
+    from app.instances.schemas import InstanceCreate
+
+    m = InstanceCreate(name="srv", device_type=DeviceType.LINUX, push_interval_seconds=30)
+    assert m.push_interval_seconds == 30
+
+
+def test_instance_create_linux_rejects_base_url_and_direct_transport() -> None:
+    from pydantic import ValidationError
+
+    from app.instances.schemas import InstanceCreate
+
+    with pytest.raises(ValidationError):
+        InstanceCreate(name="srv", device_type=DeviceType.LINUX, base_url="https://x.example")
+    with pytest.raises(ValidationError):
+        InstanceCreate(name="srv", device_type=DeviceType.LINUX, transport=Transport.DIRECT)
+
+
+def test_instance_create_direct_types_still_require_base_url() -> None:
+    from pydantic import ValidationError
+
+    from app.instances.schemas import InstanceCreate
+
+    with pytest.raises(ValidationError):
+        InstanceCreate(name="fw", device_type=DeviceType.OPNSENSE)
+
+
+@pytest.mark.asyncio
+async def test_test_connection_refuses_push_only_type() -> None:
+    from app.instances.service import test_connection
+
+    ok, status_code, latency, error = await test_connection(Instance(device_type="linux"))
+    assert ok is False and status_code is None
+    assert "push-only" in (error or "")
+
+
+def test_registry_refuses_client_for_push_only_type() -> None:
+    from app.xsense.registry import ClientRegistry
+
+    with pytest.raises(ValueError, match="no direct API client"):
+        ClientRegistry._build(Instance(device_type="linux", base_url=""))
+
+
+@pytest.mark.asyncio
+async def test_sync_device_type_heals_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An agent reporting platform=linux corrects a default-typed instance."""
+    from types import SimpleNamespace
+
+    from app.agent_hub.routes import ws as ws_routes
+
+    inst = SimpleNamespace(device_type="opnsense")
+    committed: list[bool] = []
+
+    class _FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, model, pk):
+            return inst
+
+        async def commit(self):
+            committed.append(True)
+
+    monkeypatch.setattr(ws_routes, "get_sessionmaker", lambda: lambda: _FakeSession())
+    await ws_routes._sync_device_type(1, "linux")
+    assert inst.device_type == "linux" and committed
+
+    # Securepoint must never flip on an agent's word.
+    inst2 = SimpleNamespace(device_type="securepoint")
+
+    class _FakeSession2(_FakeSession):
+        async def get(self, model, pk):
+            return inst2
+
+    monkeypatch.setattr(ws_routes, "get_sessionmaker", lambda: lambda: _FakeSession2())
+    await ws_routes._sync_device_type(1, "linux")
+    assert inst2.device_type == "securepoint"
