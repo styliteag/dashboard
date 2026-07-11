@@ -213,6 +213,32 @@ def test_ping_once_error_without_dest() -> None:
     assert agent._ping_once("10.1.1.5", "", 3)["ping_state"] == "error"
 
 
+def test_ping_once_linux_flags(monkeypatch) -> None:
+    """§25: iputils has no -t deadline / -S source — those mean TTL/sndbuf
+    there. Linux must use -w/-I; FreeBSD keeps -t/-S."""
+    seen: list[list[str]] = []
+
+    def record_run(cmd, **k):
+        seen.append(cmd)
+        return SimpleNamespace(
+            stdout="3 packets transmitted, 3 received, 0% packet loss\n"
+            "rtt min/avg/max/mdev = 0.2/0.4/0.6/0.1 ms",
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(agent.subprocess, "run", record_run)
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    res = agent._ping_once("10.1.1.5", "10.2.2.1", 3)
+    assert res["ping_state"] == "ok" and res["ping_rtt_ms"] == 0.4
+    assert "-w" in seen[0] and "-I" in seen[0]
+    assert "-t" not in seen[0] and "-S" not in seen[0]
+
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    agent._ping_once("10.1.1.5", "10.2.2.1", 3)
+    assert "-t" in seen[1] and "-S" in seen[1]
+
+
 # --- monitor matching + run --------------------------------------------------
 
 

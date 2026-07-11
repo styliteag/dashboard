@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.15"
+__version__ = "2.9.16"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1218,13 +1218,21 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
         return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
     # Pace packets 0.3s apart (sub-second interval needs root, which the agent has)
     # so a healthy tunnel answers in well under a second instead of the default
-    # 1s/packet. ``-t`` caps the run: all probes are sent within (count-1)*0.3s, so
-    # max(count, 2) still leaves >1s of reply slack while a dead tunnel waits out a
-    # shorter deadline than the old max(count+1, 3).
+    # 1s/packet. The deadline caps the run: all probes are sent within
+    # (count-1)*0.3s, so max(count, 2) still leaves >1s of reply slack while a
+    # dead target waits out a shorter deadline than the old max(count+1, 3).
+    # Flag divergence (§25): FreeBSD deadline/-source are -t/-S; on Linux
+    # (iputils) -t is TTL and -S is sndbuf — the equivalents are -w/-I. The
+    # loss/rtt summary lines parse identically on both.
     timeout = max(count, 2)
-    cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
-    if source:
-        cmd += ["-S", source]
+    if detect_platform() == "linux":
+        cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-w", str(timeout)]
+        if source:
+            cmd += ["-I", source]
+    else:
+        cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
+        if source:
+            cmd += ["-S", source]
     cmd.append(dest)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
