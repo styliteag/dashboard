@@ -194,6 +194,39 @@ def collect_frontend() -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# vendored (shipped verbatim, not package-managed)
+# --------------------------------------------------------------------------- #
+def collect_vendored() -> list[dict]:
+    """Single-file components vendored into the repo and shipped/distributed.
+
+    The Checkmk Linux agent (GPLv2 shell script) is served by the dashboard to
+    linux nodes (docs/agent-architecture.md §25, DR-10). Serving it is
+    distribution, so it carries an attribution obligation even though no
+    package manager knows about it. The script is its own complete source.
+    """
+    rows: list[dict] = []
+    cmk = ROOT / "agent" / "vendor" / "check_mk_agent.linux"
+    if cmk.exists():
+        src = cmk.read_text(errors="replace")
+        m = re.search(r'^\s*echo "Version: ([^"]+)"', src, re.M)
+        rows.append(
+            {
+                "name": "check_mk_agent.linux (Checkmk Linux agent, vendored unmodified)",
+                "version": m.group(1) if m else "unknown",
+                "license": "GPL-2.0-only",
+                "url": "https://github.com/Checkmk/checkmk",
+                "text": (
+                    "Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.\n"
+                    "Vendored unmodified from the Checkmk sources (agents/check_mk_agent.linux);\n"
+                    "the shell script is its own complete corresponding source.\n"
+                    "Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt"
+                ),
+            }
+        )
+    return rows
+
+
+# --------------------------------------------------------------------------- #
 # render
 # --------------------------------------------------------------------------- #
 def _table(rows: list[dict]) -> str:
@@ -218,7 +251,7 @@ def _texts(rows: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def render(backend: list[dict], frontend: list[dict]) -> str:
+def render(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> str:
     return "\n".join(
         [
             "# Third-Party Notices",
@@ -239,6 +272,10 @@ def render(backend: list[dict], frontend: list[dict]) -> str:
             "",
             _table(frontend),
             "",
+            "## Vendored (shipped verbatim)",
+            "",
+            _table(vendored),
+            "",
             "---",
             "",
             "## Full license texts",
@@ -250,6 +287,10 @@ def render(backend: list[dict], frontend: list[dict]) -> str:
             "### Frontend",
             "",
             _texts(frontend),
+            "",
+            "### Vendored",
+            "",
+            _texts(vendored),
             "",
         ]
     )
@@ -293,7 +334,26 @@ def _cdx_components(rows: list[dict], ecosystem: str) -> list[dict]:
     return comps
 
 
-def build_sbom(backend: list[dict], frontend: list[dict]) -> dict:
+def _cdx_vendored(rows: list[dict]) -> list[dict]:
+    comps: list[dict] = []
+    for r in rows:
+        if r["version"] == "unknown":
+            continue
+        purl = f"pkg:github/checkmk/checkmk@v{r['version']}"
+        comps.append(
+            {
+                "type": "application",
+                "bom-ref": purl,
+                "name": "check_mk_agent.linux",
+                "version": r["version"],
+                "purl": purl,
+                "licenses": [{"license": {"id": "GPL-2.0-only"}}],
+            }
+        )
+    return comps
+
+
+def build_sbom(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> dict:
     version = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "unknown"
     return {
         "bomFormat": "CycloneDX",
@@ -307,20 +367,23 @@ def build_sbom(backend: list[dict], frontend: list[dict]) -> dict:
                 "version": version,
             }
         },
-        "components": _cdx_components(backend, "pypi") + _cdx_components(frontend, "npm"),
+        "components": _cdx_components(backend, "pypi")
+        + _cdx_components(frontend, "npm")
+        + _cdx_vendored(vendored),
     }
 
 
 def main() -> None:
     backend = collect_backend()
     frontend = collect_frontend()
-    OUT.write_text(render(backend, frontend))
-    sbom = build_sbom(backend, frontend)
+    vendored = collect_vendored()
+    OUT.write_text(render(backend, frontend, vendored))
+    sbom = build_sbom(backend, frontend, vendored)
     SBOM_OUT.write_text(json.dumps(sbom, indent=2, ensure_ascii=False) + "\n")
     notices = OUT.relative_to(ROOT)
     bom = SBOM_OUT.relative_to(ROOT)
-    n = len(backend) + len(frontend)
-    print(f"wrote {notices} ({len(backend)}+{len(frontend)} components)")
+    n = len(backend) + len(frontend) + len(vendored)
+    print(f"wrote {notices} ({len(backend)}+{len(frontend)}+{len(vendored)} components)")
     print(f"wrote {bom} (CycloneDX 1.6, {len(sbom['components'])} of {n} components)")
 
 

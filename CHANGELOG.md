@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hidden for this type; test-connection reports it as push-only instead of
   probing. Full data collection (metrics, checks, updates, logs) lands in the
   following releases via the bundled Checkmk agent.
+- Agent 2.9.11 detects generic Linux hosts (`platform: linux`) and, when the
+  bundled Checkmk agent script is present, ships its raw output with every
+  push (`checkmk_raw` section, gzip, 2 MB cap) for backend-side parsing. The
+  vendored `check_mk_agent.linux` (Checkmk 2.5.0p8, GPLv2, unmodified) is now
+  part of the repo, signed with the same Ed25519 key as the agent and listed
+  in THIRD-PARTY-NOTICES.
 
 ## [2.9.11] - 2026-07-10
 

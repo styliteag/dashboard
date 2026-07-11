@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""orbit agent — runs on OPNsense (FreeBSD), pushes data to the central dashboard.
+"""orbit agent — runs on OPNsense/pfSense (FreeBSD) and generic Linux servers,
+pushes data to the central dashboard.
 
 Collects system metrics locally (no API needed), connects outbound via WebSocket,
-and executes commands received from the dashboard.
+and executes commands received from the dashboard. On Linux the vendored Checkmk
+agent does the collecting; orbit_agent transports its raw output (§25/DR-10).
 
 Dependencies: Python 3.8+ only — no pip packages (stdlib WebSocket client).
 Config: /usr/local/etc/orbit-agent.conf (JSON)
@@ -52,7 +54,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.10"
+__version__ = "2.9.11"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -199,12 +201,16 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
 
 
 def detect_platform() -> str:
-    """Identify the host firewall: 'opnsense' | 'pfsense' | 'unknown'.
+    """Identify the host: 'opnsense' | 'pfsense' | 'linux' | 'unknown'.
 
     OPNsense ships /usr/local/opnsense/version/; pfSense marks /etc/platform
     (confirmed on pfSense Plus 26.03). Shared FreeBSD collectors work on both;
     only gateways + firmware diverge (see docs/agent-architecture.md §4).
+    Generic Linux servers (§25) are detected by the kernel name — cheapest
+    check first, and a FreeBSD firewall can never report Linux.
     """
+    if platform.system() == "Linux":
+        return "linux"
     for marker in ("/usr/local/opnsense/version/core", "/usr/local/opnsense/version/opnsense"):
         if Path(marker).exists():
             return "opnsense"
@@ -2355,6 +2361,58 @@ def collect_config_backup() -> dict:
     }
 
 
+# --- Checkmk-agent bridge (generic Linux nodes; §25/DR-10) -------------------
+# On linux the vendored upstream check_mk_agent.linux does the data collection;
+# orbit_agent only transports its raw output. Parsing lives in the backend, so
+# evaluating a new Checkmk section never needs an agent rollout.
+_CHECKMK_CANDIDATES = (
+    "/usr/local/orbit-agent/check_mk_agent.linux",  # deployed alongside the agent
+    "/usr/bin/check_mk_agent",  # distro package (checkmk-agent)
+    "/usr/local/bin/check_mk_agent",
+)
+_CHECKMK_TIMEOUT = 30  # stock sections finish in ~1-3s; local plugins get headroom
+_CHECKMK_MAX = 2_000_000  # raw cap — a runaway plugin must not blow the WS frame
+
+
+def _checkmk_script() -> str | None:
+    """Path of the first usable Checkmk agent script, or None."""
+    for path in _CHECKMK_CANDIDATES:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def collect_checkmk() -> dict:
+    """Raw Checkmk-agent output for backend-side parsing (linux only).
+
+    Pure transport (DR-10): run the vendored GPLv2 script, ship stdout as
+    gzip+base64. Other platform / no script / failure / empty / oversize → {}
+    so the backend never sees a checkmk_raw section and emits no checks
+    (absent data must never alarm). Oversize output is dropped, not
+    truncated — a cut section boundary would parse as garbage.
+    """
+    if detect_platform() != "linux":
+        return {}
+    script = _checkmk_script()
+    if script is None:
+        return {}
+    try:
+        r = subprocess.run([script], capture_output=True, timeout=_CHECKMK_TIMEOUT)
+    except (subprocess.TimeoutExpired, OSError):
+        return {}
+    raw = r.stdout or b""
+    if not raw:
+        return {}
+    if len(raw) > _CHECKMK_MAX:
+        log.warning("checkmk output skipped: %d bytes exceeds cap", len(raw))
+        return {}
+    return {
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw),
+        "output_gz_b64": base64.b64encode(gzip.compress(raw)).decode(),
+    }
+
+
 # Public-IP discovery. The box's own interfaces only show its *local* WAN address
 # (an RFC1918 lease when the box sits behind upstream/carrier NAT), so the real
 # internet-facing address has to come from an outside echo. ipify exposes
@@ -2446,6 +2504,7 @@ _SNAPSHOT_SECTIONS = (
     ("certificates", "collect_certificates"),
     ("logfiles", "collect_logfiles"),
     ("config_backup", "collect_config_backup"),
+    ("checkmk_raw", "collect_checkmk"),
 )
 
 
