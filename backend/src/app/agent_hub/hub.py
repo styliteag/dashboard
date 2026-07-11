@@ -15,6 +15,7 @@ import structlog
 from fastapi import WebSocket
 from sqlalchemy import select
 
+from app.agent_hub import checkmk
 from app.agent_hub.converters import (
     annotate_iface_error_rates,
     annotate_local_ip_mismatch,
@@ -168,6 +169,10 @@ class AgentHub:
         # deriving per-interface error *rates* (counters are cumulative). In-memory
         # only (not hydrated), so the first push after a restart gets one no-data round.
         self._last_metrics_ts: dict[int, datetime] = {}
+        # Cumulative (total, idle) CPU jiffies from the previous checkmk_raw push
+        # (linux nodes, §25) — CPU% is a tick delta. In-memory only: a restart
+        # costs one 0%-CPU cycle, and the CPU check deliberately can't CRIT.
+        self._last_cpu_ticks: dict[int, checkmk.CpuTicks] = {}
         # Last evaluated check states ({key: state}) per instance — the baseline
         # the next push diffs against to record check-history transitions. Survives
         # a backend restart via the persisted status_snapshot (no restart spam).
@@ -495,6 +500,19 @@ class AgentHub:
         """Process a metrics push from an agent."""
         sessionmaker = get_sessionmaker()
         ts = datetime.now(UTC)
+
+        # Generic Linux nodes (§25/DR-10): the payload carries raw Checkmk-agent
+        # output; its parsed sections replace the orbit cpu/memory/disks/uptime
+        # sections (which hold zeros/junk on linux) BEFORE any conversion, so
+        # every consumer below stays platform-blind. Failed parses leave the
+        # payload untouched — enrich_snapshot never raises.
+        raw_text = checkmk.decode_raw(data)
+        if raw_text is not None:
+            data, ticks = checkmk.enrich_snapshot(
+                data, checkmk.parse_sections(raw_text), self._last_cpu_ticks.get(instance_id)
+            )
+            if ticks is not None:
+                self._last_cpu_ticks[instance_id] = ticks
 
         # Derive per-interface error rates from the previous snapshot BEFORE it is
         # overwritten (same prev-then-overwrite pattern the IPsec diff uses below),

@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vendored `check_mk_agent.linux` (Checkmk 2.5.0p8, GPLv2, unmodified) is now
   part of the repo, signed with the same Ed25519 key as the agent and listed
   in THIRD-PARTY-NOTICES.
+- The backend parses the pushed Checkmk output (cpu/kernel, mem, df, uptime
+  sections for now) into the regular snapshot shapes, so Linux nodes show
+  real CPU %, load, RAM/swap, disk usage and uptime in the instance views,
+  metrics history and checks — no separate Linux code path downstream.
 
 ## [2.9.11] - 2026-07-10
 
