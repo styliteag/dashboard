@@ -1088,22 +1088,14 @@ Capture/Shell E2E, signierter check_mk_agent-Redeploy nach Pin-Wechsel.
 
 ### Offene Punkte §25
 
-- `_ping_once`: FreeBSD-Flags (`-t`/`-S`) vs. Linux (`-W`/`-I`) — Branch nötig
-  (Connectivity-Monitore laufen weiter über orbit_agent).
-- Checkmk-Versionspin wählen (aktuelles 2.x-Agent-Skript) und Update-Prozess fürs
-  Vendoring festhalten; `sign_agent.py` + `just sign-agent` um die zweite Datei
-  erweitern.
-- `checkmk_raw`-Payload: realistische Größen messen, Cap festlegen, Push-Intervall
-  (jeder Snapshot vs. gedrosselt wie `config_backup`) entscheiden.
-- mk_apt-Plugin mitliefern? (für `<<<apt>>>`-Pending-Zahlen) — v1 offen.
-- Severity-Regeln für `/var/log`-Fallback gegen echte Server kalibrieren (Journal-Pfad
-  braucht das nicht).
-- tcpdump nicht garantiert installiert — Capture-Command muss Absenz sauber melden.
-- Shell-Spawn: `bash`/`sh` statt tcsh; Prompt-/PTY-Verhalten auf Ubuntu prüfen.
-- Checkmk-Skript-Auto-Redeploy durch den Agenten (sha256-Pin) noch nicht gebaut —
-  aktuell installiert/erneuert nur `install-linux.sh`.
-- apt/dnf `firmware.check`/`firmware.update` fehlen noch (Updates-Tab leer).
-- journald-Logs-Ingest fehlt noch.
+- Capture/Shell auf Linux nicht E2E getestet (tcpdump auf ubn1 vorhanden; PTY-Shell
+  spawnt vermutlich sh/bash — im UI verifizieren).
+- Severity-Regeln für den `/var/log`-Fallback (Server ohne systemd) gegen echte
+  Daten kalibrieren — der Journal-Pfad liefert Severity über den Priority-Filter.
+- `checkmk_raw`-Payload auf großen Servern messen (ubn1: klein); Cap ist 2 MB roh.
+- Weitere Checkmk-Sections auswerten (lnx_if → interfaces, chrony → ntp,
+  systemd_units → services, diskstat) — jeweils Backend-only.
+- dnf-Pfad (RHEL) ist nur unit-getestet, kein Lab-Gerät.
 
 ### §25 Status — Kern live verifiziert (2026-07-11, ubn1 = 10.20.1.211)
 
@@ -1117,3 +1109,23 @@ nach zwei Pushes CPU 4.6 % über Jiffy-Delta, RAM 19 %, Disks exakt `/dev/sda2 /
 ausschließlich generische Familien (agent, memory, cpu, disk:×2, load, swap,
 agent.collect), alle OK — **keine** Firewall-Familie feuert (absent-data-Regel hält).
 Gefundener und gefixter Live-Bug: Checkmk ≥2.4 emittiert `<<<df_v2>>>` statt `<<<df>>>`.
+
+**Nachtrag (gleicher Tag, Agent 2.9.12–2.9.16, alle live auf ubn1 verifiziert):**
+
+- **Updates-Tab funktioniert** (2.9.12/2.9.13): apt/dnf durch die Firmware-Pipeline;
+  live „29 security update(s) pending (57 total)" → Check WARN, Paketliste im Tab.
+  Zwei Live-Bugs gefixt: konkurrierende apt-Läufe (Push-Loop vs. manueller Check)
+  serialisiert per Lock; fehlgeschlagener Check re-armt den 12h-Throttle auf 15 min
+  (unattended-upgrades hält das apt-Lock routinemäßig).
+- **journald-Logs** (2.9.14): journal-err (prio 0..3), journal-warn (4..4, keine
+  Doppelmeldung), auth (sshd/sudo), dmesg — stündlich in die Log-Snapshot-Pipeline;
+  `/var/log`-Fallback ohne systemd. Live: 4 Snapshots im Backend.
+- **Signierter Checkmk-Auto-Redeploy** (2.9.15, DR-10 komplett): hello trägt die
+  Skript-sha256, Backend pusht bei Abweichung die vendored Kopie + Offline-`.sig`
+  via `checkmk.update` (in `_INTERNAL_AGENT_ACTIONS`); Agent verifiziert sha256 +
+  Ed25519 gegen `_UPDATE_PUBKEY` vor dem atomaren Write. Live bewiesen: manipuliertes
+  Skript (sha 09a75c40…) wurde beim Reconnect automatisch auf den Pin (1b5075e9…)
+  zurückgesetzt; Alt-Agent 2.9.14 lehnte sauber mit „unknown action" ab (nur Warning).
+- **Linux-ping-Flags** (2.9.16): `_ping_once` nutzt auf Linux `-w`/`-I` statt
+  FreeBSD `-t`/`-S`. Live: Connectivity-Monitor ubn1 → Dashboard-Host ping ok,
+  Check `connectivity:8` grün.
