@@ -309,3 +309,25 @@ async def download_agent_supervisor() -> FileResponse:
     if not sup.exists():
         raise HTTPException(status_code=404, detail="supervisor script not available")
     return FileResponse(str(sup), media_type="text/plain", filename="run-agent.sh")
+
+
+@router.get("/agent/systemd", include_in_schema=False)
+async def download_agent_systemd_unit() -> FileResponse:
+    """Serve the systemd unit for linux nodes (§25; no auth required)."""
+    unit = _AGENT_DIR / "systemd" / "orbit-agent.service"
+    if not unit.exists():
+        raise HTTPException(status_code=404, detail="systemd unit not available")
+    return FileResponse(str(unit), media_type="text/plain", filename="orbit-agent.service")
+
+
+@router.get("/agent/checkmk", include_in_schema=False)
+async def download_checkmk_agent() -> FileResponse:
+    """Serve the vendored Checkmk agent for linux nodes (§25; no auth required).
+
+    GPLv2 — vendored unmodified, attributed in THIRD-PARTY-NOTICES.md; the
+    shell script is its own complete corresponding source.
+    """
+    script = _AGENT_DIR / _CHECKMK_VENDOR
+    if not script.exists():
+        raise HTTPException(status_code=404, detail="checkmk agent not available")
+    return FileResponse(str(script), media_type="text/plain", filename="check_mk_agent.linux")

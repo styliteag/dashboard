@@ -50,6 +50,8 @@ interface EnrollCodeResponse {
 interface Props {
   instanceId: number;
   agentMode: boolean;
+  /** Switches the install guide: FreeBSD firewalls vs linux servers (§25). */
+  deviceType?: string;
 }
 
 // ----- Shared primitives ----------------------------------------------------
@@ -120,7 +122,7 @@ function Step({
 
 // ----- Main component -------------------------------------------------------
 
-export default function AgentSection({ instanceId, agentMode }: Props) {
+export default function AgentSection({ instanceId, agentMode, deviceType }: Props) {
   const queryClient = useQueryClient();
   const [localToken, setLocalToken] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
@@ -268,43 +270,69 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
     onError: (e) => setMsg({ ok: false, text: apiErrorText(e, "Reconnect failed") }),
   });
 
+  // Linux servers (§25) get curl/systemd instructions and the calmer 120s
+  // class default; firewalls keep fetch/rc.d and 30s.
+  const linuxGuide = deviceType === "linux";
+
   // Pre-filled config (dashboard URL baked in). With a one-time code the agent
   // trades it for the token on first start; otherwise the token is embedded.
   const cfg = enrollCode
     ? {
         dashboard_url: `${wsProto}://${host}/api/ws/agent`,
         enroll_code: enrollCode,
-        push_interval: 30,
+        push_interval: linuxGuide ? 120 : 30,
         log_level: "INFO",
       }
     : {
         dashboard_url: `${wsProto}://${host}/api/ws/agent`,
         agent_token: token ?? "PASTE_TOKEN_HERE",
-        push_interval: 30,
+        push_interval: linuxGuide ? 120 : 30,
         log_level: "INFO",
       };
 
-  const downloadCmds = [
-    `mkdir -p /usr/local/orbit-agent`,
-    `fetch -o /usr/local/orbit-agent/orbit_agent.py \\`,
-    `  ${proto}//${host}/api/agent/script`,
-    `fetch -o /usr/local/orbit-agent/run-agent.sh \\`,
-    `  ${proto}//${host}/api/agent/run`,
-    `chmod 755 /usr/local/orbit-agent/run-agent.sh`,
-    `fetch -o /usr/local/etc/rc.d/orbit_agent \\`,
-    `  ${proto}//${host}/api/agent/rc`,
-    `chmod 755 /usr/local/etc/rc.d/orbit_agent`,
+  const downloadCmds = linuxGuide
+    ? [
+        // /usr/local/etc is not guaranteed on Linux distros — create it for the config.
+        `mkdir -p /usr/local/orbit-agent /usr/local/etc`,
+        `curl -fsSo /usr/local/orbit-agent/orbit_agent.py \\`,
+        `  ${proto}//${host}/api/agent/script`,
+        `curl -fsSo /usr/local/orbit-agent/run-agent.sh \\`,
+        `  ${proto}//${host}/api/agent/run`,
+        `curl -fsSo /usr/local/orbit-agent/check_mk_agent.linux \\`,
+        `  ${proto}//${host}/api/agent/checkmk`,
+        `chmod 755 /usr/local/orbit-agent/run-agent.sh /usr/local/orbit-agent/check_mk_agent.linux`,
+        `curl -fsSo /etc/systemd/system/orbit-agent.service \\`,
+        `  ${proto}//${host}/api/agent/systemd`,
+      ].join("\n")
+    : [
+        `mkdir -p /usr/local/orbit-agent`,
+        `fetch -o /usr/local/orbit-agent/orbit_agent.py \\`,
+        `  ${proto}//${host}/api/agent/script`,
+        `fetch -o /usr/local/orbit-agent/run-agent.sh \\`,
+        `  ${proto}//${host}/api/agent/run`,
+        `chmod 755 /usr/local/orbit-agent/run-agent.sh`,
+        `fetch -o /usr/local/etc/rc.d/orbit_agent \\`,
+        `  ${proto}//${host}/api/agent/rc`,
+        `chmod 755 /usr/local/etc/rc.d/orbit_agent`,
+      ].join("\n");
+  // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are
+  // flaky — and printf works the same in bash, so linux shares it.
+  const configCmd = [
+    `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/orbit-agent.conf`,
+    `chmod 600 /usr/local/etc/orbit-agent.conf`,
   ].join("\n");
-  // printf, not a heredoc: OPNsense/pfSense root shell is tcsh, where heredocs are flaky.
-  const configCmd = `printf '%s\\n' '${JSON.stringify(cfg)}' > /usr/local/etc/orbit-agent.conf`;
-  const startCmd = `sysrc orbit_agent_enable=YES\nservice orbit_agent start`;
+  const startCmd = linuxGuide
+    ? `systemctl daemon-reload\nsystemctl enable --now orbit-agent`
+    : `sysrc orbit_agent_enable=YES\nservice orbit_agent start`;
 
   const steps = {
-    prereq: `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
+    prereq: linuxGuide
+      ? `# Needs python3 >= 3.8 and bash (any current Debian/Ubuntu/RHEL); tcpdump enables packet capture.`
+      : `# Python 3 ships with OPNsense/pfSense — no pip packages (agent is stdlib-only).`,
     // Download + config + start in one paste (steps 4–6 combined). Blank-line
     // separated, no '#' comments — the tcsh root shell mishandles them interactively.
     install: [downloadCmds, configCmd, startCmd].join("\n\n"),
-    logs: `tail -f /var/log/orbit_agent.log`,
+    logs: linuxGuide ? `journalctl -u orbit-agent -f` : `tail -f /var/log/orbit_agent.log`,
   };
 
   return (
@@ -500,7 +528,9 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
               </div>
             </div>
 
-            {/* Firewall GUI + local API (relay is provisioned internally now) */}
+            {/* Firewall GUI + local API (relay is provisioned internally now).
+                Linux servers have neither a web UI nor a local REST API (§25). */}
+            {!linuxGuide && (
             <div className="mt-5 rounded-lg border border-slate-700 bg-slate-800/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -538,6 +568,7 @@ export default function AgentSection({ instanceId, agentMode }: Props) {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Guide toggle */}
             <button

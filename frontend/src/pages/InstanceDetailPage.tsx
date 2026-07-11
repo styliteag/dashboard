@@ -333,7 +333,11 @@ export default function InstanceDetailPage() {
       {tab === "agent" && caps.agent && (
         <div className="space-y-6">
           <AgentRuntimeSection status={status} />
-          <AgentSection instanceId={nid} agentMode={instance?.agent_mode ?? false} />
+          <AgentSection
+            instanceId={nid}
+            agentMode={instance?.agent_mode ?? false}
+            deviceType={instance?.device_type}
+          />
         </div>
       )}
 
