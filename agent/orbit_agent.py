@@ -36,6 +36,7 @@ import struct
 import subprocess
 import tempfile
 import termios
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -54,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.12"
+__version__ = "2.9.13"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1697,6 +1698,16 @@ def _dnf_update_check() -> "tuple[bool, str, bool, dict]":
     return len(security) > 0, summary, check_failed, extra
 
 
+# Serializes the update check: the push loop's throttled collect_firmware and a
+# manual firmware.check command run on different threads — two concurrent
+# apt-get invocations otherwise fight over /var/lib/apt/lists/lock (observed
+# live on ubn1: the manual check failed against the push loop's own apt-get).
+_LINUX_FW_LOCK = threading.Lock()
+# A failed check (apt/dnf lock held, mirror down) retries after 15 min instead
+# of caching the failure for the full ~12h window.
+_FW_FAILED_RETRY_S = 900
+
+
 def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     """Pending package updates on a generic Linux node (§25).
 
@@ -1707,15 +1718,16 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     verdict is check_failed (never a false green "up to date").
     """
     version = _read_linux_version()
-    try:
-        if shutil.which("apt-get"):
-            upgrade_available, out, check_failed, extra = _apt_update_check()
-        elif shutil.which("dnf"):
-            upgrade_available, out, check_failed, extra = _dnf_update_check()
-        else:
-            return False, version, "no supported package manager (apt/dnf)", True, {}
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        return False, version, "update check failed: %s" % exc, True, {}
+    with _LINUX_FW_LOCK:
+        try:
+            if shutil.which("apt-get"):
+                upgrade_available, out, check_failed, extra = _apt_update_check()
+            elif shutil.which("dnf"):
+                upgrade_available, out, check_failed, extra = _dnf_update_check()
+            else:
+                return False, version, "no supported package manager (apt/dnf)", True, {}
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            return False, version, "update check failed: %s" % exc, True, {}
     return upgrade_available, version, out, check_failed, extra
 
 
@@ -1745,6 +1757,10 @@ def collect_firmware() -> dict:
         verdict = _store_fw_verdict(
             "", [], upgrade_available, latest or version, out, check_failed, extra=extra
         )
+        if check_failed:
+            # Transient failures (apt/dnf lock held by unattended-upgrades,
+            # mirror hiccup) must not pin a WARN for the whole 12h window.
+            _STATE.fw_check_ts = time.monotonic() - (_FW_CHECK_INTERVAL_S - _FW_FAILED_RETRY_S)
         return {"product_version": version, **verdict}
 
     if pfsense:

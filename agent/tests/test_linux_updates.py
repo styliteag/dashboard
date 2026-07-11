@@ -143,3 +143,49 @@ def test_cmd_firmware_update_linux_without_pkg_manager_fails(monkeypatch) -> Non
     monkeypatch.setattr(agent.shutil, "which", lambda n: None)
     result = agent._cmd_firmware_update({})
     assert result["success"] is False
+
+
+def test_linux_update_check_serializes_concurrent_callers(monkeypatch) -> None:
+    """Push loop + manual firmware.check run on different threads; concurrent
+    apt-get invocations fought over the dpkg lists lock (live on ubn1)."""
+    import threading
+    import time as _time
+
+    active = []
+    overlaps = []
+
+    def slow_check():
+        active.append(1)
+        if len(active) > 1:
+            overlaps.append(1)
+        _time.sleep(0.05)
+        active.pop()
+        return False, "0 update(s) pending, 0 security", False, {}
+
+    monkeypatch.setattr(agent.shutil, "which", lambda n: "/usr/bin/apt-get" if n == "apt-get" else None)
+    monkeypatch.setattr(agent, "_apt_update_check", slow_check)
+    threads = [threading.Thread(target=agent._linux_update_check) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert overlaps == []
+
+
+def test_collect_firmware_failed_check_retries_early(monkeypatch) -> None:
+    """A transient failure (apt lock held) must not pin WARN for the 12h window."""
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(agent, "_read_linux_version", lambda: "Ubuntu 26.04 LTS")
+    monkeypatch.setattr(
+        agent, "_linux_update_check", lambda: (False, "Ubuntu 26.04 LTS", "locked", True, {})
+    )
+    agent._STATE.fw_verdict = {}
+    agent._STATE.fw_check_ts = 0.0
+    fw = agent.collect_firmware()
+    assert fw["check_failed"] is True
+    import time as _time
+
+    remaining = agent._FW_CHECK_INTERVAL_S - (_time.monotonic() - agent._STATE.fw_check_ts)
+    assert remaining <= agent._FW_FAILED_RETRY_S + 5
+    agent._STATE.fw_verdict = {}
+    agent._STATE.fw_check_ts = 0.0
