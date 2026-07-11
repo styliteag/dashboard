@@ -267,6 +267,10 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 - **DR-5** Supervisor-Wrapper `run-agent.sh` + Zwei-Ebenen-Rollback.
 - **DR-6** Canary-Rollout vor Flotte; Update über authentifizierten WS, nicht `/agent/script`.
 - **DR-7** Relay = transparenter HTTP-Tunnel; Agent injiziert lokal-provisionierte Creds, Dashboard bleibt keyless (§15).
+- **DR-8** Feature-Gating pro Device-Type über eine **zentrale Capability-Map**, nicht über
+  verstreute Typ-Checks (`isSecurepoint`, `supportsFirewallRules`, …) (§25).
+- **DR-9** `linux` ist ein vollwertiger `device_type`: **push-only, ohne `base_url`**;
+  Firewall-Features entfallen per Capability, nicht per Sonderpfad (§25).
 
 ## 11. Offene Punkte
 
@@ -995,3 +999,71 @@ Leichter Traffic-Einblick ohne NetFlow, rein aus der `pf`-State-Table.
 - **Backend:** `system/routes.py` `pf_top` (`current_user` + `get_instance`), `PfTop*`-
   Schemas in `xsense/`, Hub-Cache für Push-Boxen. **UI:** `TopTalkersSection` im
   Instance-Detail unter *Interfaces*.
+
+## 25. Generic-Linux-Node — Design (📋 geplant, Grilling-Session 2026-07-11)
+
+Derselbe `orbit_agent.py` läuft auf generischen Linux-Servern (Kunden-Server hinter
+Firewalls, MSP-eigene Infrastruktur, beliebige Boxen). Firewall-Features (Tunnel,
+Webif, Firewall-Rules) entfallen — per Capability, nicht per Sonderpfad.
+
+### Entscheidungen (interview-verifiziert)
+
+**Typ-Modell (DR-9).** Neuer Enum-Wert `linux` (7. Wert in `devices/types.py`),
+UI-Label **„Linux"**. `proxmox`/`truenas`/`qnap` bleiben unangetastet — perspektivisch
+Spezialisierungen von `linux`, jetzt kein Scope.
+
+**Capability-Map (DR-8).** Statt weiterer verstreuter Typ-Checks eine zentrale Map
+`DEVICE_CAPS[device_type]` (Frontend `lib/` + Backend gespiegelt, „update both sides
+together" wie `types.ts`): `tunnels`, `webif/gui`, `firewallRules`, `capture`, `shell`,
+`relay`, `updatesStyle`, … Bestehende `isSecurepoint`-/`supportsFirewallRules`-Stellen
+werden auf die Map umgestellt. Für `linux`: tunnels=✗, webif=✗, firewallRules=✗,
+relay=✗, capture=✓, shell=✓, updates=Paketmanager.
+
+**Transport: push-only, kein `base_url`.** Anlegen ohne URL/API-Key; einziger Weg ist
+Enroll-Code → Agent-Install. `test_connection`/Pull-Pfad für `linux` gesperrt; die
+Client-Registry (`xsense/registry.py`, heute „else → OPNsenseClient") bekommt einen
+expliziten Kein-Client-Pfad.
+
+**Self-Heal.** `detect_platform()` liefert `linux` (generisch; Distro-Detail nur in
+`system`-Info). `_AGENT_PLATFORMS` in `agent_hub/routes/ws.py` wird um `linux`
+erweitert — falsch typisierte Instanz wird beim Hello korrigiert.
+
+**Collectors: Dispatch in den Collectors, ein Registry.** `_SNAPSHOT_SECTIONS` bleibt
+einzige Registry. Generische Collectors (cpu, memory, loadavg, disks, interfaces,
+uptime, external_ip, ntp, connectivity) bekommen einen Linux-Branch (`/proc`-basiert
+statt `sysctl`); Firewall-Collectors (pf, pf_top, ipsec, gateways, firewall_log,
+config, certificates, config_backup, services) liefern auf `linux` `None`/leer — die
+Checks skippen bei absent data ohnehin (Regel: nie Alarm auf fehlendes Feature).
+Python-Floor bleibt **3.8**, stdlib-only, eine Datei — unverändert.
+
+**Updates via Firmware-Pipeline.** apt/dnf füllt die bestehende `firmware`-Section und
+`firmware.check`/`firmware.update`-Commands; Firmware-Tab (Label für `linux`:
+„Updates") und Bulk-„Update all" funktionieren mit. Check-Verhalten: ausstehende
+**Security-Updates → WARN**, normale Updates → OK mit Anzahl, **nie CRIT**.
+
+**Logs: journald primär, `/var/log` als Fallback.** `journalctl` liefert Severity
+direkt aus dem Priority-Feld (keine Regex-Kalibrierung); ohne systemd klassische
+Dateien (syslog/messages/auth.log) mit eigenen, neu zu kalibrierenden Severity-Regeln.
+
+**Kein Relay in v1.** Ohne Webif fehlt das Relay-Ziel; Capture + Shell decken die
+Fernwartung. `relay=false` in der Capability-Map.
+
+**Installer & Supervisor.** Neues `install-linux.sh` + systemd-Unit
+`agent/systemd/orbit-agent.service`, die **`run-agent.sh` startet** (Supervisor-Logik
+exit 42 / Rollback / Marker bleibt eine Implementierung). `install.sh` (FreeBSD,
+lehnt non-FreeBSD in Zeile 24 ab) bleibt unangetastet — null Regressionsrisiko für die
+Bestandsflotte; die neue Install-Surface hat keine Self-Update-Altlast.
+
+**Verifikation.** Debian-VM im Lab-Netz (muss provisioniert werden): Enrollment,
+Collectors, journald-Logs, apt-Update-Zyklus inkl. Reboot, Capture/Shell E2E.
+
+### Offene Punkte §25
+
+- `_ping_once`: FreeBSD-Flags (`-t`/`-S`) vs. Linux (`-W`/`-I`) — Branch nötig.
+- NTP-Quelle auf Linux uneinheitlich (chrony/timesyncd/ntpq) — der Reihe nach
+  probieren, sonst absent → kein Check.
+- Severity-Regeln für `/var/log`-Fallback gegen echte Server kalibrieren (Journal-Pfad
+  braucht das nicht).
+- tcpdump nicht garantiert installiert — Capture-Command muss Absenz sauber melden.
+- Shell-Spawn: `bash`/`sh` statt tcsh; Prompt-/PTY-Verhalten auf Debian prüfen.
+- Debian-VM im Lab anlegen (Adresse/Zugang festhalten in CLAUDE.local.md).
