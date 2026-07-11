@@ -260,6 +260,12 @@ export function InstanceCard({
           <Link to={`/instances/${inst.id}`} className="font-medium hover:text-emerald-400">
             {inst.name}
           </Link>
+          <span
+            className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500"
+            title="Device type"
+          >
+            {deviceTypeLabel(inst.device_type)}
+          </span>
           <WebUiIconLink
             instanceId={inst.id}
             instanceName={inst.name}
@@ -347,6 +353,12 @@ export function InstanceRow({
           >
             {inst.name}
           </Link>
+          <span
+            className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500"
+            title="Device type"
+          >
+            {deviceTypeLabel(inst.device_type)}
+          </span>
           <WebUiIconLink
             instanceId={inst.id}
             instanceName={inst.name}

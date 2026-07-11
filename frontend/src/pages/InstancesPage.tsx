@@ -119,6 +119,9 @@ export default function InstancesPage() {
 
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | StatusBucket>("all");
+  // Device-class filter: firewalls (opnsense/pfsense/securepoint/…) vs Linux
+  // servers. Only rendered once the fleet actually mixes both classes.
+  const [typeFilter, setTypeFilter] = useState<"all" | "firewall" | "linux">("all");
   const [maintenanceOnly, setMaintenanceOnly] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
@@ -152,6 +155,7 @@ export default function InstancesPage() {
 
   // Collect all unique tags across instances
   const allTags = [...new Set(instances.flatMap((i) => i.tags ?? []))].sort();
+  const hasLinux = instances.some((i) => i.device_type === "linux");
 
   const filtered = instances.filter((i) => {
     const matchSearch =
@@ -162,8 +166,10 @@ export default function InstancesPage() {
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
     const matchStatus =
       statusFilter === "all" || statusBucket(i, agentByInstance.has(i.id)) === statusFilter;
+    const matchType =
+      typeFilter === "all" || (typeFilter === "linux") === (i.device_type === "linux");
     const matchMaintenance = !maintenanceOnly || i.maintenance;
-    return matchSearch && matchTag && matchStatus && matchMaintenance;
+    return matchSearch && matchTag && matchStatus && matchType && matchMaintenance;
   });
 
   // Firmware-locked instances are never selectable — the bulk bar's only
@@ -277,6 +283,31 @@ export default function InstancesPage() {
           className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
         />
       </div>
+
+      {/* Device-class filter — only once the fleet mixes firewalls and Linux servers. */}
+      {hasLinux && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              ["all", "All types"],
+              ["firewall", "Firewalls"],
+              ["linux", "Linux"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setTypeFilter(value)}
+              className={`rounded-full px-3 py-1 text-xs ${
+                typeFilter === value
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tag filter chips */}
       {allTags.length > 0 && (
