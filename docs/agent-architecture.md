@@ -1003,7 +1003,7 @@ Leichter Traffic-Einblick ohne NetFlow, rein aus der `pf`-State-Table.
   Schemas in `xsense/`, Hub-Cache für Push-Boxen. **UI:** `TopTalkersSection` im
   Instance-Detail unter *Interfaces*.
 
-## 25. Generic-Linux-Node — Design (📋 geplant, Grilling-Session 2026-07-11)
+## 25. Generic-Linux-Node — Design (🧪 Kern umgesetzt + live verifiziert 2026-07-11)
 
 Derselbe `orbit_agent.py` läuft auf generischen Linux-Servern (Kunden-Server hinter
 Firewalls, MSP-eigene Infrastruktur, beliebige Boxen). Firewall-Features (Tunnel,
@@ -1099,5 +1099,21 @@ Capture/Shell E2E, signierter check_mk_agent-Redeploy nach Pin-Wechsel.
 - Severity-Regeln für `/var/log`-Fallback gegen echte Server kalibrieren (Journal-Pfad
   braucht das nicht).
 - tcpdump nicht garantiert installiert — Capture-Command muss Absenz sauber melden.
-- Shell-Spawn: `bash`/`sh` statt tcsh; Prompt-/PTY-Verhalten auf Debian prüfen.
-- Debian-VM im Lab anlegen (Adresse/Zugang festhalten in CLAUDE.local.md).
+- Shell-Spawn: `bash`/`sh` statt tcsh; Prompt-/PTY-Verhalten auf Ubuntu prüfen.
+- Checkmk-Skript-Auto-Redeploy durch den Agenten (sha256-Pin) noch nicht gebaut —
+  aktuell installiert/erneuert nur `install-linux.sh`.
+- apt/dnf `firmware.check`/`firmware.update` fehlen noch (Updates-Tab leer).
+- journald-Logs-Ingest fehlt noch.
+
+### §25 Status — Kern live verifiziert (2026-07-11, ubn1 = 10.20.1.211)
+
+Umgesetzt in 8 Commits (22c5c52 Capability-Map … 9d8102c df_v2-Fix): Enum + Push-only-
+Pfad + Agent-2.9.11-Bridge (`checkmk_raw`) + Backend-Parser (cpu/kernel/mem/df_v2/
+uptime) + Frontend + `install-linux.sh`/systemd-Unit. Live-Beweis gegen Ubuntu 26.04
+(Python 3.14): Instanz-Anlage ohne base_url (transport=push, 120s Default),
+Installer-Lauf sauber, Agent verbindet (`platform: linux` in `/agents/connected`),
+nach zwei Pushes CPU 4.6 % über Jiffy-Delta, RAM 19 %, Disks exakt `/dev/sda2 /` +
+`/dev/sda1 /boot/efi` (tmpfs/efivarfs gefiltert), Uptime „8 mins". Check-Ebene:
+ausschließlich generische Familien (agent, memory, cpu, disk:×2, load, swap,
+agent.collect), alle OK — **keine** Firewall-Familie feuert (absent-data-Regel hält).
+Gefundener und gefixter Live-Bug: Checkmk ≥2.4 emittiert `<<<df_v2>>>` statt `<<<df>>>`.
