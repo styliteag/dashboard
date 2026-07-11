@@ -271,6 +271,9 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
   verstreute Typ-Checks (`isSecurepoint`, `supportsFirewallRules`, …) (§25).
 - **DR-9** `linux` ist ein vollwertiger `device_type`: **push-only, ohne `base_url`**;
   Firewall-Features entfallen per Capability, nicht per Sonderpfad (§25).
+- **DR-10** Linux-Datensammlung über den **vendored Checkmk-Linux-Agenten** (GPLv2-
+  Shellskript, unverändert, Ed25519-signiert ausgeliefert); `orbit_agent` bleibt reiner
+  Transport, das Backend parst die Sections schrittweise (§25).
 
 ## 11. Offene Punkte
 
@@ -1028,18 +1031,43 @@ expliziten Kein-Client-Pfad.
 `system`-Info). `_AGENT_PLATFORMS` in `agent_hub/routes/ws.py` wird um `linux`
 erweitert — falsch typisierte Instanz wird beim Hello korrigiert.
 
-**Collectors: Dispatch in den Collectors, ein Registry.** `_SNAPSHOT_SECTIONS` bleibt
-einzige Registry. Generische Collectors (cpu, memory, loadavg, disks, interfaces,
-uptime, external_ip, ntp, connectivity) bekommen einen Linux-Branch (`/proc`-basiert
-statt `sysctl`); Firewall-Collectors (pf, pf_top, ipsec, gateways, firewall_log,
-config, certificates, config_backup, services) liefern auf `linux` `None`/leer — die
-Checks skippen bei absent data ohnehin (Regel: nie Alarm auf fehlendes Feature).
-Python-Floor bleibt **3.8**, stdlib-only, eine Datei — unverändert.
+**Datensammlung via Checkmk-Agent (DR-10, ersetzt den ursprünglichen /proc-Plan).**
+`orbit_agent.py` bleibt auf Linux reiner Transport (WS-Push, Enrollment, Self-Update,
+Shell, Capture); die Systemdaten liefert der offizielle Checkmk-Linux-Agent
+(`check_mk_agent.linux`, ein GPLv2-Shellskript):
 
-**Updates via Firmware-Pipeline.** apt/dnf füllt die bestehende `firmware`-Section und
-`firmware.check`/`firmware.update`-Commands; Firmware-Tab (Label für `linux`:
-„Updates") und Bulk-„Update all" funktionieren mit. Check-Verhalten: ausstehende
-**Security-Updates → WARN**, normale Updates → OK mit Anzahl, **nie CRIT**.
+- **Vendored im Repo** (`agent/vendor/check_mk_agent.linux`), gepinnte Upstream-
+  Version, **unverändert** (GPL-Header intakt, Upstream-Bump = Datei tauschen,
+  reviewbarer Diff). Eigene Erweiterungen später übers Checkmk-Plugin-Verzeichnis,
+  nie als Fork.
+- **Auslieferung**: `install-linux.sh` installiert initial; danach hält `orbit_agent`
+  das Skript aktuell (sha256-Vergleich gegen den Backend-Pin, Erneuerung bei
+  Abweichung). **Ed25519-signiert wie der Agent selbst**: `sign_agent.py` signiert
+  auch `check_mk_agent.linux` (eigene `.sig`), `orbit_agent` verifiziert mit dem
+  vorhandenen `_UPDATE_PUBKEY` **vor** jedem Deploy — root-Code ohne gültige Signatur
+  wird nie geschrieben.
+- **Collector `collect_checkmk()`** in `_SNAPSHOT_SECTIONS`: führt das Skript aus
+  (Timeout), gzip+base64, pusht als Section `checkmk_raw` (Größen-Cap wie
+  `config_backup`). Binary/Skript fehlt → `None` → keine Section → keine Checks
+  (absent-data-Regel). Firewall-Collectors liefern auf `linux` ohnehin `None`/leer.
+  Python-Floor bleibt **3.8**, stdlib-only, eine Datei — unverändert.
+- **Backend-Parsing schrittweise**: Envelope-Splitter (`<<<name:sep(X)>>>`,
+  `:cached(...)`) + Parser-Registry pro Section, Start mit `cpu`, `mem`, `df`,
+  `uptime` — gemappt ins bestehende Snapshot-Modell, damit vorhandene Check-Familien
+  und alle vier Surfaces unverändert greifen. **Neue Section auswerten = Backend-only-
+  Change** (kein Agent-Release, kein Canary). Parser sind Eigenbau nach Format-Doku —
+  **kein Code aus dem Checkmk-Repo kopieren** (wir distribuieren Docker-Images; GPL-
+  Derivat vermeiden). NTP/chrony kommt perspektivisch aus den Checkmk-Sections statt
+  aus einem eigenen Collector.
+- **Lizenz**: Skript als separater Prozess = mere aggregation; das Hosting/Ausliefern
+  ist aber **Distribution** → GPLv2-Notice (manueller Eintrag in
+  THIRD-PARTY-NOTICES.md — `just notices` erfasst nur Paket-Deps) + Quellhinweis.
+
+**Updates via Firmware-Pipeline.** `firmware.check`/`firmware.update` bleiben
+orbit-Commands (apt/dnf ausführen kann der Checkmk-Agent nicht); die Pending-Zahlen
+können später aus der `<<<apt>>>`-Section (mk_apt-Plugin) kommen. Firmware-Tab (Label
+für `linux`: „Updates") und Bulk-„Update all" funktionieren mit. Check-Verhalten:
+ausstehende **Security-Updates → WARN**, normale Updates → OK mit Anzahl, **nie CRIT**.
 
 **Logs: journald primär, `/var/log` als Fallback.** `journalctl` liefert Severity
 direkt aus dem Priority-Feld (keine Regex-Kalibrierung); ohne systemd klassische
@@ -1055,13 +1083,19 @@ lehnt non-FreeBSD in Zeile 24 ab) bleibt unangetastet — null Regressionsrisiko
 Bestandsflotte; die neue Install-Surface hat keine Self-Update-Altlast.
 
 **Verifikation.** Debian-VM im Lab-Netz (muss provisioniert werden): Enrollment,
-Collectors, journald-Logs, apt-Update-Zyklus inkl. Reboot, Capture/Shell E2E.
+`checkmk_raw`-Push + Section-Parsing, journald-Logs, apt-Update-Zyklus inkl. Reboot,
+Capture/Shell E2E, signierter check_mk_agent-Redeploy nach Pin-Wechsel.
 
 ### Offene Punkte §25
 
-- `_ping_once`: FreeBSD-Flags (`-t`/`-S`) vs. Linux (`-W`/`-I`) — Branch nötig.
-- NTP-Quelle auf Linux uneinheitlich (chrony/timesyncd/ntpq) — der Reihe nach
-  probieren, sonst absent → kein Check.
+- `_ping_once`: FreeBSD-Flags (`-t`/`-S`) vs. Linux (`-W`/`-I`) — Branch nötig
+  (Connectivity-Monitore laufen weiter über orbit_agent).
+- Checkmk-Versionspin wählen (aktuelles 2.x-Agent-Skript) und Update-Prozess fürs
+  Vendoring festhalten; `sign_agent.py` + `just sign-agent` um die zweite Datei
+  erweitern.
+- `checkmk_raw`-Payload: realistische Größen messen, Cap festlegen, Push-Intervall
+  (jeder Snapshot vs. gedrosselt wie `config_backup`) entscheiden.
+- mk_apt-Plugin mitliefern? (für `<<<apt>>>`-Pending-Zahlen) — v1 offen.
 - Severity-Regeln für `/var/log`-Fallback gegen echte Server kalibrieren (Journal-Pfad
   braucht das nicht).
 - tcpdump nicht garantiert installiert — Capture-Command muss Absenz sauber melden.

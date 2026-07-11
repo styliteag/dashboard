@@ -29,6 +29,10 @@ zeigen auf `docs/agent-architecture.md`.
   Registry: `_SNAPSHOT_SECTIONS`.
 - **Snapshot** — vollständiger Push eines Agents (alle Sections); Basis des Hub-Caches
   und der Checks.
+- **Checkmk-Agent (vendored)** — upstream `check_mk_agent.linux` (GPLv2-Shellskript),
+  unverändert im Repo gepinnt, Ed25519-signiert an Linux-Nodes ausgeliefert; sein
+  Output landet als Section `checkmk_raw` im Snapshot, das Backend parst die
+  Checkmk-Sections schrittweise (DR-10, §25).
 - **Check / Check-Familie** — pure, DB-freie Bewertungsfunktion
   (`checks/evaluate.py`) → Zustand 0=OK 1=WARN 2=CRIT 3=UNKNOWN (Checkmk-Konvention).
   Familien-Keys `family:stable-id`. Kein Check auf fehlende Daten.
