@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any byte is written (atomic replace, never touches a distro-installed
   check_mk_agent). Bumping the vendored script in the repo now rolls it to
   the fleet on the next reconnect.
+- Linux nodes now populate the Network tab (interfaces with state, IPv4 and
+  traffic/error counters from the Checkmk `lnx_if` section — also feeds the
+  capture interface picker and interface-error-rate checks), get a real NTP
+  check from `chrony` (stratum/offset/peer), and show their running services;
+  a systemd unit in **failed** state raises a WARN check until it recovers
+  or is reset. All parsed backend-side — no agent rollout needed.
 - Log snapshots for Linux nodes (agent 2.9.14): hourly journald slices
   (errors, warnings, sshd/sudo auth) plus dmesg land in the Log tab's
   stored snapshots and the AI log analysis; hosts without systemd fall
