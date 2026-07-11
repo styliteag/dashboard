@@ -29,6 +29,8 @@ class DeviceCaps:
     # The dashboard can reach an HTTP API on the box (poller, test-connection,
     # relay). False = push-only: base_url is optional and no client is built.
     direct_api: bool = True
+    # The box has a versioned config backup (config.xml Config tab + download).
+    config_backup: bool = True
     updates_label: str = "Firmware"
     # Per-instance push cadence applied at creation when the operator sets none.
     # None = inherit the global DASH_PUSH_INTERVAL_SECONDS default.
@@ -54,6 +56,7 @@ DEVICE_CAPS: dict[DeviceType, DeviceCaps] = {
         tunnels=False,
         webif=False,
         direct_api=False,
+        config_backup=False,
         updates_label="Updates",
         default_push_interval=120,
     ),

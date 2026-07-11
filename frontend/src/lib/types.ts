@@ -50,6 +50,7 @@ export const DEVICE_TYPES = [
   { value: "opnsense", label: "OPNsense" },
   { value: "pfsense", label: "pfSense" },
   { value: "securepoint", label: "Securepoint UTM" },
+  { value: "linux", label: "Linux" },
 ] as const;
 
 /** Proper product spelling for a device_type / agent platform value ("opnsense" → "OPNsense"). */

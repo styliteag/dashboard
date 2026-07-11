@@ -93,6 +93,7 @@ export default function InstanceDetailPage() {
     if (t.key === "capture" && !caps.capture) return false;
     if (t.key === "firewall" && !caps.firewallRules) return false;
     if (t.key === "security" && !caps.tunnels) return false;
+    if (t.key === "config" && !caps.configBackup) return false;
     return true;
   });
 
@@ -137,7 +138,7 @@ export default function InstanceDetailPage() {
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
-            {t.label}
+            {t.key === "firmware" ? caps.updatesLabel : t.label}
           </button>
         ))}
       </div>

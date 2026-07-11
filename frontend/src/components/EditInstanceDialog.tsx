@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorText } from "../lib/api";
+import { deviceCaps } from "../lib/capabilities";
 import { useAuth } from "../lib/use-auth";
 import type { Group, Instance } from "../lib/types";
 import Dialog from "./Dialog";
@@ -18,6 +19,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
   // Auto-Login does. Mirror AddInstanceDialog's per-mode field set.
   const agentMode = instance.agent_mode;
   const isSecurepoint = instance.device_type === "securepoint";
+  const caps = deviceCaps(instance.device_type);
   // Global interval defaults — shown as the placeholder so "empty = inherit" is concrete.
   const { data: defaults } = useQuery({
     queryKey: ["instance-defaults"],
@@ -79,7 +81,8 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         name: form.name,
-        base_url: form.base_url,
+        // Push-only types (linux) have no base_url — the backend rejects one.
+        ...(caps.directApi ? { base_url: form.base_url } : {}),
         location: form.location || null,
         notes: form.notes || null,
         tags: form.tags
@@ -163,13 +166,15 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             </select>
           </div>
         )}
-        <Input
-          label="Base URLs (comma-separated, all clickable)"
-          value={form.base_url}
-          onChange={set("base_url")}
-          placeholder="https://10.0.0.1:4444, https://fw.example"
-          required
-        />
+        {caps.directApi && (
+          <Input
+            label="Base URLs (comma-separated, all clickable)"
+            value={form.base_url}
+            onChange={set("base_url")}
+            placeholder="https://10.0.0.1:4444, https://fw.example"
+            required
+          />
+        )}
         {!agentMode && (
           <>
             <Input
@@ -235,7 +240,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
             Skip SSL verification (self-signed certs)
           </label>
         )}
-        {agentMode && (
+        {agentMode && caps.webif && (
           <label className="flex items-center gap-2 text-sm text-slate-400">
             <input
               type="checkbox"

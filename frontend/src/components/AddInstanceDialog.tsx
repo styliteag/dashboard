@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorText } from "../lib/api";
+import { deviceCaps } from "../lib/capabilities";
 import { useAuth } from "../lib/use-auth";
 import { DEVICE_TYPES, type Group, type Instance } from "../lib/types";
 import Dialog from "./Dialog";
@@ -35,6 +36,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const isSecurepoint = form.device_type === "securepoint";
+  const caps = deviceCaps(form.device_type);
   // Target group: normal users pick among their memberships (implied when they
   // have exactly one); superadmins may target any group.
   const { data: allGroups } = useQuery({
@@ -62,14 +64,16 @@ export default function AddInstanceDialog({ onClose }: Props) {
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  // Securepoint is direct-only and ships self-signed certs: force agent off + skip SSL verify.
+  // Securepoint is direct-only and ships self-signed certs: force agent off + skip
+  // SSL verify. Push-only types (linux) are the inverse: agent mode is the only mode.
   const onDeviceTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const device_type = e.target.value;
-    const securepoint = device_type === "securepoint";
+    const nextCaps = deviceCaps(device_type);
     setForm((f) => ({
       ...f,
       device_type,
-      ...(securepoint ? { agent_mode: false, ssl_verify: false } : {}),
+      ...(device_type === "securepoint" ? { agent_mode: false, ssl_verify: false } : {}),
+      ...(!nextCaps.directApi ? { agent_mode: true } : {}),
     }));
   };
 
@@ -78,13 +82,14 @@ export default function AddInstanceDialog({ onClose }: Props) {
       const body: Record<string, unknown> = {
         name: form.name,
         ...(form.group_id !== "" ? { group_id: Number(form.group_id) } : {}),
-        base_url: form.base_url,
+        // Push-only types (linux) have no URL/API/TLS surface at all.
+        ...(caps.directApi
+          ? { base_url: form.base_url, ca_bundle: form.ca_bundle || null, ssl_verify: form.ssl_verify }
+          : {}),
         device_type: form.device_type,
         agent_mode: form.agent_mode,
         ...(!form.agent_mode && form.api_key ? { api_key: form.api_key } : {}),
         ...(!form.agent_mode && form.api_secret ? { api_secret: form.api_secret } : {}),
-        ca_bundle: form.ca_bundle || null,
-        ssl_verify: form.ssl_verify,
         ...(isSecurepoint
           ? {
               ssh_enabled: form.ssh_enabled,
@@ -166,13 +171,15 @@ export default function AddInstanceDialog({ onClose }: Props) {
             </select>
           </div>
         )}
-        <Input
-          label="Base URLs (comma-separated, HTTPS) *"
-          value={form.base_url}
-          onChange={set("base_url")}
-          placeholder={isSecurepoint ? "https://host:11115" : "https://10.0.0.1:4444"}
-          required
-        />
+        {caps.directApi && (
+          <Input
+            label="Base URLs (comma-separated, HTTPS) *"
+            value={form.base_url}
+            onChange={set("base_url")}
+            placeholder={isSecurepoint ? "https://host:11115" : "https://10.0.0.1:4444"}
+            required
+          />
+        )}
 
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Device type *</label>
@@ -189,8 +196,9 @@ export default function AddInstanceDialog({ onClose }: Props) {
           </select>
         </div>
 
-        {/* Mode toggle — Securepoint is direct-only, no agent. */}
-        {!isSecurepoint && (
+        {/* Mode toggle — only where both transports exist (Securepoint is
+            direct-only, linux is push-only). */}
+        {!isSecurepoint && caps.directApi && (
           <div className="flex gap-2">
             <button
               type="button"
@@ -230,7 +238,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
         {form.agent_mode && (
           <p className="rounded-lg bg-slate-800 px-3 py-2 text-xs text-slate-400">
             In Agent mode no API key is required. After creating the instance you receive an agent
-            token to install on the firewall.
+            token to install on the device.
           </p>
         )}
         {isSecurepoint && (
@@ -276,12 +284,19 @@ export default function AddInstanceDialog({ onClose }: Props) {
           placeholder="https://10.0.0.1:4444"
         />
         <Input
-          label={`${form.agent_mode ? "Push" : "Poll"} interval, seconds (empty = global default, min 5)`}
+          label={`${form.agent_mode ? "Push" : "Poll"} interval, seconds (empty = default, min 5)`}
           value={form.interval}
           onChange={set("interval")}
           type="number"
           min={5}
-          placeholder={defaultInterval ? `global default: ${defaultInterval}s` : "global default"}
+          placeholder={
+            // Push-only servers get a calmer class default applied by the backend.
+            !caps.directApi
+              ? "default for Linux: 120s"
+              : defaultInterval
+                ? `global default: ${defaultInterval}s`
+                : "global default"
+          }
         />
         {/* TLS options only affect the direct-poll path; agent mode pushes from the box. */}
         {!form.agent_mode && (

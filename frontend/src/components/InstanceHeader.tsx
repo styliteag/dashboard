@@ -154,12 +154,14 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
         <button onClick={onRefresh} className={btn}>
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </button>
-        <button
-          onClick={() => window.open(`/api/instances/${id}/config-backup`, "_blank")}
-          className={btn}
-        >
-          <Download className="h-3.5 w-3.5" /> Config Backup
-        </button>
+        {caps.configBackup && (
+          <button
+            onClick={() => window.open(`/api/instances/${id}/config-backup`, "_blank")}
+            className={btn}
+          >
+            <Download className="h-3.5 w-3.5" /> Config Backup
+          </button>
+        )}
         <button onClick={onEdit} className={btn}>
           <Pencil className="h-3.5 w-3.5" /> Edit
         </button>

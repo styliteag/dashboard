@@ -25,6 +25,8 @@ export interface DeviceCaps {
   sshEnrichment: boolean;
   /** Dashboard can reach an HTTP API on the box (test connection, base_url field). */
   directApi: boolean;
+  /** The box has a versioned config backup (config.xml — Config tab + download). */
+  configBackup: boolean;
   /** Label of the update surface ("Firmware" for appliances). */
   updatesLabel: "Firmware" | "Updates";
 }
@@ -38,6 +40,7 @@ const FIREWALL_DEFAULTS: DeviceCaps = {
   connectivity: true,
   sshEnrichment: false,
   directApi: true,
+  configBackup: true,
   updatesLabel: "Firmware",
 };
 
@@ -61,6 +64,7 @@ export const DEVICE_CAPS: Record<string, DeviceCaps> = {
     tunnels: false,
     webif: false,
     directApi: false,
+    configBackup: false,
     updatesLabel: "Updates",
   },
 };
