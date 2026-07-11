@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from live process state plus the dpkg log tail, the banner completes, and
   the pending-update counts refresh on the next push instead of after the
   12h check window. Firewall agents keep the previous behavior.
+- Kernel updates no longer bounce back after "Start update" (agent 2.9.19):
+  the upgrade runs `apt-get dist-upgrade` instead of `upgrade` — a kernel
+  metapackage pulls a new versioned image package, which plain upgrade keeps
+  back forever. Also fixed: on a box with less than ~12h uptime the freshly
+  finished upgrade kept showing the old pending counts (the verdict cache
+  didn't expire with a young monotonic clock — it is now dropped outright,
+  same fix applied to the agent's "Refresh now" path).
 - Linux nodes no longer show a WebGUI globe icon in the instance lists and
   hub status (there is no web UI to open); the backend refuses
   `/gui/open` for such device types outright. The Terminal button works

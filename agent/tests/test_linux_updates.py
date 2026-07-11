@@ -134,7 +134,10 @@ def test_cmd_firmware_update_linux_apt_no_reboot(monkeypatch) -> None:
     assert result["success"] is True
     assert "no automatic reboot" in result["output"]
     cmd, kw = calls[0]
-    assert cmd[0] == "apt-get" and "upgrade" in cmd
+    # dist-upgrade, not upgrade — plain upgrade keeps kernel updates back
+    # forever (new versioned image package = new dependency).
+    assert cmd[0] == "apt-get" and "dist-upgrade" in cmd
+    assert "upgrade" not in [c for c in cmd if c != "dist-upgrade"]
     assert kw["env"]["DEBIAN_FRONTEND"] == "noninteractive"
 
 
@@ -160,19 +163,40 @@ def test_upgrade_status_running_while_apt_active(monkeypatch) -> None:
     assert agent._STATE.fw_check_ts == 999.0
 
 
-def test_upgrade_status_done_rearms_check_throttle(monkeypatch) -> None:
+def test_upgrade_status_done_drops_cached_verdict(monkeypatch) -> None:
     """After the background upgrade finishes the pending counts must refresh
-    on the next push — not after the 12h window."""
+    on the next push — not after the 12h window. Dropping only fw_check_ts is
+    NOT enough: on a box with uptime < the interval, monotonic()-0 stays
+    inside the window and the stale verdict would be served as fresh (live
+    incident on ubn1: 57→0 upgrade done, UI kept showing the old counts)."""
     monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
     monkeypatch.setattr(
         agent,
         "_run",
         lambda cmd, timeout=5: "" if "pgrep" in cmd[-1] else "2026-07-11 installed x\n",
     )
+    agent._STATE.fw_verdict = {"upgrade_available": True}
     agent._STATE.fw_check_ts = 999.0
     result = agent._cmd_upgrade_status({})
     assert result["status"] == "done"
+    assert agent._STATE.fw_verdict == {}
     assert agent._STATE.fw_check_ts == 0.0
+
+    # The dropped verdict forces a fresh check even with a tiny monotonic
+    # clock (uptime < interval) — the cached-path guard is on fw_verdict.
+    monkeypatch.setattr(agent.time, "monotonic", lambda: 4000.0)
+    monkeypatch.setattr(agent, "_read_linux_version", lambda: "u")
+    calls: list[int] = []
+
+    def fresh_check():
+        calls.append(1)
+        return False, "u", "0 update(s) pending, 0 security", False, {"updates_available": 0}
+
+    monkeypatch.setattr(agent, "_linux_update_check", fresh_check)
+    agent.collect_firmware()
+    assert calls, "stale verdict served despite completed upgrade"
+    agent._STATE.fw_verdict = {}
+    agent._STATE.fw_check_ts = 0.0
 
 
 def test_upgrade_status_non_linux_is_unknown(monkeypatch) -> None:

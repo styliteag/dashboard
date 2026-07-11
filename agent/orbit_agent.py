@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.17"
+__version__ = "2.9.19"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3940,12 +3940,16 @@ def _cmd_firmware_update(params: dict) -> dict:
     env = None
     if plat == "linux":
         if shutil.which("apt-get"):
+            # dist-upgrade, not upgrade: a kernel update (linux-image-generic)
+            # pulls a NEW versioned image package as a dependency — plain
+            # upgrade keeps it back forever and the pending count never
+            # reaches zero. Same release, no do-release-upgrade semantics.
             cmd = [
                 "apt-get",
                 "-y",
                 "-o", "Dpkg::Options::=--force-confdef",
                 "-o", "Dpkg::Options::=--force-confold",
-                "upgrade",
+                "dist-upgrade",
             ]
             env = dict(os.environ)
             env["DEBIAN_FRONTEND"] = "noninteractive"
@@ -3988,6 +3992,10 @@ def _cmd_upgrade_status(params: dict) -> dict:
         timeout=10,
     )
     if not running:
+        # Drop the cached verdict entirely — resetting only fw_check_ts to 0
+        # does NOT expire the cache on a box with uptime < the 12h interval
+        # (time.monotonic() starts near 0 at boot, so now-0 < interval).
+        _STATE.fw_verdict = {}
         _STATE.fw_check_ts = 0.0
     return {
         "success": True,
@@ -5418,8 +5426,12 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                     # Like status.refresh, but first zero the interval gates so the
                     # normally-throttled collectors run now: logfiles (hourly),
                     # firmware (~12h) and the config-backup dedupe. Then push one
-                    # fresh snapshot before acking.
+                    # fresh snapshot before acking. The firmware verdict must be
+                    # dropped, not just its timestamp: with uptime < the check
+                    # interval, monotonic()-0 stays below the window and the
+                    # stale verdict would be served as fresh.
                     _last_log_ts[0] = 0.0
+                    _STATE.fw_verdict = {}
                     _STATE.fw_check_ts = 0.0
                     _STATE.config_push_mtime = -1.0
                     _STATE.config_push_sha = ""
