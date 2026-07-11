@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-07-11
+
 ### Fixed
 
 - The Agent tab's installation guide was wrong for Linux nodes (it showed
