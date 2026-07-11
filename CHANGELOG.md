@@ -51,9 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any byte is written (atomic replace, never touches a distro-installed
   check_mk_agent). Bumping the vendored script in the repo now rolls it to
   the fleet on the next reconnect.
-- The Instances page shows each box's device type as a small badge next to
-  the name (list and grid), and — once the fleet contains a Linux node — a
-  filter row (All types / Firewalls / Linux) above the tag chips.
+- The Instances page gets a device-class filter row (All types / Firewalls /
+  Linux) above the tag chips — shown once the fleet contains a Linux node.
 - Linux nodes now populate the Network tab (interfaces with state, IPv4 and
   traffic/error counters from the Checkmk `lnx_if` section — also feeds the
   capture interface picker and interface-error-rate checks), get a real NTP
