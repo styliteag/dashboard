@@ -35,10 +35,11 @@ Buffers:          500000 kB
 Cached:          4000000 kB
 SwapTotal:       2097148 kB
 SwapFree:        1048574 kB
-<<<df>>>
+<<<df_v2>>>
 /dev/sda1      ext4   41152736 20576368 18455636      53% /
 /dev/sdb1      xfs   103081248 10308124 92773124      10% /srv/data mount
 tmpfs          tmpfs   8157456        0  8157456       0% /dev/shm
+efivarfs       efivarfs    256      28       224      11% /sys/firmware/efi/efivars
 [df_inodes_start]
 /dev/sda1      ext4  2621440  300000 2321440      12% /
 [df_inodes_end]
@@ -106,7 +107,7 @@ def test_enrich_maps_load_mem_df_uptime() -> None:
     # used = MemTotal - MemAvailable
     assert mem["used_mb"] == round((16314912 - 12236184) / 1024, 1)
     assert mem["swap_used_pct"] == 50.0
-    # tmpfs filtered, inode block skipped, space in mountpoint preserved
+    # tmpfs/efivarfs filtered, inode block skipped, space in mountpoint preserved
     assert [d["mountpoint"] for d in out["disks"]] == ["/", "/srv/data mount"]
     assert out["disks"][0]["used_pct"] == 53.0
     # 1067020s = 12 days, 8:23
@@ -158,6 +159,13 @@ def test_enriched_payload_feeds_status_converter() -> None:
     assert status.load.cores == 8
     assert [d.device for d in status.disks] == ["/dev/sda1", "/dev/sdb1"]
     assert status.uptime == "12 days, 8:23"
+
+
+def test_df_legacy_section_name_still_parses() -> None:
+    """Pre-2.4 agents emit <<<df>>> — the fallback must keep working."""
+    data = _payload("<<<df>>>\n/dev/sda1 ext4 100 50 50 50% /\n")
+    out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
+    assert out["disks"] == [{"device": "/dev/sda1", "mountpoint": "/", "used_pct": 50.0}]
 
 
 def test_uptime_formats() -> None:

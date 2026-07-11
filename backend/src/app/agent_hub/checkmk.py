@@ -169,7 +169,7 @@ def _parse_mem(lines: list[str]) -> dict | None:
 
 
 def _parse_df(lines: list[str]) -> list[dict] | None:
-    """``<<<df>>>`` → the agent's disks shape.
+    """``<<<df_v2>>>`` (Checkmk ≥2.4; ``<<<df>>>`` before) → the agent's disks shape.
 
     Columns: device fstype size_kb used_kb avail_kb used% mountpoint. The
     section embeds an inode sub-block ([df_inodes_start]…[df_inodes_end]) —
@@ -244,7 +244,8 @@ def enrich_snapshot(
     mem = _parse_mem(sections.get("mem", []))
     if mem is not None:
         out["memory"] = mem
-    disks = _parse_df(sections.get("df", []))
+    # Live ubn1 (Checkmk 2.5.0p8) emits df_v2; older agent builds emit df.
+    disks = _parse_df(sections.get("df_v2") or sections.get("df", []))
     if disks is not None:
         out["disks"] = disks
     uptime = _parse_uptime(sections.get("uptime", []))
