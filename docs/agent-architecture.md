@@ -1096,14 +1096,16 @@ Capture/Shell E2E, signierter check_mk_agent-Redeploy nach Pin-Wechsel.
   `device_type` im Row-Payload — dort erscheint das WebGUI-Icon für Linux-Nodes
   weiterhin (Klick läuft auf den Backend-400, Icon färbt rot). Payloads um
   `device_type` erweitern, wenn es stört.
-- Network-Tab/Capture-Interface-Liste leer auf Linux ohne net-tools —
-  `lnx_if`-Section parsen (Backend-only; Achtung: Section erscheint doppelt,
-  `:sep(58)`-Variante + plain, first-occurrence-wins im Envelope-Parser).
+- ✅ ~~Network-Tab/`lnx_if`~~ (2026-07-11: lnx_if/chrony/systemd_units-Parser gebaut,
+  Envelope konkateniert Doppel-Sections jetzt. Live: eth0 mit Countern im Network-Tab,
+  NTP-Check stratum 3, Services-Liste; provozierte failed Unit → WARN `service:<name>`,
+  Konverter-Bug (failed-Marker verworfen) dabei gefunden und gefixt. UI: Typ-Badge +
+  Firewalls/Linux-Filter auf der Instances-Seite.)
 - Severity-Regeln für den `/var/log`-Fallback (Server ohne systemd) gegen echte
   Daten kalibrieren — der Journal-Pfad liefert Severity über den Priority-Filter.
 - `checkmk_raw`-Payload auf großen Servern messen (ubn1: klein); Cap ist 2 MB roh.
-- Weitere Checkmk-Sections auswerten (lnx_if → interfaces, chrony → ntp,
-  systemd_units → services, diskstat) — jeweils Backend-only.
+- Weitere Checkmk-Sections bei Bedarf (diskstat → IO-Raten, ps_lnx,
+  tcp_conn_stats) — jeweils Backend-only.
 - dnf-Pfad (RHEL) ist nur unit-getestet, kein Lab-Gerät.
 
 ### §25 Status — Kern live verifiziert (2026-07-11, ubn1 = 10.20.1.211)
