@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background; a server is never rebooted automatically). The firmware
   check WARNs only when *security* updates are pending — routine updates
   show as an OK count instead of keeping the fleet permanently yellow.
+- Log snapshots for Linux nodes (agent 2.9.14): hourly journald slices
+  (errors, warnings, sshd/sudo auth) plus dmesg land in the Log tab's
+  stored snapshots and the AI log analysis; hosts without systemd fall
+  back to the classic /var/log files. The (pf-specific) firewall-log
+  block is hidden for Linux nodes.
 
 ## [2.9.11] - 2026-07-10
 

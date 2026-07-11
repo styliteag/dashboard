@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.13"
+__version__ = "2.9.14"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2388,6 +2388,50 @@ def _dhcp_lines() -> str:
     return _run(["sh", "-c", cmd], timeout=10)
 
 
+def _collect_logfiles_linux() -> list:
+    """Linux log snapshot (§25): journald first, classic /var/log as fallback.
+
+    journald delivers severity via the priority filter (no regex calibration):
+    ``journal-err`` = prio 0..3, ``journal-warn`` = prio 4 only, plus an auth
+    slice (sshd/sudo) and dmesg. systemd-less hosts fall back to the classic
+    files. Same shape ({name, content}) and byte caps as the firewall sources;
+    per-item try/except so one bad source never drops the rest.
+    """
+    out: list = []
+    total = 0
+    if shutil.which("journalctl"):
+        sources = (
+            ("journal-err", "journalctl --no-pager -q -p 3 -n 400 --since '-24 hours'"),
+            ("journal-warn", "journalctl --no-pager -q -p 4..4 -n 400 --since '-24 hours'"),
+            ("auth", "journalctl --no-pager -q -t sshd -t sudo -n 200 --since '-24 hours'"),
+        )
+    else:
+        sources = tuple(
+            (name, "tail -c %d %s" % (_LOG_PER_FILE, path))
+            for name, path in (
+                ("syslog", "/var/log/syslog"),
+                ("messages", "/var/log/messages"),
+                ("auth", "/var/log/auth.log"),
+                ("secure", "/var/log/secure"),
+                ("kern", "/var/log/kern.log"),
+            )
+            if os.path.exists(path)
+        )
+    extras = (("dmesg", "dmesg 2>/dev/null | tail -n 200"),)
+    for name, cmd in sources + extras:
+        if total >= _LOG_TOTAL_CAP:
+            break
+        try:
+            budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
+            content = _run(["sh", "-c", cmd + " 2>/dev/null"], timeout=15)[:budget]
+        except Exception:
+            continue
+        if content:
+            out.append({"name": name, "content": content})
+            total += len(content)
+    return out
+
+
 def collect_logfiles() -> list:
     """Tail important logs (≈1 MB total) for AI analysis, at most hourly.
 
@@ -2396,6 +2440,10 @@ def collect_logfiles() -> list:
     if _last_log_ts[0] and (now - _last_log_ts[0]) < _LOG_INTERVAL:
         return []
     platform_name = detect_platform()
+    if platform_name == "linux":
+        out = _collect_logfiles_linux()
+        _last_log_ts[0] = now
+        return out
     out = []
     total = 0
     for name, opn_glob, pf_path in _LOG_SOURCES:

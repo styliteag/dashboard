@@ -27,6 +27,8 @@ export interface DeviceCaps {
   directApi: boolean;
   /** The box has a versioned config backup (config.xml — Config tab + download). */
   configBackup: boolean;
+  /** pf filter log exists (Log tab's firewall-log block). */
+  firewallLog: boolean;
   /** Label of the update surface ("Firmware" for appliances). */
   updatesLabel: "Firmware" | "Updates";
 }
@@ -41,6 +43,7 @@ const FIREWALL_DEFAULTS: DeviceCaps = {
   sshEnrichment: false,
   directApi: true,
   configBackup: true,
+  firewallLog: true,
   updatesLabel: "Firmware",
 };
 
@@ -65,6 +68,7 @@ export const DEVICE_CAPS: Record<string, DeviceCaps> = {
     webif: false,
     directApi: false,
     configBackup: false,
+    firewallLog: false,
     updatesLabel: "Updates",
   },
 };

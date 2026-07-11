@@ -308,10 +308,10 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Log: firewall log + stored snapshots + AI log analysis */}
+      {/* Log: firewall log (pf platforms) + stored snapshots + AI log analysis */}
       {tab === "log" && (
         <div>
-          <FirewallLogSection instanceId={nid} />
+          {caps.firewallLog && <FirewallLogSection instanceId={nid} />}
           <LogSnapshotsSection instanceId={nid} />
           <AiLogAnalysisSection instanceId={nid} />
         </div>
