@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.0"
+__version__ = "3.0.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2443,9 +2443,18 @@ def _collect_logfiles_linux() -> list:
 def collect_logfiles() -> list:
     """Tail important logs (≈1 MB total) for AI analysis, at most hourly.
 
-    Returns ``[]`` between hourly ticks so the common push stays small."""
+    Returns ``[]`` between hourly ticks so the common push stays small.
+    Gate sentinels in ``_last_log_ts[0]``: 0.0 = fresh start (jitter the first
+    collection), -1.0 = collect NOW (refresh.full), else the last-run time."""
     now = time.monotonic()
-    if _last_log_ts[0] and (now - _last_log_ts[0]) < _LOG_INTERVAL:
+    if _last_log_ts[0] == 0.0:
+        # De-synchronize the fleet: after an update-all every agent restarts
+        # within seconds, and without jitter every hourly log push then lands
+        # in the same minute forever (prod slow_push clusters, 2026-07-11).
+        # First push happens 0-10 min after start, hourly from there.
+        _last_log_ts[0] = now - _LOG_INTERVAL + random.uniform(0, 600)
+        return []
+    if _last_log_ts[0] > 0 and (now - _last_log_ts[0]) < _LOG_INTERVAL:
         return []
     platform_name = detect_platform()
     if platform_name == "linux":
@@ -5430,7 +5439,7 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                     # dropped, not just its timestamp: with uptime < the check
                     # interval, monotonic()-0 stays below the window and the
                     # stale verdict would be served as fresh.
-                    _last_log_ts[0] = 0.0
+                    _last_log_ts[0] = -1.0  # collect-NOW marker (0.0 would re-jitter)
                     _STATE.fw_verdict = {}
                     _STATE.fw_check_ts = 0.0
                     _STATE.config_push_mtime = -1.0

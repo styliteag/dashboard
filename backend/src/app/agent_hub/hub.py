@@ -77,6 +77,12 @@ _DUP_PERSIST_POLLS = 3
 # Telegram/e-mail/Mattermost notification) OK→CRIT→OK inside a minute.
 _PING_FLAP_POLLS = 3
 
+# Backlog cap for the background logfile-ingest queue. A synchronized fleet
+# (post update-all restart) lands ~1 log push per box in the same minute;
+# the cap bounds memory (~1 MB per entry) and dropping is safe — the agent
+# pushes a fresh snapshot next hour.
+_LOG_QUEUE_MAX = 200
+
 
 class ConnectedAgent:
     def __init__(self, ws: WebSocket, instance_id: int, instance_name: str):
@@ -183,6 +189,14 @@ class AgentHub:
         self._last_check_states: dict[int, dict[str, int]] = {}
         # GUI-proxy tunnels: stream_id -> queue of frames coming back from the agent.
         self._tunnels: dict[str, asyncio.Queue] = {}
+        # Hourly logfile snapshots are DB-heavy (MEDIUMTEXT insert + event
+        # replace, 100-330ms measured in prod) and a post-rollout fleet pushes
+        # them synchronized in the same minute — decoupled from the push path
+        # via a bounded queue + single writer task so the push handler stays
+        # fast and the DB sees one log ingest at a time (prod slow_push
+        # incident, 2026-07-11 hourly clusters).
+        self._log_queue: asyncio.Queue[tuple[int, list]] = asyncio.Queue(maxsize=_LOG_QUEUE_MAX)
+        self._log_worker: asyncio.Task | None = None
 
     # --- GUI-proxy tunnel registry (see §18) ---------------------------------
 
@@ -500,6 +514,33 @@ class AgentHub:
         self._ping_fail_streak[instance_id] = streaks
         return out
 
+    def _enqueue_logfiles(self, instance_id: int, raw: list) -> None:
+        """Hand a pushed log snapshot to the background writer (lazy-started)."""
+        if self._log_worker is None or self._log_worker.done():
+            self._log_worker = asyncio.create_task(self._log_ingest_worker())
+        try:
+            self._log_queue.put_nowait((instance_id, raw))
+        except asyncio.QueueFull:
+            # Bounded on purpose — drop instead of buffering the fleet's logs
+            # in memory; the agent pushes a fresh snapshot next hour.
+            log.warning("hub.log_ingest_dropped", instance_id=instance_id)
+
+    async def _log_ingest_worker(self) -> None:
+        """Serial consumer: one log ingest at a time, own session per item.
+
+        Serializing is deliberate — after a synchronized rollout the whole
+        fleet's hourly snapshots arrive in the same minute, and N parallel
+        MEDIUMTEXT ingests would fight for pool connections with live pushes.
+        """
+        while True:
+            instance_id, raw = await self._log_queue.get()
+            try:
+                async with get_sessionmaker()() as session:
+                    await record_logfiles(session, instance_id, raw)
+                    await session.commit()
+            except Exception:
+                log.warning("hub.log_ingest_failed", instance_id=instance_id)
+
     async def handle_metrics(self, instance_id: int, data: dict) -> None:
         """Process a metrics push from an agent — timed for the hub stats page.
 
@@ -648,10 +689,12 @@ class AgentHub:
             await record_tunnel_events(session, instance_id, ts, tunnel_events)
             # Append any service-check state transitions (same commit as the push).
             await record_check_events(session, instance_id, ts, check_transitions)
-            # Store any pushed logfile snapshots (hourly) for AI analysis; the store
-            # prunes to the newest few per name so this table never grows unbounded.
+            # Queue any pushed logfile snapshots (hourly) for the background
+            # writer — off the push path; see _log_queue above. Losing the
+            # same-commit coupling is fine: a failed ingest only costs one
+            # hourly snapshot, replaced on the next push.
             if data.get("logfiles"):
-                await record_logfiles(session, instance_id, data["logfiles"])
+                self._enqueue_logfiles(instance_id, data["logfiles"])
             # Store a pushed config.xml version (agent sends it only on change;
             # the store dedupes by sha256 so re-pushed baselines are no-ops).
             if data.get("config_backup"):

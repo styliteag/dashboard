@@ -6,7 +6,8 @@ import orbit_agent as agent
 
 
 def _reset() -> None:
-    agent._last_log_ts[0] = 0.0
+    # -1.0 = collect-NOW sentinel; 0.0 would trigger the fresh-start jitter.
+    agent._last_log_ts[0] = -1.0
 
 
 def test_linux_journald_sources(monkeypatch) -> None:

@@ -6,7 +6,8 @@ import orbit_agent as agent
 
 
 def _reset() -> None:
-    agent._last_log_ts[0] = 0.0
+    # -1.0 = collect-NOW sentinel; 0.0 would trigger the fresh-start jitter.
+    agent._last_log_ts[0] = -1.0
 
 
 def test_collects_then_gates_hourly(monkeypatch) -> None:
@@ -58,3 +59,33 @@ def test_collects_rules_and_dhcp(monkeypatch) -> None:
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "DATA")
     names = {e["name"] for e in agent.collect_logfiles()}
     assert "rules" in names and "dhcp" in names
+
+
+def test_fresh_start_jitters_first_collection(monkeypatch) -> None:
+    """Fleet de-sync: after update-all every agent restarts at once; without
+    jitter every hourly log push lands in the same minute forever (prod
+    slow_push clusters, 2026-07-11)."""
+    agent._last_log_ts[0] = 0.0
+    clock = [10_000.0]
+    monkeypatch.setattr(agent.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(agent.random, "uniform", lambda a, b: 300.0)
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "LOGDATA")
+
+    assert agent.collect_logfiles() == []  # start: gate armed with jitter
+    clock[0] += 299.0
+    assert agent.collect_logfiles() == []  # still inside the jitter window
+    clock[0] += 2.0
+    assert agent.collect_logfiles()  # jitter elapsed → collects
+    _reset()
+
+
+def test_refresh_marker_collects_immediately(monkeypatch) -> None:
+    """refresh.full must bypass the jitter — operators expect logs NOW."""
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "LOGDATA")
+    agent._last_log_ts[0] = -1.0
+    assert agent.collect_logfiles()
+    _reset()

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Hourly log pushes no longer drag the push handler into the yellow (prod:
+  p95 ~200ms with slow-push clusters at the top of every hour after the
+  fleet-wide 3.0.0 rollout synchronized all agents). The database write now
+  runs in a background queue with a single serial writer instead of inside
+  the push handler, and agent 3.0.2 jitters its first hourly log collection
+  by 0–10 minutes after a restart so a fleet updated at once stays spread
+  out — "Refresh now" still collects immediately.
+
 ## [3.0.1] - 2026-07-11
 
 ### Fixed
