@@ -8,6 +8,8 @@ the logic and are unit-tested; the DB functions are thin wrappers verified live.
 
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,7 +68,11 @@ async def record_logfiles(session: AsyncSession, instance_id: int, raw: list[dic
         if extra:
             await session.execute(delete(Logfile).where(Logfile.id.in_(extra)))
     for name, content in pairs:
-        await replace_log_events(session, instance_id, name, extract_events(name, content))
+        # extract_events regex-walks up to ~1 MB of log text — CPU work that
+        # runs on the push path and must not stall the single event loop
+        # (hourly per box; at fleet scale one lands every few seconds).
+        events = await asyncio.to_thread(extract_events, name, content)
+        await replace_log_events(session, instance_id, name, events)
     return len(pairs)
 
 
@@ -146,7 +152,9 @@ async def backfill_log_events(session: AsyncSession) -> int:
     rows = await session.execute(select(Logfile).where(Logfile.id.in_(select(newest.c.mid))))
     created = 0
     for lf in rows.scalars():
-        events = extract_events(lf.name, lf.content)
+        # Same CPU-off-loop rule as ingest: the backfill job shares the loop
+        # with live pushes and requests.
+        events = await asyncio.to_thread(extract_events, lf.name, lf.content)
         await replace_log_events(session, lf.instance_id, lf.name, events)
         created += len(events)
     return created

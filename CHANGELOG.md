@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Two more CPU-heavy jobs moved off the event loop into worker threads:
+  log-event extraction on every hourly log push (regex over up to ~1 MB per
+  file) and the anonymizer pass before an AI log analysis — neither can
+  stall pushes, shells or the UI anymore.
 - Scaling observability: the Hub status page shows the push handler's p95
   wall-clock time as a tile (amber above 100ms) plus a "Slow pushes" error
   counter; every push slower than 100ms and every API request slower than 1s

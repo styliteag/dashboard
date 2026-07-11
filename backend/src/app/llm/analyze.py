@@ -7,6 +7,7 @@ Anthropic messages); the builders/parsers below are pure and unit-tested, while
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -99,7 +100,9 @@ async def analyze_logs(provider: LLMProvider, log_text: str) -> AnalyzeResult:
     model = get_override(model_setting(provider.id)) or provider.default_model
     if not key:
         return AnalyzeResult(False, provider.id, model, "", 0, error="No API key configured")
-    anonymized = anonymize(log_text)[:_MAX_INPUT_CHARS]
+    # anonymize() regex-walks the full log text (up to several hundred KB) —
+    # CPU work; a user-triggered analysis must not stall pushes/shells.
+    anonymized = (await asyncio.to_thread(anonymize, log_text))[:_MAX_INPUT_CHARS]
     url, headers, body = build_chat_request(provider, key, model, SYSTEM_PROMPT, anonymized)
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
