@@ -85,6 +85,16 @@ async def test_status_level_mapping() -> None:
     assert levels["/api/missing"] == "info"
 
 
+def test_slow_request_logs_at_warning() -> None:
+    """>1s on the single-worker loop is a capacity signal, not noise."""
+    from app.http_log import SLOW_REQUEST_MS, _level
+
+    assert _level(200, "/api/instances", duration_ms=SLOW_REQUEST_MS + 1) == "warning"
+    assert _level(200, "/api/instances", duration_ms=50.0) == "info"
+    # Severity ordering is preserved: a slow 500 stays an error.
+    assert _level(500, "/api/instances", duration_ms=SLOW_REQUEST_MS + 1) == "error"
+
+
 @pytest.mark.asyncio
 async def test_websocket_open_close_logged() -> None:
     inner_messages = []

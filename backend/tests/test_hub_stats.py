@@ -309,3 +309,60 @@ def test_ws_bad_json_counts_json_error(monkeypatch) -> None:
         ws.send_text("{not json")
         ws.send_json({"type": "pong"})  # keeps the loop alive past the bad frame
     assert stats.counters_snapshot()["json_errors"] == 1
+
+
+# --- push-handler timing (scaling observability) -------------------------------
+
+
+def test_push_ms_snapshot_percentiles() -> None:
+    s = HubStats()
+    assert s.push_ms_snapshot() == {"p50": 0.0, "p95": 0.0, "max": 0.0, "samples": 0}
+    for ms in range(1, 101):  # 1..100 ms
+        s.record_push_ms(float(ms))
+    snap = s.push_ms_snapshot()
+    assert snap["samples"] == 100
+    assert snap["p50"] == 51.0  # index int(100*0.5) on the sorted list
+    assert snap["p95"] == 96.0
+    assert snap["max"] == 100.0
+
+
+def test_push_ms_window_is_bounded_and_reset_clears_it() -> None:
+    from app.agent_hub.stats import PUSH_MS_SAMPLES
+
+    s = HubStats()
+    for _ in range(PUSH_MS_SAMPLES + 50):
+        s.record_push_ms(1.0)
+    assert s.push_ms_snapshot()["samples"] == PUSH_MS_SAMPLES
+    s.reset()
+    assert s.push_ms_snapshot()["samples"] == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_metrics_records_timing_and_flags_slow(monkeypatch) -> None:
+    """The wrapper must sample every push and count/log the slow ones —
+    this is the 'is the loop stalling right now' signal for scaling."""
+    from app.agent_hub.hub import AgentHub
+
+    stats.reset()
+    h = AgentHub()
+
+    async def instant(instance_id: int, data: dict) -> None:
+        return None
+
+    monkeypatch.setattr(h, "_handle_metrics", instant)
+    await h.handle_metrics(1, {})
+    assert stats.push_ms_snapshot()["samples"] == 1
+    assert stats.counters_snapshot()["slow_pushes"] == 0
+
+    monkeypatch.setattr(hub_mod, "SLOW_PUSH_MS", 0.0)
+    await h.handle_metrics(1, {})
+    assert stats.counters_snapshot()["slow_pushes"] == 1
+    # Timing is recorded even when the handler raises (finally path).
+    async def boom(instance_id: int, data: dict) -> None:
+        raise RuntimeError("nope")
+
+    monkeypatch.setattr(h, "_handle_metrics", boom)
+    with pytest.raises(RuntimeError):
+        await h.handle_metrics(1, {})
+    assert stats.push_ms_snapshot()["samples"] == 3
+    stats.reset()

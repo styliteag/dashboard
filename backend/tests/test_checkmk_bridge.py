@@ -15,6 +15,7 @@ from app.agent_hub.checkmk import (
     decode_raw,
     enrich_snapshot,
     parse_sections,
+    process_push,
 )
 from app.agent_hub.converters import status_from_agent
 
@@ -283,6 +284,17 @@ def test_df_legacy_section_name_still_parses() -> None:
     data = _payload("<<<df>>>\n/dev/sda1 ext4 100 50 50 50% /\n")
     out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
     assert out["disks"] == [{"device": "/dev/sda1", "mountpoint": "/", "used_pct": 50.0}]
+
+
+def test_process_push_equals_inline_pipeline() -> None:
+    """process_push (the to_thread entry point) must behave exactly like the
+    former inline decode→parse→enrich path, including the absent-section case."""
+    data = _payload()
+    inline = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
+    assert process_push(data, None) == inline
+    # Absent/invalid checkmk_raw: input returned unchanged, no ticks.
+    plain = {"cpu": {"total_pct": 1.0}}
+    assert process_push(plain, None) == (plain, None)
 
 
 def test_uptime_formats() -> None:

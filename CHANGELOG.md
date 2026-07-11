@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Scaling observability: the Hub status page shows the push handler's p95
+  wall-clock time as a tile (amber above 100ms) plus a "Slow pushes" error
+  counter; every push slower than 100ms and every API request slower than 1s
+  logs a warning with the culprit. Checkmk payload parsing for Linux nodes
+  moved off the event loop (thread pool) so a fat payload can never stall
+  pushes, shells or the UI.
 - New device type **Linux** (generic Linux server, e.g. customer app servers or
   MSP infrastructure hosts): push-only via the orbit agent — created without a
   base URL/API key, enrolled exactly like a firewall, with a calmer 120s default

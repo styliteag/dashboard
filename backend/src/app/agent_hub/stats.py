@@ -8,10 +8,20 @@ numbers, and ``started_at`` makes that reset visible in the UI.
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import UTC, datetime, timedelta
 
 # Length of the pushes-per-minute window served to the UI chart.
 RATE_WINDOW_MINUTES = 60
+
+# Rolling sample window for push-handler wall-clock times. 1000 pushes ≈ the
+# last ~8 minutes at prod rate — recent enough to answer "is it slow NOW".
+PUSH_MS_SAMPLES = 1000
+
+# A push handler that takes longer than this logs a warning and bumps the
+# slow_pushes counter. Wall-clock including DB awaits — an event-loop stall
+# shows up here across ALL pushes at once, which is exactly the signal.
+SLOW_PUSH_MS = 100.0
 
 # The full counter vocabulary. record() rejects anything else so a typo in an
 # instrumentation call fails loudly in tests instead of minting a new counter.
@@ -27,6 +37,7 @@ KNOWN_COUNTERS = (
     "json_errors",
     "handler_errors",
     "ws_errors",
+    "slow_pushes",
 )
 
 
@@ -40,6 +51,7 @@ class HubStats:
         self.started_at = now or datetime.now(UTC)
         self._counters: dict[str, int] = dict.fromkeys(KNOWN_COUNTERS, 0)
         self._push_buckets: dict[datetime, int] = {}  # UTC minute → push count
+        self._push_ms: deque[float] = deque(maxlen=PUSH_MS_SAMPLES)
 
     def record(self, counter: str) -> None:
         self._counters[counter] += 1  # KeyError on unknown counter — intended
@@ -50,6 +62,24 @@ class HubStats:
         minute = now.replace(second=0, microsecond=0)
         self._push_buckets[minute] = self._push_buckets.get(minute, 0) + 1
         self._prune(minute)
+
+    def record_push_ms(self, ms: float) -> None:
+        self._push_ms.append(ms)
+
+    def push_ms_snapshot(self) -> dict:
+        """p50/p95/max wall-clock ms over the sampled pushes (zeros when none).
+
+        Sorting ≤1000 floats on an admin-page request is negligible; the hot
+        push path only appends to the deque.
+        """
+        if not self._push_ms:
+            return {"p50": 0.0, "p95": 0.0, "max": 0.0, "samples": 0}
+        data = sorted(self._push_ms)
+
+        def pct(p: float) -> float:
+            return round(data[min(len(data) - 1, int(len(data) * p))], 1)
+
+        return {"p50": pct(0.50), "p95": pct(0.95), "max": round(data[-1], 1), "samples": len(data)}
 
     def counters_snapshot(self) -> dict[str, int]:
         return dict(self._counters)

@@ -20,13 +20,17 @@ log = structlog.get_logger("app.http")
 
 _QUIET_PATHS = frozenset({"/api/health"})
 
+# A request slower than this logs at warning — on the single-worker loop a
+# slow request is a capacity signal, not noise (scaling observability).
+SLOW_REQUEST_MS = 1000.0
 
-def _level(status: int, path: str) -> str:
+
+def _level(status: int, path: str, duration_ms: float = 0.0) -> str:
     # Raw 4xx stay at info: real security denials (bad password, IP lock, enroll
     # denied) already reach the always-visible app.audit stream with usernames.
     if status >= 500:
         return "error"
-    if status == 429:
+    if status == 429 or duration_ms > SLOW_REQUEST_MS:
         return "warning"
     if path in _QUIET_PATHS and status < 400:
         return "debug"
@@ -60,13 +64,14 @@ class AccessLogMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             path = scope["path"]
-            getattr(log, _level(status, path))(
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            getattr(log, _level(status, path, duration_ms))(
                 "http",
                 ip=client_ip(HTTPConnection(scope)),
                 method=scope["method"],
                 path=path,
                 status=status,
-                duration_ms=round((time.perf_counter() - start) * 1000, 1),
+                duration_ms=duration_ms,
                 user_id=(scope.get("session") or {}).get("user_id"),
             )
 

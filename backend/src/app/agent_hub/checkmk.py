@@ -36,6 +36,20 @@ _HEADER_RE = re.compile(r"^<<<([a-zA-Z0-9_.-]+)((?::[a-zA-Z_]+\([^)]*\))*)>>>$")
 CpuTicks = tuple[int, int]
 
 
+def process_push(data: dict, prev_cpu_ticks: CpuTicks | None) -> tuple[dict, CpuTicks | None]:
+    """decode + parse + enrich in one pure call, sized for ``asyncio.to_thread``.
+
+    Gunzip of up to 8 MB plus text parsing is CPU work — on the single-worker
+    event loop it must run in a thread once linux fleets grow (§25 scaling
+    note). Absent/invalid checkmk_raw returns the input unchanged and None
+    ticks, exactly like the inline path did.
+    """
+    raw = decode_raw(data)
+    if raw is None:
+        return data, None
+    return enrich_snapshot(data, parse_sections(raw), prev_cpu_ticks)
+
+
 def decode_raw(data: dict) -> str | None:
     """The decompressed checkmk_raw text of a push payload, or None."""
     section = data.get("checkmk_raw") or {}

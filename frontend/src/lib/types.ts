@@ -704,5 +704,7 @@ export interface HubStatsResponse {
   connected_agents: number;
   counters: Record<string, number>;
   push_rate: HubRatePoint[];
+  /** p50/p95/max wall-clock ms of the push handler (rolling sample window). */
+  push_ms: { p50: number; p95: number; max: number; samples: number };
   agents: HubAgent[];
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -30,7 +31,7 @@ from app.agent_hub.converters import (
     services_from_agent,
     status_from_agent,
 )
-from app.agent_hub.stats import stats
+from app.agent_hub.stats import SLOW_PUSH_MS, stats
 from app.checks.evaluate import evaluate_checks
 from app.checks.event_store import record_availability_event, record_check_events
 from app.checks.history import current_states, diff_checks
@@ -500,7 +501,23 @@ class AgentHub:
         return out
 
     async def handle_metrics(self, instance_id: int, data: dict) -> None:
-        """Process a metrics push from an agent."""
+        """Process a metrics push from an agent — timed for the hub stats page.
+
+        Wall-clock including DB awaits: a slow DB and an event-loop stall both
+        surface here, and a loop stall widens the p95 across ALL pushes at
+        once — exactly the signal the observability page needs.
+        """
+        t0 = time.perf_counter()
+        try:
+            await self._handle_metrics(instance_id, data)
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            stats.record_push_ms(ms)
+            if ms > SLOW_PUSH_MS:
+                stats.record("slow_pushes")
+                log.warning("hub.slow_push", instance_id=instance_id, ms=round(ms, 1))
+
+    async def _handle_metrics(self, instance_id: int, data: dict) -> None:
         sessionmaker = get_sessionmaker()
         ts = datetime.now(UTC)
 
@@ -508,11 +525,11 @@ class AgentHub:
         # output; its parsed sections replace the orbit cpu/memory/disks/uptime
         # sections (which hold zeros/junk on linux) BEFORE any conversion, so
         # every consumer below stays platform-blind. Failed parses leave the
-        # payload untouched — enrich_snapshot never raises.
-        raw_text = checkmk.decode_raw(data)
-        if raw_text is not None:
-            data, ticks = checkmk.enrich_snapshot(
-                data, checkmk.parse_sections(raw_text), self._last_cpu_ticks.get(instance_id)
+        # payload untouched. Decode+parse is CPU work (gunzip up to 8 MB) and
+        # runs in a thread so a fat payload never stalls the single event loop.
+        if (data.get("checkmk_raw") or {}).get("output_gz_b64"):
+            data, ticks = await asyncio.to_thread(
+                checkmk.process_push, data, self._last_cpu_ticks.get(instance_id)
             )
             if ticks is not None:
                 self._last_cpu_ticks[instance_id] = ticks

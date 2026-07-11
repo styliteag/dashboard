@@ -28,6 +28,7 @@ const ERROR_COUNTERS: [string, string][] = [
   ["handler_errors", "Handler errors"],
   ["ws_errors", "WS errors"],
   ["unknown_messages", "Unknown messages"],
+  ["slow_pushes", "Slow pushes (>100ms)"],
 ];
 
 const TRAFFIC_COUNTERS: [string, string][] = [
@@ -109,10 +110,17 @@ export default function HubStatusPage() {
         health.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-5">
         <KpiTile label="Connected agents" value={data.connected_agents} color="text-emerald-400" />
         <KpiTile label="Pushes / min" value={perMinute} color="text-sky-400" />
         <KpiTile label="Pushes total" value={data.counters.pushes ?? 0} color="text-slate-100" />
+        {/* Wall-clock per push (incl. DB awaits) — an event-loop stall widens
+            this across all pushes at once, so amber p95 = look for a blocker. */}
+        <KpiTile
+          label="Push p95 (ms)"
+          value={data.push_ms?.p95 ?? 0}
+          color={(data.push_ms?.p95 ?? 0) > 100 ? "text-amber-400" : "text-slate-100"}
+        />
         <KpiTile
           label="Errors total"
           value={errorsTotal}

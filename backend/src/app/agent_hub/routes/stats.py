@@ -48,6 +48,9 @@ class HubStatsResponse(BaseModel):
     connected_agents: int
     counters: dict[str, int]
     push_rate: list[RatePoint]
+    # p50/p95/max wall-clock ms of the push handler over the last N pushes —
+    # the "is the loop stalling right now" signal (scaling observability).
+    push_ms: dict[str, float]
     agents: list[HubAgent]
 
 
@@ -70,5 +73,6 @@ async def hub_stats(
         connected_agents=len(agents),
         counters=stats.counters_snapshot(),
         push_rate=[RatePoint(**p) for p in stats.push_rate(now=now)],
+        push_ms=stats.push_ms_snapshot(),
         agents=agents,
     )
