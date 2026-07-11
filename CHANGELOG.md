@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The fleet-wide aggregate endpoints (Alerts page, Checkmk export, Prometheus
+  export) took 1.3–1.5s per request in prod and stalled every push, shell and
+  page while computing. The check evaluation across all instances now runs in
+  a worker thread, and direct-poll appliances are served stale-while-
+  revalidate from the shared cache (refreshed by a deduped background poll)
+  instead of being polled inside scrape/page requests — this also covers the
+  Alerts page, whose 30s auto-refresh had bypassed the cache entirely.
+
 ## [3.0.2] - 2026-07-12
 
 ### Fixed

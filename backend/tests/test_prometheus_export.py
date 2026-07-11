@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -128,6 +129,27 @@ async def test_gather_many_cached_caches_direct_not_push(monkeypatch) -> None:
     assert polled.count(10) == 1  # direct polled once, then served from the TTL cache
     assert polled.count(11) == 2  # push always read live (hub cache is already cheap)
 
-    # Past the TTL the direct instance is polled again.
+    # Past the TTL: stale-while-revalidate — requests are served immediately
+    # from the stale entry while a deduped BACKGROUND task re-polls the box (a
+    # slow appliance must never sit inside a scrape/page request). The gate
+    # keeps the refresh in flight so the dedupe is observable.
+    gate = asyncio.Event()
+
+    async def blocked_gather(inst, iid):
+        polled.append(iid)
+        await gate.wait()
+        return (None, None, None, None, None, None, None)
+
+    monkeypatch.setattr(checks_routes, "_gather", blocked_gather)
     await checks_routes.gather_many_cached([direct], ttl=-1.0)
+    await checks_routes.gather_many_cached([direct], ttl=-1.0)
+    # Both requests returned instantly (else this test would hang on the gate);
+    # exactly one background refresh started: initial fill + one in-flight.
     assert polled.count(10) == 2
+    assert 10 in checks_routes._export_refresh_inflight
+    gate.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if 10 not in checks_routes._export_refresh_inflight:
+            break
+    assert 10 not in checks_routes._export_refresh_inflight
