@@ -303,6 +303,9 @@ def services_from_agent(data: dict) -> list[ServiceInfo]:
             name=s.get("name", ""),
             description=s.get("description", ""),
             running=bool(s.get("running", False)),
+            # Linux (§25): the checkmk bridge marks units in systemd failed
+            # state — drives the WARN in service_checks.
+            failed=bool(s.get("failed", False)),
         )
         for s in data.get("services", [])
         if isinstance(s, dict) and s.get("name")

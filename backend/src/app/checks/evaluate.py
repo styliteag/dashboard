@@ -390,6 +390,19 @@ def service_checks(services: list[ServiceInfo]) -> list[ServiceCheck]:
                 summary="DNS resolver running" if running else "No DNS resolver running",
             )
         )
+    # Linux nodes (§25): the checkmk bridge marks systemd units in failed
+    # state. WARN, not CRIT — a failed oneshot is degradation to look at, not
+    # a confirmed outage (and we don't know the unit's blast radius).
+    seen = {c.key for c in out}
+    for svc in services:
+        if getattr(svc, "failed", False) and f"service:{svc.name}" not in seen:
+            out.append(
+                ServiceCheck(
+                    key=f"service:{svc.name}",
+                    state=int(CheckState.WARN),
+                    summary=f"Unit {svc.name} failed",
+                )
+            )
     return out
 
 

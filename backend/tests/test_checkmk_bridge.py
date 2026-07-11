@@ -45,9 +45,43 @@ efivarfs       efivarfs    256      28       224      11% /sys/firmware/efi/efiv
 [df_inodes_end]
 <<<uptime>>>
 1067020.61 8412618.16
+<<<lnx_if>>>
+[start_iplink]
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN qlen 1000
+    inet 127.0.0.1/8 scope host lo
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    link/ether bc:24:20:34:25:98 brd ff:ff:ff:ff:ff:ff
+    inet 10.20.1.211/22 metric 100 brd 10.20.3.255 scope global dynamic eth0
+3: eth1: <BROADCAST,MULTICAST> mtu 1500 state DOWN qlen 1000
+[end_iplink]
+<<<lnx_if:sep(58)>>>
+    lo:   26950   248    0    0    0   0   0   0   26950   248    0    0    0   0   0   0
+  eth0: 53756418 85747    7 5000    0   0   0   0 2502273 10918    0    3    0   2   0   0
+  eth1:       0     0    0    0    0   0   0   0       0     0    0    0    0   0   0   0
+[lo]
+	Link detected: yes
+Address: 00:00:00:00:00:00
+[eth0]
+	Speed: Unknown!
+Address: bc:24:20:34:25:98
+<<<chrony:cached(1783795121,120)>>>
+Reference ID    : B97DBE7B (185.125.190.123)
+Stratum         : 3
+Ref time (UTC)  : Sat Jul 11 19:26:01 2026
+System time     : 0.000029125 seconds fast of NTP time
+Last offset     : +0.000140088 seconds
+RMS offset      : 0.000436820 seconds
+Leap status     : Normal
 <<<systemd_units>>>
 [list-unit-files]
 ssh.service enabled enabled
+[status]
+2 units listed.
+[all]
+apparmor.service loaded active exited Load AppArmor profiles
+chrony.service loaded active running chrony, an NTP client/server
+ssh.service loaded active running OpenBSD Secure Shell server
+whoopsie.service loaded failed failed crash report submission
 """
 
 
@@ -87,9 +121,10 @@ def test_parse_sections_splits_and_skips_piggyback() -> None:
     assert sections["uptime"] == ["60"]
 
 
-def test_parse_sections_first_occurrence_wins() -> None:
-    text = "<<<cpu>>>\n1 2 3\n<<<cpu>>>\n9 9 9\n"
-    assert parse_sections(text)["cpu"] == ["1 2 3"]
+def test_parse_sections_concatenates_repeated_names() -> None:
+    """lnx_if/df_v2 legitimately appear twice — both halves must survive."""
+    text = "<<<lnx_if>>>\niplink\n<<<lnx_if:sep(58)>>>\ncounters\n"
+    assert parse_sections(text)["lnx_if"] == ["iplink", "counters"]
 
 
 def test_parse_sections_drops_header_options() -> None:
@@ -159,6 +194,88 @@ def test_enriched_payload_feeds_status_converter() -> None:
     assert status.load.cores == 8
     assert [d.device for d in status.disks] == ["/dev/sda1", "/dev/sdb1"]
     assert status.uptime == "12 days, 8:23"
+
+
+def test_enrich_maps_interfaces_from_both_lnx_if_halves() -> None:
+    data = _payload()
+    out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
+    by_name = {i["name"]: i for i in out["interfaces"]}
+    assert "lo" not in by_name  # loopback = noise
+    eth0 = by_name["eth0"]
+    assert eth0["status"] == "up"
+    assert eth0["address"] == "10.20.1.211"
+    assert eth0["bytes_received"] == 53756418
+    assert eth0["bytes_transmitted"] == 2502273
+    assert eth0["in_errors"] == 7
+    assert eth0["out_errors"] == 0
+    assert eth0["collisions"] == 2
+    assert by_name["eth1"]["status"] == "down"  # no UP flag, no address
+    assert by_name["eth1"]["address"] is None
+
+
+def test_enrich_maps_chrony_to_ntp() -> None:
+    data = _payload()
+    out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
+    ntp = out["ntp"]
+    assert ntp["synced"] is True and ntp["stratum"] == 3
+    assert ntp["offset_ms"] == 0.029  # "fast" → positive
+    assert ntp["jitter_ms"] == 0.437
+    assert ntp["peer"] == "185.125.190.123"
+
+
+def test_chrony_unsynchronised_reports_not_synced() -> None:
+    from app.agent_hub.checkmk import _parse_chrony
+
+    ntp = _parse_chrony(
+        [
+            "Reference ID    : 00000000 ()",
+            "Stratum         : 0",
+            "System time     : 0.5 seconds slow of NTP time",
+            "Leap status     : Not synchronised",
+        ]
+    )
+    assert ntp["synced"] is False and ntp["stratum"] == 0
+    assert ntp["offset_ms"] == -500.0  # "slow" → negative
+    assert _parse_chrony(["garbage"]) is None
+
+
+def test_enrich_maps_systemd_units_to_services() -> None:
+    data = _payload()
+    out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
+    by_name = {s["name"]: s for s in out["services"]}
+    # Running services reported; inactive/exited oneshots dropped.
+    assert by_name["ssh"]["running"] is True
+    assert "apparmor" not in by_name
+    failed = by_name["whoopsie"]
+    assert failed["running"] is False and failed["failed"] is True
+
+
+def test_services_converter_passes_failed_marker_through() -> None:
+    """Regression: the converter rebuilt ServiceInfo field-by-field and dropped
+    the failed marker — the WARN never fired despite correct parsing (live on
+    ubn1 with a provoked failed transient unit)."""
+    from app.agent_hub.converters import services_from_agent
+
+    services = services_from_agent(
+        {"services": [{"name": "whoopsie", "running": False, "failed": True}]}
+    )
+    assert services[0].failed is True
+
+
+def test_failed_unit_warns_via_service_checks() -> None:
+    from app.checks.evaluate import service_checks
+    from app.checks.models import CheckState
+    from app.xsense.schemas import ServiceInfo
+
+    checks = service_checks(
+        [
+            ServiceInfo(name="ssh", running=True),
+            ServiceInfo(name="whoopsie", running=False, failed=True),
+        ]
+    )
+    failed = {c.key: c for c in checks}["service:whoopsie"]
+    assert failed.state == CheckState.WARN
+    assert "failed" in failed.summary
 
 
 def test_df_legacy_section_name_still_parses() -> None:

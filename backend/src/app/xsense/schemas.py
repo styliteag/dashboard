@@ -416,6 +416,8 @@ class ServiceInfo(BaseModel):
     name: str = ""
     description: str = ""
     running: bool = False
+    # systemd unit entered failed state (linux nodes, §25) — WARN driver.
+    failed: bool = False
 
 
 # --- Certificates ------------------------------------------------------------

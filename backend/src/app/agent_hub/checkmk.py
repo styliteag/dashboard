@@ -55,11 +55,13 @@ def parse_sections(text: str) -> dict[str, list[str]]:
     """Split Checkmk agent output into ``{section_name: lines}``.
 
     Piggyback blocks (``<<<<host>>>>`` … ``<<<<>>>>``) belong to other hosts
-    and are skipped entirely. A repeated section name keeps the *first*
-    occurrence — the stock agent emits each core section once, and a local
-    plugin appending the same name again must not clobber the core data.
-    Header options (``:sep(..)``, ``:cached(..)``) are dropped; the parsers
-    below split whitespace-separated columns.
+    and are skipped entirely. A repeated section name *concatenates* — the
+    stock agent legitimately emits some sections twice (``lnx_if`` = ip-link
+    block + counter/ethtool variant, ``df_v2`` = data + inode block), and the
+    parsers are defensive enough that appended plugin output degrades to
+    ignored lines rather than clobbering anything. Header options
+    (``:sep(..)``, ``:cached(..)``) are dropped; the parsers below split
+    whitespace-separated columns.
     """
     sections: dict[str, list[str]] = {}
     current: list[str] | None = None
@@ -73,12 +75,7 @@ def parse_sections(text: str) -> dict[str, list[str]]:
             continue
         m = _HEADER_RE.match(line)
         if m:
-            name = m.group(1)
-            if name in sections:
-                current = None
-            else:
-                sections[name] = []
-                current = sections[name]
+            current = sections.setdefault(m.group(1), [])
             continue
         if current is not None:
             current.append(line)
@@ -205,6 +202,141 @@ def _parse_df(lines: list[str]) -> list[dict] | None:
     return rows or None
 
 
+# /proc/net/dev row inside <<<lnx_if>>>: "  eth0: 53756418 85747 0 5000 …"
+# (16 counter columns; MAC/Speed lines from the ethtool blocks don't match
+# because their values aren't digits-only).
+_IF_COUNTER_RE = re.compile(r"^\s*([^\s:\[\]]+):\s*(\d[\d ]*)$")
+_IF_IPLINK_RE = re.compile(r"^\d+:\s+([^:@\s]+)(?:@\S+)?:\s+<([^>]*)>")
+
+
+def _parse_lnx_if(lines: list[str]) -> list[dict] | None:
+    """``<<<lnx_if>>>`` (both variants concatenated) → the agent's interfaces
+    shape.
+
+    The ip-link block ([start_iplink]…[end_iplink]) provides flags/state and
+    the primary IPv4; the counter rows (/proc/net/dev format) provide byte and
+    error counters: rx bytes/packets/errs/… then tx bytes/packets/errs/…/colls.
+    Loopback is dropped (noise on every host). Only interfaces with a counter
+    row are reported — the counters drive the error-rate annotation downstream.
+    """
+    counters: dict[str, list[int]] = {}
+    states: dict[str, str] = {}
+    addrs: dict[str, str] = {}
+    in_iplink = False
+    current: str | None = None
+    for line in lines:
+        if line.startswith("[start_iplink]"):
+            in_iplink = True
+            continue
+        if line.startswith("[end_iplink]"):
+            in_iplink = False
+            current = None
+            continue
+        if in_iplink:
+            m = _IF_IPLINK_RE.match(line)
+            if m:
+                current = m.group(1)
+                flags = m.group(2).split(",")
+                states[current] = "up" if "UP" in flags else "down"
+                continue
+            am = re.match(r"\s+inet\s+([\d.]+)/", line)
+            if am and current is not None:
+                addrs.setdefault(current, am.group(1))
+            continue
+        m = _IF_COUNTER_RE.match(line)
+        if m:
+            fields = m.group(2).split()
+            if len(fields) >= 14:
+                counters[m.group(1)] = [int(x) for x in fields]
+    rows = [
+        {
+            "name": name,
+            "status": states.get(name, "up"),
+            "address": addrs.get(name),
+            "bytes_received": c[0],
+            "bytes_transmitted": c[8],
+            "in_errors": c[2],
+            "out_errors": c[10],
+            "collisions": c[13],
+        }
+        for name, c in counters.items()
+        if name != "lo"
+    ]
+    return rows or None
+
+
+def _parse_chrony(lines: list[str]) -> dict | None:
+    """``<<<chrony>>>`` (chronyc tracking output) → the agent's ntp shape.
+
+    "System time … fast/slow of NTP time" is the live offset (sign follows
+    fast/slow); "RMS offset" stands in for jitter. An unsynchronised chrony
+    reports stratum 0 / "Not synchronised" → synced False, and the ntp check's
+    no-data sentinel (stratum < 0) stays reserved for "no chrony at all".
+    """
+    kv: dict[str, str] = {}
+    for line in lines:
+        if ":" in line:
+            key, _, value = line.partition(":")
+            kv[key.strip()] = value.strip()
+    if "Stratum" not in kv:
+        return None
+    try:
+        stratum = int(kv["Stratum"])
+    except ValueError:
+        return None
+    offset_ms = 0.0
+    m = re.match(r"([\d.]+)\s+seconds\s+(fast|slow)", kv.get("System time", ""))
+    if m:
+        offset_ms = round(float(m.group(1)) * 1000 * (1 if m.group(2) == "fast" else -1), 3)
+    jitter_ms = 0.0
+    jm = re.match(r"([\d.]+)\s+seconds", kv.get("RMS offset", ""))
+    if jm:
+        jitter_ms = round(float(jm.group(1)) * 1000, 3)
+    peer = ""
+    pm = re.search(r"\(([^)]+)\)", kv.get("Reference ID", ""))
+    if pm:
+        peer = pm.group(1)
+    synced = stratum > 0 and "not synchronised" not in kv.get("Leap status", "").lower()
+    return {
+        "synced": synced,
+        "stratum": stratum,
+        "offset_ms": offset_ms,
+        "jitter_ms": jitter_ms,
+        "peer": peer,
+    }
+
+
+def _parse_systemd_units(lines: list[str]) -> list[dict] | None:
+    """``<<<systemd_units>>>`` ([all] block) → the agent's services shape.
+
+    Reported: running services (display + vital-service checks) and *failed*
+    units (running False + failed marker → WARN check downstream). The
+    hundreds of inactive/static units are deliberately dropped — an inactive
+    oneshot is normal life, not a service list.
+    """
+    rows: list[dict] = []
+    in_all = False
+    for line in lines:
+        if line.startswith("["):
+            in_all = line.strip() == "[all]"
+            continue
+        if not in_all:
+            continue
+        parts = line.split(None, 4)
+        if len(parts) < 4 or not parts[0].endswith(".service"):
+            continue
+        unit, _load, active, sub = parts[:4]
+        name = unit[: -len(".service")]
+        description = parts[4] if len(parts) > 4 else ""
+        if active == "failed":
+            rows.append(
+                {"name": name, "description": description, "running": False, "failed": True}
+            )
+        elif active == "active" and sub == "running":
+            rows.append({"name": name, "description": description, "running": True})
+    return rows or None
+
+
 def _parse_uptime(lines: list[str]) -> str | None:
     """``<<<uptime>>>`` (seconds since boot) → the human string the FreeBSD
     collector ships (uptime(1) style: "12 days, 3:07" / "3:07" / "42 mins")."""
@@ -251,6 +383,15 @@ def enrich_snapshot(
     uptime = _parse_uptime(sections.get("uptime", []))
     if uptime is not None:
         out["uptime"] = uptime
+    interfaces = _parse_lnx_if(sections.get("lnx_if", []))
+    if interfaces is not None:
+        out["interfaces"] = interfaces
+    ntp = _parse_chrony(sections.get("chrony", []))
+    if ntp is not None:
+        out["ntp"] = ntp
+    services = _parse_systemd_units(sections.get("systemd_units", []))
+    if services is not None:
+        out["services"] = services
     ticks = _parse_kernel_ticks(sections.get("kernel", []))
     pct = cpu_pct_from_ticks(prev_cpu_ticks, ticks)
     if pct is not None:
