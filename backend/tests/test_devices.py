@@ -96,3 +96,48 @@ async def test_securepoint_client_satisfies_protocols() -> None:
         assert isinstance(client, SupportsIPsec)
     finally:
         await client.aclose()
+
+
+def test_device_caps_covers_every_device_type() -> None:
+    """DR-8: a new DeviceType member without a capability row must fail loudly."""
+    from app.devices.capabilities import DEVICE_CAPS
+
+    assert set(DEVICE_CAPS) == set(DeviceType)
+
+
+def test_device_caps_securepoint_is_direct_only() -> None:
+    from app.devices.capabilities import device_caps
+
+    caps = device_caps(DeviceType.SECUREPOINT)
+    assert caps.agent is False
+    assert caps.capture is False
+    assert caps.connectivity is False
+    assert caps.ssh_enrichment is True
+    assert caps.tunnels is True
+
+
+def test_device_caps_firewall_rules_only_opnsense() -> None:
+    from app.devices.capabilities import DEVICE_CAPS, device_caps
+
+    assert device_caps("opnsense").firewall_rules is True
+    others = [t for t in DeviceType if t is not DeviceType.OPNSENSE]
+    assert all(DEVICE_CAPS[t].firewall_rules is False for t in others)
+
+
+def test_device_caps_unknown_value_falls_back_to_defaults() -> None:
+    """Legacy/unknown device_type strings must behave like today (all tabs shown)."""
+    from app.devices.capabilities import device_caps
+
+    caps = device_caps("something-legacy")
+    assert caps.agent is True
+    assert caps.firewall_rules is False
+    assert device_caps(None).agent is True
+
+
+def test_device_caps_rows_are_immutable() -> None:
+    import dataclasses
+
+    from app.devices.capabilities import device_caps
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        device_caps("opnsense").agent = False  # type: ignore[misc]

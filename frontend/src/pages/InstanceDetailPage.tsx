@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { api } from "../lib/api";
+import { deviceCaps } from "../lib/capabilities";
 import { fmtTimeShort } from "../lib/datetime";
 import type { Instance, SystemStatus, MetricResponse } from "../lib/types";
 import InstanceHeader from "../components/InstanceHeader";
@@ -83,15 +84,15 @@ export default function InstanceDetailPage() {
     queryFn: () => api.get<Instance>(`/api/instances/${id}`),
   });
 
-  // Securepoint is direct-only — no agent mode, so hide the agent-only tabs.
-  // The firewall rule editor is OPNsense-specific until the pfSense API path is mapped.
-  const isSecurepoint = instance?.device_type === "securepoint";
-  const supportsFirewallRules = instance?.device_type === "opnsense";
+  // Tab visibility comes from the central capability map (DR-8) — e.g. Securepoint
+  // is direct-only (no agent tabs), the rule editor is OPNsense-specific.
+  const caps = deviceCaps(instance?.device_type);
   const tabs = TABS.filter((t) => {
-    if (isSecurepoint && (t.key === "agent" || t.key === "connectivity" || t.key === "capture")) {
-      return false;
-    }
-    if (t.key === "firewall" && !supportsFirewallRules) return false;
+    if (t.key === "agent" && !caps.agent) return false;
+    if (t.key === "connectivity" && !caps.connectivity) return false;
+    if (t.key === "capture" && !caps.capture) return false;
+    if (t.key === "firewall" && !caps.firewallRules) return false;
+    if (t.key === "security" && !caps.tunnels) return false;
     return true;
   });
 
@@ -280,7 +281,7 @@ export default function InstanceDetailPage() {
       {tab === "capture" && <PacketCaptureSection key={nid} instanceId={nid} />}
 
       {/* Firewall: OPNsense firewall rules through the core API */}
-      {tab === "firewall" && supportsFirewallRules && (
+      {tab === "firewall" && caps.firewallRules && (
         <div>
           <FirewallRulesSection instanceId={nid} />
         </div>
@@ -292,9 +293,7 @@ export default function InstanceDetailPage() {
           <IPsecSection
             instanceId={nid}
             pingSupported={instance?.agent_mode ?? false}
-            diagnoseSupported={
-              (instance?.agent_mode ?? false) || instance?.device_type === "securepoint"
-            }
+            diagnoseSupported={(instance?.agent_mode ?? false) || caps.sshEnrichment}
             stale={instance?.stale ?? false}
             staleSeconds={instance?.stale_seconds ?? null}
           />
@@ -329,8 +328,8 @@ export default function InstanceDetailPage() {
         </div>
       )}
 
-      {/* Agent — hidden for Securepoint (direct-only) */}
-      {tab === "agent" && !isSecurepoint && (
+      {/* Agent — only for agent-capable device types (hidden e.g. for Securepoint) */}
+      {tab === "agent" && caps.agent && (
         <div className="space-y-6">
           <AgentRuntimeSection status={status} />
           <AgentSection instanceId={nid} agentMode={instance?.agent_mode ?? false} />

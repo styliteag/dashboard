@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, WifiOff, AlertTriangle, ExternalLink, ArrowUpCircle, Lock } from "lucide-react";
+import { deviceCaps } from "../lib/capabilities";
 import { deviceTypeLabel, type ConnectedAgent, type Instance } from "../lib/types";
 import type { InstanceAlertSummary } from "../lib/instances";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
@@ -267,7 +268,7 @@ export function InstanceCard({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            eligible={inst.agent_mode || (inst.device_type === "securepoint" && inst.ssh_enabled)}
+            eligible={inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)}
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
@@ -353,7 +354,7 @@ export function InstanceRow({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            eligible={inst.agent_mode || (inst.device_type === "securepoint" && inst.ssh_enabled)}
+            eligible={inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)}
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />

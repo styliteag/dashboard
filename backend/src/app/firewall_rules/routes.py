@@ -14,6 +14,7 @@ from app.audit.log import write_audit
 from app.auth.deps import current_user, require_write
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.devices.capabilities import device_caps
 from app.devices.types import DeviceType, Transport
 from app.firewall_rules.schemas import (
     FirewallActionResult,
@@ -205,7 +206,7 @@ async def _get_opnsense_instance(session: AsyncSession, instance_id: int, user: 
     inst = await inst_service.get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    if inst.device_type != DeviceType.OPNSENSE.value:
+    if not device_caps(inst.device_type).firewall_rules:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="firewall rules are only supported for OPNsense instances",
