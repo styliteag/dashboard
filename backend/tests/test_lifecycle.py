@@ -158,7 +158,9 @@ def _token_of(resp):
 def test_gui_open_replays_login_when_enabled(monkeypatch):
     from app.agent_hub.gui_session import gui_sessions
 
-    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=True)
+    inst = SimpleNamespace(
+        id=7, deleted_at=None, group_id=1, device_type="opnsense", gui_login_enabled=True
+    )
     fa = _FakeAgent({"success": True, "cookies": [{"name": "PHPSESSID", "value": "sess-xyz"}]})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200
@@ -167,8 +169,23 @@ def test_gui_open_replays_login_when_enabled(monkeypatch):
     assert gui_sessions.pop(_token_of(r)) == [("PHPSESSID", "sess-xyz")]
 
 
+def test_gui_open_refuses_push_only_device_type(monkeypatch):
+    """§25: a linux node has no web UI — /gui/open must 400 before any tunnel
+    work, whatever a stale frontend renders."""
+    inst = SimpleNamespace(
+        id=7, deleted_at=None, group_id=1, device_type="linux", gui_login_enabled=False
+    )
+    fa = _FakeAgent({"success": True, "cookies": []})
+    r = _gui_open(monkeypatch, inst, fa)
+    assert r.status_code == 400
+    assert "no web ui" in r.json()["detail"]
+    assert fa.calls == []
+
+
 def test_gui_open_skips_login_when_disabled(monkeypatch):
-    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=False)
+    inst = SimpleNamespace(
+        id=7, deleted_at=None, group_id=1, device_type="opnsense", gui_login_enabled=False
+    )
     fa = _FakeAgent({"success": True, "cookies": []})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200
@@ -178,7 +195,9 @@ def test_gui_open_skips_login_when_disabled(monkeypatch):
 def test_gui_open_degrades_when_login_fails(monkeypatch):
     from app.agent_hub.gui_session import gui_sessions
 
-    inst = SimpleNamespace(id=7, deleted_at=None, group_id=1, gui_login_enabled=True)
+    inst = SimpleNamespace(
+        id=7, deleted_at=None, group_id=1, device_type="opnsense", gui_login_enabled=True
+    )
     fa = _FakeAgent({"success": False, "output": "gui login rejected"})
     r = _gui_open(monkeypatch, inst, fa)
     assert r.status_code == 200  # still opens — just lands on the login page

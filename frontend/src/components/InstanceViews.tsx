@@ -264,6 +264,7 @@ export function InstanceCard({
             instanceId={inst.id}
             instanceName={inst.name}
             agentMode={inst.agent_mode}
+            deviceType={inst.device_type}
             iconClassName="h-3 w-3"
           />
           <ShellIconLink
@@ -350,6 +351,7 @@ export function InstanceRow({
             instanceId={inst.id}
             instanceName={inst.name}
             agentMode={inst.agent_mode}
+            deviceType={inst.device_type}
             iconClassName="h-3 w-3"
           />
           <ShellIconLink

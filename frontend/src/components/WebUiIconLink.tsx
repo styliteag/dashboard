@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { api, ApiError } from "../lib/api";
+import { deviceCaps } from "../lib/capabilities";
 
 /**
  * Small icon-only link that opens an instance's WebGUI through the agent's
@@ -19,6 +20,7 @@ export function WebUiIconLink({
   instanceId,
   instanceName,
   agentMode,
+  deviceType,
   path,
   directUrl,
   title,
@@ -28,6 +30,8 @@ export function WebUiIconLink({
   instanceId: number;
   instanceName?: string;
   agentMode: boolean;
+  /** When known, hides the icon for device classes without a web UI (linux). */
+  deviceType?: string;
   path?: string;
   directUrl?: string;
   title?: string;
@@ -41,6 +45,8 @@ export function WebUiIconLink({
       ),
     onSuccess: (r) => window.open(r.url, "_blank", "noopener,noreferrer"),
   });
+  // A linux server has no web UI — agent or not (the backend refuses too).
+  if (deviceType !== undefined && !deviceCaps(deviceType).webif) return null;
   if (!agentMode) {
     if (!directUrl) return null;
     const directLabel = title ?? `Open ${instanceName ?? "instance"} WebGUI`;

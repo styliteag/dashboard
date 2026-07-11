@@ -217,6 +217,7 @@ export default function HubStatusPage() {
                         instanceId={a.instance_id}
                         instanceName={a.instance_name}
                         agentMode={agentMode.get(a.instance_id) ?? true}
+                        deviceType={a.platform || undefined}
                       />
                       <ShellIconLink
                         instanceId={a.instance_id}

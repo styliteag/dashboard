@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux nodes no longer show a WebGUI globe icon in the instance lists and
+  hub status (there is no web UI to open); the backend refuses
+  `/gui/open` for such device types outright. The Terminal button works
+  for Linux nodes once the per-instance shell opt-in is set — root shell
+  and packet capture verified end-to-end against a live Ubuntu node.
+
 ### Added
 
 - New device type **Linux** (generic Linux server, e.g. customer app servers or

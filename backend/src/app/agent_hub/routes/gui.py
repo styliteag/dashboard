@@ -21,6 +21,7 @@ from app.auth.deps import require_write
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Instance, User
+from app.devices.capabilities import device_caps
 from app.instances.service import get_instance
 from app.net import client_ip
 
@@ -73,6 +74,13 @@ async def gui_open(
     inst = await get_instance(session, instance_id, user)
     if inst is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+    # Push-only server types (linux, §25) have no web UI to proxy — refuse
+    # before any tunnel/vhost work, whatever a stale frontend renders.
+    if not device_caps(inst.device_type).webif:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="this device type has no web ui",
+        )
     agent = hub.get(instance_id)
     if agent is None:
         raise HTTPException(
