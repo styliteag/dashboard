@@ -245,12 +245,28 @@ async def _test_securepoint(inst: Instance) -> tuple[bool, int | None, int | Non
         await client.aclose()
 
 
+async def _test_agent_ping(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
+    """Probe a push-only device (linux, §25): agent WS round-trip instead of a
+    direct API — there is none. ok = the connected agent answered ping."""
+    from app.agent_hub.hub import hub  # lazy: keeps instances.service import-light
+
+    agent = hub.get(inst.id)
+    if agent is None:
+        return False, None, None, "agent not connected"
+    start = time.monotonic()
+    result = await agent.send_command("ping", {}, timeout=10)
+    elapsed = int((time.monotonic() - start) * 1000)
+    if result.get("success"):
+        return True, None, elapsed, None
+    return False, None, elapsed, str(result.get("output") or "agent ping failed")
+
+
 async def test_connection(inst: Instance) -> tuple[bool, int | None, int | None, str | None]:
     """Open a *fresh* client (not the cached one) and probe reachability."""
     from app.crypto.secrets import decrypt
 
     if not device_caps(inst.device_type).direct_api:
-        return False, None, None, "push-only device type — no direct API to test"
+        return await _test_agent_ping(inst)
 
     if inst.device_type == DeviceType.SECUREPOINT.value:
         return await _test_securepoint(inst)

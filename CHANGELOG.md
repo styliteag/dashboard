@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MSP infrastructure hosts): push-only via the orbit agent — created without a
   base URL/API key, enrolled exactly like a firewall, with a calmer 120s default
   push interval. Firewall-only surfaces (VPN, web-UI proxy, firewall rules) are
-  hidden for this type; test-connection reports it as push-only instead of
-  probing. Full data collection (metrics, checks, updates, logs) lands in the
-  following releases via the bundled Checkmk agent.
+  hidden for this type; the Test button probes the agent WebSocket round-trip
+  (there is no direct API to poll). Full data collection (metrics, checks,
+  updates, logs) lands in the following releases via the bundled Checkmk agent.
 - Agent 2.9.11 detects generic Linux hosts (`platform: linux`) and, when the
   bundled Checkmk agent script is present, ships its raw output with every
   push (`checkmk_raw` section, gzip, 2 MB cap) for backend-side parsing. The

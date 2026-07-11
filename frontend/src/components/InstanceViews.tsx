@@ -204,8 +204,8 @@ function InstanceActions({
   const primary = splitUrls(inst.base_url)[0];
   return (
     <div className="flex items-center gap-1.5">
-      {/* Push-only types (linux) have no direct API to probe. */}
-      {deviceCaps(inst.device_type).directApi && <TestConnectionButton instanceId={inst.id} />}
+      {/* For push-only types (linux) the backend probes the agent WS instead. */}
+      <TestConnectionButton instanceId={inst.id} />
       {primary && (
         <a
           href={primary}

@@ -197,12 +197,32 @@ def test_instance_create_direct_types_still_require_base_url() -> None:
 
 
 @pytest.mark.asyncio
-async def test_test_connection_refuses_push_only_type() -> None:
+async def test_test_connection_pings_agent_for_push_only_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """linux (§25): test-connection probes the agent WS round-trip, not a URL."""
+    from types import SimpleNamespace
+
+    from app.agent_hub.hub import hub
     from app.instances.service import test_connection
 
-    ok, status_code, latency, error = await test_connection(Instance(device_type="linux"))
+    inst = Instance(device_type="linux")
+    inst.id = 6
+
+    # No connected agent → honest failure, no client construction attempted.
+    monkeypatch.setattr(hub, "get", lambda _id: None)
+    ok, status_code, latency, error = await test_connection(inst)
     assert ok is False and status_code is None
-    assert "push-only" in (error or "")
+    assert "agent not connected" in (error or "")
+
+    async def pong(action: str, params: dict, timeout: float = 10) -> dict:
+        assert action == "ping"
+        return {"success": True, "output": "pong"}
+
+    monkeypatch.setattr(hub, "get", lambda _id: SimpleNamespace(send_command=pong))
+    ok, _status, latency, error = await test_connection(inst)
+    assert ok is True and error is None
+    assert latency is not None and latency >= 0
 
 
 def test_registry_refuses_client_for_push_only_type() -> None:
