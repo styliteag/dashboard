@@ -64,6 +64,64 @@ def _agent_update_params() -> dict | None:
     }
 
 
+_CHECKMK_VENDOR = "vendor/check_mk_agent.linux"
+
+
+def _checkmk_update_params() -> dict | None:
+    """checkmk.update params: the vendored script + its offline Ed25519 .sig.
+
+    Same relay-only model as the agent self-update — the dashboard never holds
+    the signing key, the agent verifies against its baked _UPDATE_PUBKEY.
+    """
+    try:
+        code = (_AGENT_DIR / _CHECKMK_VENDOR).read_bytes()
+    except OSError:
+        return None
+    try:
+        signature = (_AGENT_DIR / (_CHECKMK_VENDOR + ".sig")).read_text().strip()
+    except OSError:
+        signature = ""
+    return {
+        "sha256": hashlib.sha256(code).hexdigest(),
+        "code": base64.b64encode(code).decode(),
+        "signature": signature,
+    }
+
+
+async def maybe_deploy_checkmk(agent: ConnectedAgent) -> None:
+    """Keep a linux node's Checkmk script at the vendored pin (§25/DR-10).
+
+    Fired after hello: when the agent reports a different script sha256 than
+    the vendored copy this container serves, push the signed script via
+    checkmk.update. Best-effort — a failure logs and never touches the
+    connection; the agent refuses anything unsigned, so a compromised
+    backend cannot ship arbitrary root code.
+    """
+    if agent.platform != "linux":
+        return
+    params = _checkmk_update_params()
+    if params is None or agent.checkmk_sha256 == params["sha256"]:
+        return
+    try:
+        result = await agent.send_command("checkmk.update", params, timeout=60)
+    except Exception:
+        log.warning("agent.checkmk_deploy_failed", instance_id=agent.instance_id)
+        return
+    if result.get("success"):
+        agent.checkmk_sha256 = params["sha256"]
+        log.info(
+            "agent.checkmk_deployed",
+            instance_id=agent.instance_id,
+            sha=params["sha256"][:12],
+        )
+    else:
+        log.warning(
+            "agent.checkmk_deploy_rejected",
+            instance_id=agent.instance_id,
+            output=str(result.get("output", ""))[:200],
+        )
+
+
 async def _push_update(agent: ConnectedAgent, params: dict) -> dict:
     """Send agent.update to one connection and persist the outcome on it.
 

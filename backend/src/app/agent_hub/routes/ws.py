@@ -17,6 +17,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from app.agent_hub.hub import hub
+from app.agent_hub.routes import update as update_routes
 from app.agent_hub.stats import stats
 from app.audit.log import write_audit
 from app.auth.roles import WRITE_ROLES
@@ -135,6 +136,7 @@ async def agent_websocket(ws: WebSocket):
         if hello.get("type") == "hello":
             agent.agent_version = hello.get("agent_version", "")
             agent.platform = hello.get("platform", "")
+            agent.checkmk_sha256 = hello.get("checkmk_sha256", "") or ""
             await _sync_device_type(instance_id, agent.platform)
             await ws.send_json(
                 {
@@ -157,6 +159,11 @@ async def agent_websocket(ws: WebSocket):
                     await conn_service.push_to_agent(cfg_session, instance_id)
             except Exception:
                 log.warning("agent.ping_config_push_failed", instance_id=instance_id)
+            # Linux nodes: refresh the vendored Checkmk script when its sha
+            # differs (§25). Background task — send_command's result future is
+            # resolved by the command_result branch of the main loop below, so
+            # this must not block the loop from starting.
+            asyncio.create_task(update_routes.maybe_deploy_checkmk(agent))
 
         # Main message loop
         async for raw in ws.iter_text():

@@ -175,7 +175,7 @@ async def agent_status(
 # in `_agent_update_params()`, and `relay.enable`/`http.relay`/`agent.uninstall` carry
 # firewall-admin authority. Letting them ride the raw passthrough bypasses that curation.
 _INTERNAL_AGENT_ACTIONS = frozenset(
-    {"gui.login", "agent.update", "relay.enable", "http.relay", "agent.uninstall"}
+    {"gui.login", "agent.update", "relay.enable", "http.relay", "agent.uninstall", "checkmk.update"}
 )
 
 # Result keys that may carry a live credential (firewall session cookie, API key,

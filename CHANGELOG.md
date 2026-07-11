@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   background; a server is never rebooted automatically). The firmware
   check WARNs only when *security* updates are pending — routine updates
   show as an OK count instead of keeping the fleet permanently yellow.
+- The bundled Checkmk agent script now keeps itself current on Linux nodes
+  (agent 2.9.15): the agent reports its deployed script's sha256 on connect
+  and the dashboard pushes the vendored copy when it differs — Ed25519-signed
+  with the same offline key as the agent itself, verified on the box before
+  any byte is written (atomic replace, never touches a distro-installed
+  check_mk_agent). Bumping the vendored script in the repo now rolls it to
+  the fleet on the next reconnect.
 - Log snapshots for Linux nodes (agent 2.9.14): hourly journald slices
   (errors, warnings, sshd/sudo auth) plus dmesg land in the Log tab's
   stored snapshots and the AI log analysis; hosts without systemd fall

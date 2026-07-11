@@ -86,6 +86,9 @@ class ConnectedAgent:
         # Reported in the agent's hello frame.
         self.agent_version: str = ""
         self.platform: str = ""
+        # sha256 of the Checkmk script deployed on a linux node ("" elsewhere);
+        # drives the signed auto-redeploy (§25, routes/update.maybe_deploy_checkmk).
+        self.checkmk_sha256: str = ""
         # Last self-update attempt that did NOT take effect (e.g. signature/sha256
         # rejected). Surfaced in agent status so the reason is visible in the GUI
         # even after a page reload. Cleared by a connection reset (a successful

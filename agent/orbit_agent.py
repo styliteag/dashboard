@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.14"
+__version__ = "2.9.15"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2552,6 +2552,59 @@ def _checkmk_script() -> str | None:
     return None
 
 
+# Where checkmk.update deploys/refreshes our managed copy (first candidate —
+# a distro-installed /usr/bin/check_mk_agent is never touched).
+_CHECKMK_DEPLOY_PATH = "/usr/local/orbit-agent/check_mk_agent.linux"
+
+
+def _checkmk_script_sha() -> str:
+    """sha256 of the active Checkmk script ('' when absent / non-linux)."""
+    if detect_platform() != "linux":
+        return ""
+    script = _checkmk_script()
+    if script is None:
+        return ""
+    try:
+        with open(script, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _cmd_checkmk_update(params: dict) -> dict:
+    """Deploy/refresh the vendored Checkmk agent script (§25/DR-10).
+
+    Root-executed code from the server — same trust chain as agent.update:
+    the sha256 must match AND the Ed25519 signature must verify against the
+    baked _UPDATE_PUBKEY (dev skip only via the explicit opt-ins). Writes
+    atomically (tmp + rename) so a crashed deploy never leaves a torn script.
+    """
+    if detect_platform() != "linux":
+        return {"success": False, "output": "checkmk deploy is linux-only"}
+    try:
+        code = base64.b64decode(params.get("code", ""), validate=True)
+    except (ValueError, TypeError):
+        return {"success": False, "output": "invalid code encoding"}
+    if not code:
+        return {"success": False, "output": "empty code"}
+    sha = hashlib.sha256(code).hexdigest()
+    if sha != (params.get("sha256") or "").lower():
+        return {"success": False, "output": "sha256 mismatch"}
+    if not _skip_sig_check() and not _signature_ok(code, params.get("signature", "")):
+        return {"success": False, "output": "signature verification failed"}
+    directory = os.path.dirname(_CHECKMK_DEPLOY_PATH)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".checkmk-")
+        with os.fdopen(fd, "wb") as f:
+            f.write(code)
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, _CHECKMK_DEPLOY_PATH)
+    except OSError as exc:
+        return {"success": False, "output": "write failed: %s" % exc}
+    return {"success": True, "output": "check_mk_agent deployed (%s)" % sha[:12], "sha256": sha}
+
+
 def collect_checkmk() -> dict:
     """Raw Checkmk-agent output for backend-side parsing (linux only).
 
@@ -4087,6 +4140,7 @@ _COMMANDS = {
     "config.backup": _cmd_config_backup,
     "reboot": _cmd_reboot,
     "relay.enable": _cmd_relay_enable,
+    "checkmk.update": _cmd_checkmk_update,
     "gui.login": _cmd_gui_login,
     "http.relay": _cmd_http_relay,
     "ping": _cmd_ping,
@@ -4748,6 +4802,9 @@ async def agent_loop(cfg: Config) -> None:
                 "agent_version": __version__,
                 "hostname": platform.node(),
                 "platform": detect_platform(),
+                # Deployed Checkmk-script sha (linux, §25) — the backend pushes
+                # a signed refresh via checkmk.update when it differs.
+                "checkmk_sha256": _checkmk_script_sha(),
             }))
 
             # Run push, listen and keepalive concurrently
