@@ -1088,8 +1088,17 @@ Capture/Shell E2E, signierter check_mk_agent-Redeploy nach Pin-Wechsel.
 
 ### Offene Punkte §25
 
-- Capture/Shell auf Linux nicht E2E getestet (tcpdump auf ubn1 vorhanden; PTY-Shell
-  spawnt vermutlich sh/bash — im UI verifizieren).
+- ✅ ~~Capture/Shell auf Linux E2E~~ (2026-07-11: Root-Shell-WS-Roundtrip über die
+  Agent-PTY-Bridge PASS — spawnt die passwd-Shell, auf Ubuntu bash; 4s-tcpdump auf
+  eth0 → 24 KB pcap mit gültigem Magic PASS. WebGUI-Knopf für linux entfernt,
+  Backend lehnt /gui/open per Capability ab.)
+- Globale Overview-Seiten (Connectivity/Firmware/Alerts/Certificates) tragen kein
+  `device_type` im Row-Payload — dort erscheint das WebGUI-Icon für Linux-Nodes
+  weiterhin (Klick läuft auf den Backend-400, Icon färbt rot). Payloads um
+  `device_type` erweitern, wenn es stört.
+- Network-Tab/Capture-Interface-Liste leer auf Linux ohne net-tools —
+  `lnx_if`-Section parsen (Backend-only; Achtung: Section erscheint doppelt,
+  `:sep(58)`-Variante + plain, first-occurrence-wins im Envelope-Parser).
 - Severity-Regeln für den `/var/log`-Fallback (Server ohne systemd) gegen echte
   Daten kalibrieren — der Journal-Pfad liefert Severity über den Priority-Filter.
 - `checkmk_raw`-Payload auf großen Servern messen (ubn1: klein); Cap ist 2 MB roh.
