@@ -188,6 +188,7 @@ export default function FirmwareSection({
                   <span className="flex items-center gap-1 text-amber-400">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     {fw.updates_available} available
+                    {(fw.security_updates ?? 0) > 0 && ` (${fw.security_updates} security)`}
                   </span>
                 ) : fw.check_failed ? (
                   <span
@@ -196,6 +197,11 @@ export default function FirmwareSection({
                   >
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Check failed
+                  </span>
+                ) : fw.updates_available > 0 ? (
+                  // Linux: routine (non-security) package updates pending — never amber.
+                  <span className="text-slate-300">
+                    {fw.updates_available} pending (none security-relevant)
                   </span>
                 ) : (
                   <span className="text-emerald-400">Up to date</span>

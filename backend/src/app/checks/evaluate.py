@@ -321,6 +321,17 @@ def _ipsec_ping_checks(label: str, tunnel) -> list[ServiceCheck]:  # noqa: ANN00
 
 def firmware_check(fw: FirmwareStatus) -> ServiceCheck:
     if fw.upgrade_available:
+        # Linux nodes (§25): the agent sets upgrade_available only for pending
+        # security updates — name them instead of a version arrow.
+        if fw.security_updates > 0:
+            return ServiceCheck(
+                key="firmware",
+                state=int(CheckState.WARN),
+                summary=(
+                    f"{fw.security_updates} security update(s) pending "
+                    f"({fw.updates_available} total)"
+                ),
+            )
         latest = fw.product_latest or "?"
         return ServiceCheck(
             key="firmware",
@@ -334,6 +345,14 @@ def firmware_check(fw: FirmwareStatus) -> ServiceCheck:
             key="firmware",
             state=int(CheckState.WARN),
             summary=f"Firmware update check failed ({fw.product_version} installed)",
+        )
+    if fw.updates_available > 0:
+        # Routine (non-security) package updates never WARN (§25) — but the
+        # count must be visible, not hidden behind a green "up to date".
+        return ServiceCheck(
+            key="firmware",
+            state=int(CheckState.OK),
+            summary=f"{fw.updates_available} update(s) pending, none security-relevant",
         )
     return ServiceCheck(
         key="firmware",

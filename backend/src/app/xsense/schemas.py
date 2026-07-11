@@ -367,6 +367,9 @@ class FirmwareStatus(BaseModel):
     # the verdict is "unknown" — must not render as "up to date".
     check_failed: bool = False
     updates_available: int = 0
+    # Pending security updates (linux nodes, §25) — drives the WARN threshold;
+    # routine updates alone stay OK. Firewalls report 0.
+    security_updates: int = 0
     packages: list[dict] = []  # list of package/set dicts with name, current, new
     status_msg: str = ""
     download_size: str = ""

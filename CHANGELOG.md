@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run-agent.sh supervisor (same self-update/rollback contract as on
   FreeBSD) and the bundled Checkmk agent on a Linux server. The FreeBSD
   `install.sh` is untouched.
+- The Updates tab works for Linux nodes (agent 2.9.12): pending apt/dnf
+  package updates with per-package list, a "reboot required" flag and
+  "Start update" / bulk "Update all" support (upgrade runs in the
+  background; a server is never rebooted automatically). The firmware
+  check WARNs only when *security* updates are pending — routine updates
+  show as an OK count instead of keeping the fleet permanently yellow.
 
 ## [2.9.11] - 2026-07-10
 

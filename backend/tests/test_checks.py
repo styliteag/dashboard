@@ -276,6 +276,34 @@ def test_firmware_update_warns() -> None:
     )
 
 
+def test_firmware_linux_security_updates_warn_with_counts() -> None:
+    """§25: linux nodes WARN on pending security updates, named as such."""
+    c = firmware_check(
+        FirmwareStatus(
+            product_version="Ubuntu 26.04 LTS",
+            upgrade_available=True,
+            updates_available=7,
+            security_updates=2,
+        )
+    )
+    assert c.state == CheckState.WARN
+    assert "2 security update(s) pending (7 total)" in c.summary
+
+
+def test_firmware_linux_routine_updates_stay_ok_but_visible() -> None:
+    """Routine (non-security) updates never WARN, but the count must show."""
+    c = firmware_check(
+        FirmwareStatus(
+            product_version="Ubuntu 26.04 LTS",
+            upgrade_available=False,
+            updates_available=7,
+            security_updates=0,
+        )
+    )
+    assert c.state == CheckState.OK
+    assert "7 update(s) pending" in c.summary
+
+
 def test_firmware_check_failed_warns_not_green() -> None:
     # A broken update check is "unknown", never "up to date" (false-green
     # incident: CE 2.7.0 with broken pkg reported healthy for years).

@@ -54,7 +54,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "2.9.11"
+__version__ = "2.9.12"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1479,6 +1479,7 @@ def _store_fw_verdict(
     latest: str,
     out: str,
     check_failed: bool = False,
+    extra: "dict | None" = None,
 ) -> dict:
     """Cache the firmware verdict + restart the check-interval throttle window.
 
@@ -1493,6 +1494,9 @@ def _store_fw_verdict(
         "product_latest": latest,
         "update_check_output": out.strip()[:500],
         "check_failed": check_failed,
+        # Linux package-update detail (updates_available/security_updates/
+        # needs_reboot, §25) rides along; firewalls pass no extra.
+        **(extra or {}),
     }
     _STATE.fw_check_ts = time.monotonic()
     return _STATE.fw_verdict
@@ -1627,19 +1631,121 @@ def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
     return best_train, (m.group(1) if m else best_train.replace("_", "."))
 
 
+def _read_linux_version() -> str:
+    """PRETTY_NAME from /etc/os-release (e.g. 'Ubuntu 26.04 LTS')."""
+    try:
+        for line in Path("/etc/os-release").read_text(errors="replace").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return ""
+
+
+def _apt_update_check() -> "tuple[bool, str, bool, dict]":
+    """Pending updates via apt. Returns (upgrade_available, out, check_failed, extra)."""
+    refresh = subprocess.run(
+        ["apt-get", "update", "-qq"], capture_output=True, text=True, timeout=90
+    )
+    # `apt list --upgradable` line: "pkg/noble-security 1.2 amd64 [upgradable from: 1.1]"
+    out = _run(["sh", "-c", "apt list --upgradable 2>/dev/null"], timeout=60)
+    rows = [ln for ln in out.splitlines() if "upgradable from" in ln]
+    security = [ln for ln in rows if "-security" in ln.split(None, 1)[0]]
+    packages = []
+    for ln in rows[:50]:
+        parts = ln.split()
+        old = ln.rsplit("upgradable from:", 1)[-1].strip(" ]") if "upgradable from:" in ln else ""
+        packages.append(
+            {
+                "name": parts[0].split("/", 1)[0],
+                "current": old,
+                "new": parts[1] if len(parts) > 1 else "",
+            }
+        )
+    extra = {
+        "updates_available": len(rows),
+        "security_updates": len(security),
+        "needs_reboot": os.path.exists("/var/run/reboot-required"),
+        "packages": packages,
+    }
+    summary = "%d update(s) pending, %d security" % (len(rows), len(security))
+    if refresh.returncode != 0:
+        summary += " (apt-get update failed: %s)" % (refresh.stderr or "").strip()[:200]
+    return len(security) > 0, summary, refresh.returncode != 0, extra
+
+
+def _dnf_update_check() -> "tuple[bool, str, bool, dict]":
+    """Pending updates via dnf. Returns (upgrade_available, out, check_failed, extra)."""
+    # rc 100 = updates available, 0 = up to date, anything else = check failed.
+    r = subprocess.run(["dnf", "-q", "check-update"], capture_output=True, text=True, timeout=120)
+    check_failed = r.returncode not in (0, 100)
+    rows = [
+        ln.split()
+        for ln in r.stdout.splitlines()
+        if ln and not ln.startswith((" ", "Obsoleting", "Last metadata"))
+    ]
+    rows = [p for p in rows if len(p) >= 3]
+    sec_out = _run(["sh", "-c", "dnf -q updateinfo list --security 2>/dev/null"], timeout=60)
+    security = [ln for ln in sec_out.splitlines() if "/Sec." in ln]
+    extra = {
+        "updates_available": len(rows),
+        "security_updates": len(security),
+        "needs_reboot": False,  # RHEL needs-restarting is not reliably present
+        "packages": [{"name": p[0], "current": "", "new": p[1]} for p in rows[:50]],
+    }
+    summary = "%d update(s) pending, %d security" % (len(rows), len(security))
+    return len(security) > 0, summary, check_failed, extra
+
+
+def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
+    """Pending package updates on a generic Linux node (§25).
+
+    Returns (upgrade_available, latest, out, check_failed, extra).
+    ``upgrade_available`` is deliberately security-only: pending security
+    updates WARN, routine updates stay OK with a count — a server fleet would
+    otherwise be permanently yellow. No supported package manager → the
+    verdict is check_failed (never a false green "up to date").
+    """
+    version = _read_linux_version()
+    try:
+        if shutil.which("apt-get"):
+            upgrade_available, out, check_failed, extra = _apt_update_check()
+        elif shutil.which("dnf"):
+            upgrade_available, out, check_failed, extra = _dnf_update_check()
+        else:
+            return False, version, "no supported package manager (apt/dnf)", True, {}
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return False, version, "update check failed: %s" % exc, True, {}
+    return upgrade_available, version, out, check_failed, extra
+
+
 def collect_firmware() -> dict:
     """Firmware version on every push; network update check every ~12h (per platform).
 
     Only ``product_version`` is recomputed every push (a cheap local file read); the
     branch + upgrade verdict come from the cached last network check so the frequent
     interim pushes never blank a detected update (see ``_STATE.fw_verdict``).
+    On linux "firmware" means pending apt/dnf package updates (§25/DR-10).
     """
-    pfsense = detect_platform() == "pfsense"
-    version = _read_pfsense_version() if pfsense else _read_opnsense_version()
+    plat = detect_platform()
+    pfsense = plat == "pfsense"
+    if plat == "linux":
+        version = _read_linux_version()
+    elif pfsense:
+        version = _read_pfsense_version()
+    else:
+        version = _read_opnsense_version()
 
     now = time.monotonic()
     if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
         return {"product_version": version, **_STATE.fw_verdict}
+
+    if plat == "linux":
+        upgrade_available, latest, out, check_failed, extra = _linux_update_check()
+        verdict = _store_fw_verdict(
+            "", [], upgrade_available, latest or version, out, check_failed, extra=extra
+        )
+        return {"product_version": version, **verdict}
 
     if pfsense:
         # Refresh Netgate's train catalogue first — exactly what the GUI's
@@ -3655,6 +3761,24 @@ def _cmd_ipsec_restart(params: dict) -> dict:
 
 def _cmd_firmware_check(params: dict) -> dict:
     plat = detect_platform()
+    if plat == "linux":
+        upgrade_available, latest, out, check_failed, extra = _linux_update_check()
+        verdict = _store_fw_verdict(
+            "", [], upgrade_available, latest, out, check_failed, extra=extra
+        )
+        return {
+            "success": True,
+            "output": verdict["update_check_output"],
+            "product_version": latest,
+            "product_latest": verdict["product_latest"],
+            "upgrade_available": verdict["upgrade_available"],
+            "branch": "",
+            "known_branches": [],
+            "check_failed": verdict["check_failed"],
+            "updates_available": extra.get("updates_available", 0),
+            "security_updates": extra.get("security_updates", 0),
+            "needs_reboot": extra.get("needs_reboot", False),
+        }
     if plat == "pfsense":
         out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
         version = _read_pfsense_version()
@@ -3684,15 +3808,35 @@ def _cmd_firmware_check(params: dict) -> dict:
 
 
 def _cmd_firmware_update(params: dict) -> dict:
-    # Non-blocking: start in background. The vendor updater handles the
-    # reboot itself when the update requires one (new base/kernel).
-    if detect_platform() == "pfsense":
+    # Non-blocking: start in background. The firewall vendor updaters handle
+    # the reboot themselves when required (new base/kernel); a linux server is
+    # deliberately NEVER auto-rebooted — the needs_reboot flag surfaces it.
+    plat = detect_platform()
+    env = None
+    if plat == "linux":
+        if shutil.which("apt-get"):
+            cmd = [
+                "apt-get",
+                "-y",
+                "-o", "Dpkg::Options::=--force-confdef",
+                "-o", "Dpkg::Options::=--force-confold",
+                "upgrade",
+            ]
+            env = dict(os.environ)
+            env["DEBIAN_FRONTEND"] = "noninteractive"
+        elif shutil.which("dnf"):
+            cmd = ["dnf", "-y", "upgrade"]
+        else:
+            return {"success": False, "output": "no supported package manager (apt/dnf)"}
+    elif plat == "pfsense":
         cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
     else:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
         cmd = ["configctl", "firmware", "update"]
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    if plat == "linux":
+        return {"success": True, "output": "package upgrade started (no automatic reboot)"}
     return {"success": True, "output": "update started in background"}
 
 

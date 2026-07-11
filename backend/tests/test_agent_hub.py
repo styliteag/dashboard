@@ -221,6 +221,26 @@ def test_ipsec_from_agent_maps_status_to_phase1() -> None:
     assert ipsec_from_agent({}).running is False
 
 
+def test_firmware_from_agent_linux_counts_pass_through() -> None:
+    """§25: linux agents report real update counts — no 0/1 derivation."""
+    push = dict(
+        AGENT_PUSH,
+        firmware={
+            "product_version": "Ubuntu 26.04 LTS",
+            "upgrade_available": True,
+            "updates_available": 7,
+            "security_updates": 2,
+            "needs_reboot": True,
+            "packages": [{"name": "openssl", "current": "1", "new": "2"}],
+        },
+    )
+    fw = firmware_from_agent(push, "2026-07-11T10:00:00+00:00")
+    assert fw.updates_available == 7
+    assert fw.security_updates == 2
+    assert fw.needs_reboot is True
+    assert fw.packages == [{"name": "openssl", "current": "1", "new": "2"}]
+
+
 def test_firmware_from_agent_derives_updates_count() -> None:
     fw = firmware_from_agent(AGENT_PUSH, "2026-06-23T10:00:00+00:00")
     assert fw.product_version == "26.03-RELEASE"

@@ -508,6 +508,8 @@ export interface FirmwareStatus {
   upgrade_available: boolean;
   check_failed?: boolean; // update check could not run — verdict unknown
   updates_available: number;
+  // Pending security updates (linux nodes) — WARN driver; routine updates stay OK.
+  security_updates?: number;
   status_msg: string;
   needs_reboot: boolean;
   last_check: string;

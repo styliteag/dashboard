@@ -338,7 +338,12 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
         product_latest=fw_data.get("product_latest") or fw_data.get("product_version", ""),
         upgrade_available=upgrade_available,
         check_failed=bool(fw_data.get("check_failed", False)),
-        updates_available=1 if upgrade_available else 0,
+        # Linux agents report real counts (§25); firewalls omit them and keep
+        # the historic 0/1 derivation.
+        updates_available=int(fw_data.get("updates_available", 1 if upgrade_available else 0) or 0),
+        security_updates=int(fw_data.get("security_updates", 0) or 0),
+        needs_reboot=bool(fw_data.get("needs_reboot", False)),
+        packages=fw_data.get("packages", []) or [],
         status_msg=fw_data.get("update_check_output", ""),
         last_check=last_check,
     )
