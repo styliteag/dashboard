@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Instance overview: new "Uptime (days)" sawtooth graph next to the other
+  metric charts — uptime drops to zero at every reboot, making reboot history
+  visible at a glance. Works for agent-push, OPNsense direct-poll and
+  Securepoint instances (the human uptime string is parsed to seconds at
+  ingest; unparseable strings are skipped rather than plotted as a fake
+  reboot).
+
 ### Changed
 
 - The tags field in the add/edit instance dialogs is now a proper tag picker:

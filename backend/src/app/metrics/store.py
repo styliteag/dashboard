@@ -10,12 +10,47 @@ A periodic APScheduler job (``prune_metrics``) enforces raw-metrics retention
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.xsense.schemas import SystemStatus
+
+# ``SystemStatus.uptime`` is a human string whose shape depends on the source:
+# agent push relays the ``uptime`` binary ("18 days, 22:03", "5 mins", "1:02"),
+# the OPNsense direct poll pre-formats "1d 18h 18m", Securepoint reports
+# "13 days, 4:07:32". The unit tokens and an optional hh:mm[:ss] clock cover
+# all of them; anything else (e.g. a bare number) parses to None and no metric
+# row is written — never guess a wrong uptime into the series.
+_UPTIME_UNITS: list[tuple[re.Pattern[str], int]] = [
+    (re.compile(r"(\d+)\s*(?:d\b|day)"), 86400),
+    (re.compile(r"(\d+)\s*(?:h\b|hr|hour)"), 3600),
+    (re.compile(r"(\d+)\s*(?:m\b|min)"), 60),
+    (re.compile(r"(\d+)\s*(?:s\b|sec)"), 1),
+]
+_UPTIME_CLOCK = re.compile(r"\b(\d+):(\d{2})(?::(\d{2}))?\b")
+
+
+def uptime_to_seconds(uptime: str | None) -> float | None:
+    """Parse a human uptime string into seconds; None when unparseable."""
+    if not uptime:
+        return None
+    s = uptime.strip().lower()
+    total = 0.0
+    matched = False
+    for pattern, mult in _UPTIME_UNITS:
+        m = pattern.search(s)
+        if m:
+            total += int(m.group(1)) * mult
+            matched = True
+    m = _UPTIME_CLOCK.search(s)
+    if m:
+        hours, minutes, seconds = m.group(1), m.group(2), m.group(3)
+        total += int(hours) * 3600 + int(minutes) * 60 + int(seconds or 0)
+        matched = True
+    return total if matched else None
 
 
 def to_rate(points: list[dict]) -> list[dict]:
@@ -58,6 +93,12 @@ async def write_poll_metrics(
 
     def add(metric: str, value: float) -> None:
         rows.append({"instance_id": instance_id, "ts": ts, "metric": metric, "value": value})
+
+    # Uptime sawtooth (drops to ~0 on every reboot). Only stored when the human
+    # uptime string parsed — absent/odd formats must not fake a 0-uptime reboot.
+    uptime_seconds = uptime_to_seconds(status.uptime)
+    if uptime_seconds is not None:
+        add("system.uptime_seconds", uptime_seconds)
 
     add("cpu.total", status.cpu.total)
     add("memory.used_pct", status.memory.used_pct)

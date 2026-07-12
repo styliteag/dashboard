@@ -237,6 +237,19 @@ export default function InstanceDetailPage() {
                 scale={1000}
                 refY={10}
               />
+              {/* Uptime sawtooth (seconds -> days): drops to ~0 mark reboots.
+                  Linear interpolation on purpose — monotone splines overshoot
+                  below zero at the reset edges. */}
+              <MetricChart
+                instanceId={nid}
+                metric="system.uptime_seconds"
+                label="Uptime (days)"
+                color="#38bdf8"
+                range={range}
+                domain={[0, "auto"]}
+                scale={86400}
+                lineType="linear"
+              />
             </div>
           </section>
 
@@ -381,6 +394,7 @@ function MetricChart({
   domain = [0, 100],
   scale = 1,
   refY,
+  lineType = "monotone",
 }: {
   instanceId: number;
   metric: string;
@@ -393,6 +407,8 @@ function MetricChart({
   scale?: number;
   /** Optional dashed reference line (in plotted/scaled units), e.g. a WARN threshold. */
   refY?: number;
+  /** Interpolation: "linear" for sawtooth series where monotone splines overshoot. */
+  lineType?: "monotone" | "linear";
 }) {
   const { data } = useQuery({
     queryKey: ["metrics", instanceId, metric, range],
@@ -441,7 +457,7 @@ function MetricChart({
               <ReferenceLine y={refY} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.7} />
             )}
             <Area
-              type="monotone"
+              type={lineType}
               dataKey="value"
               stroke={color}
               fillOpacity={1}
