@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A backend restart no longer floods notification channels with false
+  offline/recovered pairs for every push instance (a 5-minute container
+  outage produced 140 Mattermost messages for a 70-box fleet): agent silence
+  is now measured from backend start after a restart, so agents get their
+  full staleness threshold to reconnect before being flagged — genuinely
+  dead agents still alert once that threshold passes.
+
 ### Added
 
 - Denied-request analytics for the GeoIP/CrowdSec gate: the Access page shows

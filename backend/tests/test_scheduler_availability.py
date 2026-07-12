@@ -131,3 +131,43 @@ async def test_stale_flip_does_not_record_when_update_loses(monkeypatch) -> None
 
     await sched._check_stale_agents()
     assert recorded == []  # no flip → no event
+
+
+@pytest.mark.asyncio
+async def test_stale_check_skips_silence_from_backend_downtime(monkeypatch) -> None:
+    """Regression 2026-07-12: a 5-min container outage flagged every push
+    instance offline on the first tick after restart (agents had no chance to
+    reconnect yet) — 140 offline/recovered messages in Mattermost for 70 boxes.
+    With ``_started_at`` flooring the silence clock, an agent last seen before
+    the restart is NOT stale right after boot: no flip, no event, no dispatch.
+    """
+    now = datetime.now(UTC)
+    inst = SimpleNamespace(
+        id=42,
+        name="fw42",
+        push_interval_seconds=None,
+        agent_last_seen=now - timedelta(hours=1),  # silent since before the outage
+        last_success_at=now - timedelta(minutes=5),
+        last_error_at=None,
+    )
+    session = _FakeSession([inst])
+    monkeypatch.setattr(sched, "get_sessionmaker", lambda: lambda: session)
+    monkeypatch.setattr(
+        sched,
+        "effective_settings",
+        lambda: SimpleNamespace(push_interval_seconds=60, agent_stale_seconds=120),
+    )
+    # Real is_stale + real threshold: the backend "booted" 5 seconds ago.
+    monkeypatch.setattr(sched, "_started_at", now - timedelta(seconds=5))
+    monkeypatch.setattr(sched, "is_online", lambda *a: True)
+
+    dispatched: list = []
+    monkeypatch.setattr(sched, "dispatch_async", lambda *a, **k: dispatched.append(a))
+    recorded: list = []
+    monkeypatch.setattr(sched, "record_availability_event", lambda *a, **k: recorded.append(1))
+
+    await sched._check_stale_agents()
+
+    assert session.events == []  # no guarded UPDATE, no commit-side effects
+    assert recorded == []
+    assert dispatched == []

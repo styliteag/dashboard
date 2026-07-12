@@ -42,6 +42,10 @@ log = structlog.get_logger("app.poller")
 
 _scheduler: AsyncIOScheduler | None = None
 
+# Set by start_scheduler(); floor for the agent-staleness clock so a backend
+# restart does not count its own downtime as agent silence (see is_stale).
+_started_at: datetime | None = None
+
 
 async def _poll_instance(instance_id: int, instance_name: str) -> None:
     """Poll a single instance, persist metrics, update status columns."""
@@ -208,7 +212,11 @@ async def _check_stale_agents() -> None:
                 settings.push_interval_seconds,
                 settings.agent_stale_seconds,
             )
-            if not is_stale(now, inst.agent_last_seen, threshold):
+            # _started_at floors the silence clock: a restarted backend must not
+            # count its own downtime as agent silence (5-min outage → 140-message
+            # offline/recovered Mattermost storm). Positional — tests stub is_stale
+            # with `lambda *a`.
+            if not is_stale(now, inst.agent_last_seen, threshold, _started_at):
                 continue
             # Only the online→offline transition fires a notification (idempotent).
             if not is_online(inst.last_success_at, inst.last_error_at):
@@ -311,8 +319,9 @@ async def _probe_targets() -> None:
 
 
 def start_scheduler() -> None:
-    global _scheduler
+    global _scheduler, _started_at
     settings = effective_settings()
+    _started_at = datetime.now(UTC)
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(
         _poll_all,

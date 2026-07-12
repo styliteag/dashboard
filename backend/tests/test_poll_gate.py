@@ -112,3 +112,31 @@ def test_is_stale_silent_too_long():
 
 def test_is_stale_handles_naive_timestamp():
     assert is_stale(NOW, _ago(200, naive=True), 120) is True
+
+
+# ignore_before (backend boot time) floors the silence clock. Regression
+# 2026-07-12: a 5-minute container outage flagged all 70 push instances
+# offline on the first tick after restart — before any agent could
+# reconnect — producing a 140-message offline/recovered storm in Mattermost.
+
+
+def test_is_stale_ignores_backend_downtime():
+    # Agent silent for 10 min, but the backend booted 30s ago: silence is
+    # counted from boot, so the agent gets its full threshold to reconnect.
+    assert is_stale(NOW, _ago(600), 120, _ago(30)) is False
+
+
+def test_is_stale_fires_when_silent_past_threshold_after_boot():
+    # Backend has been up longer than the threshold and the agent still has
+    # not reported: genuinely dead agents alert threshold seconds after boot.
+    assert is_stale(NOW, _ago(600), 120, _ago(300)) is True
+
+
+def test_is_stale_old_boot_does_not_mask_real_silence():
+    # Steady state (boot long in the past): the floor is inert and real
+    # silence is measured from agent_last_seen as before.
+    assert is_stale(NOW, _ago(200), 120, _ago(10_000)) is True
+
+
+def test_is_stale_no_floor_keeps_old_behavior():
+    assert is_stale(NOW, _ago(200), 120, None) is True

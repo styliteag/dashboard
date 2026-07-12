@@ -67,11 +67,28 @@ def stale_threshold(
     return max(base_stale_seconds, missed * effective_interval(push_interval, default_push))
 
 
-def is_stale(now: datetime, agent_last_seen: datetime | None, threshold_seconds: int) -> bool:
-    """True when the agent has been silent longer than its scaled threshold."""
+def is_stale(
+    now: datetime,
+    agent_last_seen: datetime | None,
+    threshold_seconds: int,
+    ignore_before: datetime | None = None,
+) -> bool:
+    """True when the agent has been silent longer than its scaled threshold.
+
+    ``ignore_before`` caps how far back silence is counted — pass the backend
+    process start time: silence accrued while the backend itself was down is
+    not agent silence. Without the cap, every push instance is flagged offline
+    on the first tick after a restart, before its agent had a chance to
+    reconnect (incident 2026-07-12: a 5-minute container outage produced a
+    140-message offline/recovered storm in Mattermost for a 70-box fleet).
+    Genuinely dead agents still alert ``threshold_seconds`` after boot.
+    """
     if agent_last_seen is None:
         return False
-    return (now - as_utc(agent_last_seen)).total_seconds() > threshold_seconds
+    reference = as_utc(agent_last_seen)
+    if ignore_before is not None and ignore_before > reference:
+        reference = ignore_before
+    return (now - reference).total_seconds() > threshold_seconds
 
 
 def agent_age_seconds(now: datetime, agent_last_seen: datetime | None) -> int | None:
