@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-07-12
+
 ### Fixed
 
 - Interface error-rate checks (`iface_errors:*`) no longer page on a single
