@@ -5,6 +5,7 @@ import { deviceCaps } from "../lib/capabilities";
 import { useAuth } from "../lib/use-auth";
 import type { Group, Instance } from "../lib/types";
 import Dialog from "./Dialog";
+import TagsInput from "./TagsInput";
 
 interface Props {
   instance: Instance;
@@ -52,7 +53,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       (agentMode ? instance.push_interval_seconds : instance.poll_interval_seconds)?.toString() ??
       "",
     location: instance.location ?? "",
-    tags: (instance.tags ?? []).join(", "),
+    tags: instance.tags ?? [],
     notes: instance.notes ?? "",
     ping_url: instance.ping_url ?? "",
     maintenance: instance.maintenance,
@@ -85,12 +86,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
         ...(caps.directApi ? { base_url: form.base_url } : {}),
         location: form.location || null,
         notes: form.notes || null,
-        tags: form.tags
-          ? form.tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : null,
+        tags: form.tags.length > 0 ? form.tags : null,
         // null clears the override back to the global default; a number sets it.
         [agentMode ? "push_interval_seconds" : "poll_interval_seconds"]:
           form.interval.trim() === "" ? null : Number(form.interval),
@@ -194,7 +190,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
           </>
         )}
         <Input label="Location" value={form.location} onChange={set("location")} />
-        <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
+        <TagsInput value={form.tags} onChange={(tags) => setForm((f) => ({ ...f, tags }))} />
         <Input
           label="Reachability probe (ping URL or host, empty = none)"
           value={form.ping_url}

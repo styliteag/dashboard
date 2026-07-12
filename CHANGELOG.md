@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The tags field in the add/edit instance dialogs is now a proper tag picker:
+  selected tags render as removable chips, typing suggests tags already used
+  across the fleet, and unknown text can be added as a new tag (Enter/comma,
+  or the "Create" entry in the dropdown).
+
 - "Add instance" dialog starts with friendlier defaults: the first available
   group is pre-selected, device type defaults to Linux in agent mode, and
   "Skip SSL verification" starts checked (self-signed certs are the fleet

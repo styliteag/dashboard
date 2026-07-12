@@ -5,6 +5,7 @@ import { deviceCaps } from "../lib/capabilities";
 import { useAuth } from "../lib/use-auth";
 import { DEVICE_TYPES, type Group, type Instance } from "../lib/types";
 import Dialog from "./Dialog";
+import TagsInput from "./TagsInput";
 
 interface Props {
   onClose: () => void;
@@ -32,7 +33,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     interval: "", // push (agent) or poll (direct) cadence; empty = global default
     location: "",
     notes: "",
-    tags: "",
+    tags: [] as string[],
     ping_url: "", // out-of-band reachability probe target; empty = none
   });
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +112,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
           : {}),
         location: form.location || null,
         notes: form.notes || null,
-        tags: form.tags
-          ? form.tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : null,
+        tags: form.tags.length > 0 ? form.tags : null,
         ping_url: form.ping_url.trim() || null,
       };
       return api.post<Instance>("/api/instances", body);
@@ -277,7 +273,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
           </div>
         )}
         <Input label="Location" value={form.location} onChange={set("location")} />
-        <Input label="Tags (comma-separated)" value={form.tags} onChange={set("tags")} />
+        <TagsInput value={form.tags} onChange={(tags) => setForm((f) => ({ ...f, tags }))} />
         <Input
           label="Reachability probe (ping URL or host, empty = none)"
           value={form.ping_url}
