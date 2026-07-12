@@ -75,7 +75,7 @@ services:
       DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
       DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
       # CrowdSec blocklist (optional sidecar, profile "crowdsec").
-      DASH_CROWDSEC_ENABLED: ${DASH_CROWDSEC_ENABLED:-false}
+      DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
       DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
       DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
       TZ: ${TZ:-UTC}

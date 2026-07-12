@@ -35,7 +35,8 @@ interface GeoipStatus {
   dyndns: { hostname: string; ips: string[]; resolved_at: string | null; error: string | null }[];
   credentials_set: boolean;
   crowdsec: {
-    enabled: boolean;
+    disabled: boolean;
+    key_set: boolean;
     configured: boolean;
     banned_count: number;
     at: string | null;
@@ -399,34 +400,33 @@ export default function AccessControlPage() {
 
         <div className="mt-4 border-t border-slate-800 pt-3">
           <h3 className="text-xs font-medium text-slate-300">CrowdSec blocklist</h3>
-          {status?.crowdsec.enabled ? (
-            status.crowdsec.configured ? (
-              <p className="mt-1 text-xs text-slate-400">
-                {status.crowdsec.ok === false ? (
-                  <span className="text-amber-400" title={status.crowdsec.detail}>
-                    sync failing — last known bans stay active
-                  </span>
-                ) : (
-                  <span className="text-emerald-400">
-                    active, {status.crowdsec.banned_count} banned
-                  </span>
-                )}
-                {status.crowdsec.at && (
-                  <span className="ml-1 text-slate-500">
-                    (synced {fmtRelative(status.crowdsec.at)})
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-amber-400">
-                DASH_CROWDSEC_ENABLED is set but DASH_CROWDSEC_API_KEY is missing — blocklist
-                idle.
-              </p>
-            )
+          {status?.crowdsec.configured ? (
+            <p className="mt-1 text-xs text-slate-400">
+              {status.crowdsec.ok === false ? (
+                <span className="text-amber-400" title={status.crowdsec.detail}>
+                  sync failing — last known bans stay active
+                </span>
+              ) : (
+                <span className="text-emerald-400">
+                  active, {status.crowdsec.banned_count} banned
+                </span>
+              )}
+              {status.crowdsec.at && (
+                <span className="ml-1 text-slate-500">
+                  (synced {fmtRelative(status.crowdsec.at)})
+                </span>
+              )}
+            </p>
+          ) : status?.crowdsec.disabled ? (
+            <p className="mt-1 text-xs text-amber-400">
+              Switched off via DASH_CROWDSEC_DISABLE=true
+              {status.crowdsec.key_set ? " (API key stays configured)" : ""}.
+            </p>
           ) : (
             <p className="mt-1 text-xs text-slate-500">
-              Disabled (DASH_CROWDSEC_ENABLED=false). Bans from a CrowdSec sidecar would deny
-              listed IPs on every request; the whitelist above always wins.
+              Not configured — set DASH_CROWDSEC_API_KEY (bouncer key from the CrowdSec
+              sidecar) to activate. Bans then deny listed IPs on every request; the whitelist
+              above always wins.
             </p>
           )}
         </div>

@@ -69,4 +69,5 @@ zeigen auf `docs/agent-architecture.md`.
 - **CrowdSec-Blocklist** — optionale zweite Signalquelle der GeoIP-Restriktion
   (DR-G8): Ban-Decisions eines CrowdSec-Sidecars, per Stream-Pull (30 s) in einen
   Prozess-Cache; Whitelist schlägt Blocklist, Blocklist schlägt Länder-Allow.
-  Eigener Schalter `DASH_CROWDSEC_ENABLED`; LAPI-Ausfall behält letzte Bans.
+  Aktiv sobald `DASH_CROWDSEC_API_KEY` gesetzt; `DASH_CROWDSEC_DISABLE=true`
+  schaltet ab (Form wie `DASH_GEOIP_DISABLE`); LAPI-Ausfall behält letzte Bans.

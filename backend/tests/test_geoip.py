@@ -401,7 +401,7 @@ def test_crowdsec_sync_failure_keeps_bans(monkeypatch: pytest.MonkeyPatch) -> No
         cs,
         "get_settings",
         lambda: SimpleNamespace(
-            crowdsec_enabled=True,
+            crowdsec_disable=False,
             crowdsec_api_key="k",
             crowdsec_lapi_url="http://lapi.test:8080",
         ),
@@ -426,7 +426,7 @@ def test_crowdsec_sync_applies_stream(monkeypatch: pytest.MonkeyPatch) -> None:
         cs,
         "get_settings",
         lambda: SimpleNamespace(
-            crowdsec_enabled=True,
+            crowdsec_disable=False,
             crowdsec_api_key="k",
             crowdsec_lapi_url="http://lapi.test:8080",
         ),

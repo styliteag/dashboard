@@ -110,10 +110,12 @@ compose-Profile `crowdsec`): ein Scheduler-Job (30 s) zieht Ban-Decisions im
 Vollbestand, danach Deltas) in einen Prozess-Cache — nie Live-HTTP im
 Request-Pfad. Einzel-IPs im O(1)-Set, echte Ranges (v4/v6) linear.
 
-- **Eigener Schalter**: `DASH_CROWDSEC_ENABLED` (+ `DASH_CROWDSEC_LAPI_URL`,
-  `DASH_CROWDSEC_API_KEY`), unabhängig von der Länder-Restriktion — die
-  Blocklist beißt auch, wenn keine Länder konfiguriert sind. Der
-  GeoIP-Kill-Switch `DASH_GEOIP_DISABLE` schaltet auch sie ab.
+- **Eigener Schalter, gleiche Form wie GeoIP**: aktiv, sobald
+  `DASH_CROWDSEC_API_KEY` gesetzt ist (+ `DASH_CROWDSEC_LAPI_URL`);
+  `DASH_CROWDSEC_DISABLE=true` schaltet ab, ohne den Key zu entfernen —
+  spiegelbildlich zu `DASH_GEOIP_DISABLE`, der weiterhin beides abschaltet.
+  Unabhängig von der Länder-Restriktion: die Blocklist beißt auch, wenn
+  keine Länder konfiguriert sind.
 - **Prioritäten**: Whitelist schlägt Blocklist (Operator-Rettung zuerst),
   Blocklist schlägt Länder-Allow. Reihenfolge ist Teil des
   `decide()`-Vertrags und getestet.

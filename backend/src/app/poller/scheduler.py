@@ -359,7 +359,8 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         geoip_dyndns_refresh, "interval", minutes=5, id="geoip_dyndns_refresh", max_instances=1
     )
-    # CrowdSec blocklist stream sync (no-op unless DASH_CROWDSEC_ENABLED + key).
+    # CrowdSec blocklist stream sync (no-op without DASH_CROWDSEC_API_KEY or
+    # when DASH_CROWDSEC_DISABLE is set).
     # 30s matches the usual bouncer cadence; first run fetches the full set.
     _scheduler.add_job(
         crowdsec_sync,

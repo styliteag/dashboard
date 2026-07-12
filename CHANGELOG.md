@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- CrowdSec bad-actor blocklist for the dashboard (optional, own switch
-  `DASH_CROWDSEC_ENABLED`): ban decisions from a CrowdSec sidecar (bundled as
+- CrowdSec bad-actor blocklist for the dashboard (optional; active once
+  `DASH_CROWDSEC_API_KEY` is set, `DASH_CROWDSEC_DISABLE=true` switches it
+  off like the GeoIP kill switch): ban decisions from a CrowdSec sidecar (bundled as
   compose profile `crowdsec`) are pulled in stream mode every 30 seconds and
   denied on every interactive request — even when the country restriction is
   off. The GeoIP whitelist always wins (operator rescue), agents and API keys

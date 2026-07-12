@@ -34,9 +34,13 @@ _last: dict = {"at": None, "ok": None, "detail": "never synced"}
 
 
 def active() -> bool:
-    """True when the blocklist check should run at all."""
+    """True when the blocklist check should run at all.
+
+    Same shape as the GeoIP switch: configuring the key turns it on,
+    DASH_CROWDSEC_DISABLE=true turns it off without losing the key.
+    """
     settings = get_settings()
-    return settings.crowdsec_enabled and bool(settings.crowdsec_api_key)
+    return bool(settings.crowdsec_api_key) and not settings.crowdsec_disable
 
 
 def banned_count() -> int:
@@ -57,8 +61,10 @@ def is_banned(ip: str) -> bool:
 
 
 def status() -> dict:
+    settings = get_settings()
     return {
-        "enabled": get_settings().crowdsec_enabled,
+        "disabled": settings.crowdsec_disable,
+        "key_set": bool(settings.crowdsec_api_key),
         "configured": active(),
         "banned_count": banned_count(),
         **_last,
