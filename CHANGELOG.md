@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- "Add instance" dialog starts with friendlier defaults: the first available
+  group is pre-selected, device type defaults to Linux in agent mode, and
+  "Skip SSL verification" starts checked (self-signed certs are the fleet
+  norm).
+- New instances are created with "Terminal (root shell)" and "WebUI login"
+  (GUI login replay) enabled by default (previously every box needed a manual
+  edit). The server-wide shell feature gate (`DASH_SHELL_ENABLED`) still
+  applies — the terminal stays off unless that is enabled too; GUI login
+  falls back to the plain login page until a credential is provisioned.
+
 ## [3.0.4] - 2026-07-12
 
 ### Fixed

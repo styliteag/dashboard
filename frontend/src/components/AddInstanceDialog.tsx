@@ -13,16 +13,18 @@ interface Props {
 export default function AddInstanceDialog({ onClose }: Props) {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
+  // Defaults mirror the common add-flow: Linux box in agent mode (push-only),
+  // self-signed certs on the fleet, so SSL verification starts off.
   const [form, setForm] = useState({
     name: "",
     group_id: "",
     base_url: "https://",
-    device_type: "opnsense",
-    agent_mode: false,
+    device_type: "linux",
+    agent_mode: true,
     api_key: "",
     api_secret: "",
     ca_bundle: "",
-    ssl_verify: true,
+    ssl_verify: false,
     ssh_enabled: false,
     ssh_port: "9922",
     ssh_user: "root",
@@ -46,6 +48,8 @@ export default function AddInstanceDialog({ onClose }: Props) {
   });
   const groupOptions = me?.is_superadmin && allGroups ? allGroups : (me?.groups ?? []);
   const needsGroupChoice = groupOptions.length > 1;
+  // First group pre-selected until the user picks one (options load async).
+  const groupId = form.group_id || (groupOptions[0] ? String(groupOptions[0].id) : "");
   // Global interval defaults — shown as the placeholder so "empty = inherit" is concrete.
   const { data: defaults } = useQuery({
     queryKey: ["instance-defaults"],
@@ -81,7 +85,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         name: form.name,
-        ...(form.group_id !== "" ? { group_id: Number(form.group_id) } : {}),
+        ...(groupId !== "" ? { group_id: Number(groupId) } : {}),
         // Push-only types (linux) have no URL/API/TLS surface at all.
         ...(caps.directApi
           ? { base_url: form.base_url, ca_bundle: form.ca_bundle || null, ssl_verify: form.ssl_verify }
@@ -155,14 +159,11 @@ export default function AddInstanceDialog({ onClose }: Props) {
           <div className="space-y-1">
             <label className="text-xs text-slate-400">Group *</label>
             <select
-              value={form.group_id}
+              value={groupId}
               onChange={(e) => setForm((f) => ({ ...f, group_id: e.target.value }))}
               required
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
             >
-              <option value="" disabled>
-                Select a group…
-              </option>
               {groupOptions.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}

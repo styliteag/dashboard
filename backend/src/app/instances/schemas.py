@@ -87,6 +87,14 @@ class InstanceCreate(BaseModel):
     agent_mode: bool = False
     ca_bundle: str | None = None
     ssl_verify: bool = True
+    # Browser terminal (root PTY) opt-in. Deliberately defaults ON for new
+    # instances (operator request) — still inert unless the server-wide
+    # DASH_SHELL_ENABLED gate is on too; both must be set (§22).
+    shell_enabled: bool = True
+    # "Open GUI" login replay (§18). Also defaults ON for new instances —
+    # without an agent-side provisioned credential it degrades gracefully to
+    # the plain login page, so the flag alone grants nothing.
+    gui_login_enabled: bool = True
     # Per-instance poll/push cadence override (seconds). Omit/null = inherit the
     # global default. poll applies to direct-API devices, push to agent (push) mode.
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=86400)

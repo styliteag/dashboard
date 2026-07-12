@@ -135,6 +135,8 @@ async def create_instance(
         push_interval_seconds=payload.push_interval_seconds,
         transport=transport.value,
         device_type=payload.device_type.value,
+        shell_enabled=payload.shell_enabled,
+        gui_login_enabled=payload.gui_login_enabled,
         ssh_enabled=payload.ssh_enabled,
         ssh_port=payload.ssh_port,
         ssh_user=payload.ssh_user,
