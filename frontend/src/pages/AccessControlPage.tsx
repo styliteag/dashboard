@@ -461,8 +461,8 @@ export default function AccessControlPage() {
                 {denialsQuery.data.since && (
                   <span className="text-slate-500">
                     {" "}
-                    since {fmtRelative(denialsQuery.data.since)} (resets on restart;
-                    long-term via Prometheus)
+                    since {fmtRelative(denialsQuery.data.since)} (persisted; totals count
+                    everything, the list below is sampled under floods)
                   </span>
                 )}
                 {denialsQuery.data.fail_open_allows > 0 && (

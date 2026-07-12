@@ -21,6 +21,8 @@ from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
 from app.geoip.crowdsec import sync as crowdsec_sync
+from app.geoip.denials import flush_job as geoip_denials_flush
+from app.geoip.denials import prune_job as geoip_denials_prune
 from app.geoip.dyndns import refresh_job as geoip_dyndns_refresh
 from app.geoip.updater import refresh_geoip_db
 from app.maintenance.jobs import (
@@ -378,6 +380,14 @@ def start_scheduler() -> None:
         id="geoip_crowdsec_sync",
         max_instances=1,
         next_run_time=datetime.now(UTC),
+    )
+    # Denial analytics: 15s buffer flush (no-op when nothing pending) and the
+    # daily retention prune for the sampled event rows.
+    _scheduler.add_job(
+        geoip_denials_flush, "interval", seconds=15, id="geoip_denials_flush", max_instances=1
+    )
+    _scheduler.add_job(
+        geoip_denials_prune, "interval", hours=24, id="geoip_denials_prune", max_instances=1
     )
     _scheduler.start()
     log.info(

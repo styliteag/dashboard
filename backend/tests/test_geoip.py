@@ -461,42 +461,117 @@ def test_middleware_blocklist_without_country_restriction(enforcing, monkeypatch
     assert mw.evaluate_scope(_scope())[0]
 
 
-# --- denials accounting ---------------------------------------------------------
+# --- denials accounting (persistent two-tier design, migration 040) -------------
 
 
 def _den_reset():
     import app.geoip.denials as den
 
-    den._by_reason.clear()
-    den._by_country.clear()
-    den._recent.clear()
-    den._fail_open = 0
-    den._since = None
+    den._pending_agg.clear()
+    den._pending_events.clear()
+    den._totals.clear()
+    den._total_countries.clear()
+    den._total_fail_open = 0
     return den
 
 
-def test_denials_record_and_snapshot() -> None:
+class _FakeResult:
+    def __init__(self, rows=None):
+        self._rows = rows or []
+        self.rowcount = 0
+
+    def all(self):
+        return self._rows
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    """Captures executed statements; returns empty results (DB-free house style)."""
+
+    def __init__(self):
+        self.executed: list[tuple[str, dict | None]] = []
+        self.added: list[object] = []
+
+    async def execute(self, stmt, params=None):
+        self.executed.append((str(stmt), params))
+        return _FakeResult()
+
+    async def scalar(self, stmt):
+        return None
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def flush(self):
+        pass
+
+    async def commit(self):
+        pass
+
+
+def test_denials_record_feeds_buffers_and_mirrors() -> None:
     den = _den_reset()
     den.record("1.2.3.4", "US", "/api/auth/login", "country_blocked")
-    den.record("1.2.3.4", "US", "/api/instances", "country_blocked")
     den.record("6.6.6.6", None, "/api/instances", "crowdsec_banned")
     den.record_fail_open()
-    snap = den.snapshot(limit=2)
-    assert snap["total"] == 3
-    assert snap["by_reason"] == {"country_blocked": 2, "crowdsec_banned": 1}
-    assert {"country": "US", "count": 2} in snap["top_countries"]
-    assert {"country": "??", "count": 1} in snap["top_countries"]
-    assert snap["fail_open_allows"] == 1
-    assert len(snap["recent"]) == 2  # limit respected
-    assert snap["recent"][0]["ip"] == "6.6.6.6"  # newest first
-    assert snap["since"] is not None
+    assert den._pending_agg[("country_blocked", "US")] == 1
+    assert den._pending_agg[("crowdsec_banned", "??")] == 1
+    by_reason, by_country, fail_open = den.prometheus_series()
+    assert by_reason == {"country_blocked": 1, "crowdsec_banned": 1}
+    assert by_country == {"US": 1, "??": 1}
+    assert fail_open == 1
 
 
-def test_denials_ring_buffer_bounded() -> None:
+def test_denials_event_buffer_bounded_but_aggregate_counts_all() -> None:
+    """Flood behavior: row sample is capped, the aggregate never loses counts."""
     den = _den_reset()
-    for i in range(den._RECENT_MAX + 50):
+    for i in range(den._EVENTS_PER_FLUSH + 200):
         den.record(f"10.0.0.{i % 250}", None, "/api/x", "no_country")
-    assert len(den._recent) == den._RECENT_MAX  # scanner cannot grow memory
+    assert len(den._pending_events) == den._EVENTS_PER_FLUSH
+    assert den._pending_agg[("no_country", "??")] == den._EVENTS_PER_FLUSH + 200
+
+
+def test_denials_flush_upserts_and_clears(monkeypatch) -> None:
+    den = _den_reset()
+    den.record("1.2.3.4", "US", "/api/x", "country_blocked")
+    den.record("1.2.3.4", "US", "/api/y", "country_blocked")
+    session = _FakeSession()
+    n = _run(den.flush(session))
+    assert n == 2
+    # MariaDB-native upsert, never ON CONFLICT (repo rule).
+    sql, params = session.executed[0]
+    assert "ON DUPLICATE KEY UPDATE" in sql and params["n"] == 2
+    assert len(session.added) == 2  # both sampled event rows
+    assert not den._pending_agg and not den._pending_events  # buffers swapped out
+    assert _run(den.flush(_FakeSession())) == 0  # idempotent when empty
+
+
+def test_denials_hydrate_restores_prometheus_mirrors() -> None:
+    den = _den_reset()
+
+    class _HydrateSession(_FakeSession):
+        async def execute(self, stmt, params=None):
+            return _FakeResult(rows=[("country_blocked", "US", 41), ("fail_open", "??", 3)])
+
+    _run(den.hydrate(_HydrateSession()))
+    by_reason, by_country, fail_open = den.prometheus_series()
+    assert by_reason["country_blocked"] == 41  # restart is NOT a counter reset
+    assert by_country["US"] == 41
+    assert fail_open == 3
+
+
+def test_denials_snapshot_folds_pending_into_empty_db() -> None:
+    den = _den_reset()
+    den.record("1.2.3.4", "US", "/api/x", "country_blocked")
+    snap = _run(den.snapshot(_FakeSession(), limit=10))
+    assert snap["total"] == 1
+    assert snap["by_reason"] == {"country_blocked": 1}
+    assert snap["recent"][0]["ip"] == "1.2.3.4"  # visible before the 15s flush
 
 
 def test_middleware_deny_records_denial(enforcing, monkeypatch) -> None:
@@ -511,19 +586,17 @@ def test_middleware_deny_records_denial(enforcing, monkeypatch) -> None:
     middleware = mw.GeoipMiddleware(inner)
     monkeypatch.setattr(middleware, "_audit_login_denial", lambda *a: None)
     _run(middleware(_scope(), None, send))
-    snap = den.snapshot()
-    assert snap["total"] == 1
-    assert snap["recent"][0]["reason"] == "country_blocked"
-    assert snap["recent"][0]["ip"] == "198.51.100.10"
+    assert den._pending_agg[("country_blocked", "US")] == 1
+    assert den._pending_events[0]["ip"] == "198.51.100.10"
 
 
 def test_prometheus_denial_counters_render() -> None:
     from app.checks.prometheus import render_geoip_denials
 
     den = _den_reset()
-    assert render_geoip_denials() == ""  # all zero → no families emitted
+    assert render_geoip_denials() == ""  # all zero -> no families emitted
     den.record("1.2.3.4", "US", "/api/x", "country_blocked")
     text = render_geoip_denials()
-    assert '# TYPE orbit_geoip_denied_total counter' in text
+    assert "# TYPE orbit_geoip_denied_total counter" in text
     assert 'orbit_geoip_denied_total{reason="country_blocked"} 1' in text
     assert 'orbit_geoip_denied_country_total{country="US"} 1' in text

@@ -102,8 +102,8 @@ _GEOIP_HELP = {
 def render_geoip_denials() -> str:
     """Prometheus text block for the GeoIP denial counters ('' when all zero).
 
-    Values reset on backend restart — normal Prometheus counter semantics
-    (rate()/increase() handle resets).
+    Monotonic across restarts: the mirrors are hydrated from the persisted
+    geoip_denial_stats aggregate at startup (migration 040).
     """
     from app.geoip.denials import prometheus_series  # local import: avoid cycle
 

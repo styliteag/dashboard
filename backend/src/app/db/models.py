@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Column,
+    Date,
     Double,
     ForeignKey,
     Index,
@@ -809,3 +810,37 @@ class GeoipConfig(Base):
         nullable=False,
     )
     updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class GeoipDenialStat(Base):
+    """Per-day denial aggregate of the GeoIP/CrowdSec gate (DR-G9).
+
+    Counts EVERY denial (upserted in batches by the flush job) — bounded by
+    days x reasons x countries, so a scanner cannot flood it. Source of truth
+    for totals; individual rows live in GeoipDenialEvent (sampled under load).
+    """
+
+    __tablename__ = "geoip_denial_stats"
+
+    bucket: Mapped[date] = mapped_column(Date, primary_key=True)
+    reason: Mapped[str] = mapped_column(String(32), primary_key=True)
+    country: Mapped[str] = mapped_column(String(4), primary_key=True)  # "??" = none
+    count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+
+class GeoipDenialEvent(Base):
+    """One denied request (recent-denials table on the Access page).
+
+    Hard-capped per flush interval — under a flood only a sample lands here
+    (the aggregate still counts everything). Pruned by time via the batched
+    _prune_before pattern; ts carries its own index for exactly that.
+    """
+
+    __tablename__ = "geoip_denial_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, index=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+    country: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)

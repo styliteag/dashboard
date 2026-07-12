@@ -18,12 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Denied-request analytics for the GeoIP/CrowdSec gate: the Access page shows
-  totals by reason and country plus the most recent denials (time, IP,
-  country, path, reason; in-memory since backend start), and the Prometheus
-  export gains `orbit_geoip_denied_total{reason}`,
+- Denied-request analytics for the GeoIP/CrowdSec gate, persisted across
+  restarts: totals per day/reason/country live in an aggregate table that
+  counts every denial and cannot be flooded, recent denials are stored as
+  individual rows (sampled under floods, 30-day retention). The Access page
+  shows totals, top countries and the latest denials; the Prometheus export
+  gains `orbit_geoip_denied_total{reason}`,
   `orbit_geoip_denied_country_total{country}` and
-  `orbit_geoip_fail_open_total` counters for long-term dashboards/alerts.
+  `orbit_geoip_fail_open_total` counters that stay monotonic across backend
+  restarts.
 
 ## [3.1.0] - 2026-07-12
 

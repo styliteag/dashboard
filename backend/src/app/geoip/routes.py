@@ -181,11 +181,12 @@ async def geoip_status(
 
 @router.get("/denials", response_model=dict)
 async def geoip_denials(
+    session: Annotated[AsyncSession, Depends(get_session)],
     _user: Annotated[User, Depends(require_superadmin)],
 ) -> dict:
-    """Denial statistics since process start (counters reset on restart;
-    long-term series come from the Prometheus export)."""
-    return denials.snapshot(limit=50)
+    """Persistent denial statistics (stats aggregate + sampled recent events,
+    migration 040); not-yet-flushed denials are folded in live."""
+    return await denials.snapshot(session, limit=50)
 
 
 @router.post("/db/refresh", response_model=dict)

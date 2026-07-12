@@ -28,6 +28,7 @@ from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firewall_rules.routes import router as firewall_rules_router
 from app.firmware.routes import router as firmware_router
+from app.geoip import denials as geoip_denials
 from app.geoip import dyndns as geoip_dyndns
 from app.geoip.middleware import GeoipMiddleware
 from app.geoip.routes import router as geoip_router
@@ -77,6 +78,9 @@ async def lifespan(app: FastAPI):
     try:
         async with get_sessionmaker()() as session:
             await load_geoip_config(session)
+            # Prometheus denial counters continue from their persisted sums —
+            # a restart must not look like a counter reset (migration 040).
+            await geoip_denials.hydrate(session)
         await geoip_dyndns.refresh_job()
     except Exception as exc:  # noqa: BLE001
         log.error("geoip.startup_load_failed", error=str(exc))
