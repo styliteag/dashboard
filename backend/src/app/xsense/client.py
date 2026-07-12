@@ -35,6 +35,28 @@ class OPNsenseError(RuntimeError):
     pass
 
 
+def _size_mb(raw: object) -> float | None:
+    """Tolerant volume size → MB for the size-aware disk levels.
+
+    systemDisk reports human-readable strings ("18G", "1.9T"); a bare number
+    is treated as 1K blocks (df convention). None when absent/unparsable —
+    checks then use the size-unknown fallback levels.
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip().upper().removesuffix("B").removesuffix("I")
+    if not text:
+        return None
+    factor = {"K": 1 / 1024, "M": 1.0, "G": 1024.0, "T": 1024.0 * 1024}.get(text[-1])
+    if factor is not None:
+        text = text[:-1]
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return round(value * (factor if factor is not None else 1 / 1024), 1)
+
+
 class OPNsenseClient:
     def __init__(
         self,
@@ -202,6 +224,7 @@ class OPNsenseClient:
                         device=d.get("device", ""),
                         mountpoint=d.get("mountpoint", d.get("type", "")),
                         used_pct=float(raw) if raw else 0.0,
+                        total_mb=_size_mb(d.get("blocks", d.get("size"))),
                     )
                 )
             return result

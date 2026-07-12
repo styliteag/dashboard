@@ -1017,26 +1017,27 @@ def test_system_info_includes_platform(monkeypatch: pytest.MonkeyPatch) -> None:
     assert info["agent_version"] == agent.__version__
 
 
-# Real `df -T -h` from an OPNsense ZFS box: one zroot pool spread over many
+# `df -T -k` shape of an OPNsense ZFS box (mounts/percentages from a live -h
+# capture, sizes re-expressed as 1024-blocks): one zroot pool spread over many
 # datasets, plus a devfs, an msdosfs EFI partition, and unbound nullfs binds.
 _DF_OPN = """\
-Filesystem                 Type       Size    Used   Avail Capacity  Mounted on
-zroot/ROOT/default         zfs         11G    1.5G    9.6G    14%    /
-devfs                      devfs      1.0K      0B    1.0K     0%    /dev
-/dev/gpt/efiboot0          msdosfs    260M    1.3M    259M     1%    /boot/efi
-zroot/var/log              zfs        9.6G     10G     9.6G    52%    /var/log
-zroot/tmp                  zfs        9.6G    1.4M    9.6G     0%    /tmp
-zroot                      zfs        9.6G     96K    9.6G     0%    /zroot
-/usr/local/lib/python3.13  nullfs   11G   1.5G  9.6G  14%  /var/unbound/usr/local/lib/python3.13
+Filesystem                 Type    1024-blocks     Used     Avail Capacity  Mounted on
+zroot/ROOT/default         zfs        11534336  1572864  10066329    14%    /
+devfs                      devfs             1        0         1     0%    /dev
+/dev/gpt/efiboot0          msdosfs      266240     1331    264909     1%    /boot/efi
+zroot/var/log              zfs        20971520 10485760  10066329    52%    /var/log
+zroot/tmp                  zfs        10067763     1434  10066329     0%    /tmp
+zroot                      zfs        10066425       96  10066329     0%    /zroot
+/usr/local/lib/python3.13  nullfs   11534336 1572864 10066329  14%  /var/unbound/usr/local/lib/python3.13
 """
 
-# Real `df -T -h` from a pfSense UFS box: a ufs root, a tmpfs, and two devfs.
+# `df -T -k` shape of a pfSense UFS box: a ufs root, a tmpfs, and two devfs.
 _DF_PF = """\
-Filesystem                   Type     Size    Used   Avail Capacity  Mounted on
-/dev/ufsid/6a3b8c56991e8004  ufs       14G    2.2G     11G    17%    /
-devfs                        devfs    1.0K      0B    1.0K     0%    /dev
-tmpfs                        tmpfs    4.0M    172K    3.8M     4%    /var/run
-devfs                        devfs    1.0K      0B    1.0K     0%    /var/dhcpd/dev
+Filesystem                   Type   1024-blocks    Used    Avail Capacity  Mounted on
+/dev/ufsid/6a3b8c56991e8004  ufs       14680064 2306867 11199180    17%    /
+devfs                        devfs            1       0        1     0%    /dev
+tmpfs                        tmpfs         4096     172     3822     4%    /var/run
+devfs                        devfs            1       0        1     0%    /var/dhcpd/dev
 """
 
 
@@ -1050,7 +1051,16 @@ def test_collect_disk_collapses_zfs_pool_and_drops_pseudo(monkeypatch: pytest.Mo
     # Label stays "/", but the value is the pool's WORST dataset (/var/log at 52%),
     # not the near-empty root dataset (14%) — a filling /var/log must not be hidden.
     assert root["used_pct"] == 52.0
+    # total_mb pairs with that same worst dataset (20971520 kB = 20480 MB), not
+    # the representative's, so the backend's size-aware levels see a consistent pair.
+    assert root["total_mb"] == 20480.0
     assert all("fstype" not in d for d in disks)
+
+
+def test_collect_disk_reports_total_mb(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: _DF_PF)
+    root = next(d for d in agent.collect_disk() if d["mountpoint"] == "/")
+    assert root["total_mb"] == 14336.0  # 14680064 kB from the 1024-blocks column
 
 
 def test_collect_disk_keeps_ufs_and_tmpfs_drops_devfs(monkeypatch: pytest.MonkeyPatch) -> None:

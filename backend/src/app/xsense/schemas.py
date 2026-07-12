@@ -152,6 +152,9 @@ class DiskUsage(BaseModel):
     device: str = ""
     mountpoint: str = ""
     used_pct: float = 0.0  # 0..100
+    # Volume size; None when the source can't report it (older agents, some
+    # APIs) — checks then fall back to the size-unknown default levels.
+    total_mb: float | None = None
 
 
 class InterfaceStats(BaseModel):

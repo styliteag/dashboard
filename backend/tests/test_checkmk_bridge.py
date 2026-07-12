@@ -283,7 +283,9 @@ def test_df_legacy_section_name_still_parses() -> None:
     """Pre-2.4 agents emit <<<df>>> — the fallback must keep working."""
     data = _payload("<<<df>>>\n/dev/sda1 ext4 100 50 50 50% /\n")
     out, _ = enrich_snapshot(data, parse_sections(decode_raw(data)), None)
-    assert out["disks"] == [{"device": "/dev/sda1", "mountpoint": "/", "used_pct": 50.0}]
+    assert out["disks"] == [
+        {"device": "/dev/sda1", "mountpoint": "/", "used_pct": 50.0, "total_mb": 0.1}
+    ]
 
 
 def test_process_push_equals_inline_pipeline() -> None:

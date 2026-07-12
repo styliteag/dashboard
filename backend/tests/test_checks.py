@@ -216,6 +216,25 @@ def test_disk_thresholds_and_label() -> None:
     assert by_key["disk:/var"].state == CheckState.OK
 
 
+def test_disk_levels_scale_with_size() -> None:
+    """91% used is CRIT on a size-unknown disk but leaves ~45 GB free on a
+    500 GB volume (WARN) and ~180 GB on 2 TB (OK) — levels scale with size."""
+    small = disk_checks([DiskUsage(mountpoint="/", used_pct=91)])[0]
+    big = disk_checks([DiskUsage(mountpoint="/", used_pct=91, total_mb=500 * 1024)])[0]
+    huge = disk_checks([DiskUsage(mountpoint="/", used_pct=91, total_mb=2048 * 1024)])[0]
+    assert small.state == CheckState.CRIT
+    assert big.state == CheckState.WARN
+    assert huge.state == CheckState.OK
+    # The effective levels ride along in the perf metric (Checkmk/Prometheus).
+    assert big.metrics[0].warn == 90.0
+    assert big.metrics[0].crit == 95.0
+
+
+def test_disk_summary_includes_free_space_when_size_known() -> None:
+    c = disk_checks([DiskUsage(mountpoint="/", used_pct=50, total_mb=100 * 1024)])[0]
+    assert "50.0 GB free" in c.summary
+
+
 def test_gateway_down_is_crit() -> None:
     c = gateway_checks([GatewayStatus(name="WAN", status="down", loss="100%")])[0]
     assert c.key == "gateway:WAN"

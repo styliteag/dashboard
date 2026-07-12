@@ -89,6 +89,7 @@ def status_from_agent(data: dict) -> SystemStatus:
                 device=d.get("device", ""),
                 mountpoint=d.get("mountpoint", ""),
                 used_pct=d.get("used_pct", 0),
+                total_mb=d.get("total_mb"),
             )
             for d in data.get("disks", [])
         ],

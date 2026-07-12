@@ -205,12 +205,17 @@ def _parse_df(lines: list[str]) -> list[dict] | None:
             used_pct = float(parts[5].rstrip("%"))
         except ValueError:
             continue
+        try:
+            total_mb = round(float(parts[2]) / 1024.0, 1)  # size column is kB
+        except ValueError:
+            total_mb = None
         rows.append(
             {
                 "device": device,
                 # df escapes nothing — a mountpoint with spaces spans columns.
                 "mountpoint": " ".join(parts[6:]),
                 "used_pct": used_pct,
+                "total_mb": total_mb,
             }
         )
     return rows or None

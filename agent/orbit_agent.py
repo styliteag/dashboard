@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.2"
+__version__ = "3.0.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -407,40 +407,57 @@ def _collapse_zfs_pools(rows: list[dict]) -> list[dict]:
     own usage over that shared free, so they diverge (a filling ``/var/log`` reads
     high while root reads low). We keep a stable label (the ``/`` mount, else the
     shortest path) but report the pool's *worst* dataset fill, so a separate
-    dataset filling up is never masked by a near-empty root. Non-ZFS rows pass
-    through unchanged (order preserved; collapsed pools land at the end)."""
+    dataset filling up is never masked by a near-empty root. total_mb comes from
+    that same worst dataset so pct and size stay a consistent pair. Non-ZFS rows
+    pass through unchanged (order preserved; collapsed pools land at the end)."""
     passthrough = [r for r in rows if r["fstype"] != "zfs"]
     rep: dict[str, dict] = {}  # pool -> representative row (drives the label)
-    worst: dict[str, float] = {}  # pool -> max used_pct across the pool
+    worst: dict[str, dict] = {}  # pool -> dataset row with the highest used_pct
     for row in rows:
         if row["fstype"] != "zfs":
             continue
         pool = _zfs_pool(row["device"])
-        worst[pool] = max(worst.get(pool, 0.0), row["used_pct"])
+        if pool not in worst or row["used_pct"] > worst[pool]["used_pct"]:
+            worst = {**worst, pool: row}
         if pool not in rep or _disk_pref(row) < _disk_pref(rep[pool]):
             rep = {**rep, pool: row}
-    collapsed = [{**rep[pool], "used_pct": worst[pool]} for pool in rep]
+    collapsed = [
+        {**rep[pool], "used_pct": worst[pool]["used_pct"], "total_mb": worst[pool]["total_mb"]}
+        for pool in rep
+    ]
     return passthrough + collapsed
 
 
 def collect_disk() -> list[dict]:
-    """Disk usage from ``df -T``, minus pseudo filesystems and with each ZFS pool
-    collapsed to a single entry (datasets in a pool share free space)."""
+    """Disk usage from ``df -T -k``, minus pseudo filesystems and with each ZFS
+    pool collapsed to a single entry (datasets in a pool share free space).
+    ``-k`` (not ``-h``) so the size column is machine-parseable — total_mb feeds
+    the backend's size-aware disk levels."""
     rows: list[dict] = []
-    for line in _run(["df", "-T", "-h"]).splitlines()[1:]:
+    for line in _run(["df", "-T", "-k"]).splitlines()[1:]:
         parts = line.split()
         if len(parts) < 7 or not parts[5].endswith("%"):
             continue
         if parts[1] in _PSEUDO_FSTYPES:
             continue
+        try:
+            total_mb = round(int(parts[2]) / 1024.0, 1)  # 1024-blocks column
+        except ValueError:
+            total_mb = None
         rows.append({
             "device": parts[0],
             "fstype": parts[1],
             "mountpoint": parts[6],
             "used_pct": float(parts[5].rstrip("%")),
+            "total_mb": total_mb,
         })
     return [
-        {"device": r["device"], "mountpoint": r["mountpoint"], "used_pct": r["used_pct"]}
+        {
+            "device": r["device"],
+            "mountpoint": r["mountpoint"],
+            "used_pct": r["used_pct"],
+            "total_mb": r["total_mb"],
+        }
         for r in _collapse_zfs_pools(rows)
     ]
 

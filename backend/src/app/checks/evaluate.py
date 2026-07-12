@@ -29,7 +29,15 @@ _DNS_SERVICES = frozenset({"unbound", "dnsmasq"})
 
 # Thresholds (percent). Follow-up: make these configurable per instance/global.
 _MEM_WARN, _MEM_CRIT = 80.0, 90.0
-_DISK_WARN, _DISK_CRIT = 80.0, 90.0
+_DISK_WARN, _DISK_CRIT = 80.0, 90.0  # size-unknown fallback and < 50 GB volumes
+# Disk levels scale with volume size: a fixed 80/90 is right for the small boot
+# disks most firewalls have, but wastes huge amounts on big volumes (10% of
+# 2 TB = ~200 GB still free at CRIT). Ordered largest-first; first match wins.
+_DISK_SIZE_LEVELS: tuple[tuple[float, float, float], ...] = (  # (min_gb, warn, crit)
+    (1024.0, 93.0, 97.0),
+    (200.0, 90.0, 95.0),
+    (50.0, 85.0, 93.0),
+)
 _CPU_WARN = 95.0  # CPU is spiky — warn only, never crit
 # Load is saturation (run-queue depth), not utilization, so unlike CPU it gets a
 # CRIT — but only on the stable 5-min average, normalised per core, and set high
@@ -196,26 +204,38 @@ def cpu_check(cpu: CpuUsage) -> ServiceCheck:
     )
 
 
+def _disk_levels(total_mb: float | None) -> tuple[float, float]:
+    """(warn, crit) used-% levels for a volume of the given size."""
+    if total_mb and total_mb > 0:
+        gb = total_mb / 1024.0
+        for min_gb, warn, crit in _DISK_SIZE_LEVELS:
+            if gb >= min_gb:
+                return warn, crit
+    return _DISK_WARN, _DISK_CRIT
+
+
 def disk_checks(disks: list[DiskUsage]) -> list[ServiceCheck]:
     out: list[ServiceCheck] = []
     for d in disks:
         label = d.mountpoint or d.device or "?"
         pct = d.used_pct
-        if pct >= _DISK_CRIT:
+        warn, crit = _disk_levels(d.total_mb)
+        if pct >= crit:
             state, word = CheckState.CRIT, "critical"
-        elif pct >= _DISK_WARN:
+        elif pct >= warn:
             state, word = CheckState.WARN, "high"
         else:
             state, word = CheckState.OK, "ok"
+        free = ""
+        if d.total_mb and d.total_mb > 0:
+            free = f", {d.total_mb * (100.0 - pct) / 100.0 / 1024.0:.1f} GB free"
         out.append(
             ServiceCheck(
                 key=f"disk:{label}",
                 state=int(state),
-                summary=f"Disk {label} {pct:.0f}% used ({word})",
+                summary=f"Disk {label} {pct:.0f}% used ({word}{free})",
                 metrics=[
-                    PerfMetric(
-                        name="disk_used_pct", value=pct, warn=_DISK_WARN, crit=_DISK_CRIT, unit="%"
-                    )
+                    PerfMetric(name="disk_used_pct", value=pct, warn=warn, crit=crit, unit="%")
                 ],
             )
         )

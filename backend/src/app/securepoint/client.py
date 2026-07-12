@@ -403,7 +403,10 @@ class SecurepointClient:
             return []
         return [
             DiskUsage(
-                device="/data", mountpoint="/data", used_pct=round((total - free) / total * 100, 1)
+                device="/data",
+                mountpoint="/data",
+                used_pct=round((total - free) / total * 100, 1),
+                total_mb=round(total / 1_048_576, 1),  # storage is bytes
             )
         ]
 

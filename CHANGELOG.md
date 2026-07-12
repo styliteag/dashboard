@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Disk usage alerts now scale with volume size: the classic 80%/90% levels
+  still apply to small boot disks and size-unknown sources, but larger
+  volumes alarm later (≥50 GB: 85/93, ≥200 GB: 90/95, ≥1 TB: 93/97) — a 2 TB
+  datastore no longer pages while hundreds of GB are still free. Check
+  summaries now include the remaining free space (e.g. "82% used (high,
+  45.1 GB free)") wherever the source reports a size (agent ≥3.0.3, Linux
+  nodes, OPNsense direct-poll, Securepoint).
+
 ## [3.0.5] - 2026-07-12
 
 ### Added

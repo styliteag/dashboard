@@ -156,9 +156,9 @@ export interface MemoryStatus {
 
 export interface DiskStatus {
   mountpoint: string;
-  total_mb: number;
-  used_mb: number;
   used_pct: number;
+  // null when the source can't report a size (older agents, some APIs).
+  total_mb: number | null;
 }
 
 export interface InterfaceStatus {
