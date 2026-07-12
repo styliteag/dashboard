@@ -19,7 +19,7 @@ from app.auth.deps import require_superadmin
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import GeoipConfig, User
-from app.geoip import crowdsec, dyndns, lookup, updater
+from app.geoip import crowdsec, denials, dyndns, lookup, updater
 from app.geoip.rules import classify_entry, decide, parse_rules
 from app.geoip.store import current_rules, load_config, save_config
 from app.net import client_ip
@@ -177,6 +177,15 @@ async def geoip_status(
         credentials_set=bool(settings.maxmind_account_id and settings.maxmind_license_key),
         crowdsec=crowdsec.status(),
     )
+
+
+@router.get("/denials", response_model=dict)
+async def geoip_denials(
+    _user: Annotated[User, Depends(require_superadmin)],
+) -> dict:
+    """Denial statistics since process start (counters reset on restart;
+    long-term series come from the Prometheus export)."""
+    return denials.snapshot(limit=50)
 
 
 @router.post("/db/refresh", response_model=dict)

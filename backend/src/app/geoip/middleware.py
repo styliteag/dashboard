@@ -17,7 +17,7 @@ import time
 import structlog
 
 from app.config import get_settings
-from app.geoip import crowdsec, dyndns, lookup
+from app.geoip import crowdsec, denials, dyndns, lookup
 from app.geoip.rules import decide
 from app.geoip.store import current_rules
 from app.net import pick_client_ip
@@ -102,11 +102,16 @@ class GeoipMiddleware:
             return await self.app(scope, receive, send)
         allowed, reason, ip, country = evaluate_scope(scope)
         if allowed:
-            if reason == "db_unavailable" and _should_log(ip or "-"):
-                log.error("geoip.db_unavailable_fail_open", ip=ip)
+            if reason == "db_unavailable":
+                denials.record_fail_open()
+                if _should_log(ip or "-"):
+                    log.error("geoip.db_unavailable_fail_open", ip=ip)
             return await self.app(scope, receive, send)
 
         path = scope.get("path", "")
+        # Counters/ring buffer record EVERY denial (bounded structures); only
+        # the log line is throttled.
+        denials.record(ip, country, path, reason)
         if _should_log(ip or "-"):
             log.warning("geoip.denied", ip=ip, country=country, path=path, reason=reason)
         if path == "/api/auth/login":

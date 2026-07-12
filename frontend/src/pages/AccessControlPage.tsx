@@ -21,6 +21,21 @@ interface GeoipSaveResult {
   settings: GeoipSettings;
 }
 
+interface GeoipDenials {
+  since: string | null;
+  total: number;
+  by_reason: Record<string, number>;
+  top_countries: { country: string; count: number }[];
+  fail_open_allows: number;
+  recent: {
+    at: string;
+    ip: string;
+    country: string | null;
+    path: string;
+    reason: string;
+  }[];
+}
+
 interface GeoipStatus {
   kill_switch_active: boolean;
   enforcing: boolean;
@@ -164,6 +179,12 @@ export default function AccessControlPage() {
   const statusQuery = useQuery({
     queryKey: ["geoip-status"],
     queryFn: () => api.get<GeoipStatus>("/api/geoip/status"),
+    enabled: !!user?.is_superadmin,
+    refetchInterval: 30_000,
+  });
+  const denialsQuery = useQuery({
+    queryKey: ["geoip-denials"],
+    queryFn: () => api.get<GeoipDenials>("/api/geoip/denials"),
     enabled: !!user?.is_superadmin,
     refetchInterval: 30_000,
   });
@@ -427,6 +448,73 @@ export default function AccessControlPage() {
               Not configured — set DASH_CROWDSEC_API_KEY (bouncer key from the CrowdSec
               sidecar) to activate. Bans then deny listed IPs on every request; the whitelist
               above always wins.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 border-t border-slate-800 pt-3">
+          <h3 className="text-xs font-medium text-slate-300">Denied requests</h3>
+          {denialsQuery.data && denialsQuery.data.total > 0 ? (
+            <div className="mt-1 space-y-2 text-xs">
+              <p className="text-slate-400">
+                <span className="font-medium text-red-400">{denialsQuery.data.total} denied</span>
+                {denialsQuery.data.since && (
+                  <span className="text-slate-500">
+                    {" "}
+                    since {fmtRelative(denialsQuery.data.since)} (resets on restart;
+                    long-term via Prometheus)
+                  </span>
+                )}
+                {denialsQuery.data.fail_open_allows > 0 && (
+                  <span className="ml-2 text-amber-400">
+                    {denialsQuery.data.fail_open_allows} allowed with missing DB (fail-open)
+                  </span>
+                )}
+              </p>
+              <p className="text-slate-400">
+                {Object.entries(denialsQuery.data.by_reason).map(([reason, count]) => (
+                  <span
+                    key={reason}
+                    className="mr-1.5 rounded bg-slate-800 px-1.5 py-0.5 text-slate-300"
+                  >
+                    {reason}: {count}
+                  </span>
+                ))}
+                {denialsQuery.data.top_countries.slice(0, 8).map((c) => (
+                  <span
+                    key={c.country}
+                    className="mr-1.5 rounded bg-slate-800 px-1.5 py-0.5 text-slate-400"
+                  >
+                    {c.country} ×{c.count}
+                  </span>
+                ))}
+              </p>
+              <table className="w-full text-xs">
+                <thead className="text-left text-slate-600">
+                  <tr>
+                    <th className="py-0.5 font-normal">When</th>
+                    <th className="py-0.5 font-normal">IP</th>
+                    <th className="py-0.5 font-normal">Country</th>
+                    <th className="py-0.5 font-normal">Path</th>
+                    <th className="py-0.5 font-normal">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {denialsQuery.data.recent.slice(0, 15).map((d, i) => (
+                    <tr key={`${d.at}-${d.ip}-${i}`} className="border-t border-slate-800/60">
+                      <td className="py-0.5 text-slate-500">{fmtRelative(d.at)}</td>
+                      <td className="py-0.5 text-slate-300">{d.ip}</td>
+                      <td className="py-0.5 text-slate-400">{d.country ?? "—"}</td>
+                      <td className="max-w-[14rem] truncate py-0.5 text-slate-500">{d.path}</td>
+                      <td className="py-0.5 text-slate-400">{d.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">
+              No denied requests since backend start.
             </p>
           )}
         </div>

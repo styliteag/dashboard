@@ -18,7 +18,7 @@ from app.checks import ServiceAlert, ServiceCheck, evaluate_checks
 from app.checks.aggregate import aggregate_for_checkmk
 from app.checks.event_store import read_check_events
 from app.checks.overlay import overlay_checks
-from app.checks.prometheus import CONTENT_TYPE, render_prometheus
+from app.checks.prometheus import CONTENT_TYPE, render_geoip_denials, render_prometheus
 from app.db.base import get_session
 from app.db.models import Instance, User
 from app.instances.service import get_instance, list_instances
@@ -326,7 +326,8 @@ async def export_prometheus(
                 now,
             )
             pairs.append((inst, evaluated))
-        return render_prometheus(pairs)
+        # Dashboard-global GeoIP denial counters ride along in the same scrape.
+        return render_prometheus(pairs) + render_geoip_denials()
 
     return PlainTextResponse(await asyncio.to_thread(_render), media_type=CONTENT_TYPE)
 

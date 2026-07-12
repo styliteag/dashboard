@@ -82,3 +82,43 @@ def render_prometheus(rows: list[tuple[object, list[ServiceCheck]]]) -> str:
         lines.append(f"# TYPE {name} gauge")
         lines.extend(samples)
     return "\n".join(lines) + "\n" if lines else ""
+
+
+# Dashboard-global GeoIP denial counters (no instance labels — they describe
+# the dashboard itself, not a firewall). Separate renderer with its own HELP
+# block: these are counters, not gauges, and must not pass through the
+# per-instance family machinery above.
+_GEOIP_HELP = {
+    "orbit_geoip_denied_total": "Requests denied by the GeoIP/CrowdSec gate, by reason",
+    "orbit_geoip_denied_country_total": (
+        "Requests denied by the GeoIP/CrowdSec gate, by country (?? = none)"
+    ),
+    "orbit_geoip_fail_open_total": (
+        "Requests allowed although the GeoIP DB was missing (DR-G5 fail-open)"
+    ),
+}
+
+
+def render_geoip_denials() -> str:
+    """Prometheus text block for the GeoIP denial counters ('' when all zero).
+
+    Values reset on backend restart — normal Prometheus counter semantics
+    (rate()/increase() handle resets).
+    """
+    from app.geoip.denials import prometheus_series  # local import: avoid cycle
+
+    by_reason, by_country, fail_open = prometheus_series()
+    lines: list[str] = []
+    if by_reason:
+        name = "orbit_geoip_denied_total"
+        lines += [f"# HELP {name} {_GEOIP_HELP[name]}", f"# TYPE {name} counter"]
+        lines += [_sample(name, [("reason", r)], n) for r, n in sorted(by_reason.items())]
+    if by_country:
+        name = "orbit_geoip_denied_country_total"
+        lines += [f"# HELP {name} {_GEOIP_HELP[name]}", f"# TYPE {name} counter"]
+        lines += [_sample(name, [("country", c)], n) for c, n in sorted(by_country.items())]
+    if fail_open:
+        name = "orbit_geoip_fail_open_total"
+        lines += [f"# HELP {name} {_GEOIP_HELP[name]}", f"# TYPE {name} counter"]
+        lines.append(f"{name} {_fmt(fail_open)}")
+    return "\n".join(lines) + "\n" if lines else ""
