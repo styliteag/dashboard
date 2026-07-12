@@ -526,3 +526,58 @@ def test_ping_flap_debounces_ipsec_tunnel_ping_key_too() -> None:
     key = "ipsec.tunnel_ping:site-a/10.0.0.0/24"
     out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT, key=key)])
     assert out[0].state == int(CheckState.OK)
+
+
+def test_iface_errors_flap_is_debounced() -> None:
+    """Prod 2026-07-12: iface_errors:ix0 fired CRIT→OK within 31s on a single
+    error burst — one counter delta per push is a single measurement and gets
+    the same streak debounce as the ping monitors."""
+    hub = AgentHub()
+    key = "iface_errors:ix0"
+    for _ in range(_PING_FLAP_POLLS - 1):
+        out = hub._debounce_ping_checks(65, [_conn_check(CheckState.CRIT, key=key)])
+        assert out[0].state == int(CheckState.OK)  # burst held back
+    out = hub._debounce_ping_checks(65, [_conn_check(CheckState.CRIT, key=key)])
+    assert out[0].state == int(CheckState.CRIT)  # persistent → surfaces
+    out = hub._debounce_ping_checks(65, [_conn_check(CheckState.OK, key=key)])
+    assert out[0].state == int(CheckState.OK)  # recovery immediate
+
+
+def test_flap_debounce_holds_warn_too() -> None:
+    """A WARN burst is the same notification noise as a CRIT one."""
+    hub = AgentHub()
+    key = "iface_errors:em0"
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.WARN, key=key)])
+    assert out[0].state == int(CheckState.OK)
+    # Mixed WARN/CRIT bursts share one streak; the confirmed state is the
+    # current push's own severity.
+    hub._debounce_ping_checks(1, [_conn_check(CheckState.WARN, key=key)])
+    out = hub._debounce_ping_checks(1, [_conn_check(CheckState.CRIT, key=key)])
+    assert out[0].state == int(CheckState.CRIT)
+
+
+def test_hydrate_reseeds_streaks_for_non_ok_debounced_keys() -> None:
+    """A restart must not fire false 'recovered' notifications: hydrated non-OK
+    states of debounced families re-seed the streak at the threshold."""
+    hub = AgentHub()
+    hub.hydrate_instance(
+        7,
+        {
+            "check_states": {
+                "iface_errors:ix0": int(CheckState.CRIT),
+                "connectivity:5": int(CheckState.CRIT),
+                "iface_errors:em1": int(CheckState.WARN),
+                "memory": int(CheckState.CRIT),  # not a debounced family
+                "iface_errors:ok0": int(CheckState.OK),
+            }
+        },
+    )
+    streaks = hub._ping_fail_streak[7]
+    assert streaks["iface_errors:ix0"] == _PING_FLAP_POLLS
+    assert streaks["connectivity:5"] == _PING_FLAP_POLLS
+    assert streaks["iface_errors:em1"] == _PING_FLAP_POLLS
+    assert "memory" not in streaks
+    assert "iface_errors:ok0" not in streaks
+    # First still-failing push after restart stays CRIT — no false recovery.
+    out = hub._debounce_ping_checks(7, [_conn_check(CheckState.CRIT, key="iface_errors:ix0")])
+    assert out[0].state == int(CheckState.CRIT)

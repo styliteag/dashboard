@@ -71,11 +71,17 @@ _TUNNEL_QUEUE_MAX = 1000
 # this filters the routine churn and keeps only the stuck/orphaned duplicates.
 _DUP_PERSIST_POLLS = 3
 
-# A connectivity/IPsec Phase-2 ping monitor CRITs only after this many consecutive
-# failed pushes; recovery is immediate on the first OK. Each push is a single ping
-# measurement, so without this a lone dropped packet flips the check (and its
-# Telegram/e-mail/Mattermost notification) OK→CRIT→OK inside a minute.
+# A flap-debounced check goes non-OK only after this many consecutive non-OK
+# pushes; recovery is immediate on the first OK. These families are single
+# measurements per push, so without the streak one dropped packet or one
+# 30-second error burst flips the check (and its Telegram/e-mail/Mattermost
+# notification) OK→CRIT→OK inside a minute.
 _PING_FLAP_POLLS = 3
+
+# Check-key prefixes with flap debounce: ping monitors (single ping per push)
+# and per-interface error rates (one 30s counter delta per push — prod
+# 2026-07-12: iface_errors:ix0 fired CRIT→OK within 31s on one burst).
+_FLAP_DEBOUNCED_PREFIXES = ("connectivity:", "ipsec.tunnel_ping:", "iface_errors:")
 
 # Backlog cap for the background logfile-ingest queue. A synchronized fleet
 # (post update-all restart) lands ~1 log push per box in the same minute;
@@ -420,17 +426,16 @@ class AgentHub:
                 self._last_check_states[instance_id] = {
                     str(k): int(v) for k, v in snapshot["check_states"].items()
                 }
-                # Re-seed the ping fail-streak to the threshold for any ping-monitor
-                # key that was already CRIT — otherwise the in-memory streak starts
-                # at 0, the first still-failing push after restart gets held to OK by
-                # _debounce_ping_checks, and diffing that against the hydrated CRIT
-                # baseline fires a false "recovered" notification (same rationale as
-                # the dup-streak re-seed above).
+                # Re-seed the fail-streak to the threshold for any flap-debounced
+                # key that was already non-OK — otherwise the in-memory streak
+                # starts at 0, the first still-failing push after restart gets held
+                # to OK by _debounce_ping_checks, and diffing that against the
+                # hydrated non-OK baseline fires a false "recovered" notification
+                # (same rationale as the dup-streak re-seed above).
                 self._ping_fail_streak[instance_id] = {
                     key: _PING_FLAP_POLLS
                     for key, state in self._last_check_states[instance_id].items()
-                    if state == int(CheckState.CRIT)
-                    and (key.startswith("connectivity:") or key.startswith("ipsec.tunnel_ping:"))
+                    if state != int(CheckState.OK) and key.startswith(_FLAP_DEBOUNCED_PREFIXES)
                 }
         except Exception as exc:  # noqa: BLE001 — a bad snapshot must not block startup
             log.warning("hub.hydrate_skip", instance_id=instance_id, error=str(exc))
@@ -489,19 +494,18 @@ class AgentHub:
     def _debounce_ping_checks(
         self, instance_id: int, checks: list[ServiceCheck]
     ) -> list[ServiceCheck]:
-        """Hold connectivity/IPsec Phase-2 ping checks at OK until a failure has
+        """Hold flap-prone single-measurement checks at OK until the failure has
         persisted for ``_PING_FLAP_POLLS`` consecutive pushes; recovery is immediate
-        on the first OK (same shape as ``_annotate_dup_persistence`` above). Only
-        affects the two agent-pushed ping-monitor families — every other check
-        (memory, gateways, IPsec tunnel state, …) passes through unchanged."""
+        on the first OK (same shape as ``_annotate_dup_persistence`` above). Applies
+        to the ``_FLAP_DEBOUNCED_PREFIXES`` families (ping monitors, interface
+        error rates) and to any non-OK state — a WARN burst is the same noise as a
+        CRIT one. Every other check (memory, gateways, IPsec tunnel state, …)
+        passes through unchanged."""
         prev = self._ping_fail_streak.get(instance_id, {})
         streaks: dict[str, int] = {}
         out: list[ServiceCheck] = []
         for c in checks:
-            is_ping_key = c.key.startswith("connectivity:") or c.key.startswith(
-                "ipsec.tunnel_ping:"
-            )
-            if not is_ping_key or c.state != int(CheckState.CRIT):
+            if not c.key.startswith(_FLAP_DEBOUNCED_PREFIXES) or c.state == int(CheckState.OK):
                 out.append(c)
                 continue
             streak = prev.get(c.key, 0) + 1
