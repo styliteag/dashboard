@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The footer now shows every logged-in user the global count of requests
+  blocked by the GeoIP/CrowdSec gate ("🛡 N blocked") — awareness for the
+  whole team; details (IPs, countries, paths) remain superadmin-only on the
+  Access page.
+
 ## [3.1.1] - 2026-07-12
 
 ### Fixed

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.log import write_audit
-from app.auth.deps import require_superadmin
+from app.auth.deps import current_user, require_superadmin
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import GeoipConfig, User
@@ -177,6 +177,19 @@ async def geoip_status(
         credentials_set=bool(settings.maxmind_account_id and settings.maxmind_license_key),
         crowdsec=crowdsec.status(),
     )
+
+
+@router.get("/denials/summary", response_model=dict)
+async def geoip_denials_summary(
+    _user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Global denied-request count, visible to EVERY logged-in user (footer).
+
+    Deliberately just the aggregate number from the in-memory mirror (no DB
+    read, no IPs/countries/paths — those stay superadmin-only in /denials).
+    """
+    by_reason, _countries, _fail_open = denials.prometheus_series()
+    return {"total": sum(by_reason.values())}
 
 
 @router.get("/denials", response_model=dict)

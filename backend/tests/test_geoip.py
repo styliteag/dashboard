@@ -600,3 +600,17 @@ def test_prometheus_denial_counters_render() -> None:
     assert "# TYPE orbit_geoip_denied_total counter" in text
     assert 'orbit_geoip_denied_total{reason="country_blocked"} 1' in text
     assert 'orbit_geoip_denied_country_total{country="US"} 1' in text
+
+
+def test_denials_summary_totals_only() -> None:
+    """The every-user summary exposes ONLY the aggregate number — no IPs,
+    countries or paths (those stay superadmin-only in /denials)."""
+    import asyncio as _asyncio
+
+    from app.geoip.routes import geoip_denials_summary
+
+    den = _den_reset()
+    den.record("1.2.3.4", "US", "/api/x", "country_blocked")
+    den.record("6.6.6.6", None, "/api/y", "crowdsec_banned")
+    result = _asyncio.run(geoip_denials_summary(None))
+    assert result == {"total": 2}
