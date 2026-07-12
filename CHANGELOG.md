@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CrowdSec bad-actor blocklist for the dashboard (optional, own switch
+  `DASH_CROWDSEC_ENABLED`): ban decisions from a CrowdSec sidecar (bundled as
+  compose profile `crowdsec`) are pulled in stream mode every 30 seconds and
+  denied on every interactive request — even when the country restriction is
+  off. The GeoIP whitelist always wins (operator rescue), agents and API keys
+  stay exempt, and a LAPI outage keeps the last known bans active instead of
+  silently un-banning everyone. Sync state and ban count are visible on the
+  Access page.
+
 - GeoIP access restriction (superadmin → Access): dashboard logins and every
   API/WebSocket session request can be limited to a country allowlist backed
   by a local GeoLite2 database (IPv4+IPv6; no login IPs leave the server),

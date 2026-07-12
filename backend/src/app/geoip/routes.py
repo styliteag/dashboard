@@ -19,7 +19,7 @@ from app.auth.deps import require_superadmin
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import GeoipConfig, User
-from app.geoip import dyndns, lookup, updater
+from app.geoip import crowdsec, dyndns, lookup, updater
 from app.geoip.rules import classify_entry, decide, parse_rules
 from app.geoip.store import current_rules, load_config, save_config
 from app.net import client_ip
@@ -60,6 +60,7 @@ class GeoipStatus(BaseModel):
     last_download: dict
     dyndns: list[dict]
     credentials_set: bool
+    crowdsec: dict
 
 
 def _validate(body: GeoipSettingsBody) -> None:
@@ -174,6 +175,7 @@ async def geoip_status(
         last_download=updater.last_download(),
         dyndns=dyndns.snapshot(),
         credentials_set=bool(settings.maxmind_account_id and settings.maxmind_license_key),
+        crowdsec=crowdsec.status(),
     )
 
 

@@ -104,6 +104,10 @@ services:
       DASH_MAXMIND_ACCOUNT_ID: ${DASH_MAXMIND_ACCOUNT_ID:-}
       DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
       DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
+      # CrowdSec blocklist (optional sidecar below, profile "crowdsec").
+      DASH_CROWDSEC_ENABLED: ${DASH_CROWDSEC_ENABLED:-false}
+      DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
+      DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
       TZ: ${TZ:-UTC}
     depends_on:
       db:
@@ -185,6 +189,24 @@ services:
     #     # than one, tell Traefik which to use (else it may route to the wrong IP):
     #     #- traefik.docker.network=traefik
 
+  # CrowdSec LAPI sidecar (OPTIONAL, DR-G8). Opt-in: `docker compose --profile
+  # crowdsec up -d`. Out of the box it serves the community blocklists (CAPI);
+  # local log parsing can be added later via collections/acquis config in the
+  # crowdsec_config volume. After first start mint the bouncer key:
+  #   docker exec dashboard-crowdsec-1 cscli bouncers add orbit-dashboard
+  # and put it into .env as DASH_CROWDSEC_API_KEY (+ DASH_CROWDSEC_ENABLED=true).
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.7.7
+    restart: unless-stopped
+    profiles: [crowdsec]
+    environment:
+      COLLECTIONS: crowdsecurity/linux
+    volumes:
+      - crowdsec_config:/etc/crowdsec
+      - crowdsec_data:/var/lib/crowdsec/data
+
 volumes:
   db_data:
   geoip_data:
+  crowdsec_config:
+  crowdsec_data:

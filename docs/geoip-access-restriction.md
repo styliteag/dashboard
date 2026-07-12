@@ -102,16 +102,26 @@ allowlisted Detail-Felder).
   (`users.last_login_ip/_country/_at`, gesetzt beim Session-Mint im MFA-Schritt —
   nicht beim Passwort-Schritt, der noch keine Session erzeugt).
 
-## Ausbaustufe (beschlossen als Folge-Feature, nicht Teil dieses Zugs)
+### DR-G8 — CrowdSec-Blocklist (umgesetzt als zweite Stufe)
 
-**CrowdSec-Anreicherung (Bad-Actor-Blocklist).** Die Entscheidungsschicht
-(`rules.decide`) ist bewusst so geschnitten, dass eine zweite Signalquelle
-andockbar ist: ein CrowdSec-Sidecar (LAPI) liefert Ban-Decisions im
-**Stream-Modus** (periodischer Pull in einen Prozess-Cache, analog
-DynDNS-Resolver — nie Live-HTTP im Request-Pfad); die Middleware prüft die
-Client-IP zusätzlich gegen diese Blocklist (Blocklist schlägt Länder-Allow,
-Whitelist schlägt Blocklist — Operator-Rettung geht vor). Eigenes ADR, eigener
-Commit; NetBird-Compose-Beispiel als Referenz beim User.
+Bad-Actor-Anreicherung über ein optionales CrowdSec-Sidecar (LAPI,
+compose-Profile `crowdsec`): ein Scheduler-Job (30 s) zieht Ban-Decisions im
+**Stream-Modus** (`/v1/decisions/stream`, erster Pull `startup=true` =
+Vollbestand, danach Deltas) in einen Prozess-Cache — nie Live-HTTP im
+Request-Pfad. Einzel-IPs im O(1)-Set, echte Ranges (v4/v6) linear.
+
+- **Eigener Schalter**: `DASH_CROWDSEC_ENABLED` (+ `DASH_CROWDSEC_LAPI_URL`,
+  `DASH_CROWDSEC_API_KEY`), unabhängig von der Länder-Restriktion — die
+  Blocklist beißt auch, wenn keine Länder konfiguriert sind. Der
+  GeoIP-Kill-Switch `DASH_GEOIP_DISABLE` schaltet auch sie ab.
+- **Prioritäten**: Whitelist schlägt Blocklist (Operator-Rettung zuerst),
+  Blocklist schlägt Länder-Allow. Reihenfolge ist Teil des
+  `decide()`-Vertrags und getestet.
+- **Ausfall-Semantik**: LAPI down → letzte bekannte Bans bleiben aktiv
+  ("stale beats empty" — ein Sync-Schluckauf darf nicht alle Angreifer auf
+  einmal entbannen); Fehlzustand im Status-Endpoint/UI sichtbar.
+- Agents/`orbit_`-Keys bleiben ausgenommen (wie DR-G2). Bouncer-Key:
+  `docker exec dashboard-crowdsec-1 cscli bouncers add orbit-dashboard`.
 
 ## Nicht-Ziele
 

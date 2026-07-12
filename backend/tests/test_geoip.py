@@ -323,3 +323,139 @@ def test_extract_mmdb_missing_member_raises() -> None:
 def test_gzip_import_unused_guard() -> None:
     # keep ruff happy about the gzip import used only via tarfile's mode above
     assert gzip.compress(b"x")
+
+
+# --- crowdsec: decide integration (DR-G8) --------------------------------------
+
+
+def _ban(*ips: str):
+    banned = set(ips)
+    return lambda ip: ip in banned
+
+
+def test_banned_ip_denied_even_without_country_restriction() -> None:
+    """The blocklist has its own switch — it must bite with GeoIP off."""
+    d = decide("6.6.6.6", DISABLED, None, _NO_RESOLVED, True, banned=_ban("6.6.6.6"))
+    assert not d.allowed and d.reason == "crowdsec_banned"
+
+
+def test_whitelist_beats_blocklist() -> None:
+    """Operator rescue first: a whitelisted IP passes despite an active ban."""
+    rules = parse_rules(True, '["DE"]', '["203.0.113.0/24"]')
+    d = decide("203.0.113.7", rules, None, _NO_RESOLVED, True, banned=_ban("203.0.113.7"))
+    assert d.allowed and d.reason == "whitelisted"
+
+
+def test_blocklist_beats_country_allow() -> None:
+    d = decide("1.2.3.4", _RULES_DE, "DE", _NO_RESOLVED, True, banned=_ban("1.2.3.4"))
+    assert not d.allowed and d.reason == "crowdsec_banned"
+
+
+def test_no_banned_callable_keeps_old_behavior() -> None:
+    assert decide("6.6.6.6", DISABLED, None, _NO_RESOLVED, True).allowed
+
+
+# --- crowdsec: state transitions + sync ----------------------------------------
+
+
+def _cs_reset():
+    import app.geoip.crowdsec as cs
+
+    cs._banned_ips.clear()
+    cs._banned_ranges.clear()
+    cs._last.update(at=None, ok=None, detail="never synced")
+    return cs
+
+
+def test_crowdsec_apply_decisions_and_ranges() -> None:
+    cs = _cs_reset()
+    cs.apply_decisions(
+        new=[
+            {"type": "ban", "value": "6.6.6.6"},
+            {"type": "ban", "value": "198.51.100.0/24"},
+            {"type": "ban", "value": "2001:db8:bad::/48"},
+            {"type": "captcha", "value": "9.9.9.9"},  # non-ban ignored
+            {"type": "ban", "value": "garbage"},  # junk ignored
+        ],
+        deleted=[],
+    )
+    assert cs.is_banned("6.6.6.6")
+    assert cs.is_banned("198.51.100.77")
+    assert cs.is_banned("2001:db8:bad::1")
+    assert not cs.is_banned("9.9.9.9")
+    assert cs.banned_count() == 3
+    cs.apply_decisions(new=[], deleted=[{"type": "ban", "value": "6.6.6.6"}])
+    assert not cs.is_banned("6.6.6.6")
+
+
+def test_crowdsec_sync_failure_keeps_bans(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stale beats empty: a LAPI outage must not un-ban every attacker."""
+    import httpx as _httpx
+    import respx
+
+    import app.geoip.crowdsec as cs
+
+    _cs_reset()
+    cs.apply_decisions(new=[{"type": "ban", "value": "6.6.6.6"}], deleted=[])
+    monkeypatch.setattr(
+        cs,
+        "get_settings",
+        lambda: SimpleNamespace(
+            crowdsec_enabled=True,
+            crowdsec_api_key="k",
+            crowdsec_lapi_url="http://lapi.test:8080",
+        ),
+    )
+    with respx.mock:
+        respx.get("http://lapi.test:8080/v1/decisions/stream").mock(
+            side_effect=_httpx.ConnectError("down")
+        )
+        _run(cs.sync())
+    assert cs.is_banned("6.6.6.6")
+    assert cs.status()["ok"] is False
+
+
+def test_crowdsec_sync_applies_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    import respx
+
+    import app.geoip.crowdsec as cs
+
+    _cs_reset()
+    monkeypatch.setattr(cs, "_startup_done", False)
+    monkeypatch.setattr(
+        cs,
+        "get_settings",
+        lambda: SimpleNamespace(
+            crowdsec_enabled=True,
+            crowdsec_api_key="k",
+            crowdsec_lapi_url="http://lapi.test:8080",
+        ),
+    )
+    with respx.mock:
+        route = respx.get("http://lapi.test:8080/v1/decisions/stream").respond(
+            json={"new": [{"type": "ban", "value": "6.6.6.7"}], "deleted": None}
+        )
+        _run(cs.sync())
+    assert route.calls[0].request.url.params["startup"] == "true"
+    assert cs.is_banned("6.6.6.7")
+    assert cs.status()["ok"] is True
+
+
+def test_middleware_denies_crowdsec_banned_ip(enforcing, monkeypatch) -> None:
+    """Banned peer gets 403 without the app ever running — even though its
+    country (DE) is on the allowlist."""
+    monkeypatch.setattr(mw.lookup, "country_for", lambda ip: "DE")
+    monkeypatch.setattr(mw.crowdsec, "active", lambda: True)
+    monkeypatch.setattr(mw.crowdsec, "is_banned", lambda ip: ip == "198.51.100.10")
+    allowed, reason, ip, _ = mw.evaluate_scope(_scope())
+    assert not allowed and reason == "crowdsec_banned" and ip == "198.51.100.10"
+
+
+def test_middleware_blocklist_without_country_restriction(enforcing, monkeypatch) -> None:
+    monkeypatch.setattr(mw, "current_rules", lambda: DISABLED)
+    monkeypatch.setattr(mw.crowdsec, "active", lambda: True)
+    monkeypatch.setattr(mw.crowdsec, "is_banned", lambda ip: True)
+    assert not mw.evaluate_scope(_scope())[0]
+    # Blocklist off again: GeoIP disabled → everything passes.
+    monkeypatch.setattr(mw.crowdsec, "active", lambda: False)
+    assert mw.evaluate_scope(_scope())[0]

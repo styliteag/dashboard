@@ -66,3 +66,7 @@ zeigen auf `docs/agent-architecture.md`.
   bleiben bei DNS-Fehlern gültig).
 - **Kill-Switch (GeoIP)** — `DASH_GEOIP_DISABLE=true`, env-only: schaltet die
   GeoIP-Prüfung ab, wenn eine Fehlkonfiguration aussperrt; bewusst nicht im UI.
+- **CrowdSec-Blocklist** — optionale zweite Signalquelle der GeoIP-Restriktion
+  (DR-G8): Ban-Decisions eines CrowdSec-Sidecars, per Stream-Pull (30 s) in einen
+  Prozess-Cache; Whitelist schlägt Blocklist, Blocklist schlägt Länder-Allow.
+  Eigener Schalter `DASH_CROWDSEC_ENABLED`; LAPI-Ausfall behält letzte Bans.

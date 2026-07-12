@@ -34,6 +34,14 @@ interface GeoipStatus {
   last_download: { at: string | null; ok: boolean | null; detail: string };
   dyndns: { hostname: string; ips: string[]; resolved_at: string | null; error: string | null }[];
   credentials_set: boolean;
+  crowdsec: {
+    enabled: boolean;
+    configured: boolean;
+    banned_count: number;
+    at: string | null;
+    ok: boolean | null;
+    detail: string;
+  };
 }
 
 // Common ISO-3166-1 alpha-2 suggestions for an MSP fleet in DACH/EU — any
@@ -388,6 +396,40 @@ export default function AccessControlPage() {
           <Download className="h-3.5 w-3.5" />
           {refreshDb.isPending ? "Downloading…" : "Download now"}
         </button>
+
+        <div className="mt-4 border-t border-slate-800 pt-3">
+          <h3 className="text-xs font-medium text-slate-300">CrowdSec blocklist</h3>
+          {status?.crowdsec.enabled ? (
+            status.crowdsec.configured ? (
+              <p className="mt-1 text-xs text-slate-400">
+                {status.crowdsec.ok === false ? (
+                  <span className="text-amber-400" title={status.crowdsec.detail}>
+                    sync failing — last known bans stay active
+                  </span>
+                ) : (
+                  <span className="text-emerald-400">
+                    active, {status.crowdsec.banned_count} banned
+                  </span>
+                )}
+                {status.crowdsec.at && (
+                  <span className="ml-1 text-slate-500">
+                    (synced {fmtRelative(status.crowdsec.at)})
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-amber-400">
+                DASH_CROWDSEC_ENABLED is set but DASH_CROWDSEC_API_KEY is missing — blocklist
+                idle.
+              </p>
+            )
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">
+              Disabled (DASH_CROWDSEC_ENABLED=false). Bans from a CrowdSec sidecar would deny
+              listed IPs on every request; the whitelist above always wins.
+            </p>
+          )}
+        </div>
 
         {status && status.dyndns.length > 0 && (
           <div className="mt-4">

@@ -20,6 +20,7 @@ from app.checks.event_store import record_availability_event
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
+from app.geoip.crowdsec import sync as crowdsec_sync
 from app.geoip.dyndns import refresh_job as geoip_dyndns_refresh
 from app.geoip.updater import refresh_geoip_db
 from app.maintenance.jobs import (
@@ -357,6 +358,16 @@ def start_scheduler() -> None:
     _scheduler.add_job(refresh_geoip_db, "interval", days=7, id="geoip_db_refresh", max_instances=1)
     _scheduler.add_job(
         geoip_dyndns_refresh, "interval", minutes=5, id="geoip_dyndns_refresh", max_instances=1
+    )
+    # CrowdSec blocklist stream sync (no-op unless DASH_CROWDSEC_ENABLED + key).
+    # 30s matches the usual bouncer cadence; first run fetches the full set.
+    _scheduler.add_job(
+        crowdsec_sync,
+        "interval",
+        seconds=30,
+        id="geoip_crowdsec_sync",
+        max_instances=1,
+        next_run_time=datetime.now(UTC),
     )
     _scheduler.start()
     log.info(

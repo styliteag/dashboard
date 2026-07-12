@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     # Path of the GeoLite2-Country database inside the container (volume-backed
     # so a downloaded update survives restarts).
     geoip_db_path: str = "/data/geoip/GeoLite2-Country.mmdb"
+    # --- CrowdSec bad-actor blocklist (DR-G8) — separate opt-in switch. ---
+    # When enabled, ban decisions are pulled from the CrowdSec LAPI in stream
+    # mode into a process cache; the middleware denies banned IPs even when the
+    # country restriction is off. Whitelist entries always beat the blocklist
+    # (operator rescue first). DASH_GEOIP_DISABLE also kills this check.
+    crowdsec_enabled: bool = False
+    crowdsec_lapi_url: str = "http://crowdsec:8080"
+    crowdsec_api_key: str = Field(default="", description="CrowdSec bouncer API key")
 
     # Polling. ``poll_interval_seconds`` is the *default* per-instance poll cadence
     # for direct-API devices; an instance may override it (instances.poll_interval_

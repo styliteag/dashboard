@@ -12,6 +12,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 # RFC 1123 hostname with at least one dot (a bare label is almost always a typo
@@ -117,17 +118,26 @@ def decide(
     country: str | None,
     resolved_ips: frozenset[str],
     db_available: bool,
+    banned: Callable[[str], bool] | None = None,
 ) -> Decision:
     """The single yes/no every enforcement point uses.
 
     Evaluation order matters and is part of the contract:
-    disabled/empty-config allow (DR-G3) → whitelist (DR-G4) → mmdb missing
-    fails open (DR-G5) → country allowlist, unknown country fails closed.
+    whitelist first (DR-G4 — the operator rescue beats even the blocklist),
+    then the CrowdSec blocklist (DR-G8 — ``banned`` is injected only when
+    that separate switch is on, and applies even with the country restriction
+    off), then disabled/empty-config allow (DR-G3), mmdb missing fails open
+    (DR-G5), and finally the country allowlist with unknown-country
+    failing closed.
     """
-    if not rules.restricting:
+    if not rules.restricting and banned is None:
         return Decision(True, "not_restricting")
     if ip_whitelisted(ip, rules, resolved_ips):
         return Decision(True, "whitelisted")
+    if banned is not None and banned(ip):
+        return Decision(False, "crowdsec_banned", country=country, detail={"ip": ip})
+    if not rules.restricting:
+        return Decision(True, "not_restricting")
     if not db_available:
         # Infrastructure failure, not a policy answer — allow, callers log loud.
         return Decision(True, "db_unavailable")

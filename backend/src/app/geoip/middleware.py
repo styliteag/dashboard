@@ -17,7 +17,7 @@ import time
 import structlog
 
 from app.config import get_settings
-from app.geoip import dyndns, lookup
+from app.geoip import crowdsec, dyndns, lookup
 from app.geoip.rules import decide
 from app.geoip.store import current_rules
 from app.net import pick_client_ip
@@ -70,7 +70,10 @@ def evaluate_scope(scope: dict) -> tuple[bool, str, str | None, str | None]:
     if get_settings().geoip_disable:
         return True, "kill_switch", None, None
     rules = current_rules()
-    if not rules.restricting:
+    # CrowdSec (DR-G8) has its own switch and applies even when the country
+    # restriction is off — only both-off short-circuits here.
+    blocklist_on = crowdsec.active()
+    if not rules.restricting and not blocklist_on:
         return True, "not_restricting", None, None
     auth = _header(scope, b"authorization") or ""
     if auth.lower().startswith("bearer orbit_"):
@@ -79,7 +82,14 @@ def evaluate_scope(scope: dict) -> tuple[bool, str, str | None, str | None]:
     ip = pick_client_ip(_header(scope, b"x-forwarded-for"), peer[0] if peer else None)
     db_ok = lookup.db_available()
     country = lookup.country_for(ip) if db_ok else None
-    decision = decide(ip, rules, country, dyndns.resolved_ips(), db_ok)
+    decision = decide(
+        ip,
+        rules,
+        country,
+        dyndns.resolved_ips(),
+        db_ok,
+        banned=crowdsec.is_banned if blocklist_on else None,
+    )
     return decision.allowed, decision.reason, ip, country
 
 
