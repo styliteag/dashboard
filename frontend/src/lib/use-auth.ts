@@ -13,6 +13,10 @@ export interface User {
   is_superadmin: boolean;
   groups: GroupBrief[];
   session_token?: string | null;
+  // Filled only by /auth/me: the caller's own IP (+country when the GeoIP DB
+  // resolves it) for the footer display.
+  client_ip?: string | null;
+  client_country?: string | null;
 }
 
 /** True for roles allowed to mutate (everything except view_only). */

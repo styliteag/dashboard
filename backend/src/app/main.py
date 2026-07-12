@@ -28,6 +28,10 @@ from app.connectivity.routes import router as connectivity_router
 from app.db.base import dispose_engine, get_sessionmaker
 from app.firewall_rules.routes import router as firewall_rules_router
 from app.firmware.routes import router as firmware_router
+from app.geoip import dyndns as geoip_dyndns
+from app.geoip.middleware import GeoipMiddleware
+from app.geoip.routes import router as geoip_router
+from app.geoip.store import load_config as load_geoip_config
 from app.groups.channels import router as group_channels_router
 from app.groups.routes import router as groups_router
 from app.http_log import AccessLogMiddleware
@@ -65,6 +69,17 @@ async def lifespan(app: FastAPI):
         log.info("settings.loaded", overrides=count, selection_rules=rules)
     except Exception as exc:  # noqa: BLE001 — never block startup on settings load
         log.error("settings.load_failed", error=str(exc))
+
+    # GeoIP restriction: load the config row into the middleware's process cache
+    # and seed the DynDNS whitelist resolutions before traffic arrives. A load
+    # failure leaves the DISABLED default — fail open, never block startup
+    # (docs/geoip-access-restriction.md DR-G3/G5).
+    try:
+        async with get_sessionmaker()() as session:
+            await load_geoip_config(session)
+        await geoip_dyndns.refresh_job()
+    except Exception as exc:  # noqa: BLE001
+        log.error("geoip.startup_load_failed", error=str(exc))
     eff = effective_settings()
     configure_logging(eff.log_level, eff.log_format)
 
@@ -222,6 +237,9 @@ def create_app() -> FastAPI:
 
     # Added last ⇒ outermost: times the full stack and reads scope["session"]
     # (populated by the inner SessionMiddleware) when logging the request.
+    # GeoIP gate sits between access log (outermost, so denials are logged) and
+    # the session layer (it needs no session — pure IP/header decision).
+    app.add_middleware(GeoipMiddleware)
     app.add_middleware(AccessLogMiddleware)
 
     app.include_router(health.router, prefix="/api")
@@ -242,6 +260,7 @@ def create_app() -> FastAPI:
     app.include_router(comments_router, prefix="/api")
     app.include_router(apikeys_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
+    app.include_router(geoip_router, prefix="/api")
     app.include_router(users_router, prefix="/api")
     app.include_router(groups_router, prefix="/api")
     app.include_router(group_channels_router, prefix="/api")

@@ -5,6 +5,7 @@ Closes US-1.1, US-1.2, US-1.3, US-1.4.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -19,6 +20,7 @@ from app.auth.security import hash_password, limiter, verify_password, verify_pa
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import User, WebauthnCredential
+from app.geoip import lookup as geoip_lookup
 from app.groups.schemas import GroupBrief
 from app.net import client_ip
 
@@ -43,6 +45,9 @@ class UserResponse(BaseModel):
     is_superadmin: bool
     groups: list[GroupBrief]
     session_token: str | None = None
+    # Filled only by /auth/me (footer display, DR-G7); None in login responses.
+    client_ip: str | None = None
+    client_country: str | None = None
 
 
 def _user_response(user: User, session_token: str | None = None) -> UserResponse:
@@ -92,6 +97,11 @@ async def complete_login(
     request.session["user_id"] = user.id
     request.session["password_version"] = user.password_version
     request.session["mfa_passed"] = True
+    # Last successful login (DR-G7): recorded only here — the password step
+    # never mints a session, so it never counts as a login.
+    user.last_login_ip = ip
+    user.last_login_country = geoip_lookup.country_for(ip)
+    user.last_login_at = datetime.now(UTC)
     await write_audit(session, action="auth.login", result="ok", user_id=user.id, source_ip=ip)
     await session.commit()
     token = issue_dev_token(user.id, user.password_version) if get_settings().env == "dev" else None
@@ -198,8 +208,14 @@ async def logout(
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: Annotated[User, Depends(current_user)]) -> UserResponse:
-    return _user_response(user)
+async def me(request: Request, user: Annotated[User, Depends(current_user)]) -> UserResponse:
+    # The footer shows the caller their own IP (+country when resolvable) —
+    # DR-G7 visibility; also the quickest way to debug geo lockout reports.
+    response = _user_response(user)
+    ip = client_ip(request)
+    response.client_ip = ip
+    response.client_country = geoip_lookup.country_for(ip)
+    return response
 
 
 @router.post("/password", response_model=UserResponse)

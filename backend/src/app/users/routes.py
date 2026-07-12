@@ -57,6 +57,11 @@ class UserOut(BaseModel):
     created_at: datetime
     disabled: bool
     totp_enabled: bool
+    # Last successful login (set at session mint, DR-G7) — the "where did this
+    # account last come from" column on the Users page.
+    last_login_ip: str | None = None
+    last_login_country: str | None = None
+    last_login_at: datetime | None = None
 
 
 async def _admin_count(session: AsyncSession) -> int:

@@ -76,6 +76,21 @@ class Settings(BaseSettings):
         default="http://localhost:5173", description="WebAuthn expected origin"
     )
 
+    # --- GeoIP access restriction (docs/geoip-access-restriction.md) ---
+    # Emergency kill switch: True disables ALL GeoIP enforcement regardless of the
+    # DB config — the rescue hatch when a bad country list / whitelist locks
+    # everyone out. Deliberately env-only (container restart applies it), never
+    # editable via the UI: a UI toggle would be unreachable while locked out.
+    geoip_disable: bool = False
+    # MaxMind credentials for the weekly GeoLite2-Country auto-download job
+    # (download.maxmind.com uses HTTP basic auth: account id + license key).
+    # Either empty = the job stays idle; mount/update the mmdb manually instead.
+    maxmind_account_id: str = Field(default="", description="MaxMind account id")
+    maxmind_license_key: str = Field(default="", description="MaxMind GeoLite2 license key")
+    # Path of the GeoLite2-Country database inside the container (volume-backed
+    # so a downloaded update survives restarts).
+    geoip_db_path: str = "/data/geoip/GeoLite2-Country.mmdb"
+
     # Polling. ``poll_interval_seconds`` is the *default* per-instance poll cadence
     # for direct-API devices; an instance may override it (instances.poll_interval_
     # seconds). The scheduler ticks every ``poll_tick_seconds`` and polls only the

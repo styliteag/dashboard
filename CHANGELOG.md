@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GeoIP access restriction (superadmin → Access): dashboard logins and every
+  API/WebSocket session request can be limited to a country allowlist backed
+  by a local GeoLite2 database (IPv4+IPv6; no login IPs leave the server),
+  plus an always-allowed whitelist of CIDRs and DynDNS hostnames (re-resolved
+  every 5 minutes — DNS outages keep the last known addresses). Agents and
+  orbit_ API keys are never geo-blocked; empty configuration allows everyone.
+  Saving rules that would block your own IP warns first; blocked requests get
+  an explicit "access restricted from your location" message and blocked
+  login attempts land in the audit log. `DASH_GEOIP_DISABLE=true` is the
+  emergency kill switch; with MaxMind credentials set the database refreshes
+  weekly (plus a "Download now" button). The footer shows every user their
+  own IP/country, and the Users page shows IP, country and time of each
+  account's last login.
+
 ## [3.0.6] - 2026-07-12
 
 ### Changed

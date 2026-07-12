@@ -42,6 +42,9 @@ services:
       # Bake-vs-mount: prod uses the VERSION baked into the image; this bind
       # only matters for dev-style runs where the host VERSION drifts.
       - ./VERSION:/app/VERSION:ro
+      # GeoLite2 database — volume-backed so the weekly download survives
+      # container recreation (or drop your own mmdb in here manually).
+      - geoip_data:/data/geoip
     environment:
       DASH_ENV: ${DASH_ENV:-prod}
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-info}
@@ -94,6 +97,13 @@ services:
       # Browser terminal (SPIKE, root shell on the firewall — see docs §22). Global
       # gate; each instance additionally needs its per-instance "Terminal" opt-in.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # GeoIP access restriction (docs/geoip-access-restriction.md).
+      # DASH_GEOIP_DISABLE=true is the emergency kill switch when a bad
+      # country/whitelist config locks everyone out (env-only by design).
+      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
+      DASH_MAXMIND_ACCOUNT_ID: ${DASH_MAXMIND_ACCOUNT_ID:-}
+      DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
+      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
       TZ: ${TZ:-UTC}
     depends_on:
       db:
@@ -177,3 +187,4 @@ services:
 
 volumes:
   db_data:
+  geoip_data:

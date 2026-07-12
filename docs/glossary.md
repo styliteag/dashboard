@@ -57,3 +57,12 @@ zeigen auf `docs/agent-architecture.md`.
   sieht nichts; ApiKey ohne Bindings sieht alles.
 - **Principal** — auth-Kontext einer Anfrage (User oder ApiKey); `None` = interner
   Aufrufer (Poller/Hub), ungescoped.
+- **GeoIP-Restriktion** — globale, superadmin-verwaltete Zugriffsschicht: Client-IP →
+  Land (lokale GeoLite2-mmdb) gegen Länder-Allowlist, geprüft per ASGI-Middleware auf
+  jeder Session-Request (`app/geoip/`, ADR `docs/geoip-access-restriction.md`).
+  Agent-WS und `orbit_`-API-Keys sind ausgenommen; leere Config = allow all.
+- **GeoIP-Whitelist** — Bypass-Liste der GeoIP-Restriktion; Einträge sind CIDRs
+  (v4/v6) oder DynDNS-Hostnames (periodisch A+AAAA aufgelöst, letzte bekannte IPs
+  bleiben bei DNS-Fehlern gültig).
+- **Kill-Switch (GeoIP)** — `DASH_GEOIP_DISABLE=true`, env-only: schaltet die
+  GeoIP-Prüfung ab, wenn eine Fehlkonfiguration aussperrt; bewusst nicht im UI.

@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "stylite-orbit-dashboard",
       "name": "stylite-orbit-dashboard",
-      "version": "2.9.11"
+      "version": "3.0.6"
     }
   },
   "components": [
@@ -337,6 +337,20 @@
         {
           "license": {
             "id": "BSD-3-Clause"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/maxminddb@3.1.1",
+      "name": "maxminddb",
+      "version": "3.1.1",
+      "purl": "pkg:pypi/maxminddb@3.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
           }
         }
       ]

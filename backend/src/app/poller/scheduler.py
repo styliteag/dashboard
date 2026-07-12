@@ -20,6 +20,8 @@ from app.checks.event_store import record_availability_event
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
 from app.devices.types import Transport
+from app.geoip.dyndns import refresh_job as geoip_dyndns_refresh
+from app.geoip.updater import refresh_geoip_db
 from app.maintenance.jobs import (
     backfill_log_events,
     prune_check_events,
@@ -350,6 +352,12 @@ def start_scheduler() -> None:
     # One-shot: seed log_events from stored snapshots after the 031 upgrade
     # (no-op when the table already has rows — ingest keeps it current).
     _scheduler.add_job(backfill_log_events, id="log_events_backfill", max_instances=1)
+    # GeoIP: weekly GeoLite2 refresh (no-op without MaxMind credentials) and the
+    # 5-minute DynDNS whitelist re-resolution (no-op without hostname entries).
+    _scheduler.add_job(refresh_geoip_db, "interval", days=7, id="geoip_db_refresh", max_instances=1)
+    _scheduler.add_job(
+        geoip_dyndns_refresh, "interval", minutes=5, id="geoip_dyndns_refresh", max_instances=1
+    )
     _scheduler.start()
     log.info(
         "scheduler.started",

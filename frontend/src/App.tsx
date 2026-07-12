@@ -14,6 +14,7 @@ import SettingsPage from "./pages/SettingsPage";
 import SecurityPage from "./pages/SecurityPage";
 import UsersPage from "./pages/UsersPage";
 import GroupsPage from "./pages/GroupsPage";
+import AccessControlPage from "./pages/AccessControlPage";
 import AlertsPage from "./pages/AlertsPage";
 import LogEventsPage from "./pages/LogEventsPage";
 import TerminalPage from "./pages/TerminalPage";
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="hub" element={<HubStatusPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="groups" element={<GroupsPage />} />
+          <Route path="access" element={<AccessControlPage />} />
         </Route>
       </Route>
 

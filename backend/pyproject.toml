@@ -21,6 +21,7 @@ dependencies = [
     "websockets>=13.0",
     "asyncssh>=2.18",
     "webauthn>=2.8.0",
+    "maxminddb>=2.6",
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/use-auth";
 
 interface HealthResponse {
   status: string;
@@ -12,6 +13,7 @@ interface HealthResponse {
 const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 
 export default function VersionFooter() {
+  const { user } = useAuth();
   const { data } = useQuery({
     queryKey: ["health"],
     queryFn: () => api.get<HealthResponse>("/api/health"),
@@ -22,15 +24,23 @@ export default function VersionFooter() {
 
   const backend = data?.version ?? "—";
   const dbRev = data?.db_revision ?? "—";
+  const ownIp = user?.client_ip
+    ? `${user.client_ip}${user.client_country ? ` (${user.client_country})` : ""}`
+    : null;
 
   return (
     <footer className="border-t border-slate-800 bg-slate-950/80 px-6 py-2 text-xs text-slate-500">
-      <div className="mx-auto flex max-w-7xl items-center justify-end gap-4">
-        <span title="Frontend bundle version">frontend {FRONTEND_VERSION}</span>
-        <span className="text-slate-700">·</span>
-        <span title="Backend image version">backend {backend}</span>
-        <span className="text-slate-700">·</span>
-        <span title="Alembic schema revision">db {dbRev}</span>
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <span title="Your IP as seen by the dashboard (country via local GeoIP DB)">
+          {ownIp ? `your IP ${ownIp}` : ""}
+        </span>
+        <div className="flex items-center gap-4">
+          <span title="Frontend bundle version">frontend {FRONTEND_VERSION}</span>
+          <span className="text-slate-700">·</span>
+          <span title="Backend image version">backend {backend}</span>
+          <span className="text-slate-700">·</span>
+          <span title="Alembic schema revision">db {dbRev}</span>
+        </div>
       </div>
     </footer>
   );

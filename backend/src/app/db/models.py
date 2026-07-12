@@ -115,6 +115,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime, server_default=func.now(), nullable=False
     )
+    # --- Last successful login (docs/geoip-access-restriction.md DR-G7) ---
+    # Set at session mint (complete_login), i.e. after the second factor — the
+    # password-only step never updates these. Shown on the Users admin page.
+    last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    last_login_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     audit_entries: Mapped[list[AuditLog]] = relationship(back_populates="user")
     webauthn_credentials: Mapped[list[WebauthnCredential]] = relationship(
@@ -773,3 +779,33 @@ class AppSetting(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class GeoipConfig(Base):
+    """Single-row global GeoIP access-restriction config
+    (docs/geoip-access-restriction.md DR-G6).
+
+    Deliberately NOT an ``app_settings`` row: the generic settings routes are
+    admin-gated, this surface is superadmin-only. The row with id=1 is the
+    config; absence of the row means "feature never configured" (= disabled).
+    """
+
+    __tablename__ = "geoip_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # always 1
+    enabled: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default=text("false")
+    )
+    # JSON list of ISO-3166-1 alpha-2 codes, e.g. ["DE", "AT", "CH"]. Empty list
+    # plus empty whitelist = allow all, even when enabled (DR-G3: no lockout path).
+    countries: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # JSON list of bypass entries: CIDRs (v4/v6, single IPs allowed) or DynDNS
+    # hostnames that a background job resolves periodically (DR-G4).
+    whitelist: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, Shield, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
-import { fmtDate } from "../lib/datetime";
+import { fmtDate, fmtDateTime, fmtRelative } from "../lib/datetime";
 import { useAuth } from "../lib/use-auth";
 import type { DashUser, Group, UserRole } from "../lib/types";
 
@@ -237,6 +237,7 @@ export default function UsersPage() {
             <th className="py-1">SuperAdmin</th>
             <th className="py-1">Groups</th>
             <th className="py-1">2FA</th>
+            <th className="py-1">Last login</th>
             <th className="py-1">Created</th>
             <th className="py-1 text-right">Actions</th>
           </tr>
@@ -322,6 +323,21 @@ export default function UsersPage() {
                     <span className="text-emerald-400">TOTP</span>
                   ) : (
                     <span className="text-slate-500">passkey/none</span>
+                  )}
+                </td>
+                <td className="py-2 text-xs text-slate-400">
+                  {u.last_login_at ? (
+                    <span title={fmtDateTime(u.last_login_at)}>
+                      {u.last_login_ip}
+                      {u.last_login_country && (
+                        <span className="ml-1 rounded bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300">
+                          {u.last_login_country}
+                        </span>
+                      )}
+                      <span className="ml-1 text-slate-500">{fmtRelative(u.last_login_at)}</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-600">never</span>
                   )}
                 </td>
                 <td className="py-2 text-xs text-slate-400">{fmtDate(u.created_at)}</td>

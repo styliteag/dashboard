@@ -679,6 +679,10 @@ export interface DashUser {
   created_at: string;
   disabled: boolean;
   totp_enabled: boolean;
+  // Last successful login (set at session mint) — Users page column.
+  last_login_ip: string | null;
+  last_login_country: string | null;
+  last_login_at: string | null;
 }
 
 /** One connected agent on the hub observability page (/api/hub/stats). */

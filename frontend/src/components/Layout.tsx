@@ -15,6 +15,7 @@ import {
   ScrollText,
   Users,
   ShieldCheck,
+  Globe2,
 } from "lucide-react";
 import { useAuth } from "../lib/use-auth";
 import VersionFooter from "./VersionFooter";
@@ -127,6 +128,14 @@ export default function Layout() {
               className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
             >
               <FolderTree className="h-4 w-4" /> Groups
+            </Link>
+          )}
+          {user?.is_superadmin && (
+            <Link
+              to="/access"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <Globe2 className="h-4 w-4" /> Access
             </Link>
           )}
           <span className="text-slate-600">|</span>
