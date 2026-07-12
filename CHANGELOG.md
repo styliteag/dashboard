@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Interface error-rate checks (`iface_errors:*`) no longer page on a single
+  burst: like the ping monitors, a WARN/CRIT must now survive three
+  consecutive pushes before it surfaces (recovery stays immediate), and the
+  streaks are re-seeded on backend restart so no false "recovered"
+  notifications fire (prod: `ix0` fired CRIT→OK within 31 seconds on one
+  counter blip).
+
 ## [3.0.3] - 2026-07-12
 
 ### Fixed
