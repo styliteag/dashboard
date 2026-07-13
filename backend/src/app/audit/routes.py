@@ -1,4 +1,11 @@
-"""Audit log read endpoint (US-6.1). Read-only, no delete via API."""
+"""Audit log read endpoint (US-6.1). Read-only, no delete via API.
+
+Admin-or-superadmin gated (DR-AL1, security fix 2026-07-14): this surface
+exposes usernames, source IPs and actions of ALL users — under
+``current_user`` every view_only account could read the full trail. The
+superadmin stays included (rights-management oversight; its role is
+view_only, so plain ``require_admin`` would lock it out). Do not loosen back.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import current_user
+from app.auth.deps import require_admin_or_superadmin
 from app.db.base import get_session
 from app.db.models import AuditLog, User
 
@@ -47,7 +54,7 @@ async def list_audit(
     instance_id: int | None = Query(default=None),
     hours: int | None = Query(default=None, description="Only show entries from the last N hours"),
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(current_user),
+    _user: User = Depends(require_admin_or_superadmin),
 ) -> AuditPage:
     base = select(AuditLog)
 

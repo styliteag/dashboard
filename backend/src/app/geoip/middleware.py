@@ -109,6 +109,9 @@ class GeoipMiddleware:
             return await self.app(scope, receive, send)
 
         path = scope.get("path", "")
+        # Mark the scope so the (outer) access-log middleware doesn't double-count
+        # this request as an anonymous dashboard access — it's already a denial.
+        scope["orbit.geoip_denied"] = True
         # Counters/ring buffer record EVERY denial (bounded structures); only
         # the log line is throttled.
         denials.record(ip, country, path, reason)

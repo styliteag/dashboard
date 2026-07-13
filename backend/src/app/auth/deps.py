@@ -9,12 +9,14 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import store as access_store
 from app.auth.apikey import API_KEY_PREFIX, hash_key
 from app.auth.dev_token import read_dev_token
 from app.auth.roles import WRITE_ROLES
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import ApiKey, User
+from app.net import client_ip
 
 
 async def current_user(
@@ -164,5 +166,9 @@ async def read_principal(
                 )
             key.last_used_at = datetime.now(UTC)
             await session.commit()
+            # Access accounting (DR-AL2): counted here where the key identity is
+            # known; the access-log middleware skips orbit_-bearer requests so
+            # scrapes are never double-counted as anonymous.
+            access_store.record_apikey(key.id, client_ip(request))
             return key
     return await current_user(request, session)

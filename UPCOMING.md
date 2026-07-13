@@ -18,6 +18,11 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   layer with German as first-class locale.
 - **Column/widget preferences** — persist per-user table columns, sort orders, and
   dashboard card layout.
+- **Session kill (revocation)** — deliberately deferred from the access-log ADR
+  (docs/access-log.md, DR-AL5): the session registry is bookkeeping-only, so a
+  kill button would be cosmetic. Cheapest effective path when needed: bump the
+  user's `password_version` (kills all of a user's sessions via the existing
+  `current_user` check, zero new enforcement infrastructure).
 
 ## 📈 Monitoring & alerting
 

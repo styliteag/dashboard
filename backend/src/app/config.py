@@ -138,6 +138,12 @@ class Settings(BaseSettings):
     # Service-check state-change history (alert/check history); transition log,
     # same rationale as the IPsec events.
     check_event_retention_days: int = 90
+    # Access log (ADR docs/access-log.md, DR-AL6): sampled request rows and ended
+    # login sessions are personal data — short window; hourly aggregates are
+    # bounded counters — long window.
+    access_events_retention_days: int = 30
+    access_sessions_retention_days: int = 30
+    access_stats_retention_days: int = 365
 
     # GUI proxy (optional): tunnel a firewall's web GUI through its agent, fronted
     # by a reverse proxy giving a per-instance origin (Caddy/port in dev, Traefik/

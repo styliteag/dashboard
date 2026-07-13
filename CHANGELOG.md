@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Audit page has a new "Access" tab for admins answering "who is using
+  this dashboard": who is online right now (login IP, last activity), every
+  login, logout and failed attempt, session expiry (the previously invisible
+  12h auto-logout is now a real `auth.session_expired` audit event), requests
+  blocked by the GeoIP country gate or the CrowdSec blocklist, and per-user /
+  per-API-key request counters — as 24h aggregates on top and a filterable
+  merged timeline below. Request rows are sampled under load (the counters
+  always count everything); retention is configurable under Settings →
+  Retention (samples and ended sessions 30 days, hourly counters 365 days by
+  default).
+
+### Security
+
+- The audit trail (`GET /api/audit` and the Audit page) is now restricted to
+  admins and the superadmin. Previously any logged-in account — including
+  `view_only` — could read the full trail with usernames, source IPs and
+  actions of every user.
+
 ## [3.1.2] - 2026-07-12
 
 ### Added

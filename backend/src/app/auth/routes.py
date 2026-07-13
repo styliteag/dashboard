@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import store as access_store
 from app.audit.log import write_audit
 from app.auth.deps import current_user
 from app.auth.dev_token import issue_dev_token
@@ -97,6 +98,11 @@ async def complete_login(
     request.session["user_id"] = user.id
     request.session["password_version"] = user.password_version
     request.session["mfa_passed"] = True
+    # Session-registry row (DR-AL3, bookkeeping only): the sid in the cookie
+    # correlates requests to this row for last_seen stamping and logout/expiry.
+    sid = access_store.new_sid()
+    request.session["sid"] = sid
+    await access_store.open_session(session, sid=sid, user_id=user.id, ip=ip)
     # Last successful login (DR-G7): recorded only here — the password step
     # never mints a session, so it never counts as a login.
     user.last_login_ip = ip
@@ -200,6 +206,7 @@ async def logout(
     session: Annotated[AsyncSession, Depends(get_session)],
     user: Annotated[User, Depends(current_user)],
 ) -> None:
+    await access_store.close_session(session, request.session.get("sid"), "logout")
     request.session.clear()
     await write_audit(
         session, action="auth.logout", result="ok", user_id=user.id, source_ip=client_ip(request)

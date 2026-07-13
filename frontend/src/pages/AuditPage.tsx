@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
 import { fmtDateTime } from "../lib/datetime";
+import AccessLogTab from "../components/AccessLogTab";
 
 interface AuditEntry {
   id: number;
@@ -27,7 +28,44 @@ interface AuditPage {
 
 const PAGE_SIZE = 50;
 
+const TABS = [
+  { key: "actions", label: "Actions" },
+  { key: "access", label: "Access" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function AuditLogPage() {
+  const [tab, setTab] = useState<TabKey>("actions");
+
+  return (
+    <div>
+      <h1 className="flex items-center gap-2 text-xl font-semibold">
+        <FileText className="h-5 w-5 text-slate-400" /> Audit Log
+      </h1>
+
+      <div className="mt-4 flex gap-1 border-b border-slate-800">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-t-md px-4 py-2 text-sm ${
+              tab === t.key
+                ? "border-b-2 border-emerald-500 text-slate-100"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "actions" ? <ActionsTab /> : <AccessLogTab />}
+    </div>
+  );
+}
+
+function ActionsTab() {
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [hoursFilter, setHoursFilter] = useState("");
@@ -48,10 +86,6 @@ export default function AuditLogPage() {
 
   return (
     <div>
-      <h1 className="flex items-center gap-2 text-xl font-semibold">
-        <FileText className="h-5 w-5 text-slate-400" /> Audit Log
-      </h1>
-
       {/* Filters */}
       <div className="mt-4 flex flex-wrap gap-3">
         <div className="space-y-1">

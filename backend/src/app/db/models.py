@@ -844,3 +844,65 @@ class GeoipDenialEvent(Base):
     country: Mapped[str | None] = mapped_column(String(4), nullable=True)
     path: Mapped[str] = mapped_column(String(255), nullable=False)
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class AuthSession(Base):
+    """Server-side login-session bookkeeping (ADR docs/access-log.md, DR-AL3).
+
+    Deliberately NOT enforcement: the signed cookie (+ password_version check in
+    ``current_user``) stays the only auth truth — no registry read per request.
+    Rows exist so "who is online" is answerable and so expiry becomes a real
+    audit event (DR-AL4) instead of a silent cookie death.
+    """
+
+    __tablename__ = "auth_sessions"
+
+    sid: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ip: Mapped[str | None] = mapped_column(String(45), nullable=True)  # login IP
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    # Stamped throttled (max one write per session per throttle window) via the
+    # access flush job — never per request.
+    last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)  # logout|expired
+
+
+class AccessStat(Base):
+    """Per (hour, principal) request counter (DR-AL2, pattern of GeoipDenialStat).
+
+    Counts EVERY request (upserted in batches by the flush job) — bounded by
+    hours × active principals, so neither polling UIs nor scanners can flood
+    it. Principals: ``user:<id>``, ``apikey:<id>``, ``anon``.
+    """
+
+    __tablename__ = "access_stats"
+
+    bucket: Mapped[datetime] = mapped_column(UtcDateTime, primary_key=True)  # hour start
+    principal_type: Mapped[str] = mapped_column(String(8), primary_key=True)
+    principal_key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+
+
+class AccessEvent(Base):
+    """One sampled request of a logged-in user (timeline detail, DR-AL2/AL8).
+
+    Hard-capped per flush interval — under load only a sample lands here (the
+    aggregate still counts everything). Only user sessions are sampled: anon
+    requests aggregate without IP rows (data minimisation), API-key scrapes are
+    uniform noise. Pruned by time — hence the standalone ts index.
+    """
+
+    __tablename__ = "access_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, index=True)
+    # No FK on purpose: sample rows must survive user deletion for forensics.
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)

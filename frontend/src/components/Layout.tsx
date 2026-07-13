@@ -88,12 +88,14 @@ export default function Layout() {
           >
             <ScrollText className="h-4 w-4" /> Logs
           </Link>
-          <Link
-            to="/audit"
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
-          >
-            <FileText className="h-4 w-4" /> Audit
-          </Link>
+          {(user?.is_admin || user?.is_superadmin) && (
+            <Link
+              to="/audit"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"
+            >
+              <FileText className="h-4 w-4" /> Audit
+            </Link>
+          )}
           <Link
             to="/password"
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100"

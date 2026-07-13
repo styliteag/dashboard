@@ -16,6 +16,9 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select, update
 
+from app.access.store import expire_job as access_expire
+from app.access.store import flush_job as access_flush
+from app.access.store import prune_job as access_prune
 from app.checks.event_store import record_availability_event
 from app.db.base import get_sessionmaker
 from app.db.models import Instance
@@ -389,6 +392,14 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         geoip_denials_prune, "interval", hours=24, id="geoip_denials_prune", max_instances=1
     )
+    # Access accounting (ADR docs/access-log.md): 15s buffer flush (counters,
+    # samples, throttled last_seen stamps), 5-min session-expiry sweep (turns the
+    # silent 12h cookie death into an audit event), daily retention prune.
+    _scheduler.add_job(access_flush, "interval", seconds=15, id="access_flush", max_instances=1)
+    _scheduler.add_job(
+        access_expire, "interval", minutes=5, id="access_sessions_expire", max_instances=1
+    )
+    _scheduler.add_job(access_prune, "interval", hours=24, id="access_prune", max_instances=1)
     _scheduler.start()
     log.info(
         "scheduler.started",

@@ -71,3 +71,17 @@ zeigen auf `docs/agent-architecture.md`.
   Prozess-Cache; Whitelist schlägt Blocklist, Blocklist schlägt Länder-Allow.
   Aktiv sobald `DASH_CROWDSEC_API_KEY` gesetzt; `DASH_CROWDSEC_DISABLE=true`
   schaltet ab (Form wie `DASH_GEOIP_DISABLE`); LAPI-Ausfall behält letzte Bans.
+- **Session-Registry** — server-seitige Buchführung der Login-Sessions
+  (`auth_sessions`: sid, User, Login-IP, created/last_seen/ended). Bewusst OHNE
+  Enforcement: der Session-Cookie (+ `password_version`) bleibt alleinige
+  Auth-Wahrheit (ADR `docs/access-log.md`, DR-AL3). „Online" = last_seen ≤ 5 min.
+- **Access-Aggregat / Access-Sample** — zweistufige Request-Erfassung nach dem
+  Denial-Muster (DR-G9): `access_stats` zählt jeden Request pro (Stunde,
+  Principal), `access_events` hält pro Flush-Intervall gedeckelte Einzel-Samples;
+  Request-Pfad schreibt nur in bounded Puffer, 15s-Job flusht (DR-AL2).
+- **Access-Timeline** — admin-sichtbare, chronologisch gemergte Ereignisliste im
+  Access-Tab der Audit-Seite: Logins/Fails/Logout/Session-expired (Audit),
+  GeoIP-CrowdSec-Denials, Request-Samples — mit Typ-Filter (DR-AL7/AL9).
+- **Auto-Logout** — Ablauf der 12h-Cookie-max_age; seit der Session-Registry als
+  echtes Ereignis sichtbar: Expiry-Job markiert die Registry-Zeile
+  (`end_reason="expired"`) und schreibt `auth.session_expired` ins Audit (DR-AL4).

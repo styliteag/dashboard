@@ -9,6 +9,8 @@ from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.access.routes import router as access_log_router
+from app.access.store import SESSION_MAX_AGE_S
 from app.agent_hub import gui_caddy
 from app.agent_hub.gui_tunnel import gui_tunnels
 from app.agent_hub.hub import hub
@@ -236,7 +238,7 @@ def create_app() -> FastAPI:
         session_cookie="dash_session",
         https_only=settings.env != "dev",
         same_site="lax",
-        max_age=12 * 60 * 60,
+        max_age=SESSION_MAX_AGE_S,  # session-expiry sweep in access.store keys off this
     )
 
     # Added last ⇒ outermost: times the full stack and reads scope["session"]
@@ -255,6 +257,7 @@ def create_app() -> FastAPI:
     app.include_router(firmware_router, prefix="/api")
     app.include_router(firewall_rules_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
+    app.include_router(access_log_router, prefix="/api")
     app.include_router(views_router, prefix="/api")
     app.include_router(system_router, prefix="/api")
     app.include_router(bulk_router, prefix="/api")
