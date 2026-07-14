@@ -137,3 +137,19 @@ Request-Pfad. Einzel-IPs im O(1)-Set, echte Ranges (v4/v6) linear.
 `DASH_GEOIP_DB_PATH` — alle drei in `.env.example` + `compose.yml` +
 `compose-dev.yml` (Incident 9767355: nur-dev-compose-Variablen sind in prod
 nicht aktivierbar).
+
+## Nachtrag 2026-07-14 — GUI-Proxy-Subrequests exempt
+
+Prod-Incident: Jeder GUI-Proxy-Zugriff erzeugte `no_country`-Denials für die
+Docker-interne Proxy-IP (z. B. `10.64.180.56`, Pfad `/api/gui/authcheck`) —
+der `forward_auth`-Subrequest läuft Container-zu-Container (Caddy/Traefik →
+`app:80`), die XFF-Hop-Zählung passt dort nie, als Client-IP erscheint immer
+der Proxy-Container. Das Geo-Gate prüfte also strukturell die falsche Adresse
+und legte den GUI-Proxy unter aktiver Länder-Allowlist lahm.
+
+Fix: `/api/gui/authcheck` und `/api/gui/handoff` in `_EXEMPT_PREFIXES`
+(`geoip/middleware.py`), analog Agent-WS/enroll. Kein Schutzverlust: `gui/open`
+läuft auf der geo-geprüften Dashboard-Session, `handoff` verbrennt ein
+Einmal-Token, `authcheck` verifiziert das instanzgebundene HMAC-Cookie.
+Bewusst NICHT ganz `/api/gui/` ausgenommen. Regressionstest:
+`test_scope_exemptions` (test_geoip.py).

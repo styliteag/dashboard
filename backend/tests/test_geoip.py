@@ -164,6 +164,14 @@ def test_scope_exemptions(enforcing) -> None:
     # Agent WS + tunnel + enroll + health: firewalls connect from anywhere.
     for path in ("/api/ws/agent", "/api/ws/tunnel/5", "/api/agent/enroll", "/api/health"):
         assert mw.evaluate_scope(_scope(path))[0], path
+    # GUI-proxy forward_auth/handoff subrequests arrive container-to-container —
+    # the peer is the proxy's docker IP (no country). Prod incident 2026-07-14:
+    # every GUI open was denied with no_country. Auth happens in the endpoints
+    # themselves (one-time token / per-instance HMAC cookie).
+    for path in ("/api/gui/authcheck", "/api/gui/handoff"):
+        assert mw.evaluate_scope(_scope(path))[0], path
+    # ...but the rest of /api/gui/ stays geo-gated (user-facing session routes).
+    assert not mw.evaluate_scope(_scope("/api/instances/3/gui/open"))[0]
     # Non-/api (static SPA bundle) is not the middleware's business.
     assert mw.evaluate_scope(_scope("/assets/index.js"))[0]
     # orbit_ API keys are machine reads — exempt (DR-G2).

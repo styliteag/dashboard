@@ -60,7 +60,9 @@ zeigen auf `docs/agent-architecture.md`.
 - **GeoIP-Restriktion** — globale, superadmin-verwaltete Zugriffsschicht: Client-IP →
   Land (lokale GeoLite2-mmdb) gegen Länder-Allowlist, geprüft per ASGI-Middleware auf
   jeder Session-Request (`app/geoip/`, ADR `docs/geoip-access-restriction.md`).
-  Agent-WS und `orbit_`-API-Keys sind ausgenommen; leere Config = allow all.
+  Agent-WS, `orbit_`-API-Keys und die GUI-Proxy-Subrequests
+  (`/api/gui/authcheck|handoff`, kommen container-intern) sind ausgenommen;
+  leere Config = allow all.
 - **GeoIP-Whitelist** — Bypass-Liste der GeoIP-Restriktion; Einträge sind CIDRs
   (v4/v6) oder DynDNS-Hostnames (periodisch A+AAAA aufgelöst, letzte bekannte IPs
   bleiben bei DNS-Fehlern gültig).

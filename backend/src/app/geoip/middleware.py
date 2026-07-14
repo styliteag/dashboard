@@ -26,11 +26,21 @@ log = structlog.get_logger("app.geoip")
 
 # Agent-facing endpoints: authenticated by agent token / enroll code, reachable
 # from any customer site. /api/health serves uptime probes.
+# The two /api/gui/ paths are the GUI-proxy's forward_auth/handoff subrequests:
+# they arrive container-to-container (Caddy/Traefik → app:80), so the "client
+# IP" here is always the proxy container's Docker address — a private IP with
+# no GeoIP country. Geo-checking them only misfires (prod incident 2026-07-14:
+# every GUI open logged a no_country denial for the docker-network IP and the
+# proxy gate failed). The real protection sits elsewhere: gui/open runs on the
+# geo-checked dashboard session, handoff burns a one-time token, authcheck
+# verifies the per-instance HMAC cookie. Do not exempt all of /api/gui/.
 _EXEMPT_PREFIXES = (
     "/api/ws/agent",
     "/api/ws/tunnel",
     "/api/agent/enroll",
     "/api/health",
+    "/api/gui/authcheck",
+    "/api/gui/handoff",
 )
 
 _DENY_BODY = json.dumps({"detail": "access restricted from your location"}).encode()

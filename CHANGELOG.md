@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The GUI proxy no longer trips the GeoIP gate: its forward-auth and handoff
+  subrequests arrive container-to-container, so the gate always saw the proxy
+  container's private docker IP (no resolvable country) and denied every GUI
+  open with `no_country` when a country allowlist was active. Both paths are
+  now exempt like the agent endpoints — they carry their own auth (one-time
+  token, per-instance HMAC cookie), and the user's session behind them is
+  geo-checked as before.
+
 ### Added
 
 - The Access tab timeline gained a fourth event type "Access" — a user
