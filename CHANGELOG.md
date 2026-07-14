@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Access tab timeline gained a fourth event type "Access" — a user
+  reaching into a box: web GUI opens, shell sessions, packet captures and
+  firewall-rule edits, each with the box name. It also gained free-text
+  search (user, IP, action, path, instance name — failed logins are found by
+  the attempted username too), a time-range filter, and a "Grouped" view that
+  collapses recurring events into one row with count and last-seen (numeric
+  path segments masked, like the Logs page). Raw request samples are now off
+  by default in the timeline filter — one click brings them back.
+
 ## [3.1.3] - 2026-07-14
 
 ### Added

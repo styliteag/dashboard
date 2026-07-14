@@ -109,10 +109,26 @@ ts-Index — Repo-Pflicht.
 
 Der Access-Tab zeigt EINE chronologische Ereignisliste mit Typ-Filter:
 Login (ok/fail) / Logout / Session-expired / GeoIP-CrowdSec-Denial /
-Request-Samples. Denials kommen read-only aus den bestehenden
-`geoip_denial_events` (gesampelt by design — das Aggregat zählt alles), klar
-gelabelt mit Reason (`country_blocked`, `crowdsec_banned`, …). Die
-superadmin-only Access-Seite (GeoIP-KONFIGURATION) bleibt unverändert.
+Instanz-Zugriff / Request-Samples. Denials kommen read-only aus den
+bestehenden `geoip_denial_events` (gesampelt by design — das Aggregat zählt
+alles), klar gelabelt mit Reason (`country_blocked`, `crowdsec_banned`, …).
+Die superadmin-only Access-Seite (GeoIP-KONFIGURATION) bleibt unverändert.
+
+Nachträge (2026-07-14, gleiche Session):
+
+- **Kind `access`** — Instanz-Zugriffe aus dem Audit-Trail (Web-GUI via
+  `agent.gui_open`, Shell `shell.*`, Capture `capture.*`/`packet_capture.*`,
+  Firewall-Regeln `firewall.rule.*`; Präfixliste `_ACCESS_ACTION_PREFIXES`),
+  mit aufgelöstem Instanznamen. Neue instanzbezogene Audit-Aktionen dort
+  nachtragen.
+- **Suche + Zeitfenster** — `q` (Freitext über User, IP, Aktion, Pfad,
+  Instanzname; findet Fehl-Logins auch über den Versuchs-Usernamen im
+  detail-JSON) und `hours` auf Timeline wie Grouped.
+- **Grouped-Ansicht** — `GET /access-log/grouped` nach dem Muster der
+  Logs-Seite: eine Zeile pro wiederkehrendem Ereignis mit Count + last seen;
+  numerische Pfadsegmente per `REGEXP_REPLACE` zu `#` maskiert.
+- **UI-Default** — Request-Samples sind im Timeline-Filter standardmäßig aus
+  (Polling-Rauschen); Logins/Blocked/Access an.
 
 ### DR-AL8 — Anonyme Zugriffe: Aggregat ja, IP-Samples nein
 

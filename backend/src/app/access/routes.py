@@ -14,19 +14,42 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.access.store import ONLINE_WINDOW_S
 from app.auth.deps import require_admin_or_superadmin
 from app.db.base import get_session
-from app.db.models import AccessEvent, AccessStat, AuditLog, AuthSession, GeoipDenialEvent, User
+from app.db.models import (
+    AccessEvent,
+    AccessStat,
+    AuditLog,
+    AuthSession,
+    GeoipDenialEvent,
+    Instance,
+    User,
+)
 
 router = APIRouter(prefix="/access-log", tags=["access-log"])
 
 # Timeline sources are merged newest-first; per source we fetch the page limit
 # and cut after sorting, so a chatty source can't starve the others.
-_KINDS = ("auth", "denial", "request")
+_KINDS = ("auth", "access", "denial", "request")
+
+# "access" = a user reaching into a box: web GUI (via agent proxy), shell
+# console, packet capture, firewall-rule edits. Sourced from the audit trail —
+# extend when a new instance-access feature starts auditing.
+_ACCESS_ACTION_PREFIXES = (
+    "agent.gui_open",
+    "shell.",
+    "capture.",
+    "packet_capture.",
+    "firewall.rule.",
+)
+
+
+def _access_action_clause():
+    return or_(*[AuditLog.action.startswith(p) for p in _ACCESS_ACTION_PREFIXES])
 
 
 class OnlineSession(BaseModel):
@@ -54,13 +77,14 @@ class AccessSummary(BaseModel):
 
 class TimelineItem(BaseModel):
     ts: str
-    kind: str  # auth | denial | request
-    # auth: audit action/result; denial: reason; request: "GET /api/..."
+    kind: str  # auth | access | denial | request
+    # auth/access: audit action/result; denial: reason; request: "GET /api/..."
     label: str
     result: str | None = None
     username: str | None = None
     ip: str | None = None
     country: str | None = None
+    instance: str | None = None  # access: resolved instance name (or raw target)
     detail: dict | None = None
 
 
@@ -76,6 +100,23 @@ async def _usernames(session: AsyncSession, user_ids: set[int]) -> dict[int, str
         await session.execute(select(User.id, User.username).where(User.id.in_(user_ids)))
     ).all()
     return {r.id: r.username for r in rows}
+
+
+async def _instance_names(session: AsyncSession, target_ids: set[str | None]) -> dict[str, str]:
+    """Resolve audit target_ids ("3") to instance names — deleted boxes keep the raw id."""
+    numeric = {int(t) for t in target_ids if t and str(t).isdigit()}
+    if not numeric:
+        return {}
+    rows = (
+        await session.execute(select(Instance.id, Instance.name).where(Instance.id.in_(numeric)))
+    ).all()
+    return {str(r.id): r.name for r in rows}
+
+
+async def _search_instance_ids(session: AsyncSession, q: str) -> set[str]:
+    """Audit target_ids whose instance name matches the free-text search."""
+    rows = (await session.execute(select(Instance.id).where(Instance.name.like(f"%{q}%")))).all()
+    return {str(r[0]) for r in rows}
 
 
 @router.get("/summary", response_model=AccessSummary)
@@ -181,24 +222,56 @@ async def access_summary(
     )
 
 
+async def _search_user_ids(session: AsyncSession, q: str) -> set[int]:
+    """User ids whose username matches the free-text search."""
+    rows = (await session.execute(select(User.id).where(User.username.like(f"%{q}%")))).all()
+    return {r[0] for r in rows}
+
+
 @router.get("/timeline", response_model=TimelinePage)
 async def access_timeline(
     session: Annotated[AsyncSession, Depends(get_session)],
     _user: Annotated[User, Depends(require_admin_or_superadmin)],
-    kinds: str = Query(default="auth,denial,request", description="CSV of auth|denial|request"),
+    kinds: str = Query(
+        default="auth,access,denial,request", description="CSV of auth|access|denial|request"
+    ),
     before: str | None = Query(default=None, description="ISO ts cursor from next_before"),
+    q: str | None = Query(
+        default=None, max_length=100, description="Free-text: user/IP/action/path"
+    ),
+    hours: int | None = Query(default=None, ge=1, le=8760, description="Only the last N hours"),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> TimelinePage:
     wanted = [k.strip() for k in kinds.split(",") if k.strip() in _KINDS]
     cutoff = datetime.fromisoformat(before) if before else None
+    since = datetime.now(UTC) - timedelta(hours=hours) if hours else None
+    needle = (q or "").strip()
+    like = f"%{needle}%"
+    # Free-text matches usernames too — resolve ids once, filter per source.
+    uids = await _search_user_ids(session, needle) if needle else set()
 
     items: list[tuple[datetime, TimelineItem]] = []
 
     if "auth" in wanted:
-        q = select(AuditLog).where(AuditLog.action.startswith("auth."))
+        stmt = select(AuditLog).where(AuditLog.action.startswith("auth."))
         if cutoff is not None:
-            q = q.where(AuditLog.ts < cutoff)
-        rows = (await session.execute(q.order_by(AuditLog.ts.desc()).limit(limit))).scalars().all()
+            stmt = stmt.where(AuditLog.ts < cutoff)
+        if since is not None:
+            stmt = stmt.where(AuditLog.ts >= since)
+        if needle:
+            conds = [
+                AuditLog.source_ip.like(like),
+                AuditLog.action.like(like),
+                # Failed logins carry the attempted username only in detail
+                # (no user row matched) — search must still find them.
+                AuditLog.detail["username"].as_string().like(like),
+            ]
+            if uids:
+                conds.append(AuditLog.user_id.in_(uids))
+            stmt = stmt.where(or_(*conds))
+        rows = (
+            (await session.execute(stmt.order_by(AuditLog.ts.desc()).limit(limit))).scalars().all()
+        )
         names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
         for r in rows:
             items.append(
@@ -216,12 +289,62 @@ async def access_timeline(
                 )
             )
 
-    if "denial" in wanted:
-        q = select(GeoipDenialEvent)
+    if "access" in wanted:
+        stmt = select(AuditLog).where(_access_action_clause())
         if cutoff is not None:
-            q = q.where(GeoipDenialEvent.ts < cutoff)
+            stmt = stmt.where(AuditLog.ts < cutoff)
+        if since is not None:
+            stmt = stmt.where(AuditLog.ts >= since)
+        if needle:
+            conds = [
+                AuditLog.source_ip.like(like),
+                AuditLog.action.like(like),
+            ]
+            if uids:
+                conds.append(AuditLog.user_id.in_(uids))
+            iids = await _search_instance_ids(session, needle)
+            if iids:
+                conds.append(AuditLog.target_id.in_(iids))
+            stmt = stmt.where(or_(*conds))
         rows = (
-            (await session.execute(q.order_by(GeoipDenialEvent.ts.desc()).limit(limit)))
+            (await session.execute(stmt.order_by(AuditLog.ts.desc()).limit(limit))).scalars().all()
+        )
+        names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
+        inames = await _instance_names(session, {r.target_id for r in rows})
+        for r in rows:
+            items.append(
+                (
+                    r.ts,
+                    TimelineItem(
+                        ts=r.ts.isoformat(),
+                        kind="access",
+                        label=r.action,
+                        result=r.result,
+                        username=names.get(r.user_id) if r.user_id else None,
+                        ip=r.source_ip,
+                        instance=inames.get(r.target_id or "", r.target_id),
+                        detail=r.detail,
+                    ),
+                )
+            )
+
+    if "denial" in wanted:
+        stmt = select(GeoipDenialEvent)
+        if cutoff is not None:
+            stmt = stmt.where(GeoipDenialEvent.ts < cutoff)
+        if since is not None:
+            stmt = stmt.where(GeoipDenialEvent.ts >= since)
+        if needle:
+            stmt = stmt.where(
+                or_(
+                    GeoipDenialEvent.ip.like(like),
+                    GeoipDenialEvent.reason.like(like),
+                    GeoipDenialEvent.country.like(like),
+                    GeoipDenialEvent.path.like(like),
+                )
+            )
+        rows = (
+            (await session.execute(stmt.order_by(GeoipDenialEvent.ts.desc()).limit(limit)))
             .scalars()
             .all()
         )
@@ -242,11 +365,23 @@ async def access_timeline(
             )
 
     if "request" in wanted:
-        q = select(AccessEvent)
+        stmt = select(AccessEvent)
         if cutoff is not None:
-            q = q.where(AccessEvent.ts < cutoff)
+            stmt = stmt.where(AccessEvent.ts < cutoff)
+        if since is not None:
+            stmt = stmt.where(AccessEvent.ts >= since)
+        if needle:
+            conds = [
+                AccessEvent.ip.like(like),
+                AccessEvent.path.like(like),
+            ]
+            if uids:
+                conds.append(AccessEvent.user_id.in_(uids))
+            stmt = stmt.where(or_(*conds))
         rows = (
-            (await session.execute(q.order_by(AccessEvent.ts.desc()).limit(limit))).scalars().all()
+            (await session.execute(stmt.order_by(AccessEvent.ts.desc()).limit(limit)))
+            .scalars()
+            .all()
         )
         names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
         for r in rows:
@@ -269,3 +404,184 @@ async def access_timeline(
     # More may exist whenever any source could have filled the page on its own.
     next_before = items[limit - 1][0].isoformat() if len(items) >= limit else None
     return TimelinePage(items=page, next_before=next_before)
+
+
+class GroupedRow(BaseModel):
+    kind: str
+    label: str  # auth/access: action · denial: reason · request: "GET /api/x/#"
+    result: str | None = None
+    username: str | None = None
+    ip: str | None = None
+    country: str | None = None
+    instance: str | None = None
+    count: int
+    last_ts: str
+
+
+@router.get("/grouped", response_model=list[GroupedRow])
+async def access_grouped(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _user: Annotated[User, Depends(require_admin_or_superadmin)],
+    kinds: str = Query(
+        default="auth,access,denial", description="CSV of auth|access|denial|request"
+    ),
+    q: str | None = Query(default=None, max_length=100),
+    hours: int = Query(default=24, ge=1, le=8760),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[GroupedRow]:
+    """Aggregated timeline (Logs-page pattern): one row per recurring event with
+    count + last seen, instead of one row per occurrence."""
+    wanted = [k.strip() for k in kinds.split(",") if k.strip() in _KINDS]
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    needle = (q or "").strip()
+    like = f"%{needle}%"
+    uids = await _search_user_ids(session, needle) if needle else set()
+
+    rows_out: list[GroupedRow] = []
+
+    if "auth" in wanted:
+        stmt = (
+            select(
+                AuditLog.action,
+                AuditLog.result,
+                AuditLog.user_id,
+                AuditLog.source_ip,
+                func.count(),
+                func.max(AuditLog.ts),
+            )
+            .where(AuditLog.action.startswith("auth."), AuditLog.ts >= since)
+            .group_by(AuditLog.action, AuditLog.result, AuditLog.user_id, AuditLog.source_ip)
+        )
+        if needle:
+            conds = [
+                AuditLog.source_ip.like(like),
+                AuditLog.action.like(like),
+                AuditLog.detail["username"].as_string().like(like),
+            ]
+            if uids:
+                conds.append(AuditLog.user_id.in_(uids))
+            stmt = stmt.where(or_(*conds))
+        rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
+        names = await _usernames(session, {r[2] for r in rows if r[2] is not None})
+        for action, result, user_id, ip, n, last in rows:
+            rows_out.append(
+                GroupedRow(
+                    kind="auth",
+                    label=action,
+                    result=result,
+                    username=names.get(user_id) if user_id else None,
+                    ip=ip,
+                    count=int(n or 0),
+                    last_ts=last.isoformat(),
+                )
+            )
+
+    if "access" in wanted:
+        stmt = (
+            select(
+                AuditLog.action,
+                AuditLog.result,
+                AuditLog.user_id,
+                AuditLog.target_id,
+                func.count(),
+                func.max(AuditLog.ts),
+            )
+            .where(_access_action_clause(), AuditLog.ts >= since)
+            .group_by(AuditLog.action, AuditLog.result, AuditLog.user_id, AuditLog.target_id)
+        )
+        if needle:
+            conds = [
+                AuditLog.source_ip.like(like),
+                AuditLog.action.like(like),
+            ]
+            if uids:
+                conds.append(AuditLog.user_id.in_(uids))
+            iids = await _search_instance_ids(session, needle)
+            if iids:
+                conds.append(AuditLog.target_id.in_(iids))
+            stmt = stmt.where(or_(*conds))
+        rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
+        names = await _usernames(session, {r[2] for r in rows if r[2] is not None})
+        inames = await _instance_names(session, {r[3] for r in rows})
+        for action, result, user_id, target_id, n, last in rows:
+            rows_out.append(
+                GroupedRow(
+                    kind="access",
+                    label=action,
+                    result=result,
+                    username=names.get(user_id) if user_id else None,
+                    instance=inames.get(target_id or "", target_id),
+                    count=int(n or 0),
+                    last_ts=last.isoformat(),
+                )
+            )
+
+    if "denial" in wanted:
+        stmt = (
+            select(
+                GeoipDenialEvent.reason,
+                GeoipDenialEvent.country,
+                GeoipDenialEvent.ip,
+                func.count(),
+                func.max(GeoipDenialEvent.ts),
+            )
+            .where(GeoipDenialEvent.ts >= since)
+            .group_by(GeoipDenialEvent.reason, GeoipDenialEvent.country, GeoipDenialEvent.ip)
+        )
+        if needle:
+            stmt = stmt.where(
+                or_(
+                    GeoipDenialEvent.ip.like(like),
+                    GeoipDenialEvent.reason.like(like),
+                    GeoipDenialEvent.country.like(like),
+                )
+            )
+        rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
+        for reason, country, ip, n, last in rows:
+            rows_out.append(
+                GroupedRow(
+                    kind="denial",
+                    label=reason,
+                    result="denied",
+                    ip=ip,
+                    country=country,
+                    count=int(n or 0),
+                    last_ts=last.isoformat(),
+                )
+            )
+
+    if "request" in wanted:
+        # Collapse numeric path segments (instance ids, event ids) into one
+        # pattern per endpoint — the Logs-page trick, in MariaDB SQL.
+        pattern = func.regexp_replace(AccessEvent.path, "[0-9]+", "#")
+        stmt = (
+            select(
+                AccessEvent.user_id,
+                AccessEvent.method,
+                pattern,
+                func.count(),
+                func.max(AccessEvent.ts),
+            )
+            .where(AccessEvent.ts >= since)
+            .group_by(AccessEvent.user_id, AccessEvent.method, pattern)
+        )
+        if needle:
+            conds = [AccessEvent.ip.like(like), AccessEvent.path.like(like)]
+            if uids:
+                conds.append(AccessEvent.user_id.in_(uids))
+            stmt = stmt.where(or_(*conds))
+        rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
+        names = await _usernames(session, {r[0] for r in rows if r[0] is not None})
+        for user_id, method, path_pattern, n, last in rows:
+            rows_out.append(
+                GroupedRow(
+                    kind="request",
+                    label=f"{method} {path_pattern}",
+                    username=names.get(user_id) if user_id else None,
+                    count=int(n or 0),
+                    last_ts=last.isoformat(),
+                )
+            )
+
+    rows_out.sort(key=lambda r: r.count, reverse=True)
+    return rows_out[:limit]

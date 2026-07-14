@@ -233,6 +233,93 @@ def test_count_access_skips_machine_and_denied_traffic(monkeypatch) -> None:
     assert calls == []
 
 
+# --- timeline search + grouped aggregation ------------------------------------------
+
+
+def test_timeline_search_filters_all_sources() -> None:
+    """q= must reach every source: audit (incl. the attempted username hidden
+    in detail JSON on failed logins), denial events and request samples."""
+    from app.access.routes import access_timeline
+
+    session = _FakeSession()
+    _run(
+        access_timeline(
+            session=session,
+            _user=None,
+            kinds="auth,denial,request",
+            before=None,
+            q="bonis",
+            hours=24,
+            limit=50,
+        )
+    )
+    sqls = [sql for sql, _ in session.executed]
+    # one username-resolve query + one per source
+    assert any("users" in s and "LIKE" in s for s in sqls)
+    audit_sql = next(s for s in sqls if "audit_log" in s)
+    # generic compile renders the JSON path as detail[:param] (JSON_EXTRACT is
+    # dialect-specific) — presence of the indexed access is what matters
+    assert "LIKE" in audit_sql and "audit_log.detail[" in audit_sql
+    assert "ts >=" in audit_sql  # hours window
+    denial_sql = next(s for s in sqls if "geoip_denial_events" in s)
+    assert "LIKE" in denial_sql
+    request_sql = next(s for s in sqls if "access_events" in s)
+    assert "LIKE" in request_sql
+
+
+def test_access_kind_covers_instance_access_actions() -> None:
+    """The "access" timeline kind must catch every instance-access audit
+    action: web GUI, shell console, packet capture, firewall-rule edits."""
+    from app.access.routes import _access_action_clause, access_timeline
+
+    sql = str(_access_action_clause().compile(compile_kwargs={"literal_binds": True}))
+    for prefix in ("agent.gui_open", "shell.", "capture.", "packet_capture.", "firewall.rule."):
+        assert prefix in sql
+
+    session = _FakeSession()
+    _run(
+        access_timeline(
+            session=session,
+            _user=None,
+            kinds="access",
+            before=None,
+            q="opn1",
+            hours=None,
+            limit=50,
+        )
+    )
+    sqls = [sql for sql, _ in session.executed]
+    # searched by instance name too (resolve query against instances)
+    assert any("instances" in s and "LIKE" in s for s in sqls)
+    assert any("audit_log" in s for s in sqls)
+
+
+def test_grouped_aggregates_per_source() -> None:
+    """Logs-page pattern: GROUP BY per source, numeric path segments collapsed
+    to one pattern per endpoint (regexp_replace) so ids don't explode rows."""
+    from app.access.routes import access_grouped
+
+    session = _FakeSession()
+    result = _run(
+        access_grouped(
+            session=session,
+            _user=None,
+            kinds="auth,denial,request",
+            q=None,
+            hours=24,
+            limit=100,
+        )
+    )
+    assert result == []  # empty DB → empty list, no error
+    sqls = [sql for sql, _ in session.executed]
+    audit_sql = next(s for s in sqls if "audit_log" in s)
+    assert "GROUP BY" in audit_sql and "count(" in audit_sql.lower()
+    denial_sql = next(s for s in sqls if "geoip_denial_events" in s)
+    assert "GROUP BY" in denial_sql
+    request_sql = next(s for s in sqls if "access_events" in s)
+    assert "GROUP BY" in request_sql and "regexp_replace" in request_sql.lower()
+
+
 # --- admin gate on the read surfaces (DR-AL1) --------------------------------------
 
 

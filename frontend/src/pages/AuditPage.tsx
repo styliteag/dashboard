@@ -29,14 +29,14 @@ interface AuditPage {
 const PAGE_SIZE = 50;
 
 const TABS = [
-  { key: "actions", label: "Actions" },
   { key: "access", label: "Access" },
+  { key: "actions", label: "Actions" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function AuditLogPage() {
-  const [tab, setTab] = useState<TabKey>("actions");
+  const [tab, setTab] = useState<TabKey>("access");
 
   return (
     <div>
