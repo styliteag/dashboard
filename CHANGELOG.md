@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.4] - 2026-07-14
+
 ### Fixed
 
 - The GUI proxy no longer trips the GeoIP gate: its forward-auth and handoff
