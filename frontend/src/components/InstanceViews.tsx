@@ -270,7 +270,9 @@ export function InstanceCard({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            eligible={inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)}
+            eligible={
+              inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)
+            }
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />
@@ -357,7 +359,9 @@ export function InstanceRow({
           <ShellIconLink
             instanceId={inst.id}
             instanceName={inst.name}
-            eligible={inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)}
+            eligible={
+              inst.agent_mode || (deviceCaps(inst.device_type).sshEnrichment && inst.ssh_enabled)
+            }
             shellEnabled={inst.shell_enabled}
             iconClassName="h-3 w-3"
           />

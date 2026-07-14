@@ -45,9 +45,7 @@ export default function TagsInput({ value, onChange }: Props) {
     .filter((t) => !lower || t.toLowerCase().includes(lower))
     .slice(0, 8);
   const canCreate =
-    lower !== "" &&
-    !selectedLower.includes(lower) &&
-    !known.some((t) => t.toLowerCase() === lower);
+    lower !== "" && !selectedLower.includes(lower) && !known.some((t) => t.toLowerCase() === lower);
   const options: Option[] = [
     ...matches.map((tag): Option => ({ kind: "existing", tag })),
     ...(canCreate ? [{ kind: "create", tag: query } as Option] : []),

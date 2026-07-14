@@ -399,8 +399,8 @@ export default function AccessControlPage() {
             )}
           </p>
           <p>
-            Last download: {status?.last_download.at ? fmtRelative(status.last_download.at) : "—"}{" "}
-            — {status?.last_download.detail}
+            Last download: {status?.last_download.at ? fmtRelative(status.last_download.at) : "—"} —{" "}
+            {status?.last_download.detail}
           </p>
           {!status?.credentials_set && (
             <p className="text-amber-400">
@@ -445,9 +445,8 @@ export default function AccessControlPage() {
             </p>
           ) : (
             <p className="mt-1 text-xs text-slate-500">
-              Not configured — set DASH_CROWDSEC_API_KEY (bouncer key from the CrowdSec
-              sidecar) to activate. Bans then deny listed IPs on every request; the whitelist
-              above always wins.
+              Not configured — set DASH_CROWDSEC_API_KEY (bouncer key from the CrowdSec sidecar) to
+              activate. Bans then deny listed IPs on every request; the whitelist above always wins.
             </p>
           )}
         </div>
@@ -513,9 +512,7 @@ export default function AccessControlPage() {
               </table>
             </div>
           ) : (
-            <p className="mt-1 text-xs text-slate-500">
-              No denied requests since backend start.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">No denied requests since backend start.</p>
           )}
         </div>
 

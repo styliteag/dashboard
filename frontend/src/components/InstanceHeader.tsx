@@ -78,8 +78,7 @@ export default function InstanceHeader({ instance, status, fallbackId, onRefresh
   const showShell =
     !!agent?.shell_enabled &&
     !!instance?.shell_enabled &&
-    ((agentMode && agent?.agent_connected) ||
-      (caps.sshEnrichment && instance?.ssh_enabled));
+    ((agentMode && agent?.agent_connected) || (caps.sshEnrichment && instance?.ssh_enabled));
 
   const btn =
     "flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50";

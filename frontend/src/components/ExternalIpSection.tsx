@@ -40,10 +40,7 @@ export default function ExternalIpSection({ instanceId }: { instanceId: number }
         <Card icon={<Globe className="h-4 w-4 text-sky-400" />} label="External IPv6">
           <IpValue value={data.ipv6} />
         </Card>
-        <Card
-          icon={<Radio className="h-4 w-4 text-indigo-400" />}
-          label="Connects from"
-        >
+        <Card icon={<Radio className="h-4 w-4 text-indigo-400" />} label="Connects from">
           <IpValue value={data.connected ? data.source_ip : null} />
           {!data.connected && <span className="ml-1 text-xs text-slate-600">(offline)</span>}
         </Card>

@@ -89,7 +89,11 @@ export default function AddInstanceDialog({ onClose }: Props) {
         ...(groupId !== "" ? { group_id: Number(groupId) } : {}),
         // Push-only types (linux) have no URL/API/TLS surface at all.
         ...(caps.directApi
-          ? { base_url: form.base_url, ca_bundle: form.ca_bundle || null, ssl_verify: form.ssl_verify }
+          ? {
+              base_url: form.base_url,
+              ca_bundle: form.ca_bundle || null,
+              ssl_verify: form.ssl_verify,
+            }
           : {}),
         device_type: form.device_type,
         agent_mode: form.agent_mode,

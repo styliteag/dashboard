@@ -49,7 +49,10 @@ export default function CertificatesSection({ instanceId }: { instanceId: number
           <tbody>
             {sorted.map((c) => (
               // group: reveals the row's comment pencil on hover (CommentBadge)
-              <tr key={`${c.type}:${c.refid || c.name}`} className="group border-t border-slate-800">
+              <tr
+                key={`${c.type}:${c.refid || c.name}`}
+                className="group border-t border-slate-800"
+              >
                 <td className="px-3 py-2 font-medium">
                   <span className="inline-flex items-center gap-1.5">
                     {c.name}

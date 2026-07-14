@@ -309,7 +309,10 @@ export default function FirewallRulesSection({ instanceId }: Props) {
   });
   const aliasesQuery = useQuery({
     queryKey: ["firewall-aliases", instanceId],
-    queryFn: () => api.get<{ aliases: Array<{ name: string; address?: string | null }> }>(`/api/instances/${instanceId}/firewall/aliases`),
+    queryFn: () =>
+      api.get<{ aliases: Array<{ name: string; address?: string | null }> }>(
+        `/api/instances/${instanceId}/firewall/aliases`,
+      ),
     retry: 1,
   });
   const aliasDetails = useMemo(() => {

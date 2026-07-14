@@ -68,12 +68,7 @@ export default function CommentBadge({
       {error ? (
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label={error} />
       ) : (
-        text && (
-          <MessageSquare
-            className="h-3.5 w-3.5 shrink-0 text-sky-300"
-            aria-label="Comment"
-          />
-        )
+        text && <MessageSquare className="h-3.5 w-3.5 shrink-0 text-sky-300" aria-label="Comment" />
       )}
       <button
         onClick={(e) => {
@@ -82,8 +77,7 @@ export default function CommentBadge({
           setEditing(true);
         }}
         title={
-          error ??
-          (text ? `${text}${tooltipSuffix ? ` — ${tooltipSuffix}` : ""}` : "Add comment")
+          error ?? (text ? `${text}${tooltipSuffix ? ` — ${tooltipSuffix}` : ""}` : "Add comment")
         }
         className={`shrink-0 rounded p-0.5 text-slate-500 transition-opacity hover:bg-slate-700 hover:text-slate-200 focus:opacity-100 ${
           text || error ? "" : "opacity-0 group-hover:opacity-100"
@@ -131,8 +125,7 @@ export function EntityCommentBadge({
 export function InstanceNotesBadge({ inst }: { inst: Instance }) {
   const qc = useQueryClient();
   const save = useMutation({
-    mutationFn: (notes: string) =>
-      api.patch(`/api/instances/${inst.id}`, { notes: notes || null }),
+    mutationFn: (notes: string) => api.patch(`/api/instances/${inst.id}`, { notes: notes || null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instances"] });
       qc.invalidateQueries({ queryKey: ["instance", inst.id] });

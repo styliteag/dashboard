@@ -599,9 +599,10 @@ export default function PacketCaptureViewer() {
                       {tcpVerdict(selected.tcpFlags).label}
                     </div>
                     <div className="mt-2 border-t border-slate-800 pt-1.5 text-[10px] leading-relaxed text-slate-500">
-                      Reading a connection: <span className="text-emerald-300">SYN → SYN-ACK</span> = accepted ·{" "}
-                      <span className="text-red-400">SYN → RST</span> = refused (reject rule / closed port) ·{" "}
-                      <span className="text-amber-300">SYN → no reply</span> = dropped / firewalled (silent block).
+                      Reading a connection: <span className="text-emerald-300">SYN → SYN-ACK</span>{" "}
+                      = accepted · <span className="text-red-400">SYN → RST</span> = refused (reject
+                      rule / closed port) · <span className="text-amber-300">SYN → no reply</span> =
+                      dropped / firewalled (silent block).
                     </div>
                   </div>
                 )}
@@ -649,16 +650,21 @@ function tcpVerdict(flags: number): { label: string; tone: "green" | "red" | "am
   const has = (b: number) => (flags & b) !== 0;
   if (has(0x04)) {
     return {
-      label: "RST — refused/reset. The peer actively rejected it: a firewall reject rule or a closed port.",
+      label:
+        "RST — refused/reset. The peer actively rejected it: a firewall reject rule or a closed port.",
       tone: "red",
     };
   }
   if (has(0x02) && has(0x10)) {
-    return { label: "SYN-ACK — accepted. The peer is listening; the handshake is proceeding.", tone: "green" };
+    return {
+      label: "SYN-ACK — accepted. The peer is listening; the handshake is proceeding.",
+      tone: "green",
+    };
   }
   if (has(0x02)) {
     return {
-      label: "SYN — connection attempt. If no SYN-ACK and no RST ever come back for it, the packet was silently dropped (a firewall block/drop rule, not a reject).",
+      label:
+        "SYN — connection attempt. If no SYN-ACK and no RST ever come back for it, the packet was silently dropped (a firewall block/drop rule, not a reject).",
       tone: "amber",
     };
   }
@@ -696,7 +702,9 @@ function HexDump({ hex }: { hex: string }) {
     const cols = slice.map((b) => b.toString(16).padStart(2, "0"));
     while (cols.length < 16) cols.push("  "); // pad so the ASCII gutter stays aligned
     const hexStr = `${cols.slice(0, 8).join(" ")}  ${cols.slice(8).join(" ")}`;
-    const ascii = slice.map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : ".")).join("");
+    const ascii = slice
+      .map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : "."))
+      .join("");
     rows.push({ off: off.toString(16).padStart(4, "0"), hexStr, ascii });
   }
 
@@ -704,7 +712,8 @@ function HexDump({ hex }: { hex: string }) {
     <pre className="max-h-[260px] overflow-auto whitespace-pre rounded border border-slate-800 bg-black/60 p-2 text-[11px] leading-relaxed font-mono">
       {rows.map((r) => (
         <div key={r.off}>
-          <span className="text-slate-500">{r.off}</span> <span className="text-slate-200">{r.hexStr}</span>{" "}
+          <span className="text-slate-500">{r.off}</span>{" "}
+          <span className="text-slate-200">{r.hexStr}</span>{" "}
           <span className="text-emerald-300">{r.ascii}</span>
         </div>
       ))}
