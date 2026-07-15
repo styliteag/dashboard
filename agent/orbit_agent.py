@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.6"
+__version__ = "3.0.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1511,9 +1511,13 @@ def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
     latest = installed
     check_failed = False
     try:
-        _run(["pkg", "update", "-q"], timeout=60)  # refresh catalogue (lock-busy → next cycle)
-        cur = _run(["pkg", "query", "%v", "opnsense"]).strip()
-        remote = _run(["pkg", "rquery", "%v", "opnsense"]).strip()
+        # 300s, not 60: right after a series upgrade pkg re-creates the whole
+        # repo DB ("wrong packagesite") which takes minutes — a 60s kill mid
+        # rebuild left a dead lock behind on opn1 and wedged every later pkg
+        # run on the box, the GUI check included.
+        _run(["pkg", "update", "-q"], timeout=300)
+        cur = _run(["pkg", "query", "%v", "opnsense"], timeout=30).strip()
+        remote = _run(["pkg", "rquery", "%v", "opnsense"], timeout=30).strip()
         if remote:
             latest = remote
         else:
@@ -1524,6 +1528,10 @@ def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
                 out = "%s can be updated to %s" % (cur, remote)
     except Exception:
         check_failed = True
+    if check_failed:
+        # Self-heal the wedge described above so the 15-min retry succeeds
+        # instead of waiting forever behind a dead lock holder.
+        _clear_stale_pkg_repo_lock()
     major = _opnsense_major_upgrade(installed)
     if major:
         # Mirrors the pfSense newer-train branch in collect_firmware: only
@@ -1765,14 +1773,45 @@ def _dnf_update_check() -> "tuple[bool, str, bool, dict]":
     return len(security) > 0, summary, check_failed, extra
 
 
-# Serializes the update check: the push loop's throttled collect_firmware and a
-# manual firmware.check command run on different threads — two concurrent
-# apt-get invocations otherwise fight over /var/lib/apt/lists/lock (observed
-# live on ubn1: the manual check failed against the push loop's own apt-get).
-_LINUX_FW_LOCK = threading.Lock()
-# A failed check (apt/dnf lock held, mirror down) retries after 15 min instead
-# of caching the failure for the full ~12h window.
+# Serializes the update check on ALL platforms: the push loop's throttled
+# collect_firmware and a manual firmware.check command run on different
+# threads. Two concurrent apt-get invocations fight over the dpkg lists lock
+# (live on ubn1); two concurrent `pkg update` runs pile up on the pkg repo
+# lock — live on opn1 after the 26.7 major, where the post-major catalogue
+# rebuild made every check slow and the stacked callers grew a 16-process
+# convoy behind a dead lock holder.
+_FW_CHECK_LOCK = threading.Lock()
+# A failed check (apt/dnf/pkg lock held, mirror down) retries after 15 min
+# instead of caching the failure for the full ~12h window.
 _FW_FAILED_RETRY_S = 900
+
+_OPNSENSE_REPO_CACHE_DIR = "/var/db/pkg/repos/OPNsense"
+
+
+def _clear_stale_pkg_repo_lock() -> bool:
+    """Remove leftover pkg repo-lock artifacts when no pkg process is alive.
+
+    A pkg process killed mid catalogue-rebuild (our own 60s _run timeout did
+    exactly this on opn1 right after the 26.7 major: "wrong packagesite, need
+    to re-create database" takes minutes) leaves repos/OPNsense/{lock,
+    db-journal} behind. Every later pkg invocation — the GUI check included —
+    then waits forever on the dead holder ("Waiting for another process...").
+    Only the repo CACHE dir is touched (fully rebuilt by `pkg update -f`);
+    the package database local.sqlite is never touched. Guarded on "no pkg
+    process running" so a live holder's lock is never yanked.
+    """
+    if _run(["pgrep", "-x", "pkg"], timeout=10).strip():
+        return False
+    removed = False
+    for fn in ("lock", "db-journal"):
+        path = os.path.join(_OPNSENSE_REPO_CACHE_DIR, fn)
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+                removed = True
+        except OSError:
+            pass
+    return removed
 
 
 def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
@@ -1785,7 +1824,7 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     verdict is check_failed (never a false green "up to date").
     """
     version = _read_linux_version()
-    with _LINUX_FW_LOCK:
+    with _FW_CHECK_LOCK:
         try:
             if shutil.which("apt-get"):
                 upgrade_available, out, check_failed, extra = _apt_update_check()
@@ -1846,43 +1885,58 @@ def collect_firmware() -> dict:
             _STATE.fw_check_ts = time.monotonic() - (_FW_CHECK_INTERVAL_S - _FW_FAILED_RETRY_S)
         return {"product_version": version, **verdict}
 
-    if pfsense:
-        # Refresh Netgate's train catalogue first — exactly what the GUI's
-        # update page does (pfSense-repoc, ~30-40s cold). Without it a new
-        # release train only appears after someone opens that page. Best-effort:
-        # offline boxes keep reporting from the last downloaded metadata.
-        # ORDER MATTERS: repoc renames the repo confs to train names and leaves
-        # the pfSense.conf symlink dangling; the following pfSense-upgrade -c
-        # normalizes the layout back to slot names and repairs the symlink
-        # (observed live on Plus 26.03). Only read branch/trains AFTER both.
-        if Path("/usr/local/sbin/pfSense-repoc").exists():
-            _run(["/usr/local/sbin/pfSense-repoc"], timeout=60)
-        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
-        branch = _read_pfsense_branch()
-        known_branches = _list_pfsense_branches()
-        upgrade_available = _pfsense_update_available(out)
-        check_failed = _pfsense_check_failed(out)
-        # CE names the target ("2.7.0 version of pfSense is available");
-        # otherwise fall back to installed so "Latest" never goes blank.
-        latest = _pfsense_target_version(out) or version
-        newer_train, newer_version = _pfsense_newer_branch(branch)
-        if newer_train:
-            # In-train check says "up to date", but a newer release train exists.
-            upgrade_available = True
-            latest = newer_version
-            out = out.strip() + (
-                "\nnewer release train available: %s (%s) — the pinned train "
-                "reports no update; switch the update branch (System > Update) "
-                "to upgrade" % (newer_train, newer_version)
-            )
-    else:
-        branch = _opnsense_series()
-        known_branches = []
-        upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+    with _FW_CHECK_LOCK:
+        # Re-check the cache after acquiring the lock: while this caller
+        # waited, the check it queued behind has usually just stored a fresh
+        # verdict — a second expensive pkg round-trip would only pile onto
+        # the vendor repo and the local pkg lock (the opn1 post-26.7 convoy).
+        now = time.monotonic()
+        if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
+            return {"product_version": version, **_STATE.fw_verdict}
 
-    verdict = _store_fw_verdict(
-        branch, known_branches, upgrade_available, latest, out, check_failed
-    )
+        if pfsense:
+            # Refresh Netgate's train catalogue first — exactly what the GUI's
+            # update page does (pfSense-repoc, ~30-40s cold). Without it a new
+            # release train only appears after someone opens that page. Best-effort:
+            # offline boxes keep reporting from the last downloaded metadata.
+            # ORDER MATTERS: repoc renames the repo confs to train names and leaves
+            # the pfSense.conf symlink dangling; the following pfSense-upgrade -c
+            # normalizes the layout back to slot names and repairs the symlink
+            # (observed live on Plus 26.03). Only read branch/trains AFTER both.
+            if Path("/usr/local/sbin/pfSense-repoc").exists():
+                _run(["/usr/local/sbin/pfSense-repoc"], timeout=60)
+            out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            branch = _read_pfsense_branch()
+            known_branches = _list_pfsense_branches()
+            upgrade_available = _pfsense_update_available(out)
+            check_failed = _pfsense_check_failed(out)
+            # CE names the target ("2.7.0 version of pfSense is available");
+            # otherwise fall back to installed so "Latest" never goes blank.
+            latest = _pfsense_target_version(out) or version
+            newer_train, newer_version = _pfsense_newer_branch(branch)
+            if newer_train:
+                # In-train check says "up to date", but a newer release train exists.
+                upgrade_available = True
+                latest = newer_version
+                out = out.strip() + (
+                    "\nnewer release train available: %s (%s) — the pinned train "
+                    "reports no update; switch the update branch (System > Update) "
+                    "to upgrade" % (newer_train, newer_version)
+                )
+        else:
+            branch = _opnsense_series()
+            known_branches = []
+            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+
+        verdict = _store_fw_verdict(
+            branch, known_branches, upgrade_available, latest, out, check_failed
+        )
+        if check_failed:
+            # Same 15-min retry as the linux branch — a transient failure
+            # (mirror down, pkg lock busy, post-major catalogue rebuild) must
+            # not pin "Check failed" for the whole 12h window (lived on opn1
+            # after the 26.7 major).
+            _STATE.fw_check_ts = time.monotonic() - (_FW_CHECK_INTERVAL_S - _FW_FAILED_RETRY_S)
     return {"product_version": version, **verdict}
 
 
@@ -3988,22 +4042,27 @@ def _cmd_firmware_check(params: dict) -> dict:
             "security_updates": extra.get("security_updates", 0),
             "needs_reboot": extra.get("needs_reboot", False),
         }
-    if plat == "pfsense":
-        out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
-        version = _read_pfsense_version()
-        branch = _read_pfsense_branch()
-        known = _list_pfsense_branches()
-        upgrade_available = _pfsense_update_available(out)
-        check_failed = _pfsense_check_failed(out)
-        latest = _pfsense_target_version(out) or version
-    else:
-        version = _read_opnsense_version()
-        branch = _opnsense_series()
-        known = []
-        upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
-    # Refresh the push-loop cache so a throttled interim push doesn't revert
-    # this fresh manual check back to the previous verdict.
-    verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
+    # Serialized against the push loop's own check (_FW_CHECK_LOCK) — without
+    # it a manual "Check now" races the throttled collect_firmware and both
+    # hammer the pkg repo lock at once. The manual check still always runs
+    # fresh (no cache short-circuit here).
+    with _FW_CHECK_LOCK:
+        if plat == "pfsense":
+            out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            version = _read_pfsense_version()
+            branch = _read_pfsense_branch()
+            known = _list_pfsense_branches()
+            upgrade_available = _pfsense_update_available(out)
+            check_failed = _pfsense_check_failed(out)
+            latest = _pfsense_target_version(out) or version
+        else:
+            version = _read_opnsense_version()
+            branch = _opnsense_series()
+            known = []
+            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+        # Refresh the push-loop cache so a throttled interim push doesn't revert
+        # this fresh manual check back to the previous verdict.
+        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
     return {
         "success": True,
         "output": verdict["update_check_output"],

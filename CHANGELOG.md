@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- After an OPNsense series upgrade the firmware check no longer wedges the
+  box's pkg system: the post-major catalogue rebuild takes minutes, the
+  agent's old 60-second timeout killed pkg mid-rebuild and the dead
+  process's leftover repo lock made every later check — the box GUI's
+  included — wait forever, while unserialised agent checks kept piling up.
+  The agent (3.0.7) now serializes all update checks, allows the rebuild
+  five minutes, removes a dead holder's leftover repo-lock artifacts, and
+  retries a failed check after 15 minutes instead of showing "Check failed"
+  for up to 12 hours.
 - Firmware updates on OPNsense/pfSense no longer show "Tracking progress…"
   forever: the agent (3.0.4) now reports real running/done progress with the
   vendor updater's log tail (OPNsense `/tmp/pkg_upgrade.progress` incl.
