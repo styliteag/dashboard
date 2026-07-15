@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.5"
+__version__ = "3.0.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4016,6 +4016,52 @@ def _cmd_firmware_check(params: dict) -> dict:
     }
 
 
+# orbit-created boot environments to retain (newest first). Old ones are
+# copy-on-write and grow as the live system diverges — without pruning a
+# box that updates monthly slowly eats its zpool.
+_BE_KEEP = 2
+
+
+def _zfs_boot_snapshot(version: str) -> str:
+    """Create a pre-update ZFS boot environment; returns its name ("" if none).
+
+    FreeBSD root-on-ZFS only (OPNsense/pfSense; the vendors create NO snapshot
+    on their own — the 26.7 release notes explicitly tell users to snapshot
+    manually). Best effort by design: UFS installs, a missing bectl or a
+    create failure must never block the update itself. Rollback on the box:
+    `bectl activate <name>` + reboot. Only orbit-created BEs (orbit-pre-*)
+    are pruned to _BE_KEEP; user/vendor BEs are never touched.
+    """
+    listing = _run(["bectl", "list", "-H"], timeout=30)
+    if not listing.strip():
+        return ""  # UFS install or bectl unavailable
+    name = "orbit-pre-%s" % re.sub(r"[^A-Za-z0-9._-]", "_", version or "unknown")
+    rows = [ln.split("\t") for ln in listing.strip().splitlines()]
+    existing = [r[0] for r in rows if r]
+    if name not in existing:
+        try:
+            r = subprocess.run(
+                ["bectl", "create", name], capture_output=True, text=True, timeout=60
+            )
+            if r.returncode != 0:
+                return ""
+        except Exception:
+            return ""
+    # Prune oldest orbit-pre-* BEs beyond the retention count. Never the one
+    # just created, never an active BE (N/R flags), never foreign names.
+    orbit = sorted(
+        (r for r in rows if len(r) >= 5 and r[0].startswith("orbit-pre-") and r[0] != name),
+        key=lambda r: r[4],  # "YYYY-MM-DD HH:MM" sorts lexically
+    )
+    keep_older = max(_BE_KEEP - 1, 0)  # the new BE occupies one retention slot
+    doomed = orbit[: len(orbit) - keep_older] if len(orbit) > keep_older else []
+    for row in doomed:
+        if row[1].strip() not in ("", "-"):
+            continue  # active now (N) or on reboot (R) — leave it alone
+        _run(["bectl", "destroy", row[0]], timeout=60)
+    return name
+
+
 def _cmd_firmware_update(params: dict) -> dict:
     # Non-blocking: start in background. The firewall vendor updaters handle
     # the reboot themselves when required (new base/kernel); a linux server is
@@ -4047,11 +4093,17 @@ def _cmd_firmware_update(params: dict) -> dict:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
         cmd = ["configctl", "firmware", "update"]
+    snapshot_note = ""
+    if plat != "linux":
+        installed = _read_pfsense_version() if plat == "pfsense" else _read_opnsense_version()
+        be = _zfs_boot_snapshot(installed)
+        if be:
+            snapshot_note = "; boot environment %s created" % be
     _STATE.fw_update_ts = time.time()
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     if plat == "linux":
         return {"success": True, "output": "package upgrade started (no automatic reboot)"}
-    return {"success": True, "output": "update started in background"}
+    return {"success": True, "output": "update started in background" + snapshot_note}
 
 
 # Written by the vendor updaters themselves — the agent only tails them.

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Starting a firmware update on an OPNsense/pfSense box installed on ZFS now
+  automatically creates a boot environment first (`orbit-pre-<version>`,
+  visible under System > Snapshots) — the vendors themselves snapshot
+  nothing. Rollback: activate the environment and reboot. The agent keeps
+  the two newest orbit-created environments and never touches user-created
+  ones; on UFS installs the update simply proceeds without a snapshot.
+
 - The agent (3.0.5) now detects OPNsense series upgrades (e.g. 26.1 → 26.7)
   the same way the box GUI does (`opnsense-update -vR`). The firmware card
   reports the new series as available with a note that the upgrade must be
