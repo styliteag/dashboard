@@ -73,15 +73,26 @@ export default function FirmwareSection({
   const [confirmUpdate, setConfirmUpdate] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const [upgrading, setUpgrading] = useState(false);
+  // Keeps the upgrade log panel visible after tracking ends — it used to
+  // unmount together with `upgrading`, yanking the output the moment the
+  // update finished (user feedback 2026-07-16).
+  const [showUpgradeLog, setShowUpgradeLog] = useState(false);
   const upgradeStartedRef = useRef(0);
 
   const updateMut = useMutation({
     mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/update`),
-    onSuccess: () => {
-      setMsg({ ok: true, text: "Update started. Tracking progress…" });
+    onSuccess: (data) => {
+      // Surface the agent's start message (e.g. "boot environment
+      // orbit-pre-X created") instead of swallowing it.
+      const note =
+        data?.message && data.message !== "update started in background"
+          ? ` — ${data.message}`
+          : "";
+      setMsg({ ok: true, text: `Update started. Tracking progress…${note}` });
       setConfirmUpdate(false);
       setConfirmName("");
       upgradeStartedRef.current = Date.now();
+      setShowUpgradeLog(true);
       setUpgrading(true);
     },
     onError: (e) => {
@@ -337,13 +348,26 @@ export default function FirmwareSection({
             </div>
           )}
 
-          {/* Live upgrade log */}
-          {upgrading && upgradeStatus && (
+          {/* Live upgrade log — stays visible after "done" until dismissed */}
+          {(upgrading || showUpgradeLog) && upgradeStatus && (
             <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <p className="text-xs text-slate-400">
-                Status: <span className="text-amber-400">{upgradeStatus.status}</span>
-              </p>
-              {upgradeStatus.status === "unknown" && (
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">
+                  Status:{" "}
+                  <span className={upgrading ? "text-amber-400" : "text-emerald-400"}>
+                    {upgradeStatus.status}
+                  </span>
+                </p>
+                {!upgrading && (
+                  <button
+                    onClick={() => setShowUpgradeLog(false)}
+                    className="text-xs text-slate-500 hover:text-slate-300"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+              {upgrading && upgradeStatus.status === "unknown" && (
                 <p className="mt-1 text-xs text-slate-500">
                   The box reports no live progress — the updater runs detached or the box is
                   rebooting. Tracking continues automatically.

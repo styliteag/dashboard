@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The firmware upgrade log no longer vanishes the moment tracking finishes:
+  the panel now stays on screen (with a Dismiss button) and the "Update
+  started" banner carries the agent's start message, e.g. which boot
+  environment was created.
 - After an OPNsense series upgrade the firmware check no longer wedges the
   box's pkg system: the post-major catalogue rebuild takes minutes, the
   agent's old 60-second timeout killed pkg mid-rebuild and the dead
