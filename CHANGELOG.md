@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The agent (3.1.2) no longer goes silent ("agent silent for >120s" WARN)
+  during the post-reboot package phase of a series upgrade: while the
+  vendor updater is running, the periodic firmware check is skipped (it
+  would fight the updater for the package lock and stall the agent's push
+  loop for minutes) and the card shows "vendor update in progress" instead.
 - The firmware upgrade log no longer vanishes the moment tracking finishes:
   the panel now stays on screen (with a Dismiss button) and the "Update
   started" banner carries the agent's start message, e.g. which boot

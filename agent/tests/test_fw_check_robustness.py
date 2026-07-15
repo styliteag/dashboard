@@ -69,6 +69,29 @@ def test_firewall_checks_serialize_and_second_caller_uses_fresh_cache(monkeypatc
     _reset_state()
 
 
+def test_check_skipped_while_vendor_updater_runs(monkeypatch) -> None:
+    """While launcher.sh update/upgrade (or pfSense-upgrade -y) is applying,
+    collect_firmware must NOT run its own pkg round-trip: it would fight the
+    updater for the pkg lock and stall the push loop for minutes — the hub
+    then fires "agent silent for >120s" (live on opn2 mid-26.7 pkg phase).
+    The neutral verdict must not be cached either."""
+    _reset_state()
+    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+    monkeypatch.setattr(agent, "_read_opnsense_version", lambda: "26.7")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: True)
+
+    def boom(v):
+        raise AssertionError("network check must be skipped while the updater runs")
+
+    monkeypatch.setattr(agent, "_opnsense_update_check", boom)
+    fw = agent.collect_firmware()
+    assert fw["update_check_output"] == "vendor update in progress"
+    assert fw["upgrade_available"] is False
+    assert fw["check_failed"] is False
+    assert agent._STATE.fw_verdict == {}, "neutral verdict must not be cached"
+    _reset_state()
+
+
 def test_stale_repo_lock_cleared_only_without_live_pkg(monkeypatch, tmp_path) -> None:
     lock = tmp_path / "lock"
     journal = tmp_path / "db-journal"

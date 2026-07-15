@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.1"
+__version__ = "3.1.2"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1837,6 +1837,14 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     return upgrade_available, version, out, check_failed, extra
 
 
+def _vendor_updater_running(plat: str) -> bool:
+    """True while the vendor's own update/upgrade run is applying."""
+    pat = (
+        "pfSense-upgrade -y" if plat == "pfsense" else "firmware/launcher.sh (update|upgrade)"
+    )
+    return bool(_run(["pgrep", "-f", pat], timeout=10).strip())
+
+
 def collect_firmware() -> dict:
     """Firmware version on every push; network update check every ~12h (per platform).
 
@@ -1893,6 +1901,23 @@ def collect_firmware() -> dict:
         now = time.monotonic()
         if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
             return {"product_version": version, **_STATE.fw_verdict}
+
+        if _vendor_updater_running("pfsense" if pfsense else "opnsense"):
+            # The vendor updater is applying right now (e.g. the post-reboot
+            # pkg phase of a series upgrade): a check would fight it for the
+            # pkg lock and stall the push loop for minutes — the hub then
+            # fires "agent silent for >120s" (observed live on opn2 mid-26.7,
+            # 2026-07-16). Serve a neutral verdict WITHOUT caching it; the
+            # next push after the updater exits checks for real.
+            return {
+                "product_version": version,
+                "branch": _STATE.fw_verdict.get("branch", ""),
+                "known_branches": _STATE.fw_verdict.get("known_branches", []),
+                "upgrade_available": False,
+                "product_latest": version,
+                "update_check_output": "vendor update in progress",
+                "check_failed": False,
+            }
 
         if pfsense:
             major = ""  # pfSense series/train changes are text-only (see below)

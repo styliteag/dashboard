@@ -109,6 +109,7 @@ def test_collect_firmware_throttled_preserves_verdict(
     # The throttled (cheap) push must refresh product_version yet KEEP the last
     # upgrade verdict + latest, otherwise it blanks a detected update to "up to date".
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent._STATE, "fw_check_ts", agent.time.monotonic())
     monkeypatch.setattr(
         agent._STATE,
@@ -376,6 +377,7 @@ def test_collect_firmware_pfsense_flags_newer_train(
     # sibling 26_03_1 train must still surface as an available upgrade.
     _plus_repo_with_newer_train(fake_fs)
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
@@ -398,6 +400,7 @@ def test_collect_firmware_pfsense_refreshes_train_catalogue(
     fake_fs["/usr/local/sbin/pfSense-repoc"] = ""  # binary present
     calls: list = []
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda cmd, timeout=5: calls.append(cmd) or "")
@@ -417,6 +420,7 @@ def test_collect_firmware_pfsense_no_newer_train_stays_uptodate(
         'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
     )
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "26.03-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "26_03")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
@@ -438,6 +442,7 @@ _PF_GW_JSON = (
 
 def test_collect_gateways_pfsense_parses_php_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_run", lambda *a, **k: _PF_GW_JSON)
     gws = agent.collect_gateways()
     assert {g["name"] for g in gws} == {"PPPOE_WAN", "IPSec_GW"}
@@ -452,6 +457,7 @@ def test_collect_gateways_pfsense_parses_php_json(monkeypatch: pytest.MonkeyPatc
 
 def test_collect_gateways_pfsense_handles_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "PHP Warning: something\n")
     assert agent.collect_gateways() == []
 
@@ -1149,6 +1155,7 @@ def test_collect_firmware_pfsense_reports_check_failed(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.0-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: _PFSENSE_CHECK_BROKEN)
@@ -1163,6 +1170,7 @@ def test_collect_firmware_pfsense_clean_check_not_failed(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_8_1")
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
@@ -1235,6 +1243,7 @@ def test_collect_firmware_pfsense_ce_update_reports_target(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.6.0-RELEASE")
     monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_0")
     monkeypatch.setattr(
@@ -1260,6 +1269,7 @@ def test_collect_firmware_network_check_throttled_hours(
 ) -> None:
     # A verdict from 1h ago must be served from cache — no repoc / upgrade -c.
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_vendor_updater_running", lambda plat: False)
     monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.8.1-RELEASE")
 
     def boom(*a, **k):
