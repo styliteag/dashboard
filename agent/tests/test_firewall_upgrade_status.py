@@ -146,7 +146,7 @@ def test_collect_firmware_drops_verdict_once_advertised_version_installed(monkey
 
     def fresh_check(installed):
         calls.append(1)
-        return False, "26.1.11_10", "up to date", False
+        return False, "26.1.11_10", "up to date", False, ""
 
     monkeypatch.setattr(agent, "_opnsense_update_check", fresh_check)
     monkeypatch.setattr(agent.time, "monotonic", lambda: 100.0)

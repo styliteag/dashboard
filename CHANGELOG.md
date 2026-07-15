@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OPNsense series upgrades (e.g. 26.1 → 26.7) can now be started from the
+  dashboard: the firmware card shows a dedicated red "Upgrade to X" button
+  (agent 3.1.1) with its own type-the-name confirmation. The box resolves
+  the target release itself — the dashboard never sends a version — a ZFS
+  boot environment is created first, and progress is tracked live through
+  the reboot. Direct-poll instances keep using the vendor GUI.
+
 - Starting a firmware update on an OPNsense/pfSense box installed on ZFS now
   automatically creates a boot environment first (`orbit-pre-<version>`,
   visible under System > Snapshots) — the vendors themselves snapshot

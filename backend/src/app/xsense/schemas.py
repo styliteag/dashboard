@@ -369,6 +369,9 @@ class FirmwareStatus(BaseModel):
     # True when the box could not actually check (repo unreachable, broken pkg):
     # the verdict is "unknown" — must not render as "up to date".
     check_failed: bool = False
+    # Offered series/major upgrade target (OPNsense, e.g. "26.7"); "" when
+    # none. Drives the dedicated "Upgrade series" action in the UI.
+    upgrade_major_version: str = ""
     updates_available: int = 0
     # Pending security updates (linux nodes, §25) — drives the WARN threshold;
     # routine updates alone stay OK. Firewalls report 0.

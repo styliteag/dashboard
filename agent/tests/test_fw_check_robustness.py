@@ -28,7 +28,7 @@ def test_firewall_check_failed_retries_early(monkeypatch) -> None:
     monkeypatch.setattr(agent, "_read_opnsense_version", lambda: "26.7")
     monkeypatch.setattr(agent, "_opnsense_series", lambda: "26.7")
     monkeypatch.setattr(
-        agent, "_opnsense_update_check", lambda v: (False, v, "update check failed", True)
+        agent, "_opnsense_update_check", lambda v: (False, v, "update check failed", True, "")
     )
     fw = agent.collect_firmware()
     assert fw["check_failed"] is True
@@ -56,7 +56,7 @@ def test_firewall_checks_serialize_and_second_caller_uses_fresh_cache(monkeypatc
             overlaps.append(1)
         _time.sleep(0.05)
         active.pop()
-        return False, v, "up to date", False
+        return False, v, "up to date", False, ""
 
     monkeypatch.setattr(agent, "_opnsense_update_check", slow_check)
     threads = [threading.Thread(target=agent.collect_firmware) for _ in range(3)]
@@ -95,7 +95,7 @@ def test_opnsense_check_failure_triggers_lock_cleanup(monkeypatch) -> None:
     monkeypatch.setattr(
         agent, "_run", lambda cmd, timeout=5: ""  # -c empty, pkg update/query/rquery empty
     )
-    upgrade, latest, out, failed = agent._opnsense_update_check("26.7")
+    upgrade, latest, out, failed, _major = agent._opnsense_update_check("26.7")
     assert failed is True
     assert cleaned, "stale-lock cleanup not attempted on failed check"
 

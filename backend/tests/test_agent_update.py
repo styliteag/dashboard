@@ -225,7 +225,17 @@ async def test_update_single_pushes_when_outdated(
 
 
 @pytest.mark.parametrize(
-    "action", ["agent.update", "relay.enable", "http.relay", "agent.uninstall", "gui.login"]
+    "action",
+    [
+        "agent.update",
+        "relay.enable",
+        "http.relay",
+        "agent.uninstall",
+        "gui.login",
+        # firmware.upgrade reboots the box into a new series — dedicated
+        # audited route only (backend/src/app/firmware/routes.py).
+        "firmware.upgrade",
+    ],
 )
 async def test_send_command_rejects_internal_actions(action: str) -> None:
     # The denylist is checked before the hub lookup, so no agent needs to be wired.

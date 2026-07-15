@@ -141,7 +141,7 @@ def test_opnsense_update_check_detects_pkg_point_release(monkeypatch: pytest.Mon
         return ""  # pkg update -q
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, out, _failed = agent._opnsense_update_check("26.1.9")
+    upgrade, latest, out, _failed, _major = agent._opnsense_update_check("26.1.9")
     assert upgrade is True
     assert latest == "26.1.10"
     assert "26.1.10" in out
@@ -154,7 +154,7 @@ def test_opnsense_update_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, _, _failed = agent._opnsense_update_check("26.1.10")
+    upgrade, latest, _, _failed, _major = agent._opnsense_update_check("26.1.10")
     assert upgrade is False
     assert latest == "26.1.10"  # latest still reported even with no update
 
@@ -174,10 +174,11 @@ def test_opnsense_update_check_detects_major_series_upgrade(
         return ""
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.11_10")
+    upgrade, latest, out, failed, major = agent._opnsense_update_check("26.1.11_10")
     assert upgrade is True
     assert latest == "26.7"
-    assert "26.7 series" in out and "GUI" in out
+    assert "26.7 series" in out
+    assert major == "26.7"
     assert failed is False
 
 
@@ -197,7 +198,7 @@ def test_opnsense_update_check_minor_pending_keeps_minor_as_latest(
         return ""
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, out, _failed = agent._opnsense_update_check("26.1.11_5")
+    upgrade, latest, out, _failed, major = agent._opnsense_update_check("26.1.11_5")
     assert upgrade is True
     assert latest == "26.1.11_10"
     assert "26.7 series" in out
@@ -223,7 +224,7 @@ def test_opnsense_update_check_stale_catalogue_no_false_uptodate(
         return ""  # rquery empty, update -q noop
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    upgrade, latest, _, failed = agent._opnsense_update_check("26.1.9")
+    upgrade, latest, _, failed, _major = agent._opnsense_update_check("26.1.9")
     assert upgrade is False
     assert latest == "26.1.9"
     assert failed is True  # empty rquery = catalogue broken/stale, verdict is unknown
@@ -1182,7 +1183,7 @@ def test_opnsense_update_check_flags_failed_catalogue(monkeypatch: pytest.Monkey
             return "26.1.10\n"
         return ""  # pkg update -q / pkg rquery
     monkeypatch.setattr(agent, "_run", run)
-    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.10")
+    upgrade, latest, out, failed, _major = agent._opnsense_update_check("26.1.10")
     assert failed is True
     assert upgrade is False
 
@@ -1197,7 +1198,7 @@ def test_opnsense_update_check_healthy_not_failed(monkeypatch: pytest.MonkeyPatc
             return "26.1.10\n"
         return ""
     monkeypatch.setattr(agent, "_run", run)
-    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.10")
+    upgrade, latest, out, failed, _major = agent._opnsense_update_check("26.1.10")
     assert failed is False
     assert upgrade is False
     assert latest == "26.1.10"

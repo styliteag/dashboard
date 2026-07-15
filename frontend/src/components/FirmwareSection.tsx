@@ -69,8 +69,8 @@ export default function FirmwareSection({
     },
   });
 
-  // Update confirmation
-  const [confirmUpdate, setConfirmUpdate] = useState(false);
+  // Update/upgrade confirmation (one dialog, two severities)
+  const [confirmKind, setConfirmKind] = useState<"update" | "upgrade" | null>(null);
   const [confirmName, setConfirmName] = useState("");
   const [upgrading, setUpgrading] = useState(false);
   // Keeps the upgrade log panel visible after tracking ends — it used to
@@ -89,7 +89,26 @@ export default function FirmwareSection({
           ? ` — ${data.message}`
           : "";
       setMsg({ ok: true, text: `Update started. Tracking progress…${note}` });
-      setConfirmUpdate(false);
+      setConfirmKind(null);
+      setConfirmName("");
+      upgradeStartedRef.current = Date.now();
+      setShowUpgradeLog(true);
+      setUpgrading(true);
+    },
+    onError: (e) => {
+      setMsg({ ok: false, text: apiErrorText(e, "Error") });
+      clearMsg();
+    },
+  });
+
+  // Series/major upgrade (e.g. OPNsense 26.1 → 26.7). The target is resolved
+  // on the box itself — this only pulls the trigger.
+  const upgradeMut = useMutation({
+    mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/upgrade`),
+    onSuccess: (data) => {
+      const note = data?.message ? ` — ${data.message}` : "";
+      setMsg({ ok: true, text: `Series upgrade started. Tracking progress…${note}` });
+      setConfirmKind(null);
       setConfirmName("");
       upgradeStartedRef.current = Date.now();
       setShowUpgradeLog(true);
@@ -291,10 +310,18 @@ export default function FirmwareSection({
 
             {fw.upgrade_available && !upgrading && !firmwareLocked && (
               <button
-                onClick={() => setConfirmUpdate(true)}
+                onClick={() => setConfirmKind("update")}
                 className="flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
               >
                 <Download className="h-3.5 w-3.5" /> Start update
+              </button>
+            )}
+            {!!fw.upgrade_major_version && agentMode && !upgrading && !firmwareLocked && (
+              <button
+                onClick={() => setConfirmKind("upgrade")}
+                className="flex items-center gap-1 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+              >
+                <Download className="h-3.5 w-3.5" /> Upgrade to {fw.upgrade_major_version}
               </button>
             )}
           </div>
@@ -305,14 +332,23 @@ export default function FirmwareSection({
             </p>
           )}
 
-          {/* Update confirmation dialog */}
-          {confirmUpdate && (
+          {/* Update / series-upgrade confirmation dialog */}
+          {confirmKind && (
             <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
-              <p className="text-sm text-red-300">
-                Firmware update starts the updater and reboots the box when the update requires it.
-                Type the instance name to confirm:
-              </p>
-              {fw.packages.length > 0 && (
+              {confirmKind === "update" ? (
+                <p className="text-sm text-red-300">
+                  Firmware update starts the updater and reboots the box when the update requires
+                  it. Type the instance name to confirm:
+                </p>
+              ) : (
+                <p className="text-sm text-red-300">
+                  Major upgrade to <span className="font-mono">{fw.upgrade_major_version}</span>:
+                  downloads the new release (~1 GB), reboots the box and continues installing
+                  after boot. A ZFS boot environment is created first (on ZFS installs). Read the
+                  vendor release notes before proceeding. Type the instance name to confirm:
+                </p>
+              )}
+              {confirmKind === "update" && fw.packages.length > 0 && (
                 <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
                   {fw.packages.map((p, i) => (
                     <li key={i}>
@@ -329,15 +365,19 @@ export default function FirmwareSection({
                   placeholder={instanceName}
                 />
                 <button
-                  onClick={() => updateMut.mutate()}
-                  disabled={confirmName !== instanceName || updateMut.isPending}
+                  onClick={() => (confirmKind === "update" ? updateMut : upgradeMut).mutate()}
+                  disabled={
+                    confirmName !== instanceName || updateMut.isPending || upgradeMut.isPending
+                  }
                   className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
                 >
-                  Start update
+                  {confirmKind === "update"
+                    ? "Start update"
+                    : `Upgrade to ${fw.upgrade_major_version}`}
                 </button>
                 <button
                   onClick={() => {
-                    setConfirmUpdate(false);
+                    setConfirmKind(null);
                     setConfirmName("");
                   }}
                   className="text-sm text-slate-400"

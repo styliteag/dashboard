@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.0"
+__version__ = "3.1.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1541,11 +1541,11 @@ def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
             upgrade_available = True
             latest = major
         out = (
-            out.strip() + "\nupgrade to the %s series is available — run it from "
-            "the OPNsense GUI (System > Firmware > Updates) or console option 12; "
-            "the dashboard update button only applies minor updates" % major
+            out.strip()
+            + "\nupgrade to the %s series is available (major upgrade, reboots the box)"
+            % major
         ).strip()
-    return upgrade_available, latest, out, check_failed
+    return upgrade_available, latest, out, check_failed, major
 
 
 def _store_fw_verdict(
@@ -1895,6 +1895,7 @@ def collect_firmware() -> dict:
             return {"product_version": version, **_STATE.fw_verdict}
 
         if pfsense:
+            major = ""  # pfSense series/train changes are text-only (see below)
             # Refresh Netgate's train catalogue first — exactly what the GUI's
             # update page does (pfSense-repoc, ~30-40s cold). Without it a new
             # release train only appears after someone opens that page. Best-effort:
@@ -1926,10 +1927,20 @@ def collect_firmware() -> dict:
         else:
             branch = _opnsense_series()
             known_branches = []
-            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+            upgrade_available, latest, out, check_failed, major = _opnsense_update_check(
+                version
+            )
 
         verdict = _store_fw_verdict(
-            branch, known_branches, upgrade_available, latest, out, check_failed
+            branch,
+            known_branches,
+            upgrade_available,
+            latest,
+            out,
+            check_failed,
+            # Lets the dashboard render a dedicated series-upgrade action;
+            # pfSense trains ride in the text only (no agent upgrade path yet).
+            extra={"upgrade_major_version": major} if not pfsense and major else None,
         )
         if check_failed:
             # Same 15-min retry as the linux branch — a transient failure
@@ -4059,10 +4070,20 @@ def _cmd_firmware_check(params: dict) -> dict:
             version = _read_opnsense_version()
             branch = _opnsense_series()
             known = []
-            upgrade_available, latest, out, check_failed = _opnsense_update_check(version)
+            upgrade_available, latest, out, check_failed, major = _opnsense_update_check(
+                version
+            )
         # Refresh the push-loop cache so a throttled interim push doesn't revert
         # this fresh manual check back to the previous verdict.
-        verdict = _store_fw_verdict(branch, known, upgrade_available, latest, out, check_failed)
+        verdict = _store_fw_verdict(
+            branch,
+            known,
+            upgrade_available,
+            latest,
+            out,
+            check_failed,
+            extra={"upgrade_major_version": major} if plat != "pfsense" and major else None,
+        )
     return {
         "success": True,
         "output": verdict["update_check_output"],
@@ -4072,6 +4093,7 @@ def _cmd_firmware_check(params: dict) -> dict:
         "branch": verdict["branch"],
         "known_branches": verdict["known_branches"],
         "check_failed": verdict["check_failed"],
+        "upgrade_major_version": verdict.get("upgrade_major_version", ""),
     }
 
 
@@ -4163,6 +4185,37 @@ def _cmd_firmware_update(params: dict) -> dict:
     if plat == "linux":
         return {"success": True, "output": "package upgrade started (no automatic reboot)"}
     return {"success": True, "output": "update started in background" + snapshot_note}
+
+
+def _cmd_firmware_upgrade(params: dict) -> dict:
+    """Start the vendor series/major upgrade (OPNsense only).
+
+    Same daemonized path as the GUI's Upgrade button and console option 12:
+    launcher.sh upgrade → opnsense-update -u/-K → reboot; the pkg phase
+    resumes after boot. The target release comes exclusively from the box's
+    own unlocked upgrade path (opnsense-update -vR) — a dashboard-supplied
+    target is deliberately not honored (same rule as tunnel destinations:
+    never trust server-supplied targets for privileged operations).
+    """
+    plat = detect_platform()
+    if plat != "opnsense":
+        return {"success": False, "output": "series upgrade is only supported on opnsense"}
+    installed = _read_opnsense_version()
+    major = _opnsense_major_upgrade(installed)
+    if not major:
+        return {"success": False, "output": "no series upgrade offered by the vendor"}
+    be = _zfs_boot_snapshot(installed)
+    _STATE.fw_update_ts = time.time()
+    subprocess.Popen(
+        ["configctl", "firmware", "upgrade"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    note = "; boot environment %s created" % be if be else ""
+    return {
+        "success": True,
+        "output": "series upgrade to %s started in background%s" % (major, note),
+    }
 
 
 # Written by the vendor updaters themselves — the agent only tails them.
@@ -4449,6 +4502,7 @@ _COMMANDS = {
     "ipsec.restart": _cmd_ipsec_restart,
     "firmware.check": _cmd_firmware_check,
     "firmware.update": _cmd_firmware_update,
+    "firmware.upgrade": _cmd_firmware_upgrade,
     "config.backup": _cmd_config_backup,
     "reboot": _cmd_reboot,
     "relay.enable": _cmd_relay_enable,

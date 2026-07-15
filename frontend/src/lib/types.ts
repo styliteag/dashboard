@@ -507,6 +507,8 @@ export interface FirmwareStatus {
   product_latest: string;
   upgrade_available: boolean;
   check_failed?: boolean; // update check could not run — verdict unknown
+  // Offered series/major upgrade target (OPNsense, e.g. "26.7"); "" when none.
+  upgrade_major_version?: string;
   updates_available: number;
   // Pending security updates (linux nodes) — WARN driver; routine updates stay OK.
   security_updates?: number;

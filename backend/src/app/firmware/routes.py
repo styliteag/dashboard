@@ -203,6 +203,55 @@ async def firmware_update(
     return result
 
 
+@router.post("/upgrade", response_model=ActionResult)
+async def firmware_upgrade(
+    instance_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_write),
+) -> ActionResult:
+    """Start the vendor series/major upgrade (e.g. OPNsense 26.1 → 26.7).
+
+    Agent mode only: the agent resolves the target from the box's own
+    unlocked upgrade path (a request-supplied target is deliberately not
+    honored) and creates a ZFS boot environment first. The action string is
+    in _INTERNAL_AGENT_ACTIONS so the generic command passthrough rejects it.
+    Direct-poll instances keep using the vendor GUI (501).
+    """
+    inst = await _get_instance(instance_id, session, user)
+
+    if inst.firmware_locked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="firmware updates are locked for this instance",
+        )
+    if not inst.agent_mode:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="series upgrade requires agent mode; use the vendor gui",
+        )
+    agent = hub.get(instance_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent not connected"
+        )
+    result_raw = await agent.send_command("firmware.upgrade", timeout=60)
+    await write_audit(
+        session,
+        action="firmware.upgrade",
+        result="ok" if result_raw.get("success") else "error",
+        user_id=user.id,
+        target_type="instance",
+        target_id=str(instance_id),
+        source_ip=client_ip(request),
+        detail={"message": result_raw.get("output", "")[:200]},
+    )
+    await session.commit()
+    return ActionResult(
+        success=result_raw.get("success", False), message=result_raw.get("output", "")[:200]
+    )
+
+
 @router.get("/upgradestatus", response_model=FirmwareUpgradeStatus)
 async def firmware_upgrade_status(
     instance_id: int,
