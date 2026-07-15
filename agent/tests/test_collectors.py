@@ -159,6 +159,59 @@ def test_opnsense_update_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> No
     assert latest == "26.1.10"  # latest still reported even with no update
 
 
+def test_opnsense_update_check_detects_major_series_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New OPNsense series (26.1 -> 26.7, live 2026-07-15): the pinned 26.1 pkg
+    catalogue and opnsense-update -c never see it; only ``opnsense-update -vR``
+    (the GUI's own source, check.sh) reports the unlocked upgrade path."""
+
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:2] == ["/usr/local/sbin/opnsense-update", "-vR"]:
+            return "26.7\n"
+        if cmd[:3] == ["pkg", "query", "%v"] or cmd[:3] == ["pkg", "rquery", "%v"]:
+            return "26.1.11_10\n"  # in-series up to date
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    upgrade, latest, out, failed = agent._opnsense_update_check("26.1.11_10")
+    assert upgrade is True
+    assert latest == "26.7"
+    assert "26.7 series" in out and "GUI" in out
+    assert failed is False
+
+
+def test_opnsense_update_check_minor_pending_keeps_minor_as_latest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Minor + major pending at once: the minor stays "the" update (vendor
+    # guidance: latest minor before the series upgrade); major rides along in
+    # the message only.
+    def fake_run(cmd: list[str], timeout: int = 5) -> str:
+        if cmd[:2] == ["/usr/local/sbin/opnsense-update", "-vR"]:
+            return "26.7\n"
+        if cmd[:3] == ["pkg", "query", "%v"]:
+            return "26.1.11_5\n"
+        if cmd[:3] == ["pkg", "rquery", "%v"]:
+            return "26.1.11_10\n"
+        return ""
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    upgrade, latest, out, _failed = agent._opnsense_update_check("26.1.11_5")
+    assert upgrade is True
+    assert latest == "26.1.11_10"
+    assert "26.7 series" in out
+
+
+def test_opnsense_major_upgrade_ignores_own_series(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Guard against -vR echoing the installed release/series (no false "major").
+    for echo in ("26.1\n", "26.1.11\n", "\n", ""):
+        monkeypatch.setattr(agent, "_run", lambda cmd, timeout=5, _e=echo: _e)
+        assert agent._opnsense_major_upgrade("26.1.11_10") == ""
+    monkeypatch.setattr(agent, "_run", lambda cmd, timeout=5: "26.7\n")
+    assert agent._opnsense_major_upgrade("26.1.11_10") == "26.7"
+
+
 def test_opnsense_update_check_stale_catalogue_no_false_uptodate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.4"
+__version__ = "3.0.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1469,6 +1469,27 @@ def _opnsense_series() -> str:
         return ""
 
 
+def _opnsense_major_upgrade(installed: str) -> str:
+    """Series-upgrade target (e.g. '26.7') once upstream unlocks the path.
+
+    Same source as the GUI's Updates tab (check.sh line ~368):
+    ``opnsense-update -vR`` prints the offered release-upgrade target from the
+    locally cached upgrade path — instant, no network (verified 0.00s live on
+    26.1.11). Empty when nothing is offered or the target is the installed
+    series (guards against -vR echoing the own release on some versions).
+    """
+    out = _run(["/usr/local/sbin/opnsense-update", "-vR"], timeout=30).strip()
+    major = out.splitlines()[0].strip() if out else ""
+    if not re.match(r"^\d+(\.\d+)+$", major):
+        # -vR prints prose on some versions/errors — only a dotted version
+        # counts as an offered target.
+        return ""
+    series = ".".join(installed.split(".")[:2])
+    if not series or major == series or major.startswith(series + "."):
+        return ""
+    return major
+
+
 def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
     """Detect an OPNsense update. Returns
     ``(upgrade_available, latest, output, check_failed)``.
@@ -1503,6 +1524,19 @@ def _opnsense_update_check(installed: str) -> "tuple[bool, str, str, bool]":
                 out = "%s can be updated to %s" % (cur, remote)
     except Exception:
         check_failed = True
+    major = _opnsense_major_upgrade(installed)
+    if major:
+        # Mirrors the pfSense newer-train branch in collect_firmware: only
+        # promote the series upgrade to "the" update when no minor is pending
+        # (vendor guidance: reach the latest minor before a major upgrade).
+        if not upgrade_available:
+            upgrade_available = True
+            latest = major
+        out = (
+            out.strip() + "\nupgrade to the %s series is available — run it from "
+            "the OPNsense GUI (System > Firmware > Updates) or console option 12; "
+            "the dashboard update button only applies minor updates" % major
+        ).strip()
     return upgrade_available, latest, out, check_failed
 
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The agent (3.0.5) now detects OPNsense series upgrades (e.g. 26.1 → 26.7)
+  the same way the box GUI does (`opnsense-update -vR`). The firmware card
+  reports the new series as available with a note that the upgrade must be
+  run from the OPNsense GUI or console — the dashboard update button only
+  applies minor updates. A pending minor update keeps precedence (reach the
+  latest minor first), the series note rides along in the status text.
+
 ### Fixed
 
 - Firmware updates on OPNsense/pfSense no longer show "Tracking progress…"
