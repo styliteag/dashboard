@@ -347,6 +347,9 @@ def firmware_from_agent(data: dict, last_check: str) -> FirmwareStatus:
         updates_available=int(fw_data.get("updates_available", 1 if upgrade_available else 0) or 0),
         security_updates=int(fw_data.get("security_updates", 0) or 0),
         needs_reboot=bool(fw_data.get("needs_reboot", False)),
+        # Offered series upgrade (OPNsense, agent >= 3.1.1) — drives the
+        # dedicated "Upgrade to X" action; older agents omit it.
+        upgrade_major_version=fw_data.get("upgrade_major_version", "") or "",
         packages=fw_data.get("packages", []) or [],
         status_msg=fw_data.get("update_check_output", ""),
         last_check=last_check,

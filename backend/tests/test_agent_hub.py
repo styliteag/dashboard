@@ -241,6 +241,25 @@ def test_firmware_from_agent_linux_counts_pass_through() -> None:
     assert fw.packages == [{"name": "openssl", "current": "1", "new": "2"}]
 
 
+def test_firmware_from_agent_passes_series_upgrade_target() -> None:
+    """Regression: the explicit field-by-field mapper silently dropped
+    upgrade_major_version (agent 3.1.1) — the card text advertised 26.7 but
+    the dedicated upgrade button never appeared (live on opn2, 2026-07-16)."""
+    push = dict(
+        AGENT_PUSH,
+        firmware={
+            "product_version": "26.1.11_10",
+            "upgrade_available": True,
+            "product_latest": "26.7",
+            "upgrade_major_version": "26.7",
+        },
+    )
+    fw = firmware_from_agent(push, "2026-07-16T00:00:00+00:00")
+    assert fw.upgrade_major_version == "26.7"
+    # Older agents omit the field — must stay "" (no phantom button).
+    assert firmware_from_agent(AGENT_PUSH, "t").upgrade_major_version == ""
+
+
 def test_firmware_from_agent_derives_updates_count() -> None:
     fw = firmware_from_agent(AGENT_PUSH, "2026-06-23T10:00:00+00:00")
     assert fw.product_version == "26.03-RELEASE"

@@ -99,6 +99,7 @@ async def firmware_check(
                 product_latest=result_raw.get("product_latest") or product_version,
                 upgrade_available=upgrade_available,
                 check_failed=bool(result_raw.get("check_failed", False)),
+                upgrade_major_version=result_raw.get("upgrade_major_version", "") or "",
                 updates_available=1 if upgrade_available else 0,
                 status_msg=output[:500],
                 last_check=_dt.datetime.now(_dt.UTC).isoformat(),
