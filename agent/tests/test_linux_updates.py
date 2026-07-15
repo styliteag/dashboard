@@ -199,8 +199,10 @@ def test_upgrade_status_done_drops_cached_verdict(monkeypatch) -> None:
     agent._STATE.fw_check_ts = 0.0
 
 
-def test_upgrade_status_non_linux_is_unknown(monkeypatch) -> None:
-    monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
+def test_upgrade_status_unknown_platform_is_unknown(monkeypatch) -> None:
+    # opnsense/pfsense answer running/done since 3.0.4 (test_firewall_upgrade_status);
+    # only a platform the agent cannot classify degrades to the historic "unknown".
+    monkeypatch.setattr(agent, "detect_platform", lambda: "unknown")
     result = agent._cmd_upgrade_status({})
     assert result["success"] is False and result["status"] == "unknown"
 

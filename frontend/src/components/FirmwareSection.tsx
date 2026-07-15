@@ -1,7 +1,7 @@
 /**
  * Firmware status card with check/update actions (US-5.1 .. US-5.3).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw, Package, AlertTriangle, Lock } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
@@ -73,6 +73,7 @@ export default function FirmwareSection({
   const [confirmUpdate, setConfirmUpdate] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const [upgrading, setUpgrading] = useState(false);
+  const upgradeStartedRef = useRef(0);
 
   const updateMut = useMutation({
     mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/update`),
@@ -80,6 +81,7 @@ export default function FirmwareSection({
       setMsg({ ok: true, text: "Update started. Tracking progress…" });
       setConfirmUpdate(false);
       setConfirmName("");
+      upgradeStartedRef.current = Date.now();
       setUpgrading(true);
     },
     onError: (e) => {
@@ -97,13 +99,39 @@ export default function FirmwareSection({
     refetchInterval: 5_000,
   });
 
-  // Auto-stop polling when done
-  if (upgrading && upgradeStatus && upgradeStatus.status === "done") {
-    setTimeout(() => {
+  // Auto-stop polling on "done". Before refetching, force a fresh agent
+  // snapshot: the agent's firmware verdict is cached ~12h, so without the
+  // refresh the card keeps advertising the pre-update "N available"
+  // (opn1 incident 2026-07-15). Agents predating 3.0.4 never leave
+  // "unknown" on firewalls — stop tracking after 15 min instead of forever.
+  useEffect(() => {
+    if (!upgrading || !upgradeStatus) return;
+    if (upgradeStatus.status === "done") {
+      const t = setTimeout(async () => {
+        setUpgrading(false);
+        if (agentMode) {
+          try {
+            await api.post(`/api/instances/${instanceId}/agent/refresh`);
+          } catch {
+            // best effort — the agent self-heals its verdict on the next push
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ["firmware", instanceId] });
+        setMsg({ ok: true, text: "Update finished." });
+      }, 2000);
+      return () => clearTimeout(t);
+    }
+    if (
+      upgradeStatus.status === "unknown" &&
+      Date.now() - upgradeStartedRef.current > 15 * 60_000
+    ) {
       setUpgrading(false);
-      queryClient.invalidateQueries({ queryKey: qk });
-    }, 2000);
-  }
+      setMsg({
+        ok: false,
+        text: "No progress reported for 15 minutes — the update may still be running on the box. Check the firmware status manually.",
+      });
+    }
+  }, [upgrading, upgradeStatus, agentMode, instanceId, queryClient]);
 
   return (
     <section className="mt-8">
@@ -315,6 +343,12 @@ export default function FirmwareSection({
               <p className="text-xs text-slate-400">
                 Status: <span className="text-amber-400">{upgradeStatus.status}</span>
               </p>
+              {upgradeStatus.status === "unknown" && (
+                <p className="mt-1 text-xs text-slate-500">
+                  The box reports no live progress — the updater runs detached or the box is
+                  rebooting. Tracking continues automatically.
+                </p>
+              )}
               {upgradeStatus.log.length > 0 && (
                 <pre className="mt-2 max-h-48 overflow-y-auto text-xs text-slate-500">
                   {upgradeStatus.log.join("\n")}

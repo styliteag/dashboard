@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Firmware updates on OPNsense/pfSense no longer show "Tracking progress…"
+  forever: the agent (3.0.4) now reports real running/done progress with the
+  vendor updater's log tail (OPNsense `/tmp/pkg_upgrade.progress` incl.
+  `***DONE***`/`***REBOOT***` markers, pfSense `/conf/upgrade_log.txt` +
+  process state). With older agents the UI stops tracking after 15 minutes
+  instead of never.
+- After a pkg-only point release that does not reboot the box (e.g. OPNsense
+  26.1.11_5 → _10), the firmware card kept advertising the pre-update
+  "1 available" for up to 12 hours (the agent's cached update verdict was
+  never re-armed without an agent restart). The verdict is now dropped when
+  the tracked update finishes, and the agent also self-heals when it notices
+  the advertised version is already installed (covers bulk "Update all" and
+  manual CLI updates nobody tracks).
+
 ## [3.1.4] - 2026-07-14
 
 ### Fixed

@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.0.3"
+__version__ = "3.0.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -167,6 +167,12 @@ class _AgentState:
         # Firmware verdict cache + throttle window (see _store_fw_verdict).
         self.fw_verdict: dict = {}
         self.fw_check_ts: float = 0.0
+        # Wall-clock time.time() of the last firmware.update trigger. Lets
+        # _cmd_upgrade_status tell a *previous* run's leftover progress file
+        # (it survives on disk: /conf always, /tmp until reboot) apart from
+        # the current run — without this the first poll after "Start update"
+        # reads the old ***DONE*** marker and reports an instant "done".
+        self.fw_update_ts: float = 0.0
         # Certificate parse cache, keyed on config.xml mtime (see collect_certificates).
         self.certs_cache: list = []
         self.certs_cache_mtime: float = -1.0
@@ -1446,9 +1452,11 @@ def _read_opnsense_version() -> str:
 # Network update check every ~12h, plus a per-process jitter so a fleet doesn't
 # hit the vendor repos in lockstep. Release cadence is weeks; 600s meant 144
 # vendor requests per box per day (and repoc alone takes 30-40s cold on
-# pfSense). Manual "Check now" (firmware.check) and firmware.update always
-# check fresh; the first push after agent start still checks immediately
-# (empty verdict cache).
+# pfSense). Manual "Check now" (firmware.check) always checks fresh; the first
+# push after agent start still checks immediately (empty verdict cache), which
+# also covers updates that reboot the box. Updates WITHOUT a reboot re-arm the
+# throttle via _cmd_upgrade_status (UI tracking) or the installed==advertised
+# guard in collect_firmware (bulk/CLI updates nobody polls).
 _FW_CHECK_INTERVAL_S: float = 12 * 3600 + random.randint(0, 3600)
 
 
@@ -1772,6 +1780,22 @@ def collect_firmware() -> dict:
         version = _read_pfsense_version()
     else:
         version = _read_opnsense_version()
+
+    if (
+        plat != "linux"
+        and version
+        and _STATE.fw_verdict.get("upgrade_available")
+        and _STATE.fw_verdict.get("product_latest") == version
+    ):
+        # The advertised update is now the installed version — the update ran
+        # without anyone polling upgrade_status (bulk "Update all", manual CLI)
+        # and no reboot restarted the agent (pkg-only point release). Drop the
+        # verdict so this push re-checks instead of serving "N available" for
+        # up to 12h (incident opn1 2026-07-15). linux is excluded: its verdict
+        # is count-based and product_latest routinely equals the installed
+        # version, so this guard would force a vendor check on every push.
+        _STATE.fw_verdict = {}
+        _STATE.fw_check_ts = 0.0
 
     now = time.monotonic()
     if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
@@ -3989,21 +4013,91 @@ def _cmd_firmware_update(params: dict) -> dict:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
         cmd = ["configctl", "firmware", "update"]
+    _STATE.fw_update_ts = time.time()
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     if plat == "linux":
         return {"success": True, "output": "package upgrade started (no automatic reboot)"}
     return {"success": True, "output": "update started in background"}
 
 
-def _cmd_upgrade_status(params: dict) -> dict:
-    """Progress of a background package upgrade (linux, §25).
+# Written by the vendor updaters themselves — the agent only tails them.
+# OPNsense launcher.sh truncates + appends to its LOCKFILE and finishes with a
+# ***DONE*** or ***REBOOT*** marker line (config.sh, verified on 26.1.11);
+# pfSense-upgrade logs to /conf/upgrade_log.txt (no end marker — process check).
+_OPNSENSE_UPGRADE_PROGRESS = "/tmp/pkg_upgrade.progress"
+_PFSENSE_UPGRADE_LOG = "/conf/upgrade_log.txt"
 
-    "running" while apt/dpkg/dnf processes exist, else "done" — with the dpkg
-    (or dnf) log tail as the visible log. On done the update-check throttle is
-    re-armed so the next push reports fresh pending counts instead of serving
-    the pre-upgrade verdict for up to 12h.
+
+def _firewall_upgrade_status(plat: str) -> dict:
+    """Progress of a vendor firmware update on OPNsense/pfSense.
+
+    OPNsense: done when launcher.sh wrote its ***DONE***/***REBOOT*** marker;
+    running while the launcher process lives. pfSense has no marker — running
+    exactly while the `pfSense-upgrade -y` process lives (pgrep must NOT match
+    the periodic `pfSense-upgrade -c` check from collect_firmware).
     """
-    if detect_platform() != "linux":
+    if plat == "opnsense":
+        # "update|upgrade" only: launcher.sh also runs unrelated cron jobs
+        # ("-u changelog cron", observed live on 26.1.11) that must not read
+        # as a running firmware update.
+        progress = _OPNSENSE_UPGRADE_PROGRESS
+        proc_pat = "firmware/launcher.sh (update|upgrade)"
+    else:
+        progress, proc_pat = _PFSENSE_UPGRADE_LOG, "pfSense-upgrade -y"
+    proc_running = bool(_run(["pgrep", "-f", proc_pat], timeout=10).strip())
+
+    try:
+        mtime = os.path.getmtime(progress)
+    except OSError:
+        mtime = 0.0
+    started = _STATE.fw_update_ts
+    if started and not proc_running and mtime < started - 1.0:
+        # Update was just triggered but the updater has not (re)written its
+        # log yet — the leftover file from the previous run must not read as
+        # an instant "done". Give the daemonized launcher time to appear.
+        if time.time() - started < 180.0:
+            return {
+                "success": True,
+                "status": "running",
+                "log": ["waiting for the updater to start..."],
+            }
+
+    try:
+        lines = Path(progress).read_text(errors="replace").splitlines()[-20:]
+    except OSError:
+        lines = []
+
+    if plat == "opnsense":
+        marker_done = any("***DONE***" in ln or "***REBOOT***" in ln for ln in lines[-3:])
+        running = proc_running and not marker_done
+    else:
+        running = proc_running
+
+    if not running and _STATE.fw_update_ts:
+        # This run's update finished: drop the cached verdict so the next
+        # push re-checks now instead of advertising the pre-update "N
+        # available" for up to 12h (live incident opn1 2026-07-15: pkg-only
+        # 26.1.11_5→_10, no reboot, UI kept "1 available"). Gated on
+        # fw_update_ts so idle polls don't force gratuitous vendor checks.
+        _STATE.fw_verdict = {}
+        _STATE.fw_check_ts = 0.0
+        _STATE.fw_update_ts = 0.0
+    return {"success": True, "status": "running" if running else "done", "log": lines}
+
+
+def _cmd_upgrade_status(params: dict) -> dict:
+    """Progress of a background package/firmware upgrade.
+
+    linux (§25): "running" while apt/dpkg/dnf processes exist, else "done" —
+    with the dpkg (or dnf) log tail as the visible log. On done the
+    update-check throttle is re-armed so the next push reports fresh pending
+    counts instead of serving the pre-upgrade verdict for up to 12h.
+    OPNsense/pfSense: see _firewall_upgrade_status.
+    """
+    plat = detect_platform()
+    if plat in ("opnsense", "pfsense"):
+        return _firewall_upgrade_status(plat)
+    if plat != "linux":
         return {"success": False, "output": "unsupported platform", "status": "unknown", "log": []}
     procs = _run(
         ["sh", "-c", "pgrep -x apt-get; pgrep -x apt; pgrep -x dpkg; pgrep -x dnf"], timeout=10

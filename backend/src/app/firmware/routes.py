@@ -211,10 +211,11 @@ async def firmware_upgrade_status(
 ) -> FirmwareUpgradeStatus:
     """Poll upgrade progress.
 
-    Agent mode: ask the agent (linux answers running/done from apt/dpkg
-    process state + dpkg log tail, §25); firewall agents predate the command
-    and answer unknown-action → degrade to the historic "unknown" so the UI
-    behaves as before.
+    Agent mode: ask the agent. linux answers running/done from apt/dpkg
+    process state + dpkg log tail (§25); OPNsense/pfSense (agent >= 3.0.4)
+    from the vendor updater's progress log + process state. Agents predating
+    the command answer unknown-action → degrade to the historic "unknown"
+    (the UI stops tracking after a timeout).
     """
     inst = await _get_instance(instance_id, session, user)
 
