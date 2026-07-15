@@ -36,6 +36,9 @@ router = APIRouter(tags=["bulk"])
 _AGENT_COMMANDS: dict[str, tuple[str, float]] = {
     "firmware_check": ("firmware.check", 90),
     "firmware_update": ("firmware.update", 30),
+    # Series/major upgrade (agent >= 3.1.1): the agent refuses when the vendor
+    # offers no target and creates a boot environment first — 60s covers that.
+    "firmware_upgrade": ("firmware.upgrade", 60),
     "ipsec_restart": ("ipsec.restart", 30),
     "reboot": ("reboot", 30),
 }
@@ -43,7 +46,8 @@ _AGENT_COMMANDS: dict[str, tuple[str, float]] = {
 
 class BulkActionRequest(BaseModel):
     instance_ids: list[int]
-    action: str  # "firmware_check" | "firmware_update" | "ipsec_restart" | "reboot"
+    # "firmware_check" | "firmware_update" | "firmware_upgrade" | "ipsec_restart" | "reboot"
+    action: str
 
 
 class BulkResult(BaseModel):
@@ -107,12 +111,21 @@ async def bulk_action(
                 success=False,
                 message=f"unknown action: {payload.action}",
             )
-        if payload.action == "firmware_update" and inst.firmware_locked:
+        if payload.action in ("firmware_update", "firmware_upgrade") and inst.firmware_locked:
             return BulkResult(
                 instance_id=inst.id,
                 instance_name=inst.name,
                 success=False,
                 message="firmware updates are locked for this instance",
+            )
+        if payload.action == "firmware_upgrade" and not inst.agent_mode:
+            # Mirrors the single-instance route (501): the series upgrade needs
+            # the agent to resolve the target on-box and snapshot first.
+            return BulkResult(
+                instance_id=inst.id,
+                instance_name=inst.name,
+                success=False,
+                message="series upgrade requires agent mode; use the vendor gui",
             )
         try:
             if inst.agent_mode:

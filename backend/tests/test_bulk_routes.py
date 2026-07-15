@@ -142,6 +142,49 @@ def test_bulk_firmware_check_agent_mode_uses_hub(monkeypatch) -> None:
     assert agent.commands[0][0] == "firmware.check"
 
 
+def test_bulk_firmware_upgrade_agent_mode_dispatches_via_hub(monkeypatch) -> None:
+    agent = _FakeAgent({"success": True, "output": "series upgrade to 26.7 started in background"})
+    monkeypatch.setattr(bulk_mod.hub, "get", lambda iid: agent)
+    app = _app(monkeypatch, [_inst(1, "opn1", agent_mode=True)])
+    with TestClient(app) as c:
+        r = c.post("/api/bulk/action", json={"instance_ids": [1], "action": "firmware_upgrade"})
+    body = r.json()
+    assert body["succeeded"] == 1 and body["failed"] == 0
+    assert agent.commands[0][0] == "firmware.upgrade"
+
+
+def test_bulk_firmware_upgrade_refuses_polling_instance(monkeypatch) -> None:
+    # Mirrors the single-instance 501: the series upgrade needs the agent
+    # (on-box target resolution + boot environment) — never the API client.
+    client = _FakeClient()
+
+    async def _get(instance: object) -> _FakeClient:
+        return client
+
+    monkeypatch.setattr(bulk_mod.registry, "get", _get)
+    app = _app(monkeypatch, [_inst(1, "opn1")])
+    with TestClient(app) as c:
+        r = c.post("/api/bulk/action", json={"instance_ids": [1], "action": "firmware_upgrade"})
+    body = r.json()
+    assert body["failed"] == 1 and body["succeeded"] == 0
+    assert "agent mode" in body["results"][0]["message"]
+    assert client.calls == []
+
+
+def test_bulk_firmware_upgrade_respects_lock(monkeypatch) -> None:
+    agent = _FakeAgent()
+    monkeypatch.setattr(bulk_mod.hub, "get", lambda iid: agent)
+    inst = _inst(1, "opn1", agent_mode=True)
+    inst.firmware_locked = True
+    app = _app(monkeypatch, [inst])
+    with TestClient(app) as c:
+        r = c.post("/api/bulk/action", json={"instance_ids": [1], "action": "firmware_upgrade"})
+    body = r.json()
+    assert body["failed"] == 1
+    assert "locked" in body["results"][0]["message"]
+    assert agent.commands == []
+
+
 def test_bulk_unknown_action_fails_per_instance(monkeypatch) -> None:
     app = _app(monkeypatch, [_inst(1, "opn1"), _inst(2, "opn2", agent_mode=True)])
     monkeypatch.setattr(bulk_mod.hub, "get", lambda iid: _FakeAgent())

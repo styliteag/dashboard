@@ -284,6 +284,8 @@ class FirmwareEntry(BaseModel):
     product_latest: str
     upgrade_available: bool
     check_failed: bool = False  # update check could not run — verdict unknown
+    # Offered series/major upgrade target (OPNsense, e.g. "26.7"); "" when none.
+    upgrade_major_version: str = ""
     updates_available: int
     status_msg: str
     needs_reboot: bool
@@ -328,6 +330,7 @@ async def firmware_compliance(
                 product_latest=fw.product_latest,
                 upgrade_available=fw.upgrade_available,
                 check_failed=getattr(fw, "check_failed", False),
+                upgrade_major_version=getattr(fw, "upgrade_major_version", "") or "",
                 updates_available=fw.updates_available,
                 status_msg=fw.status_msg,
                 needs_reboot=fw.needs_reboot,

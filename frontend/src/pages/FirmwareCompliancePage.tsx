@@ -29,6 +29,8 @@ interface FirmwareEntry {
   product_latest: string;
   upgrade_available: boolean;
   check_failed?: boolean; // update check could not run — verdict unknown
+  // Offered series/major upgrade target (OPNsense, e.g. "26.7"); "" when none.
+  upgrade_major_version?: string;
   updates_available: number;
   status_msg: string;
   needs_reboot: boolean;
@@ -86,7 +88,7 @@ export default function FirmwareCompliancePage() {
 
   // Bulk update selection — only rows with a pending upgrade are eligible.
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState<"update" | "upgrade" | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [bulkResult, setBulkResult] = useState<BulkActionResponse | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -101,15 +103,15 @@ export default function FirmwareCompliancePage() {
   };
 
   const bulkUpdateMut = useMutation({
-    mutationFn: (ids: number[]) =>
+    mutationFn: (args: { ids: number[]; action: "firmware_update" | "firmware_upgrade" }) =>
       api.post<BulkActionResponse>("/api/bulk/action", {
-        instance_ids: ids,
-        action: "firmware_update",
+        instance_ids: args.ids,
+        action: args.action,
       }),
     onSuccess: (res) => {
       setBulkResult(res);
       setBulkError(null);
-      setConfirmBulk(false);
+      setConfirmBulk(null);
       setConfirmText("");
       setSelected(new Set());
       setTimeout(
@@ -148,6 +150,12 @@ export default function FirmwareCompliancePage() {
   const allEligibleSelected = eligible.length > 0 && selectedEligible.length === eligible.length;
   const toggleSelectAll = () =>
     setSelected(allEligibleSelected ? new Set() : new Set(eligible.map((e) => e.instance_id)));
+  // Series/major upgrades additionally need an agent on the box (the target
+  // is resolved on-box; direct-poll instances keep using the vendor GUI).
+  const selectedSeriesEligible = selectedEligible.filter(
+    (e) => !!e.upgrade_major_version && (agentMode.get(e.instance_id) ?? false),
+  );
+  const confirmTargets = confirmBulk === "upgrade" ? selectedSeriesEligible : selectedEligible;
 
   return (
     <div>
@@ -211,26 +219,46 @@ export default function FirmwareCompliancePage() {
         ))}
         {canWr && selectedEligible.length > 0 && !confirmBulk && (
           <button
-            onClick={() => setConfirmBulk(true)}
+            onClick={() => setConfirmBulk("update")}
             className="ml-auto flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
           >
             <Download className="h-3.5 w-3.5" /> Update {selectedEligible.length} selected
           </button>
         )}
+        {canWr && selectedSeriesEligible.length > 0 && !confirmBulk && (
+          <button
+            onClick={() => setConfirmBulk("upgrade")}
+            className="flex items-center gap-1 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+          >
+            <Download className="h-3.5 w-3.5" /> Series upgrade {selectedSeriesEligible.length}{" "}
+            selected
+          </button>
+        )}
       </div>
 
-      {/* Bulk update confirmation */}
+      {/* Bulk update / series-upgrade confirmation */}
       {confirmBulk && (
         <div className="mt-3 rounded-lg border border-red-800/50 bg-red-900/20 p-3">
-          <p className="text-sm text-red-300">
-            This starts a firmware update on {selectedEligible.length} instance
-            {selectedEligible.length > 1 ? "s" : ""} — each box reboots when its update requires it.
-            Type <span className="font-mono font-semibold">UPDATE</span> to confirm:
-          </p>
+          {confirmBulk === "update" ? (
+            <p className="text-sm text-red-300">
+              This starts a firmware update on {confirmTargets.length} instance
+              {confirmTargets.length > 1 ? "s" : ""} — each box reboots when its update requires
+              it. Type <span className="font-mono font-semibold">UPDATE</span> to confirm:
+            </p>
+          ) : (
+            <p className="text-sm text-red-300">
+              This starts a series/major upgrade on {confirmTargets.length} instance
+              {confirmTargets.length > 1 ? "s" : ""} — each box downloads the new release
+              (~1&nbsp;GB), creates a ZFS boot environment (on ZFS installs) and reboots. Read the
+              vendor release notes first. Type{" "}
+              <span className="font-mono font-semibold">UPGRADE</span> to confirm:
+            </p>
+          )}
           <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-slate-400">
-            {selectedEligible.map((e) => (
+            {confirmTargets.map((e) => (
               <li key={e.instance_id}>
-                {e.instance_name}: {e.product_version} → {e.product_latest}
+                {e.instance_name}: {e.product_version} →{" "}
+                {confirmBulk === "upgrade" ? e.upgrade_major_version : e.product_latest}
               </li>
             ))}
           </ul>
@@ -239,18 +267,30 @@ export default function FirmwareCompliancePage() {
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
-              placeholder="UPDATE"
+              placeholder={confirmBulk === "upgrade" ? "UPGRADE" : "UPDATE"}
             />
             <button
-              onClick={() => bulkUpdateMut.mutate(selectedEligible.map((e) => e.instance_id))}
-              disabled={confirmText !== "UPDATE" || bulkUpdateMut.isPending}
+              onClick={() =>
+                bulkUpdateMut.mutate({
+                  ids: confirmTargets.map((e) => e.instance_id),
+                  action: confirmBulk === "upgrade" ? "firmware_upgrade" : "firmware_update",
+                })
+              }
+              disabled={
+                confirmText !== (confirmBulk === "upgrade" ? "UPGRADE" : "UPDATE") ||
+                bulkUpdateMut.isPending
+              }
               className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
             >
-              {bulkUpdateMut.isPending ? "Starting…" : "Start updates"}
+              {bulkUpdateMut.isPending
+                ? "Starting…"
+                : confirmBulk === "upgrade"
+                  ? "Start series upgrades"
+                  : "Start updates"}
             </button>
             <button
               onClick={() => {
-                setConfirmBulk(false);
+                setConfirmBulk(null);
                 setConfirmText("");
               }}
               className="text-sm text-slate-400"

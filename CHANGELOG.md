@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the target release itself — the dashboard never sends a version — a ZFS
   boot environment is created first, and progress is tracked live through
   the reboot. Direct-poll instances keep using the vendor GUI.
+- The Firmware compliance page can run series upgrades in bulk: selecting
+  boxes with an offered series upgrade reveals a red "Series upgrade N
+  selected" button (type UPGRADE to confirm). Locked instances are skipped
+  and direct-poll instances are refused per box, mirroring the
+  single-instance rules.
 
 - Starting a firmware update on an OPNsense/pfSense box installed on ZFS now
   automatically creates a boot environment first (`orbit-pre-<version>`,
