@@ -26,13 +26,16 @@ if [ "$(uname)" != "FreeBSD" ]; then
     exit 1
 fi
 
-# Check Python — pfSense may ship only a versioned binary (python3.11), no python3.
+# Check Python — pfSense may ship only a versioned binary and the version
+# varies by release (python3.8 on old Plus 22.05, 3.11+ on newer). Prefer an
+# unversioned python3, else pick the NEWEST python3.N found — same resolution
+# as run-agent.sh / rc.d (a hardcoded version list missed python3.8 and the
+# installer refused the exact boxes the 3.8 floor exists for).
 PYTHON=""
-for _py in python3 python3.11 python3.10 python3.9; do
-    if command -v "${_py}" >/dev/null 2>&1; then
-        PYTHON="$(command -v "${_py}")"
-        break
-    fi
+for _d in /usr/local/bin /usr/bin; do
+    if [ -x "${_d}/python3" ]; then PYTHON="${_d}/python3"; break; fi
+    _cand=$(ls "${_d}"/python3.* 2>/dev/null | grep -E '/python3\.[0-9]+$' | sort -t. -k2 -rn | head -1)
+    if [ -n "${_cand}" ]; then PYTHON="${_cand}"; break; fi
 done
 if [ -z "${PYTHON}" ]; then
     echo "ERROR: no python3 interpreter found. Install it with: pkg install python311"

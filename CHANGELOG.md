@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rollback was needed. Boot environments are now created with
   `bectl create -r` (agent 3.1.6).
 
+- The agent installer (install.sh) refused boxes whose only Python is
+  python3.8 (e.g. pfSense Plus 22.05) — its hardcoded interpreter list
+  ended at 3.9. It now resolves the interpreter like run-agent.sh does:
+  unversioned python3 first, else the newest python3.N found.
 - The firmware update-check parser now also tolerates a "pfSense Plus"
   product spelling in the vendor tooling's output — a mismatch would have
   read an available Plus upgrade as "up to date" (agent 3.1.8,
