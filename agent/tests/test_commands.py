@@ -286,6 +286,38 @@ def test_pfsense_switch_train_parses_ok_and_errors(monkeypatch: pytest.MonkeyPat
     assert agent._pfsense_switch_train("2_8_1") != ""
 
 
+def test_firmware_update_refused_on_full_disk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The vendor updaters die SILENTLY on a full disk (output goes to
+    DEVNULL) — pf2 2026-07-16: 5.6 MB free, pkg exited mid-fetch without one
+    error line while the dashboard showed a successful start."""
+    monkeypatch.setattr(agent, "_root_free_mb", lambda: 6)
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.update", {})
+    assert result["success"] is False
+    assert "insufficient disk space" in result["output"]
+    assert "cmd" not in captured
+
+
+def test_firmware_upgrade_full_disk_refused_before_branch_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The refusal must come BEFORE the train switch — a box refused for disk
+    # space keeps its pinned train, never ends up half-switched.
+    monkeypatch.setattr(agent, "_root_free_mb", lambda: 6)
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+
+    def boom(train: str) -> str:
+        raise AssertionError("branch must not switch on a full disk")
+
+    monkeypatch.setattr(agent, "_pfsense_switch_train", boom)
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert result["success"] is False
+    assert "insufficient disk space" in result["output"]
+    assert "cmd" not in captured
+
+
 def test_pfsense_upgrade_proc_pattern_matches_only_the_apply_run() -> None:
     """The pgrep pattern must see the -y run (plain and -T-wrapped since
     3.1.4) but never the periodic -c check or rc.update_pkg_metadata's

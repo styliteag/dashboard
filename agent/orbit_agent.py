@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.4"
+__version__ = "3.1.5"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4237,10 +4237,41 @@ def _zfs_boot_snapshot(version: str) -> str:
     return name
 
 
+# Refuse to start a vendor update below this much free space on /. The
+# updaters die SILENTLY on a full disk (their output goes to DEVNULL): pf2
+# 2026-07-16, a 960 MB pool with 5.6 MB free — pkg exited mid-fetch without
+# a single error line and the dashboard showed a successful start.
+_FW_UPDATE_MIN_FREE_MB = 512
+
+
+def _root_free_mb() -> int:
+    """Free space on / in MB (-1 when statvfs is unavailable)."""
+    try:
+        st = os.statvfs("/")
+        return int(st.f_bavail * st.f_frsize // (1024 * 1024))
+    except OSError:
+        return -1
+
+
+def _fw_space_error() -> "dict | None":
+    """Non-None error result when / is too full for a vendor update to survive."""
+    free_mb = _root_free_mb()
+    if 0 <= free_mb < _FW_UPDATE_MIN_FREE_MB:
+        return {
+            "success": False,
+            "output": "insufficient disk space: %d MB free on /, need at least %d MB"
+            % (free_mb, _FW_UPDATE_MIN_FREE_MB),
+        }
+    return None
+
+
 def _cmd_firmware_update(params: dict) -> dict:
     # Non-blocking: start in background. The firewall vendor updaters handle
     # the reboot themselves when required (new base/kernel); a linux server is
     # deliberately NEVER auto-rebooted — the needs_reboot flag surfaces it.
+    space_err = _fw_space_error()
+    if space_err:
+        return space_err
     plat = detect_platform()
     env = None
     if plat == "linux":
@@ -4301,6 +4332,11 @@ def _cmd_firmware_upgrade(params: dict) -> dict:
     operations).
     """
     plat = detect_platform()
+    # Before the branch switch — a box refused for disk space must keep its
+    # pinned train, never end up half-switched.
+    space_err = _fw_space_error()
+    if space_err:
+        return space_err
     if plat == "pfsense":
         train, human = _pfsense_newer_branch(_read_pfsense_branch())
         if not train:
