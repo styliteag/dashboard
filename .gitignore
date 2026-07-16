@@ -235,3 +235,5 @@ backend/.env
 # Data files in dev
 data*/
 compose-db2.yml
+.env.*
+!.env.example
