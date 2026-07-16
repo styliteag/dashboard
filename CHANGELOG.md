@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installations pick City up on their next download — trigger it early via
   Access Control → "Refresh now" if you want city labels immediately.
 
+### Fixed
+
+- The Users page table no longer collapses into overlapping columns on
+  narrower windows: cells got proper padding, dates and action buttons no
+  longer wrap mid-word, and the table matches the bordered scrollable style
+  of the other admin tables.
+
 ## [3.1.6] - 2026-07-16
 
 ### Added

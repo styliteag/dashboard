@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, Shield, ShieldOff, Trash2, Users as UsersIcon } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
+import CountryTag from "../components/CountryTag";
 import { fmtDate, fmtDateTime, fmtRelative } from "../lib/datetime";
 import { useAuth } from "../lib/use-auth";
 import type { DashUser, Group, UserRole } from "../lib/types";
@@ -128,7 +129,7 @@ export default function UsersPage() {
   const canCreate = username.trim().length > 0 && password.length >= MIN_PW && !createMut.isPending;
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <h1 className="flex items-center gap-2 text-xl font-semibold">
         <UsersIcon className="h-5 w-5 text-slate-400" /> Users
       </h1>
@@ -229,178 +230,183 @@ export default function UsersPage() {
       )}
 
       {/* List */}
-      <table className="mt-4 w-full text-sm">
-        <thead className="text-left text-xs text-slate-500">
-          <tr>
-            <th className="py-1">User</th>
-            <th className="py-1">Role</th>
-            <th className="py-1">SuperAdmin</th>
-            <th className="py-1">Groups</th>
-            <th className="py-1">2FA</th>
-            <th className="py-1">Last login</th>
-            <th className="py-1">Created</th>
-            <th className="py-1 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => {
-            const isSelf = u.id === me.id;
-            const memberIds = new Set(u.groups.map((g) => g.id));
-            return (
-              <tr key={u.id} className="border-t border-slate-800 align-top">
-                <td className="py-2">
-                  <span className={u.disabled ? "text-slate-500 line-through" : undefined}>
-                    {u.username}
-                  </span>
-                  {isSelf && <span className="ml-1 text-xs text-slate-500">(you)</span>}
-                  {u.disabled && (
-                    <span
-                      className="ml-2 rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] text-amber-400"
-                      title="Logins rejected. Bootstrap seeds retire automatically once a real counterpart exists (…_DISABLED=auto) or are forced off with …_DISABLED=1; set …_DISABLED=0 to re-enable."
-                    >
-                      disabled
+      <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-900 text-left text-xs text-slate-500">
+            <tr>
+              <th className="px-3 py-2">User</th>
+              <th className="px-3 py-2">Role</th>
+              <th className="px-3 py-2">SuperAdmin</th>
+              <th className="px-3 py-2">Groups</th>
+              <th className="px-3 py-2">2FA</th>
+              <th className="px-3 py-2">Last login</th>
+              <th className="px-3 py-2">Created</th>
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => {
+              const isSelf = u.id === me.id;
+              const memberIds = new Set(u.groups.map((g) => g.id));
+              return (
+                <tr key={u.id} className="border-t border-slate-800 align-top">
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className={u.disabled ? "text-slate-500 line-through" : undefined}>
+                      {u.username}
                     </span>
-                  )}
-                </td>
-                <td className="py-2">
-                  <select
-                    value={u.role}
-                    disabled={patchMut.isPending}
-                    onChange={(e) =>
-                      patchMut.mutate({ id: u.id, body: { role: e.target.value as UserRole } })
-                    }
-                    className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-emerald-600 focus:outline-none disabled:opacity-50"
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="py-2">
-                  <label
-                    className="inline-flex items-center gap-1 text-xs text-slate-300"
-                    title={isSelf ? "You cannot revoke your own superadmin flag" : undefined}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={u.is_superadmin}
-                      disabled={isSelf || patchMut.isPending}
-                      onChange={(e) =>
-                        patchMut.mutate({ id: u.id, body: { is_superadmin: e.target.checked } })
-                      }
-                      className="accent-emerald-600 disabled:opacity-50"
-                    />
-                    {u.is_superadmin && <Shield className="h-3 w-3 text-emerald-400" />}
-                  </label>
-                </td>
-                <td className="py-2">
-                  <div className="flex max-w-56 flex-wrap gap-1">
-                    {groups.map((g) => (
-                      <label
-                        key={g.id}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${
-                          memberIds.has(g.id)
-                            ? "border-emerald-700 bg-emerald-900/40 text-emerald-300"
-                            : "border-slate-700 bg-slate-800 text-slate-400"
-                        }`}
+                    {isSelf && <span className="ml-1 text-xs text-slate-500">(you)</span>}
+                    {u.disabled && (
+                      <span
+                        className="ml-2 rounded bg-amber-600/20 px-1.5 py-0.5 text-[10px] text-amber-400"
+                        title="Logins rejected. Bootstrap seeds retire automatically once a real counterpart exists (…_DISABLED=auto) or are forced off with …_DISABLED=1; set …_DISABLED=0 to re-enable."
                       >
-                        <input
-                          type="checkbox"
-                          checked={memberIds.has(g.id)}
-                          disabled={patchMut.isPending}
-                          onChange={() => toggleUserGroup(u, g.id)}
-                          className="hidden"
+                        disabled
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={u.role}
+                      disabled={patchMut.isPending}
+                      onChange={(e) =>
+                        patchMut.mutate({ id: u.id, body: { role: e.target.value as UserRole } })
+                      }
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-emerald-600 focus:outline-none disabled:opacity-50"
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <label
+                      className="inline-flex items-center gap-1 text-xs text-slate-300"
+                      title={isSelf ? "You cannot revoke your own superadmin flag" : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={u.is_superadmin}
+                        disabled={isSelf || patchMut.isPending}
+                        onChange={(e) =>
+                          patchMut.mutate({ id: u.id, body: { is_superadmin: e.target.checked } })
+                        }
+                        className="accent-emerald-600 disabled:opacity-50"
+                      />
+                      {u.is_superadmin && <Shield className="h-3 w-3 text-emerald-400" />}
+                    </label>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex min-w-36 max-w-64 flex-wrap gap-1">
+                      {groups.map((g) => (
+                        <label
+                          key={g.id}
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${
+                            memberIds.has(g.id)
+                              ? "border-emerald-700 bg-emerald-900/40 text-emerald-300"
+                              : "border-slate-700 bg-slate-800 text-slate-400"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={memberIds.has(g.id)}
+                            disabled={patchMut.isPending}
+                            onChange={() => toggleUserGroup(u, g.id)}
+                            className="hidden"
+                          />
+                          {g.name}
+                        </label>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">
+                    {u.totp_enabled ? (
+                      <span className="text-emerald-400">TOTP</span>
+                    ) : (
+                      <span className="text-slate-500">passkey/none</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-400">
+                    {u.last_login_at ? (
+                      <span title={fmtDateTime(u.last_login_at)}>
+                        {u.last_login_ip}
+                        <CountryTag
+                          code={u.last_login_country}
+                          name={u.last_login_country_name}
                         />
-                        {g.name}
-                      </label>
-                    ))}
-                  </div>
-                </td>
-                <td className="py-2 text-xs">
-                  {u.totp_enabled ? (
-                    <span className="text-emerald-400">TOTP</span>
-                  ) : (
-                    <span className="text-slate-500">passkey/none</span>
-                  )}
-                </td>
-                <td className="py-2 text-xs text-slate-400">
-                  {u.last_login_at ? (
-                    <span title={fmtDateTime(u.last_login_at)}>
-                      {u.last_login_ip}
-                      {u.last_login_country && (
-                        <span className="ml-1 rounded bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300">
-                          {u.last_login_country}
+                        <span className="ml-1 whitespace-nowrap text-slate-500">
+                          {fmtRelative(u.last_login_at)}
                         </span>
-                      )}
-                      <span className="ml-1 text-slate-500">{fmtRelative(u.last_login_at)}</span>
-                    </span>
-                  ) : (
-                    <span className="text-slate-600">never</span>
-                  )}
-                </td>
-                <td className="py-2 text-xs text-slate-400">{fmtDate(u.created_at)}</td>
-                <td className="py-2">
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResetFor(resetFor === u.id ? null : u.id);
-                        setResetPw("");
-                      }}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
-                    >
-                      <KeyRound className="h-3 w-3" /> Reset password
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`Reset 2FA for “${u.username}”? They must re-enroll.`))
-                          reset2faMut.mutate(u.id);
-                      }}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-400 hover:bg-slate-800"
-                    >
-                      <ShieldOff className="h-3 w-3" /> Reset 2FA
-                    </button>
-                    {!isSelf && (
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">never</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">
+                    {fmtDate(u.created_at)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-end gap-1">
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm(`Delete user “${u.username}”?`))
-                            deleteMut.mutate(u.id);
+                          setResetFor(resetFor === u.id ? null : u.id);
+                          setResetPw("");
                         }}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800"
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
                       >
-                        <Trash2 className="h-3 w-3" /> Delete
+                        <KeyRound className="h-3 w-3" /> Reset password
                       </button>
-                    )}
-                  </div>
-                  {resetFor === u.id && (
-                    <div className="mt-2 flex items-center justify-end gap-2">
-                      <input
-                        type="password"
-                        value={resetPw}
-                        onChange={(e) => setResetPw(e.target.value)}
-                        placeholder={`New password (min ${MIN_PW})`}
-                        className="w-52 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs focus:border-emerald-600 focus:outline-none"
-                      />
                       <button
                         type="button"
-                        disabled={resetPw.length < MIN_PW || pwMut.isPending}
-                        onClick={() => pwMut.mutate({ id: u.id, new_password: resetPw })}
-                        className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                        onClick={() => {
+                          if (window.confirm(`Reset 2FA for “${u.username}”? They must re-enroll.`))
+                            reset2faMut.mutate(u.id);
+                        }}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs text-amber-400 hover:bg-slate-800"
                       >
-                        Save
+                        <ShieldOff className="h-3 w-3" /> Reset 2FA
                       </button>
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete user “${u.username}”?`))
+                              deleteMut.mutate(u.id);
+                          }}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800"
+                        >
+                          <Trash2 className="h-3 w-3" /> Delete
+                        </button>
+                      )}
                     </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    {resetFor === u.id && (
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <input
+                          type="password"
+                          value={resetPw}
+                          onChange={(e) => setResetPw(e.target.value)}
+                          placeholder={`New password (min ${MIN_PW})`}
+                          className="w-52 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs focus:border-emerald-600 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={resetPw.length < MIN_PW || pwMut.isPending}
+                          onClick={() => pwMut.mutate({ id: u.id, new_password: resetPw })}
+                          className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
