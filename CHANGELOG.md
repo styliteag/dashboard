@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- New Securepoint / SSH-enrichment instances default to SSH port **22** (was
-  9922). Existing instances keep their stored port; set the field explicitly
-  when a box listens on a non-standard port.
+- New Securepoint / SSH-enrichment instances default to SSH port **22** in the
+  UI and API (was 9922). Existing instances keep their stored port; set the
+  field explicitly when a box listens on a non-standard port.
 
 ## [3.1.7] - 2026-07-16
 
