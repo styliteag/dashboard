@@ -1,11 +1,11 @@
 # UPCOMING — Feature Ideas & Roadmap Candidates
 
 Ideas for where STYLiTE Orbit could grow. Not a commitment list — items move into
-`docs/agent-architecture.md` when they get concrete. Ordered roughly from small
-polish to larger bets.
+concrete design work when they get traction. Ordered roughly from small polish to
+larger bets.
 
-Known-gap backlog (correctness holes, agent lifecycle) lives in
-`docs/agent-architecture.md` §11/§14 — not duplicated here.
+Known-gap backlog (correctness holes, agent lifecycle) is tracked separately —
+not duplicated here.
 
 ---
 

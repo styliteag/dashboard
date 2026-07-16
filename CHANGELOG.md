@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- New Securepoint / SSH-enrichment instances default to SSH port **22** (was
+  9922). Existing instances keep their stored port; set the field explicitly
+  when a box listens on a non-standard port.
+
 ## [3.1.7] - 2026-07-16
 
 ### Added
@@ -16,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), grouped view, online sessions, the Users page and the footer.
   Hovering the tag shows everything the local GeoIP database knows — city,
   region, full country name, continent and EU membership (e.g.
-  "Kaiserslautern, Rheinland-Pfalz · Germany · Europe · EU").
+  "Berlin, Berlin · Germany · Europe · EU").
 - The weekly GeoIP auto-download switched from GeoLite2-Country to
   GeoLite2-City (~35 MB instead of ~6 MB, same free MaxMind license) to feed
   the hover labels above. It replaces the database in place at the existing
@@ -214,7 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A backend restart no longer floods notification channels with false
   offline/recovered pairs for every push instance (a 5-minute container
-  outage produced 140 Mattermost messages for a 70-box fleet): agent silence
+  outage produced 140 Mattermost messages for a 50+ box fleet): agent silence
   is now measured from backend start after a restart, so agents get their
   full staleness threshold to reconnect before being flagged — genuinely
   dead agents still alert once that threshold passes.

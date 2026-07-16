@@ -111,7 +111,7 @@ export default function EditInstanceDialog({ instance, onClose }: Props) {
       }
       if (isSecurepoint) {
         body.ssh_enabled = form.ssh_enabled;
-        body.ssh_port = Number(form.ssh_port) || 9922;
+        body.ssh_port = Number(form.ssh_port) || 22;
         body.ssh_user = form.ssh_user || "root";
         if (form.ssh_key) body.ssh_key = form.ssh_key; // empty = keep existing
       }

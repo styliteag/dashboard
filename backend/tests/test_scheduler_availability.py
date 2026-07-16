@@ -137,7 +137,7 @@ async def test_stale_flip_does_not_record_when_update_loses(monkeypatch) -> None
 async def test_stale_check_skips_silence_from_backend_downtime(monkeypatch) -> None:
     """Regression 2026-07-12: a 5-min container outage flagged every push
     instance offline on the first tick after restart (agents had no chance to
-    reconnect yet) — 140 offline/recovered messages in Mattermost for 70 boxes.
+    reconnect yet) — 140 offline/recovered messages in Mattermost for 50+ boxes.
     With ``_started_at`` flooring the silence clock, an agent last seen before
     the restart is NOT stale right after boot: no flip, no event, no dispatch.
     """

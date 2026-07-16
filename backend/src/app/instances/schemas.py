@@ -101,7 +101,7 @@ class InstanceCreate(BaseModel):
     push_interval_seconds: int | None = Field(default=None, ge=5, le=86400)
     # Securepoint SSH enrichment (opt-in): rich IPsec via `swanctl --raw`.
     ssh_enabled: bool = False
-    ssh_port: int = 9922
+    ssh_port: int = 22
     ssh_user: str = "root"
     ssh_key: str | None = None  # ed25519 private key (PEM); encrypted at rest
     location: str | None = None

@@ -21,7 +21,7 @@ _SID = "0123456789abcdef0123456789abcdef"
 _IPSEC_STATUS = [
     {
         "id": 1,
-        "name": "bonis-test",
+        "name": "site-a",
         "subnet_id": 1,
         "subnet": "10.21.0.0/22 - 10.1.1.0/24",
         "local_addr": "203.0.113.10",
@@ -30,7 +30,7 @@ _IPSEC_STATUS = [
     },
     {
         "id": 1,
-        "name": "bonis-test",
+        "name": "site-a",
         "subnet_id": 2,
         "subnet": "10.21.0.0/22 - 10.2.2.0/24",
         "local_addr": "203.0.113.10",
@@ -133,7 +133,7 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
     assert status.running is True
     assert len(status.tunnels) == 1  # two rows, one connection name
     t = status.tunnels[0]
-    assert t.id == "bonis-test"
+    assert t.id == "site-a"
     assert t.phase1_status == "established"  # at least one child UP
     assert (t.phase2_up, t.phase2_total) == (1, 2)
     assert t.local == "203.0.113.10"
@@ -148,10 +148,10 @@ async def test_ipsec_status_groups_rows_and_maps_state() -> None:
 async def test_ipsec_diagnose_without_ssh_returns_hint() -> None:
     sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)  # no ssh=
     try:
-        diag = await sp.ipsec_diagnose("bonis-test")
+        diag = await sp.ipsec_diagnose("site-a")
     finally:
         await sp.aclose()
-    assert diag.tunnel_id == "bonis-test"
+    assert diag.tunnel_id == "site-a"
     assert len(diag.sections) == 1
     assert "SSH" in diag.sections[0].title
 
@@ -163,14 +163,14 @@ async def test_ipsec_diagnose_with_ssh_returns_sections(monkeypatch: pytest.Monk
     from app.xsense.schemas import DiagnosisSection
 
     async def fake_diag(host, port, user, key, host_key, tunnel_id):  # noqa: ANN001
-        assert tunnel_id == "bonis-test"
-        return [DiagnosisSection(title="Connection config", content="bonis-test: IKEv2")]
+        assert tunnel_id == "site-a"
+        return [DiagnosisSection(title="Connection config", content="site-a: IKEv2")]
 
     monkeypatch.setattr(client_mod, "fetch_diagnosis", fake_diag)
-    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    ssh = SSHConfig(host="sp.test", port=22, user="root", private_key="KEY")
     sp = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh)
     try:
-        diag = await sp.ipsec_diagnose("bonis-test")
+        diag = await sp.ipsec_diagnose("site-a")
     finally:
         await sp.aclose()
     assert [s.title for s in diag.sections] == ["Connection config"]
@@ -183,15 +183,15 @@ async def test_ipsec_status_uses_ssh_when_configured(monkeypatch: pytest.MonkeyP
     from app.xsense.schemas import IPsecServiceStatus, IPsecTunnel
 
     rich = IPsecServiceStatus(
-        running=True, tunnels=[IPsecTunnel(id="bonis-test", ike_init_spi="0731875234fa6144")]
+        running=True, tunnels=[IPsecTunnel(id="site-a", ike_init_spi="0731875234fa6144")]
     )
 
     async def fake_fetch(host, port, user, key, host_key, *, running):  # noqa: ANN001
-        assert (host, port, user) == ("sp.test", 9922, "root")
+        assert (host, port, user) == ("sp.test", 22, "root")
         return rich
 
     monkeypatch.setattr(client_mod, "fetch_ipsec_status", fake_fetch)
-    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    ssh = SSHConfig(host="sp.test", port=22, user="root", private_key="KEY")
     with respx.mock(base_url=_BASE) as mock:
         mock.post("/spcgi.cgi").mock(side_effect=_router)  # serves appmgmt for the running flag
         async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh) as sp:
@@ -210,13 +210,13 @@ async def test_ipsec_status_falls_back_to_spcgi_when_ssh_fails(
         raise SecurepointSSHError("connect refused")
 
     monkeypatch.setattr(client_mod, "fetch_ipsec_status", boom)
-    ssh = SSHConfig(host="sp.test", port=9922, user="root", private_key="KEY")
+    ssh = SSHConfig(host="sp.test", port=22, user="root", private_key="KEY")
     with respx.mock(base_url=_BASE) as mock:
         mock.post("/spcgi.cgi").mock(side_effect=_router)
         async with SecurepointClient(_BASE, "admin", "secret", ssl_verify=False, ssh=ssh) as sp:
             status = await sp.ipsec_status()
     # spcgi fallback: simple view, no IKE cookie
-    assert status.tunnels[0].id == "bonis-test"
+    assert status.tunnels[0].id == "site-a"
     assert status.tunnels[0].ike_init_spi == ""
 
 

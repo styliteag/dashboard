@@ -22,7 +22,7 @@ def _inst(**over) -> SimpleNamespace:
         ssh_key_enc=b"enc",
         ssh_host_key=None,
         ssh_host="1.2.3.4",
-        ssh_port=9922,
+        ssh_port=22,
         ssh_user="root",
     )
     base.update(over)
@@ -44,7 +44,7 @@ async def test_pin_captures_and_stores_host_key(monkeypatch) -> None:
     await service._maybe_pin_host_key(inst)
 
     assert inst.ssh_host_key == "ssh-ed25519 AAAACAPTURED host"
-    assert seen == {"host": "1.2.3.4", "port": 9922, "user": "root", "key": "DECRYPTED"}
+    assert seen == {"host": "1.2.3.4", "port": 22, "user": "root", "key": "DECRYPTED"}
 
 
 @pytest.mark.asyncio

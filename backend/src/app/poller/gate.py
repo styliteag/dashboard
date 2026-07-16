@@ -80,7 +80,7 @@ def is_stale(
     not agent silence. Without the cap, every push instance is flagged offline
     on the first tick after a restart, before its agent had a chance to
     reconnect (incident 2026-07-12: a 5-minute container outage produced a
-    140-message offline/recovered storm in Mattermost for a 70-box fleet).
+    140-message offline/recovered storm in Mattermost for a 50+ box fleet).
     Genuinely dead agents still alert ``threshold_seconds`` after boot.
     """
     if agent_last_seen is None:

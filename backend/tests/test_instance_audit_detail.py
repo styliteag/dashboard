@@ -36,6 +36,6 @@ def test_empty_secret_is_not_logged_as_rotation() -> None:
 
 
 def test_only_allowlisted_fields_are_emitted() -> None:
-    payload = InstanceUpdate(name="fw2", ssh_user="root", ssh_port=9922, location="dc1")
+    payload = InstanceUpdate(name="fw2", ssh_user="root", ssh_port=22, location="dc1")
     detail = _safe_audit_detail(payload)
-    assert detail == {"name": "fw2", "ssh_user": "root", "ssh_port": 9922, "location": "dc1"}
+    assert detail == {"name": "fw2", "ssh_user": "root", "ssh_port": 22, "location": "dc1"}

@@ -157,7 +157,7 @@ def _orm_like(**overrides):
         poll_interval_seconds=None,
         push_interval_seconds=None,
         ssh_enabled=False,
-        ssh_port=9922,
+        ssh_port=22,
         ssh_user="root",
         ssh_key_set=False,
         ssh_host_key_pinned=False,

@@ -53,7 +53,7 @@ def test_ssh_config_built_when_enabled_with_key() -> None:
     inst = _instance(
         "securepoint",
         ssh_enabled=True,
-        ssh_port=9922,
+        ssh_port=22,
         ssh_user="root",
         ssh_key_enc=encrypt("PRIVATE-KEY-PEM"),
         ssh_host_key="ssh-ed25519 AAAAhostkey",
@@ -61,7 +61,7 @@ def test_ssh_config_built_when_enabled_with_key() -> None:
     cfg = ClientRegistry._ssh_config(inst)
     assert cfg is not None
     assert cfg.host == "fw.example.test"  # derived from base_url
-    assert (cfg.port, cfg.user) == (9922, "root")
+    assert (cfg.port, cfg.user) == (22, "root")
     assert cfg.private_key == "PRIVATE-KEY-PEM"  # decrypted
     assert cfg.host_key == "ssh-ed25519 AAAAhostkey"
 

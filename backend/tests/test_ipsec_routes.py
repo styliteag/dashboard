@@ -25,7 +25,7 @@ _SID = "0123456789abcdef0123456789abcdef"
 _IPSEC_STATUS = [
     {
         "id": 1,
-        "name": "bonis-test",
+        "name": "site-a",
         "subnet_id": 1,
         "subnet": "10.21.0.0/22 - 10.1.1.0/24",
         "local_addr": "203.0.113.10",
@@ -108,7 +108,7 @@ def test_ipsec_status_securepoint_returns_mapped_status(monkeypatch):
     body = r.json()
     assert body["running"] is True
     assert len(body["tunnels"]) == 1
-    assert body["tunnels"][0]["id"] == "bonis-test"
+    assert body["tunnels"][0]["id"] == "site-a"
     assert body["tunnels"][0]["phase1_status"] == "established"
 
 
@@ -116,7 +116,7 @@ def test_ipsec_connect_securepoint_returns_not_supported(monkeypatch):
     client = SecurepointClient(_BASE, "admin", "secret", ssl_verify=False)
     app = _app(monkeypatch, _instance(), client)
     with TestClient(app) as c:
-        r = c.post("/api/instances/1/ipsec/connect/bonis-test")
+        r = c.post("/api/instances/1/ipsec/connect/site-a")
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is False

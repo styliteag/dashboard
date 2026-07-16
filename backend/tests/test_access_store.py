@@ -251,7 +251,7 @@ def test_timeline_search_filters_all_sources() -> None:
             _user=None,
             kinds="auth,denial,request",
             before=None,
-            q="bonis",
+            q="alice",
             hours=24,
             limit=50,
         )

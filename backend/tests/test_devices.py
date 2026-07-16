@@ -58,7 +58,7 @@ def test_instance_response_includes_transport_and_device_type() -> None:
         device_type="pfsense",
         agent_mode=True,
         ssh_enabled=False,
-        ssh_port=9922,
+        ssh_port=22,
         ssh_user="root",
         ssh_key_set=False,
         ssh_host_key_pinned=False,

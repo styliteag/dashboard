@@ -1,6 +1,6 @@
 """GeoIP access restriction: geoip_config table + last-login columns on users.
 
-The dashboard controls root shells on ~70 customer firewalls; as an extra layer
+The dashboard controls root shells on customer firewalls; as an extra layer
 on top of password+MFA, interactive access is geo-restricted (superadmin-managed
 country allowlist + CIDR/DynDNS whitelist, docs/geoip-access-restriction.md).
 ``geoip_config`` is a deliberate single-row table (id=1) OUTSIDE app_settings —

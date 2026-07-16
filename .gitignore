@@ -226,9 +226,10 @@ pnpm-debug.log*
 CLAUDE.md
 AGENTS.md
 
-# Internal ADRs — local-only, not published (code references their DR numbers)
+# Internal ADRs / design notes — local-only, not published
 docs/access-log.md
 docs/geoip-access-restriction.md
+docs/agent-architecture.md
 
 # Local secrets / env (root .env already covered above; backend/.env kept for ad-hoc tooling)
 backend/.env

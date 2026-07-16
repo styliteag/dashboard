@@ -92,8 +92,7 @@ also exposes an optional **relay** — the dashboard tunnels HTTP requests to th
 own REST API through the agent connection, so the dashboard needs no inbound access
 and no stored API key. The same tunnel is reused for **live packet capture** (raw
 pcap streaming) and **GUI proxy**. The agent supports dashboard-triggered **self-update**,
-one-time **enrollment** (trade a code for a token), and **uninstall**. See
-[`docs/agent-architecture.md`](docs/agent-architecture.md) for the full design.
+one-time **enrollment** (trade a code for a token), and **uninstall**.
 
 **Securepoint UTM** boxes are **direct-poll only** — no on-box agent. The dashboard
 maps the appliance's `spcgi.cgi` JSON API (session-auth) onto the same `DeviceClient`
@@ -218,7 +217,7 @@ and the button is hidden — no wildcard/DNS needed.
 
 > Security: each origin fronts a firewall **admin** GUI — the `forwardAuth` gate is
 > what keeps it closed. Don't remove it, and keep the forwarder ports off the public
-> internet (reachable only by your reverse proxy). See `docs/agent-architecture.md` §18.
+> internet (reachable only by your reverse proxy).
 
 ## Layout
 
@@ -232,7 +231,7 @@ frontend/               Vite + React + TS app, Dockerfile.dev
 agent/                  stdlib push agent for OPNsense/pfSense + install.sh + rc.d
 checkmk/                Checkmk special-agent plugin (pulls /api/export/checkmk)
 scripts/                sign_agent.py — Ed25519 signing for agent self-update
-docs/                   agent-architecture.md (living design doc)
+docs/                   public operator docs (Securepoint SSH, glossary, …)
 .github/workflows/      release.yml — multi-arch publish on tag push
 VERSION                 source of truth, baked into image at build
 release.sh              version bump + tag + push helper
@@ -334,7 +333,7 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
 
 ## Further docs
 
-- [`docs/agent-architecture.md`](docs/agent-architecture.md) — agent & connectivity design (transports, self-update, pfSense port, relay, Checkmk).
+- [`docs/securepoint-ssh.md`](docs/securepoint-ssh.md) — SSH enrichment for Securepoint IPsec detail.
 - [`CHECKMK.md`](CHECKMK.md) — full Checkmk integration guide (what's exposed, API key, datasource program, piggyback hosts, troubleshooting).
 - [`checkmk/README.md`](checkmk/README.md) — Checkmk special-agent install and auth.
 

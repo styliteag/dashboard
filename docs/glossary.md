@@ -1,7 +1,6 @@
 # Glossar
 
-Domänenbegriffe des Orbit-Dashboards. Quelle der Wahrheit ist der Code; §-Verweise
-zeigen auf `docs/agent-architecture.md`.
+Domänenbegriffe des Orbit-Dashboards. Quelle der Wahrheit ist der Code.
 
 - **Instanz** — ein verwaltetes Gerät (Firewall oder Server) als DB-Objekt
   (`Instance`, `db/models.py`). Träger von `device_type`, `transport`, Credentials,

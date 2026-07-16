@@ -145,7 +145,7 @@ export default function PacketCaptureViewer() {
       const names = tcpFlagNames(flags);
       let info = `${sport}→${dport}`;
       if (names.length) info += ` ${names.join("-")}`;
-      if ([80, 443, 9922].includes(dport) || [80, 443, 9922].includes(sport)) info += " HTTP/TLS?";
+      if ([80, 443].includes(dport) || [80, 443].includes(sport)) info += " HTTP/TLS?";
       return {
         idx,
         ts: ts.toFixed(3),

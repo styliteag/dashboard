@@ -236,7 +236,7 @@ class Instance(Base):
     # admin supplies a per-instance ed25519 private key (Fernet-encrypted at rest,
     # like the API secret); its public half is installed on the box.
     ssh_enabled: Mapped[bool] = mapped_column(default=False, nullable=False, server_default="false")
-    ssh_port: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("9922"))
+    ssh_port: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("22"))
     ssh_user: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'root'"))
     # Per-instance SSH private key (OpenSSH ed25519 PEM), Fernet-encrypted. NULL = none.
     ssh_key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

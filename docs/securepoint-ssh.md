@@ -21,7 +21,7 @@ port) — it is *not* an agent and does not run anything persistent on the box.
   instance form and stored Fernet-encrypted in the DB (like the API secret); it
   is never returned by the API or logged. The **public** key is installed on the
   box by an admin (below).
-- On each poll the dashboard SSHes in (default `root@<host>:9922`), runs the two
+- On each poll the dashboard SSHes in (default `root@<host>:22`), runs the two
   `swanctl` commands, and parses them. If SSH fails, it falls back to the plain
   spcgi IPsec view automatically.
 - The SSH host key is **not** auto-pinned (saving an instance must not block on the
@@ -29,7 +29,7 @@ port) — it is *not* an agent and does not run anything persistent on the box.
   is empty the connection runs unpinned. Host-key pinning is defense-in-depth only:
   public-key auth means the private key is never sent to the box, so it can't be
   stolen — an unpinned connection only risks an impostor feeding false swanctl data.
-  Restrict TCP 9922 to the dashboard's source IP to close that gap.
+  Restrict the SSH port to the dashboard's source IP to close that gap.
 
 ## 1. Generate the keypair (dashboard side)
 
@@ -67,7 +67,8 @@ reliable path and persist across reboots/firmware updates.
 
 ## 3. Enable SSH on the instance (dashboard)
 
-Edit the Securepoint instance → enable **SSH enrichment**, set port (`9922`) and
+Edit the Securepoint instance → enable **SSH enrichment**, set port (`22` unless
+the box listens elsewhere) and
 user (`root`), paste the private key, save. The VPN view then shows the tunnel
 with its peer paired and live byte counters.
 
@@ -76,8 +77,8 @@ with its peer paired and live byte counters.
 - `system ssh pubkey new` installs an **unrestricted root key** — Securepoint has
   no forced-command option, so this key is root on the box. "The dashboard only
   runs `swanctl --list-*`" is policy, not something the box enforces.
-- Mitigate accordingly: **restrict TCP 9922 to the dashboard's source IP** with a
-  firewall rule, treat the dashboard's DB + master key as crown jewels, and use a
+- Mitigate accordingly: **restrict the SSH port to the dashboard's source IP** with
+  a firewall rule, treat the dashboard's DB + master key as crown jewels, and use a
   **separate keypair per box** so a single key's blast radius is one box.
 - Public-key auth means the private key is never sent to the box, so a MITM cannot
   steal it; host-key pinning guards against an impostor feeding false swanctl data.

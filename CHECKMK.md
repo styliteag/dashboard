@@ -6,9 +6,8 @@ Checkmk pulls evaluated service checks from it and turns each firewall into a
 piggyback host with services (memory, CPU, disks, gateways, IPsec service +
 tunnels, IPsec ping monitors, firmware).
 
-This is the operator guide. For the design rationale see
-[`docs/agent-architecture.md` §13](docs/agent-architecture.md); the plugin's own
-short note lives in [`checkmk/README.md`](checkmk/README.md).
+This is the operator guide. The plugin's own short note lives in
+[`checkmk/README.md`](checkmk/README.md).
 
 ---
 
@@ -267,8 +266,8 @@ as **Local checks**.
 - **Thresholds are hardcoded** (memory/disk 80/90, CPU 95, gateway loss 20/80 —
   `evaluate.py:16-20`). Per-instance/global config is a follow-up.
 - **Direct-poll instances** are polled live per export (no cache yet).
-- **Full per-role RBAC** for keys is still open (`docs/agent-architecture.md`
-  §14). Today the only restriction is read-only.
+- **Full per-role RBAC** for keys is still open. Today the only restriction is
+  read-only.
 
 ---
 

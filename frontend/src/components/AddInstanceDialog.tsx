@@ -27,7 +27,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
     ca_bundle: "",
     ssl_verify: false,
     ssh_enabled: false,
-    ssh_port: "9922",
+    ssh_port: "22",
     ssh_user: "root",
     ssh_key: "",
     interval: "", // push (agent) or poll (direct) cadence; empty = global default
@@ -102,7 +102,7 @@ export default function AddInstanceDialog({ onClose }: Props) {
         ...(isSecurepoint
           ? {
               ssh_enabled: form.ssh_enabled,
-              ssh_port: Number(form.ssh_port) || 9922,
+              ssh_port: Number(form.ssh_port) || 22,
               ssh_user: form.ssh_user || "root",
               ...(form.ssh_key ? { ssh_key: form.ssh_key } : {}),
             }

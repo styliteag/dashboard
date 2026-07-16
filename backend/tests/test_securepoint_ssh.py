@@ -59,13 +59,13 @@ def test_key_blob_handles_malformed_line() -> None:
 
 
 def test_ssh_config_defaults() -> None:
-    cfg = SSHConfig(host="h", port=9922, user="root", private_key="KEY")
+    cfg = SSHConfig(host="h", port=22, user="root", private_key="KEY")
     assert cfg.host_key is None  # unpinned by default
 
 
 def test_parse_sections_splits_on_markers() -> None:
     out = (
-        "@@SEC@@Connection config\nbonis-test: IKEv2\n  local: %any\n"
+        "@@SEC@@Connection config\nsite-a: IKEv2\n  local: %any\n"
         "@@SEC@@Recent IPsec log (charon)\nline1\nline2\n"
         "@@SEC@@Peer reachability\nping 1.2.3.4:\n"
     )
@@ -75,7 +75,7 @@ def test_parse_sections_splits_on_markers() -> None:
         "Recent IPsec log (charon)",
         "Peer reachability",
     ]
-    assert secs[0].content == "bonis-test: IKEv2\n  local: %any"
+    assert secs[0].content == "site-a: IKEv2\n  local: %any"
     assert secs[1].content == "line1\nline2"
 
 
@@ -92,14 +92,14 @@ async def test_connect_refuses_unpinned_host_key() -> None:
     # A command-running connection must refuse to proceed without a pinned key,
     # before any socket is opened.
     with pytest.raises(SecurepointSSHError, match="not pinned"):
-        await _connect("h", 9922, "root", "PRIVATE_KEY", host_key=None)
+        await _connect("h", 22, "root", "PRIVATE_KEY", host_key=None)
 
 
 @pytest.mark.asyncio
 async def test_fetch_ipsec_status_fails_closed_when_unpinned() -> None:
     # The caller (SecurepointClient.ipsec_status) catches this and falls back to spcgi.
     with pytest.raises(SecurepointSSHError):
-        await fetch_ipsec_status("h", 9922, "root", "PRIVATE_KEY", None, running=True)
+        await fetch_ipsec_status("h", 22, "root", "PRIVATE_KEY", None, running=True)
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_connect_unpinned_allowed_on_probe_path() -> None:
     # require_host_key=False (the probe/TOFU path) bypasses the pin guard; an empty
     # private key makes it fail on the NEXT check, proving it got past the guard.
     with pytest.raises(SecurepointSSHError, match="no SSH private key"):
-        await _connect("h", 9922, "root", "  ", host_key=None, require_host_key=False)
+        await _connect("h", 22, "root", "  ", host_key=None, require_host_key=False)
 
 
 # --- per-tunnel scoping of the diagnose bundle --------------------------------
