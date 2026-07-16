@@ -1177,3 +1177,33 @@ Branch-Switch + BE `orbit-pre-2.7.2-RELEASE` → 187 Pakete (413 MiB) → Auto-R
 date" (major leer), Rollback-BE vorhanden (777 M). Disk-Refusal ebenfalls live
 bewiesen (vor dem Disk-Resize: „insufficient disk space: 5 MB free on /").
 Commits: 05165c3, fdee003, 3409201.
+
+### §26 Nachtrag — Rollback-Beweis + drei Live-Bugs (agent 3.1.6/3.1.7, 2026-07-16)
+
+Der zweite E2E-Durchlauf auf pf2 (nach Hypervisor-Snapshot-Rollback auf frisches
+2.7.2) deckte drei weitere Fleet-Bugs auf, alle live reproduziert und gefixt:
+
+1. **BEs müssen rekursiv sein** (3.1.6): pfSense hält `/cf` (config.xml!),
+   `var_db_pkg` und `var_cache_pkg` als **Kind-Datasets unter** dem BE. Ein
+   `bectl create` ohne `-r` ergibt ein BE ohne /cf — Boot dorthin endet in
+   „config.xml is corrupted" (genau beim User passiert; Recovery war der
+   VM-Snapshot). Jetzt `bectl create -r`. OPNsense: keine Children unter
+   `ROOT/<be>` (live auf opn1 verifiziert), `-r` dort No-op.
+2. **`-T` existiert nur auf Tooling ≥ 1.3** (3.1.7): pfSense-upgrade 1.2.1
+   (2.7.2-Stand) stirbt mit „Illegal option -T" + Usage nach DEVNULL. Der
+   3.1.4-Lockfile-Fix funktionierte nur, weil ein vorheriger plain-`-y`-Lauf das
+   Tooling bereits auf 1.3.10 gehoben hatte. Jetzt: plain `-y` überall, Lock-Warten
+   agent-seitig (`_pfsense_wait_updater_idle`: pgrep-Poll, max 180 s, dann lesbarer
+   Fehler).
+3. **Persistierter Branch überlebt Rollbacks**: `pkg_repo_conf_path` in der
+   restaurierten config zeigt weiter auf den neuen Train; Boot-Jobs stellen den
+   Symlink darauf zurück → „no series upgrade offered". Kein Codefix — bei
+   Lab-Rollbacks den Train zurückpinnen (GUI-Codepfad, siehe oben).
+
+**Rollback live bewiesen:** Nach dem finalen E2E (2.7.2 → 2.8.1, rekursives BE mit
+cf/var_db_pkg/var_cache_pkg als Children) auf pf2: `bectl activate
+orbit-pre-2.7.2-RELEASE` + Reboot → Box bootet als 2.7.2-RELEASE mit intakter
+config (config.xml 14 679 B, hostname pf2), Agent verbindet, Dashboard bietet nach
+Train-Re-Pin wieder das 2.8.1-Serien-Upgrade an. pf2 bleibt in diesem Zustand als
+wiederverwendbarer Upgrade-Tester (aktives BE = orbit-pre-2.7.2-RELEASE, „default"
+daneben = 2.8.1). Commits: 15e1ff7 (BE -r), c1651d7 (Lock-Wait statt -T).
