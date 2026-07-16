@@ -196,3 +196,108 @@ def test_config_backup_missing_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent.os.path, "exists", lambda p: False)
     result = agent.execute_command("config.backup", {})
     assert result["success"] is False
+
+
+def test_firmware_upgrade_pfsense_switches_train_then_starts_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression (pre-3.1.3): pfSense series upgrades were text-only — the agent
+    refused firmware.upgrade on pfsense and the dashboard told the operator to
+    switch the branch in the vendor GUI. The agent now switches the train
+    on-box (target from the box's own repo descriptors, never the dashboard)
+    and starts the regular updater."""
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
+    monkeypatch.setattr(agent, "_pfsense_newer_branch", lambda b: ("2_8_1", "2.8.1"))
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.2-RELEASE")
+    monkeypatch.setattr(agent, "_zfs_boot_snapshot", lambda v: "orbit-pre-2.7.2-RELEASE")
+    switched: list[str] = []
+
+    def fake_switch(train: str) -> str:
+        switched.append(train)
+        return ""
+
+    monkeypatch.setattr(agent, "_pfsense_switch_train", fake_switch)
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert switched == ["2_8_1"]
+    assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-y"]
+    assert result["success"] is True
+    assert "2.8.1" in result["output"]
+    assert "orbit-pre-2.7.2-RELEASE" in result["output"]
+
+
+def test_firmware_upgrade_pfsense_requires_offered_train(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_8_1")
+    monkeypatch.setattr(agent, "_pfsense_newer_branch", lambda b: ("", ""))
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert result["success"] is False
+    assert "cmd" not in captured
+
+
+def test_firmware_upgrade_pfsense_aborts_when_branch_switch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A half-switched box must never start the updater — the operator gets the
+    # switch error and the box stays on its pinned train.
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
+    monkeypatch.setattr(agent, "_pfsense_newer_branch", lambda b: ("2_8_1", "2.8.1"))
+    monkeypatch.setattr(agent, "_pfsense_switch_train", lambda t: "php exploded")
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert result["success"] is False
+    assert "php exploded" in result["output"]
+    assert "cmd" not in captured
+
+
+def test_firmware_upgrade_refused_on_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert result["success"] is False
+    assert "cmd" not in captured
+
+
+def test_pfsense_switch_train_rejects_bad_train_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*a: object, **k: object) -> str:
+        raise AssertionError("php must not run for an invalid train id")
+
+    monkeypatch.setattr(agent, "_run", boom)
+    assert "invalid train id" in agent._pfsense_switch_train("2_8_1; rm -rf /")
+    assert "invalid train id" in agent._pfsense_switch_train("")
+
+
+def test_pfsense_switch_train_parses_ok_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    # repoc noise before the marker is fine — only the last line decides.
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "some repoc noise\nok\n")
+    assert agent._pfsense_switch_train("2_8_1") == ""
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "train not offered by this box: 9_9")
+    assert "not offered" in agent._pfsense_switch_train("9_9")
+    # php missing / silent death (empty _run) must not read as success.
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "")
+    assert agent._pfsense_switch_train("2_8_1") != ""
+
+
+def test_firmware_check_pfsense_reports_series_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The manual firmware.check must fold the newer-train verdict in exactly
+    like collect_firmware — before 3.1.3 it skipped _pfsense_newer_branch, so
+    a manual "Check now" overwrote the cached verdict WITHOUT the series offer
+    and the dashboard's upgrade button vanished until the next ~12h check."""
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "Your system is up to date")
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.2-RELEASE")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
+    monkeypatch.setattr(agent, "_list_pfsense_branches", lambda: ["2_7_2", "2_8_1"])
+    monkeypatch.setattr(agent, "_pfsense_newer_branch", lambda b: ("2_8_1", "2.8.1"))
+    result = agent.execute_command("firmware.check", {})
+    assert result["upgrade_available"] is True
+    assert result["product_latest"] == "2.8.1"
+    assert result["upgrade_major_version"] == "2.8.1"
+    assert "newer release train available" in result["output"]

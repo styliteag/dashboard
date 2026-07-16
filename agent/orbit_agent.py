@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.2"
+__version__ = "3.1.3"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -333,6 +333,47 @@ def _list_pfsense_branches() -> list[str]:
         return []
     except Exception:
         return []
+
+
+def _pfsense_switch_train(train: str) -> str:
+    """Switch the pfSense update branch/train on-box; "" on success, error text on failure.
+
+    Mirrors the GUI's System > Update save handler (system_update_settings.php):
+    persist ``system/pkg_repo_conf_path``, then ``pkg_switch_repo()`` rewrites
+    the pfSense.conf symlink and refreshes the repo metadata. Runs through the
+    ``_PF_CONFIG_COMPAT`` shim (config_set_path is 2.7+; the fleet has CE 2.6)
+    and is guarded on a populated $config — write_config on an empty tree
+    would wipe the box config. Errors go to STDOUT (_run discards stderr).
+
+    The train id comes exclusively from the box's OWN repo descriptors
+    (``_pfsense_newer_branch``) — a dashboard-supplied train is never honored
+    (same rule as tunnel destinations: never trust server-supplied targets
+    for privileged operations). Verified live on CE 2.7.2 (pf2, 2026-07-16):
+    the GUI code path sets the symlink + config and the next
+    ``pfSense-upgrade -c`` offers the new release.
+    """
+    if not re.fullmatch(r"[0-9][0-9_.]*", train):
+        return "invalid train id: %r" % train
+    php = (
+        'require_once("config.inc"); require_once("pkg-utils.inc"); '
+        + _PF_CONFIG_COMPAT
+        + '\nif (empty($config)) { echo "config not loaded"; exit(1); } '
+        "$train = $argv[1]; "
+        'if (!function_exists("pkg_list_repos") || !function_exists("pkg_switch_repo")) '
+        '{ echo "pkg repo functions unavailable"; exit(1); } '
+        "foreach (pkg_list_repos() as $repo) { "
+        'if ($repo["name"] === $train) { '
+        'config_set_path("system/pkg_repo_conf_path", $repo["path"]); '
+        'write_config("orbit-agent: switch update branch to " . $train); '
+        'pkg_switch_repo($repo["path"], $repo["name"]); '
+        'echo "ok"; exit(0); } } '
+        'echo "train not offered by this box: " . $train; exit(1);'
+    )
+    out = _run(["/usr/local/bin/php", "-r", php, "--", train], timeout=120)
+    lines = [ln for ln in out.strip().splitlines() if ln.strip()]
+    if lines and lines[-1].strip() == "ok":
+        return ""
+    return (lines[-1].strip() if lines else "") or "branch switch produced no output"
 
 
 def collect_cpu() -> dict:
@@ -1707,6 +1748,31 @@ def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
     return best_train, (m.group(1) if m else best_train.replace("_", "."))
 
 
+def _pfsense_newer_train_verdict(
+    branch: str, upgrade_available: bool, latest: str, out: str
+) -> "tuple[bool, str, str, str]":
+    """Fold a newer stable release train into a pfSense update verdict.
+
+    Returns (upgrade_available, latest, major, out). Used by BOTH the push
+    loop's collect_firmware and the manual firmware.check command — they must
+    stay symmetric, or a manual "Check now" overwrites the cached verdict
+    WITHOUT the series offer and the dashboard's upgrade button vanishes
+    until the next ~12h check.
+    """
+    newer_train, newer_version = _pfsense_newer_branch(branch)
+    if not newer_train:
+        return upgrade_available, latest, "", out
+    # In-train check says "up to date", but a newer release train exists.
+    # major → upgrade_major_version → the dashboard offers the series upgrade
+    # (agent >= 3.1.3 switches the train itself in _cmd_firmware_upgrade).
+    out = out.strip() + (
+        "\nnewer release train available: %s (%s) — the pinned train reports "
+        "no update; the series upgrade switches the update branch and "
+        "installs it" % (newer_train, newer_version)
+    )
+    return True, newer_version, newer_version, out
+
+
 def _read_linux_version() -> str:
     """PRETTY_NAME from /etc/os-release (e.g. 'Ubuntu 26.04 LTS')."""
     try:
@@ -1920,7 +1986,7 @@ def collect_firmware() -> dict:
             }
 
         if pfsense:
-            major = ""  # pfSense series/train changes are text-only (see below)
+            major = ""
             # Refresh Netgate's train catalogue first — exactly what the GUI's
             # update page does (pfSense-repoc, ~30-40s cold). Without it a new
             # release train only appears after someone opens that page. Best-effort:
@@ -1939,16 +2005,9 @@ def collect_firmware() -> dict:
             # CE names the target ("2.7.0 version of pfSense is available");
             # otherwise fall back to installed so "Latest" never goes blank.
             latest = _pfsense_target_version(out) or version
-            newer_train, newer_version = _pfsense_newer_branch(branch)
-            if newer_train:
-                # In-train check says "up to date", but a newer release train exists.
-                upgrade_available = True
-                latest = newer_version
-                out = out.strip() + (
-                    "\nnewer release train available: %s (%s) — the pinned train "
-                    "reports no update; switch the update branch (System > Update) "
-                    "to upgrade" % (newer_train, newer_version)
-                )
+            upgrade_available, latest, major, out = _pfsense_newer_train_verdict(
+                branch, upgrade_available, latest, out
+            )
         else:
             branch = _opnsense_series()
             known_branches = []
@@ -1963,9 +2022,9 @@ def collect_firmware() -> dict:
             latest,
             out,
             check_failed,
-            # Lets the dashboard render a dedicated series-upgrade action;
-            # pfSense trains ride in the text only (no agent upgrade path yet).
-            extra={"upgrade_major_version": major} if not pfsense and major else None,
+            # Lets the dashboard render the dedicated series-upgrade action
+            # (OPNsense: unlocked upgrade path; pfSense: newer stable train).
+            extra={"upgrade_major_version": major} if major else None,
         )
         if check_failed:
             # Same 15-min retry as the linux branch — a transient failure
@@ -4091,6 +4150,9 @@ def _cmd_firmware_check(params: dict) -> dict:
             upgrade_available = _pfsense_update_available(out)
             check_failed = _pfsense_check_failed(out)
             latest = _pfsense_target_version(out) or version
+            upgrade_available, latest, major, out = _pfsense_newer_train_verdict(
+                branch, upgrade_available, latest, out
+            )
         else:
             version = _read_opnsense_version()
             branch = _opnsense_series()
@@ -4107,7 +4169,7 @@ def _cmd_firmware_check(params: dict) -> dict:
             latest,
             out,
             check_failed,
-            extra={"upgrade_major_version": major} if plat != "pfsense" and major else None,
+            extra={"upgrade_major_version": major} if major else None,
         )
     return {
         "success": True,
@@ -4213,18 +4275,45 @@ def _cmd_firmware_update(params: dict) -> dict:
 
 
 def _cmd_firmware_upgrade(params: dict) -> dict:
-    """Start the vendor series/major upgrade (OPNsense only).
+    """Start the vendor series/major upgrade (OPNsense + pfSense).
 
-    Same daemonized path as the GUI's Upgrade button and console option 12:
-    launcher.sh upgrade → opnsense-update -u/-K → reboot; the pkg phase
-    resumes after boot. The target release comes exclusively from the box's
-    own unlocked upgrade path (opnsense-update -vR) — a dashboard-supplied
-    target is deliberately not honored (same rule as tunnel destinations:
-    never trust server-supplied targets for privileged operations).
+    OPNsense: same daemonized path as the GUI's Upgrade button and console
+    option 12: launcher.sh upgrade → opnsense-update -u/-K → reboot; the pkg
+    phase resumes after boot.
+    pfSense: a newer release lives in its own pkg train — switch the update
+    branch on-box first (the GUI's System > Update code path), then the
+    regular ``pfSense-upgrade -y`` installs the new release and reboots.
+    Either way the target release comes exclusively from the box's own
+    metadata (opnsense-update -vR / the local repo descriptors) — a
+    dashboard-supplied target is deliberately not honored (same rule as
+    tunnel destinations: never trust server-supplied targets for privileged
+    operations).
     """
     plat = detect_platform()
+    if plat == "pfsense":
+        train, human = _pfsense_newer_branch(_read_pfsense_branch())
+        if not train:
+            return {"success": False, "output": "no series upgrade offered by the vendor"}
+        err = _pfsense_switch_train(train)
+        if err:
+            return {"success": False, "output": "update branch switch failed: %s" % err}
+        be = _zfs_boot_snapshot(_read_pfsense_version())
+        _STATE.fw_update_ts = time.time()
+        subprocess.Popen(
+            ["/usr/local/sbin/pfSense-upgrade", "-y"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        note = "; boot environment %s created" % be if be else ""
+        return {
+            "success": True,
+            "output": "series upgrade to %s started in background%s" % (human, note),
+        }
     if plat != "opnsense":
-        return {"success": False, "output": "series upgrade is only supported on opnsense"}
+        return {
+            "success": False,
+            "output": "series upgrade is only supported on opnsense/pfsense",
+        }
     installed = _read_opnsense_version()
     major = _opnsense_major_upgrade(installed)
     if not major:
