@@ -11,7 +11,9 @@ import {
   Lock,
 } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
-import { useAgentModeMap, useShellEnabledMap } from "../lib/instances";
+import { DEVICE_TYPES } from "../lib/types";
+import type { DeviceTypeValue } from "../lib/types";
+import { useAgentModeMap, useDeviceTypeMap, useShellEnabledMap } from "../lib/instances";
 import { EntityCommentBadge } from "../components/CommentBadge";
 import { ShellIconLink } from "../components/ShellIconLink";
 import { useAuth, canWrite } from "../lib/use-auth";
@@ -74,6 +76,10 @@ interface BulkActionResponse {
 export default function FirmwareCompliancePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "outdated" | "current" | "unknown">("all");
+  // Device-type filter bubbles; the compliance payload carries no device_type,
+  // so rows are matched through the shared ["instances"] query cache.
+  const [typeFilter, setTypeFilter] = useState<"all" | DeviceTypeValue>("all");
+  const deviceType = useDeviceTypeMap();
   const agentMode = useAgentModeMap();
   const shellEnabled = useShellEnabledMap();
   const queryClient = useQueryClient();
@@ -136,12 +142,19 @@ export default function FirmwareCompliancePage() {
         !e.check_failed &&
         e.product_version !== "?") ||
       (filter === "unknown" && e.product_version === "?");
-    return matchSearch && matchFilter;
+    const matchType = typeFilter === "all" || deviceType.get(e.instance_id) === typeFilter;
+    return matchSearch && matchFilter && matchType;
   });
 
   const { sorted, sort, toggle } = useSort(filtered, FW_ACCESSORS);
 
   const hasBranch = sorted.some((e) => !!e.branch);
+
+  // Device types present among the compliance rows — the filter bubbles only
+  // render once the fleet actually mixes types.
+  const presentTypes = new Set(
+    (data?.instances ?? []).map((e) => deviceType.get(e.instance_id)).filter(Boolean),
+  );
 
   // "Update all" acts on the intersection of selection and currently visible
   // rows, so filtering down never fires updates on hidden instances.
@@ -235,6 +248,35 @@ export default function FirmwareCompliancePage() {
           </button>
         )}
       </div>
+
+      {/* Device-type filter — only once the fleet mixes device types. */}
+      {presentTypes.size > 1 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => setTypeFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs ${
+              typeFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            All types
+          </button>
+          {DEVICE_TYPES.filter((d) => presentTypes.has(d.value)).map((d) => (
+            <button
+              key={d.value}
+              onClick={() => setTypeFilter(typeFilter === d.value ? "all" : d.value)}
+              className={`rounded-full px-3 py-1 text-xs ${
+                typeFilter === d.value
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Bulk update / series-upgrade confirmation */}
       {confirmBulk && (

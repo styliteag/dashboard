@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The device-type filter on the Instances page now offers one bubble per
+  product (OPNsense, pfSense, Securepoint UTM, Linux) instead of the coarse
+  Firewalls/Linux split; the Firmware compliance page gained the same filter
+  bubbles. Both appear only while the fleet mixes device types.
+
 ## [3.1.5] - 2026-07-16
 
 ### Added

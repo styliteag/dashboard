@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Download, ArrowUpCircle, List, LayoutGrid } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth, canWrite } from "../lib/use-auth";
-import type { ConnectedAgent, Instance, Overview } from "../lib/types";
+import { DEVICE_TYPES } from "../lib/types";
+import type { ConnectedAgent, DeviceTypeValue, Instance, Overview } from "../lib/types";
 import AddInstanceDialog from "../components/AddInstanceDialog";
 import EditInstanceDialog from "../components/EditInstanceDialog";
 import DeleteInstanceDialog from "../components/DeleteInstanceDialog";
@@ -119,9 +120,9 @@ export default function InstancesPage() {
 
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | StatusBucket>("all");
-  // Device-class filter: firewalls (opnsense/pfsense/securepoint/…) vs Linux
-  // servers. Only rendered once the fleet actually mixes both classes.
-  const [typeFilter, setTypeFilter] = useState<"all" | "firewall" | "linux">("all");
+  // Device-type filter: one bubble per product (OPNsense, pfSense, Securepoint,
+  // Linux). Only rendered once the fleet actually mixes device types.
+  const [typeFilter, setTypeFilter] = useState<"all" | DeviceTypeValue>("all");
   const [maintenanceOnly, setMaintenanceOnly] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export default function InstancesPage() {
 
   // Collect all unique tags across instances
   const allTags = [...new Set(instances.flatMap((i) => i.tags ?? []))].sort();
-  const hasLinux = instances.some((i) => i.device_type === "linux");
+  const presentTypes = new Set(instances.map((i) => i.device_type));
 
   const filtered = instances.filter((i) => {
     const matchSearch =
@@ -166,8 +167,7 @@ export default function InstancesPage() {
     const matchTag = !activeTag || (i.tags ?? []).includes(activeTag);
     const matchStatus =
       statusFilter === "all" || statusBucket(i, agentByInstance.has(i.id)) === statusFilter;
-    const matchType =
-      typeFilter === "all" || (typeFilter === "linux") === (i.device_type === "linux");
+    const matchType = typeFilter === "all" || i.device_type === typeFilter;
     const matchMaintenance = !maintenanceOnly || i.maintenance;
     return matchSearch && matchTag && matchStatus && matchType && matchMaintenance;
   });
@@ -284,26 +284,30 @@ export default function InstancesPage() {
         />
       </div>
 
-      {/* Device-class filter — only once the fleet mixes firewalls and Linux servers. */}
-      {hasLinux && (
+      {/* Device-type filter — only once the fleet mixes device types. */}
+      {presentTypes.size > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {(
-            [
-              ["all", "All types"],
-              ["firewall", "Firewalls"],
-              ["linux", "Linux"],
-            ] as const
-          ).map(([value, label]) => (
+          <button
+            onClick={() => setTypeFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs ${
+              typeFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            All types
+          </button>
+          {DEVICE_TYPES.filter((d) => presentTypes.has(d.value)).map((d) => (
             <button
-              key={value}
-              onClick={() => setTypeFilter(value)}
+              key={d.value}
+              onClick={() => setTypeFilter(typeFilter === d.value ? "all" : d.value)}
               className={`rounded-full px-3 py-1 text-xs ${
-                typeFilter === value
+                typeFilter === d.value
                   ? "bg-emerald-600 text-white"
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
-              {label}
+              {d.label}
             </button>
           ))}
         </div>

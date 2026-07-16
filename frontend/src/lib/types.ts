@@ -53,6 +53,9 @@ export const DEVICE_TYPES = [
   { value: "linux", label: "Linux" },
 ] as const;
 
+/** Union of the selectable device_type values ("opnsense" | "pfsense" | …). */
+export type DeviceTypeValue = (typeof DEVICE_TYPES)[number]["value"];
+
 /** Proper product spelling for a device_type / agent platform value ("opnsense" → "OPNsense"). */
 export const deviceTypeLabel = (value?: string): string =>
   DEVICE_TYPES.find((d) => d.value === value)?.label ?? value ?? "";

@@ -40,6 +40,24 @@ export function useShellEnabledMap(): Map<number, boolean> {
   }, [data]);
 }
 
+/**
+ * id → device_type, sourced from the same shared ["instances"] query. Global
+ * list views (Instances, Firmware) use it for the device-type filter bubbles
+ * when their own payload does not carry the type.
+ */
+export function useDeviceTypeMap(): Map<number, string> {
+  const { data } = useQuery({
+    queryKey: ["instances"],
+    queryFn: () => api.get<Instance[]>("/api/instances"),
+    staleTime: 60_000,
+  });
+  return useMemo(() => {
+    const map = new Map<number, string>();
+    for (const i of data ?? []) map.set(i.id, i.device_type);
+    return map;
+  }, [data]);
+}
+
 export interface InstanceAlertSummary {
   warn: number;
   crit: number;
