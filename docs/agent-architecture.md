@@ -58,7 +58,7 @@ nicht die Concurrency neu gebaut.
 Begründung:
 - **Entschärft pfSense CE** (siehe §7) — kein Fremdpaket-`pkg`/`pip` nötig.
 - **Simpleres Selbstupdate** — genau *eine* Datei, null Deps zu mit-managen.
-- Passt zu CLAUDE.md: „Agent-Deps minimal, FreeBSD, keine Linux-Annahmen".
+- Passt zur Repo-Leitlinie: „Agent-Deps minimal, FreeBSD, keine Linux-Annahmen".
 
 Fallback (nur falls pfSense *gar kein* Python mitbringt): statisches FreeBSD-Binary (Go).
 Größerer Pivot, hier bewusst zurückgestellt bis der pfSense-Spike (§7) entscheidet.
@@ -194,7 +194,7 @@ und `opnsense-update` fehlen (OPNsense-only). Divergenz-Map in §4.
 ## 8. Backend-Änderungen (Fundament)
 
 - Schema: `Instance.agent_mode` → `transport` + `device_type` (Enums). **Alembic-Revision**
-  Pflicht (CLAUDE.md done-criteria: numbered `NNN_*.py`, sequential).
+  Pflicht (Repo-Konvention: numbered `NNN_*.py`, sequential).
 - `DeviceClient`-Protocol (Python `Protocol`); `OPNsenseClient` implementiert es.
 - `poller/scheduler.py`: pollt nur `transport == direct` (bzw. `relay`); `push` bleibt außen vor.
 - Enrollment: bei 20–200 Sites lohnt One-Time-Code → Self-Register (statt manuellem Token-Paste).
