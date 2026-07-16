@@ -115,6 +115,38 @@ services:
     depends_on:
       - backend
 
+  # Elixir/Phoenix LiveView rewrite (docs/elixir-liveview-rewrite.md).
+  # Runs PARALLEL to backend+frontend against the same dev DB; everything in
+  # the container, no local Elixir toolchain (link-shortener ADR-0007 pattern).
+  # Toolchain caches live under ./orbit/data (gitignored) to survive rebuilds.
+  orbit:
+    build:
+      context: ./orbit
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "mix local.hex --force && mix local.rebar --force && mix deps.get && mix phx.server"
+    environment:
+      MIX_HOME: /toolchain/mix
+      HEX_HOME: /toolchain/hex
+      DB_USER: ${DB_USER:-dash}
+      DB_PASSWORD: ${DB_PASSWORD:-devpassword}
+      DB_NAME: ${DB_NAME:-dash}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
+      ORBIT_DB_HOST: db
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${ORBIT_PORT:-4000}:4000"
+    volumes:
+      - ./orbit:/app
+      - ./VERSION:/app/VERSION:ro
+      - ./orbit/data/deps:/app/deps
+      - ./orbit/data/build:/app/_build
+      - ./orbit/data/toolchain:/toolchain
+    depends_on:
+      db:
+        condition: service_healthy
+
   # GUI proxy: terminates TLS per-instance-port and reverse-proxies to the
   # in-container tunnel forwarder (backend:14444). Prod swaps the port vhost for a
   # wildcard subdomain. See docker/Caddyfile.dev and §18.

@@ -71,6 +71,29 @@ frontend-lint:
 frontend-fmt:
     cd frontend && npm run fmt
 
+# --- Orbit (Elixir/Phoenix LiveView rewrite — docs/elixir-liveview-rewrite.md) ---
+# Everything runs in the orbit container; no local Elixir toolchain.
+
+# One-time (and after dep changes): install hex/rebar + fetch deps into the caches
+orbit-setup:
+    docker compose -f compose-dev.yml run --rm orbit sh -c "mix local.hex --force && mix local.rebar --force && mix deps.get"
+
+# Tests; arguments are passed through: just orbit-test test/orbit_web
+orbit-test *ARGS:
+    docker compose -f compose-dev.yml run --rm orbit mix test {{ARGS}}
+
+orbit-fmt:
+    docker compose -f compose-dev.yml run --rm orbit mix format
+
+orbit-lint:
+    docker compose -f compose-dev.yml run --rm orbit sh -c "mix format --check-formatted && mix compile --warnings-as-errors"
+
+orbit-sh:
+    docker compose -f compose-dev.yml run --rm orbit bash
+
+orbit-iex:
+    docker compose -f compose-dev.yml run --rm orbit iex -S mix
+
 # --- Stack (production: single combined image) -----------------------------
 
 up: _sign-if-key
