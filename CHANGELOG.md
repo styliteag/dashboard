@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.6] - 2026-07-16
+
 ### Added
 
 - pfSense series upgrades (e.g. 2.7.2 → 2.8.1) can now be started from the
