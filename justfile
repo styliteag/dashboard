@@ -30,6 +30,12 @@ agent-test:
 checkmk-test:
     cd backend && uv run pytest ../checkmk/tests -q
 
+# Black-box API contract suite against a RUNNING backend (`just dev-up` first).
+# CONTRACT_BASE_URL switches the target: Python :8000 (default), server_ex :4000.
+# The migration gate: a route may only move to server_ex when this passes on both.
+contract-test *ARGS:
+    cd backend && uv run pytest ../contract -q {{ARGS}}
+
 # Sign the agent for self-update. Auto-loads the OFFLINE Ed25519 private key from
 # env or the gitignored .env (DASH_AGENT_SIGNING_KEY) — no manual export needed.
 # Pass ARGS through: `--verify` (no key), `--gen` (mint keypair), `--key-file PATH`.
