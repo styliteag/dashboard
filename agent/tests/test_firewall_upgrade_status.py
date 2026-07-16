@@ -122,7 +122,7 @@ def test_pfsense_running_and_done_via_process(monkeypatch, tmp_path) -> None:
     result = agent._cmd_upgrade_status({})
     assert result["status"] == "running"
     # pgrep pattern must target the -y run, not the periodic `-c` check.
-    assert any("pfSense-upgrade -y" in " ".join(c) for c in calls)
+    assert any(agent._PFSENSE_UPGRADE_PROC_PAT in arg for call in calls for arg in call)
 
     path.write_text(">>> Upgrading packages...\nYour system is up to date\n")
     _fake_pgrep(monkeypatch, running=False)

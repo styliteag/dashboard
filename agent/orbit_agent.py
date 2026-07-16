@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.3"
+__version__ = "3.1.4"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1903,10 +1903,17 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     return upgrade_available, version, out, check_failed, extra
 
 
+# The -y run's cmdline carries "-T 300 -y" since 3.1.4 — match both spellings,
+# but never the periodic `-c` check or rc.update_pkg_metadata's -uf/-Uc runs.
+_PFSENSE_UPGRADE_PROC_PAT = "pfSense-upgrade.*-y"
+
+
 def _vendor_updater_running(plat: str) -> bool:
     """True while the vendor's own update/upgrade run is applying."""
     pat = (
-        "pfSense-upgrade -y" if plat == "pfsense" else "firmware/launcher.sh (update|upgrade)"
+        _PFSENSE_UPGRADE_PROC_PAT
+        if plat == "pfsense"
+        else "firmware/launcher.sh (update|upgrade)"
     )
     return bool(_run(["pgrep", "-f", pat], timeout=10).strip())
 
@@ -4256,7 +4263,11 @@ def _cmd_firmware_update(params: dict) -> dict:
         else:
             return {"success": False, "output": "no supported package manager (apt/dnf)"}
     elif plat == "pfsense":
-        cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
+        # -T 300: wait for the pfSense-upgrade lockfile instead of the default
+        # 5s abort — the periodic check / rc.update_pkg_metadata briefly holds
+        # it and the wrapper otherwise exits "Another instance is already
+        # running... Aborting!" into DEVNULL (observed live on pf2, 2026-07-16).
+        cmd = ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"]
     else:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
@@ -4299,8 +4310,12 @@ def _cmd_firmware_upgrade(params: dict) -> dict:
             return {"success": False, "output": "update branch switch failed: %s" % err}
         be = _zfs_boot_snapshot(_read_pfsense_version())
         _STATE.fw_update_ts = time.time()
+        # -T 300 is load-bearing here: pkg_switch_repo just spawned
+        # rc.update_pkg_metadata in the background, which holds the
+        # pfSense-upgrade lockfile — with the default 5s lockf timeout this
+        # run aborts silently and the upgrade never starts (pf2, 2026-07-16).
         subprocess.Popen(
-            ["/usr/local/sbin/pfSense-upgrade", "-y"],
+            ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -4345,8 +4360,9 @@ def _firewall_upgrade_status(plat: str) -> dict:
 
     OPNsense: done when launcher.sh wrote its ***DONE***/***REBOOT*** marker;
     running while the launcher process lives. pfSense has no marker — running
-    exactly while the `pfSense-upgrade -y` process lives (pgrep must NOT match
-    the periodic `pfSense-upgrade -c` check from collect_firmware).
+    exactly while the `-y` run lives (_PFSENSE_UPGRADE_PROC_PAT must NOT match
+    the periodic `pfSense-upgrade -c` check from collect_firmware or the
+    -uf/-Uc runs of rc.update_pkg_metadata).
     """
     if plat == "opnsense":
         # "update|upgrade" only: launcher.sh also runs unrelated cron jobs
@@ -4355,7 +4371,7 @@ def _firewall_upgrade_status(plat: str) -> dict:
         progress = _OPNSENSE_UPGRADE_PROGRESS
         proc_pat = "firmware/launcher.sh (update|upgrade)"
     else:
-        progress, proc_pat = _PFSENSE_UPGRADE_LOG, "pfSense-upgrade -y"
+        progress, proc_pat = _PFSENSE_UPGRADE_LOG, _PFSENSE_UPGRADE_PROC_PAT
     proc_running = bool(_run(["pgrep", "-f", proc_pat], timeout=10).strip())
 
     try:

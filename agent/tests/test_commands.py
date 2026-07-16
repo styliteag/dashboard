@@ -221,7 +221,10 @@ def test_firmware_upgrade_pfsense_switches_train_then_starts_upgrade(
     captured = _capture_popen(monkeypatch)
     result = agent.execute_command("firmware.upgrade", {})
     assert switched == ["2_8_1"]
-    assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-y"]
+    # -T 300 is load-bearing: pkg_switch_repo's background metadata refresh
+    # holds the pfSense-upgrade lockfile; the default 5s lockf timeout made
+    # the -y run abort silently and the upgrade never started (pf2 incident).
+    assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"]
     assert result["success"] is True
     assert "2.8.1" in result["output"]
     assert "orbit-pre-2.7.2-RELEASE" in result["output"]
@@ -281,6 +284,21 @@ def test_pfsense_switch_train_parses_ok_and_errors(monkeypatch: pytest.MonkeyPat
     # php missing / silent death (empty _run) must not read as success.
     monkeypatch.setattr(agent, "_run", lambda *a, **k: "")
     assert agent._pfsense_switch_train("2_8_1") != ""
+
+
+def test_pfsense_upgrade_proc_pattern_matches_only_the_apply_run() -> None:
+    """The pgrep pattern must see the -y run (plain and -T-wrapped since
+    3.1.4) but never the periodic -c check or rc.update_pkg_metadata's
+    -uf/-Uc runs — a false match reads as "vendor updater applying" and
+    suppresses firmware checks fleet-wide."""
+    import re
+
+    pat = re.compile(agent._PFSENSE_UPGRADE_PROC_PAT)
+    assert pat.search("/usr/local/sbin/pfSense-upgrade -T 300 -y")
+    assert pat.search("/usr/local/sbin/pfSense-upgrade -y")
+    assert not pat.search("/usr/local/sbin/pfSense-upgrade -c")
+    assert not pat.search("/usr/local/sbin/pfSense-upgrade -uf")
+    assert not pat.search("/usr/local/sbin/pfSense-upgrade -Uc")
 
 
 def test_firmware_check_pfsense_reports_series_target(

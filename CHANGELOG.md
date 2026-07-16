@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - pfSense series upgrades (e.g. 2.7.2 → 2.8.1) can now be started from the
-  dashboard (agent 3.1.3). pfSense publishes each release in its own pinned
+  dashboard (agent 3.1.4). pfSense publishes each release in its own pinned
   update train, so the box always answered "up to date"; the agent now
   switches the update branch on-box first (the same code path as the vendor
   GUI's System > Update) and then runs the regular updater — with a ZFS boot
@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On pfSense with a newer release train available, a manual "Check now"
   overwrote the cached firmware verdict without the series-upgrade offer —
   the upgrade hint vanished from the dashboard until the next ~12h automatic
-  check (agent 3.1.3).
+  check (agent 3.1.4).
+- pfSense firmware updates started while another pfSense-upgrade instance
+  briefly held its lockfile (the periodic check, or the metadata refresh a
+  branch switch spawns) aborted silently after 5s and never installed
+  anything — the updater now waits for the lock for up to 5 minutes
+  (agent 3.1.4).
 
 ### Changed
 
