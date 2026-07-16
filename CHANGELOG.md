@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read an available Plus upgrade as "up to date" (agent 3.1.8,
   defensive; CE wording confirmed live).
 
+- Agent-side refusals of a firmware update/upgrade ("insufficient disk
+  space", "no series upgrade offered") rendered as a green "started"
+  message with the error appended — they now render red and no tracking
+  starts. A reply timeout no longer shows a confusing "— command timed
+  out" suffix: the trigger may well have worked (seen live under full
+  updater load), so the UI starts tracking and waits for the box.
+
 ### Changed
 
 - The device-type filter on the Instances page now offers one bubble per

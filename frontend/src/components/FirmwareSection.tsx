@@ -79,22 +79,44 @@ export default function FirmwareSection({
   const [showUpgradeLog, setShowUpgradeLog] = useState(false);
   const upgradeStartedRef = useRef(0);
 
-  const updateMut = useMutation({
-    mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/update`),
-    onSuccess: (data) => {
+  // Shared start handler: the trigger routes answer HTTP 200 with
+  // success=false for agent-side refusals ("insufficient disk space", "no
+  // series upgrade offered") AND for a reply timeout. Refusals must render
+  // red — appending them to a green "started" line hid them entirely. A
+  // timeout is special: the box may well have started (seen live on pfplus
+  // under full pkg load) — start tracking and let the status poll tell the
+  // truth, without the confusing "— command timed out" suffix.
+  const handleStartResult = (kind: "Update" | "Series upgrade", data: ActionResult) => {
+    setConfirmKind(null);
+    setConfirmName("");
+    if (!data.success) {
+      if ((data.message || "").toLowerCase().includes("timed out")) {
+        setMsg({
+          ok: true,
+          text: `${kind} trigger sent — waiting for the box to report progress…`,
+        });
+      } else {
+        setMsg({ ok: false, text: data.message || `${kind} did not start` });
+        clearMsg();
+        return;
+      }
+    } else {
       // Surface the agent's start message (e.g. "boot environment
       // orbit-pre-X created") instead of swallowing it.
       const note =
-        data?.message && data.message !== "update started in background"
+        data.message && data.message !== "update started in background"
           ? ` — ${data.message}`
           : "";
-      setMsg({ ok: true, text: `Update started. Tracking progress…${note}` });
-      setConfirmKind(null);
-      setConfirmName("");
-      upgradeStartedRef.current = Date.now();
-      setShowUpgradeLog(true);
-      setUpgrading(true);
-    },
+      setMsg({ ok: true, text: `${kind} started. Tracking progress…${note}` });
+    }
+    upgradeStartedRef.current = Date.now();
+    setShowUpgradeLog(true);
+    setUpgrading(true);
+  };
+
+  const updateMut = useMutation({
+    mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/update`),
+    onSuccess: (data) => handleStartResult("Update", data),
     onError: (e) => {
       setMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
@@ -105,15 +127,7 @@ export default function FirmwareSection({
   // on the box itself — this only pulls the trigger.
   const upgradeMut = useMutation({
     mutationFn: () => api.post<ActionResult>(`/api/instances/${instanceId}/firmware/upgrade`),
-    onSuccess: (data) => {
-      const note = data?.message ? ` — ${data.message}` : "";
-      setMsg({ ok: true, text: `Series upgrade started. Tracking progress…${note}` });
-      setConfirmKind(null);
-      setConfirmName("");
-      upgradeStartedRef.current = Date.now();
-      setShowUpgradeLog(true);
-      setUpgrading(true);
-    },
+    onSuccess: (data) => handleStartResult("Series upgrade", data),
     onError: (e) => {
       setMsg({ ok: false, text: apiErrorText(e, "Error") });
       clearMsg();
