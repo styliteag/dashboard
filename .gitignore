@@ -232,6 +232,8 @@ backend/.env
 # Agent self-update signature: signed offline, committed so CI bakes it into the
 # image (the signature is not secret — only the private key is). See README "Agent
 # self-update signing". The private key (DASH_AGENT_SIGNING_KEY) stays offline.
+
+# Local-only notes (CLAUDE.local.md etc.)
 *local.md
 
 # Data files in dev
