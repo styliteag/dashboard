@@ -42,7 +42,8 @@ sign-agent *ARGS:
 _sign-if-key:
     #!/usr/bin/env bash
     set -uo pipefail
-    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -f .env ]]; then
+    # -r, not -f: .env may be a named pipe (1Password Environments FIFO).
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -r .env ]]; then
         DASH_AGENT_SIGNING_KEY=$(grep -E '^DASH_AGENT_SIGNING_KEY=' .env | head -1 \
             | sed -E 's/^[^=]+=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')
     fi

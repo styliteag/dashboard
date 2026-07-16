@@ -27,7 +27,9 @@ fi
 AGENT_PUBKEY=$(grep -E '^_UPDATE_PUBKEY = ' agent/orbit_agent.py | sed -E 's/.*"([0-9a-fA-F]*)".*/\1/')
 if [[ -n "$AGENT_PUBKEY" ]]; then
     # Offline signing key: from the environment, else extracted from .env (gitignored).
-    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -f .env ]]; then
+    # -r, not -f: .env may be a named pipe (1Password Environments serves secrets
+    # via a FIFO on demand); -f rejects it and silently skips the extraction.
+    if [[ -z "${DASH_AGENT_SIGNING_KEY:-}" && -r .env ]]; then
         DASH_AGENT_SIGNING_KEY=$(grep -E '^DASH_AGENT_SIGNING_KEY=' .env | head -1 \
             | sed -E 's/^[^=]+=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')
         export DASH_AGENT_SIGNING_KEY
