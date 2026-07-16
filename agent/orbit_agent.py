@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.7"
+__version__ = "3.1.8"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1638,6 +1638,10 @@ def _pfsense_update_available(out: str) -> bool:
             "new version",
             "version available",
             "of pfsense is available",
+            # pfSense Plus wording tolerance: should ${product} ever render
+            # as "pfSense Plus", the plain substring above would miss it and
+            # an available upgrade would read as "up to date".
+            "of pfsense plus is available",
             "upgrading",
         )
     )
@@ -1647,9 +1651,13 @@ def _pfsense_target_version(out: str) -> str:
     """Target version from `pfSense-upgrade -c` output, if it names one.
 
     CE wording (confirmed live): "2.7.0 version of pfSense is available".
+    Plus tooling renders the same sentence via ${product} (product_name is
+    "pfSense" there too), but tolerate an optional "plus" defensively — a
+    mismatch here only loses the version string, the one in
+    _pfsense_update_available would hide the update entirely.
     Empty when no version is named — the caller keeps its fallback.
     """
-    m = re.search(r"([0-9][\w.\-]*)\s+version of pfsense is available", out.lower())
+    m = re.search(r"([0-9][\w.\-]*)\s+version of pfsense(?: plus)? is available", out.lower())
     return m.group(1) if m else ""
 
 

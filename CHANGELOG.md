@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rollback was needed. Boot environments are now created with
   `bectl create -r` (agent 3.1.6).
 
+- The firmware update-check parser now also tolerates a "pfSense Plus"
+  product spelling in the vendor tooling's output — a mismatch would have
+  read an available Plus upgrade as "up to date" (agent 3.1.8,
+  defensive; CE wording confirmed live).
+
 ### Changed
 
 - The device-type filter on the Instances page now offers one bubble per

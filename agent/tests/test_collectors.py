@@ -1239,6 +1239,15 @@ def test_pfsense_target_version_parsed_from_check_output() -> None:
     assert agent._pfsense_target_version("Your system is up to date") == ""
 
 
+def test_pfsense_plus_wording_tolerated() -> None:
+    # Defensive: should Plus tooling ever render ${product} as "pfSense Plus",
+    # the plain-substring parser would hide an available upgrade entirely
+    # (reads as "up to date") and the target parser would lose the version.
+    out = ">>> Updating repositories metadata... done.\n26.07.1 version of pfSense Plus is available"
+    assert agent._pfsense_update_available(out) is True
+    assert agent._pfsense_target_version(out) == "26.07.1"
+
+
 def test_collect_firmware_pfsense_ce_update_reports_target(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
