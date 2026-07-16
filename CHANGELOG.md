@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mid-download while the dashboard showed a successful start. The agent now
   refuses to start a vendor update with less than 512 MB free on / and
   reports the actual free space instead (agent 3.1.5).
+- The pre-update ZFS boot environment was created non-recursively, so on
+  pfSense it missed the /cf child dataset that holds config.xml — booting
+  the rollback environment ended in "config.xml is corrupted" exactly when
+  the rollback was needed. Boot environments are now created with
+  `bectl create -r` (agent 3.1.6).
 
 ### Changed
 

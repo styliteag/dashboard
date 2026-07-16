@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.5"
+__version__ = "3.1.6"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4215,8 +4215,14 @@ def _zfs_boot_snapshot(version: str) -> str:
     existing = [r[0] for r in rows if r]
     if name not in existing:
         try:
+            # -r (recursive) is load-bearing on pfSense: /cf (config.xml!),
+            # var_db_pkg and var_cache_pkg are CHILD datasets of the boot
+            # environment. A non-recursive BE boots without /cf and pfSense
+            # greets you with "config.xml is corrupted" (live on pf2,
+            # 2026-07-16 — the rollback BE was unusable). Harmless on
+            # OPNsense (no children under ROOT/<be>).
             r = subprocess.run(
-                ["bectl", "create", name], capture_output=True, text=True, timeout=60
+                ["bectl", "create", "-r", name], capture_output=True, text=True, timeout=60
             )
             if r.returncode != 0:
                 return ""

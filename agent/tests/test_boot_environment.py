@@ -36,11 +36,15 @@ def _capture_bectl(monkeypatch, listing: str, create_rc: int = 0):
     return calls
 
 
-def test_snapshot_created_with_version_name(monkeypatch) -> None:
+def test_snapshot_created_recursively_with_version_name(monkeypatch) -> None:
+    # -r is load-bearing on pfSense: /cf (config.xml), var_db_pkg and
+    # var_cache_pkg are CHILD datasets of the BE — a non-recursive BE boots
+    # into "config.xml is corrupted" (pf2, 2026-07-16). The rollback BE was
+    # unusable exactly when it was needed.
     calls = _capture_bectl(monkeypatch, _LISTING)
     name = agent._zfs_boot_snapshot("26.1.11_10")
     assert name == "orbit-pre-26.1.11_10"
-    assert ["bectl", "create", "orbit-pre-26.1.11_10"] in calls
+    assert ["bectl", "create", "-r", "orbit-pre-26.1.11_10"] in calls
 
 
 def test_no_zfs_means_no_snapshot_and_no_error(monkeypatch) -> None:
