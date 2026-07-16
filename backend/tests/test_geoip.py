@@ -622,3 +622,75 @@ def test_denials_summary_totals_only() -> None:
     den.record("6.6.6.6", None, "/api/y", "crowdsec_banned")
     result = _asyncio.run(geoip_denials_summary(None))
     assert result == {"total": 2}
+
+
+# --- lookup: country_display (UI enrichment, 2026-07-16) ----------------------
+
+
+class _FakeReader:
+    def __init__(self, record):
+        self._record = record
+
+    def get(self, ip):
+        if ip == "malformed":
+            raise ValueError("bad ip")
+        return self._record
+
+
+def test_country_display_full_record(monkeypatch) -> None:
+    """Everything the GeoLite2-City DB knows lands in the hover label: city,
+    most-specific subdivision, English name, continent, EU membership."""
+    import app.geoip.lookup as lookup
+
+    record = {
+        "city": {"names": {"en": "Frankfurt am Main"}},
+        # largest→smallest per MaxMind; the last one is the state we want
+        "subdivisions": [{"names": {"en": "Hesse"}}],
+        "country": {
+            "iso_code": "DE",
+            "names": {"en": "Germany", "de": "Deutschland"},
+            "is_in_european_union": True,
+        },
+        "continent": {"names": {"en": "Europe"}},
+    }
+    monkeypatch.setattr(lookup, "_current_reader", lambda: _FakeReader(record))
+    assert lookup.country_display("203.0.113.7") == (
+        "DE",
+        "Frankfurt am Main, Hesse · Germany · Europe · EU",
+    )
+
+
+def test_country_display_plain_country_db(monkeypatch) -> None:
+    """A volume still holding the old Country edition (no city/subdivisions)
+    keeps working — the label simply has no place prefix."""
+    import app.geoip.lookup as lookup
+
+    record = {
+        "country": {
+            "iso_code": "DE",
+            "names": {"en": "Germany"},
+            "is_in_european_union": True,
+        },
+        "continent": {"names": {"en": "Europe"}},
+    }
+    monkeypatch.setattr(lookup, "_current_reader", lambda: _FakeReader(record))
+    assert lookup.country_display("203.0.113.7") == ("DE", "Germany · Europe · EU")
+
+
+def test_country_display_degrades_gracefully(monkeypatch) -> None:
+    """Missing pieces never break display: bare code fallback, None for
+    missing DB / None IP / malformed IP / private ranges (no record)."""
+    import app.geoip.lookup as lookup
+
+    monkeypatch.setattr(
+        lookup, "_current_reader", lambda: _FakeReader({"country": {"iso_code": "US"}})
+    )
+    assert lookup.country_display("198.51.100.1") == ("US", "US")
+    assert lookup.country_display(None) == (None, None)
+    assert lookup.country_display("malformed") == (None, None)
+
+    monkeypatch.setattr(lookup, "_current_reader", lambda: _FakeReader(None))
+    assert lookup.country_display("10.0.0.1") == (None, None)  # private: no record
+
+    monkeypatch.setattr(lookup, "_current_reader", lambda: None)
+    assert lookup.country_display("198.51.100.1") == (None, None)  # DB missing

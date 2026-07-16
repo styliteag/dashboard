@@ -687,6 +687,7 @@ export interface DashUser {
   // Last successful login (set at session mint) — Users page column.
   last_login_ip: string | null;
   last_login_country: string | null;
+  last_login_country_name: string | null; // hover label, e.g. "Germany · Europe · EU"
   last_login_at: string | null;
 }
 

@@ -29,6 +29,7 @@ from app.db.models import (
     Instance,
     User,
 )
+from app.geoip import lookup as geoip_lookup
 
 router = APIRouter(prefix="/access-log", tags=["access-log"])
 
@@ -56,6 +57,8 @@ class OnlineSession(BaseModel):
     username: str | None
     user_id: int
     ip: str | None
+    country: str | None = None  # via local GeoIP DB (display only)
+    country_name: str | None = None
     login_at: str
     last_seen_at: str
 
@@ -64,6 +67,7 @@ class PrincipalStat(BaseModel):
     principal: str  # "user:3" resolved to a username where possible
     requests: int
     last_ip: str | None
+    last_country: str | None = None
 
 
 class AccessSummary(BaseModel):
@@ -84,6 +88,7 @@ class TimelineItem(BaseModel):
     username: str | None = None
     ip: str | None = None
     country: str | None = None
+    country_name: str | None = None  # hover label from the local GeoIP DB
     instance: str | None = None  # access: resolved instance name (or raw target)
     detail: dict | None = None
 
@@ -199,21 +204,28 @@ async def access_summary(
             ),
             requests=int(n or 0),
             last_ip=last_ip,
+            last_country=geoip_lookup.country_display(last_ip)[0],
         )
         for ptype, pkey, n, last_ip in stat_rows
     ]
 
-    return AccessSummary(
-        online=[
+    online = []
+    for s in online_rows:
+        country, country_name = geoip_lookup.country_display(s.ip)
+        online.append(
             OnlineSession(
                 username=names.get(s.user_id),
                 user_id=s.user_id,
                 ip=s.ip,
+                country=country,
+                country_name=country_name,
                 login_at=s.created_at.isoformat(),
                 last_seen_at=s.last_seen_at.isoformat(),
             )
-            for s in online_rows
-        ],
+        )
+
+    return AccessSummary(
+        online=online,
         logins_ok_24h=int(logins_ok),
         logins_failed_24h=int(logins_failed),
         denials_24h=sum(denials_by_reason.values()),
@@ -274,6 +286,7 @@ async def access_timeline(
         )
         names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
         for r in rows:
+            country, country_name = geoip_lookup.country_display(r.source_ip)
             items.append(
                 (
                     r.ts,
@@ -284,6 +297,8 @@ async def access_timeline(
                         result=r.result,
                         username=names.get(r.user_id) if r.user_id else None,
                         ip=r.source_ip,
+                        country=country,
+                        country_name=country_name,
                         detail=r.detail,
                     ),
                 )
@@ -312,6 +327,7 @@ async def access_timeline(
         names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
         inames = await _instance_names(session, {r.target_id for r in rows})
         for r in rows:
+            country, country_name = geoip_lookup.country_display(r.source_ip)
             items.append(
                 (
                     r.ts,
@@ -322,6 +338,8 @@ async def access_timeline(
                         result=r.result,
                         username=names.get(r.user_id) if r.user_id else None,
                         ip=r.source_ip,
+                        country=country,
+                        country_name=country_name,
                         instance=inames.get(r.target_id or "", r.target_id),
                         detail=r.detail,
                     ),
@@ -349,6 +367,9 @@ async def access_timeline(
             .all()
         )
         for r in rows:
+            # Stored code is event-time truth; the hover label is a live lookup —
+            # only attach it while both still agree (DB updates can reassign IPs).
+            live_code, live_name = geoip_lookup.country_display(r.ip)
             items.append(
                 (
                     r.ts,
@@ -359,6 +380,7 @@ async def access_timeline(
                         result="denied",
                         ip=r.ip,
                         country=r.country,
+                        country_name=live_name if live_code == r.country else None,
                         detail={"path": r.path},
                     ),
                 )
@@ -385,6 +407,7 @@ async def access_timeline(
         )
         names = await _usernames(session, {r.user_id for r in rows if r.user_id is not None})
         for r in rows:
+            country, country_name = geoip_lookup.country_display(r.ip)
             items.append(
                 (
                     r.ts,
@@ -395,6 +418,8 @@ async def access_timeline(
                         result=str(r.status),
                         username=names.get(r.user_id) if r.user_id else None,
                         ip=r.ip,
+                        country=country,
+                        country_name=country_name,
                     ),
                 )
             )
@@ -413,6 +438,7 @@ class GroupedRow(BaseModel):
     username: str | None = None
     ip: str | None = None
     country: str | None = None
+    country_name: str | None = None
     instance: str | None = None
     count: int
     last_ts: str
@@ -464,6 +490,7 @@ async def access_grouped(
         rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
         names = await _usernames(session, {r[2] for r in rows if r[2] is not None})
         for action, result, user_id, ip, n, last in rows:
+            country, country_name = geoip_lookup.country_display(ip)
             rows_out.append(
                 GroupedRow(
                     kind="auth",
@@ -471,6 +498,8 @@ async def access_grouped(
                     result=result,
                     username=names.get(user_id) if user_id else None,
                     ip=ip,
+                    country=country,
+                    country_name=country_name,
                     count=int(n or 0),
                     last_ts=last.isoformat(),
                 )
@@ -538,6 +567,7 @@ async def access_grouped(
             )
         rows = (await session.execute(stmt.order_by(func.count().desc()).limit(limit))).all()
         for reason, country, ip, n, last in rows:
+            live_code, live_name = geoip_lookup.country_display(ip)
             rows_out.append(
                 GroupedRow(
                     kind="denial",
@@ -545,6 +575,7 @@ async def access_grouped(
                     result="denied",
                     ip=ip,
                     country=country,
+                    country_name=live_name if live_code == country else None,
                     count=int(n or 0),
                     last_ts=last.isoformat(),
                 )

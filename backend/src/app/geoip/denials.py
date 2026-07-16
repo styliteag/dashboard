@@ -28,6 +28,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import GeoipDenialEvent, GeoipDenialStat
+from app.geoip import lookup
 
 log = structlog.get_logger("app.geoip")
 
@@ -196,11 +197,19 @@ async def snapshot(session: AsyncSession, limit: int = 50) -> dict:
         .scalars()
         .all()
     )
+
+    def _hover_name(ip: str, code: str | None) -> str | None:
+        # Display-only hover label; attached only while the live DB still
+        # agrees with the code stored at denial time.
+        live_code, name = lookup.country_display(ip)
+        return name if live_code == code else None
+
     pending = [
         {
             "at": e["ts"].isoformat(),
             "ip": e["ip"],
             "country": e["country"],
+            "country_name": _hover_name(e["ip"], e["country"]),
             "path": e["path"],
             "reason": e["reason"],
         }
@@ -211,6 +220,7 @@ async def snapshot(session: AsyncSession, limit: int = 50) -> dict:
             "at": e.ts.isoformat(),
             "ip": e.ip,
             "country": e.country,
+            "country_name": _hover_name(e.ip, e.country),
             "path": e.path,
             "reason": e.reason,
         }

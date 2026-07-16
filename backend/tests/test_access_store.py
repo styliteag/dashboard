@@ -37,6 +37,9 @@ class _FakeResult:
     def scalars(self):
         return self
 
+    def scalar(self):
+        return self._rows[0] if self._rows else None
+
     def first(self):
         return self._rows[0] if self._rows else None
 
@@ -353,3 +356,108 @@ def test_audit_and_access_routes_are_admin_gated(monkeypatch) -> None:
             assert require_admin_or_superadmin in _calls(route.dependant), route.path
             checked += 1
     assert checked >= 3  # audit + summary + timeline
+
+
+# --- GeoIP country enrichment on read surfaces (2026-07-16) --------------------------
+
+
+class _RowSession(_FakeSession):
+    """_FakeSession returning canned rows for selects matching a table marker.
+
+    Count subqueries stay empty so pagination totals don't choke on ORM rows.
+    """
+
+    def __init__(self, rows_by_marker):
+        super().__init__()
+        self._rows_by_marker = rows_by_marker
+
+    async def execute(self, stmt, params=None):
+        sql = str(stmt)
+        self.executed.append((sql, params))
+        # Bare "SELECT count(*) FROM (...)" pagination totals stay empty;
+        # GROUP-BY selects that merely contain count(*) still get their rows.
+        if not sql.lstrip().lower().startswith("select count("):
+            for marker, rows in self._rows_by_marker.items():
+                if marker in sql:
+                    return _FakeResult(rows)
+        return _FakeResult()
+
+
+def _patch_display(monkeypatch):
+    """Stub the mmdb lookup: every IP resolves to DE with a full hover label."""
+    from app.geoip import lookup
+
+    monkeypatch.setattr(
+        lookup,
+        "country_display",
+        lambda ip: ("DE", "Germany · Europe · EU") if ip else (None, None),
+    )
+
+
+def test_timeline_items_carry_country(monkeypatch) -> None:
+    """Auth/access/request timeline rows resolve their IP through the local
+    GeoIP DB so the UI shows origin everywhere an IP appears — not only on
+    denial rows (which store their code at event time)."""
+    from app.access.routes import access_timeline
+    from app.db.models import AuditLog
+
+    _patch_display(monkeypatch)
+    row = AuditLog(ts=datetime.now(UTC), action="auth.login", result="ok", source_ip="203.0.113.7")
+    session = _RowSession({"audit_log": [row]})
+    page = _run(
+        access_timeline(
+            session=session,
+            _user=None,
+            kinds="auth",
+            before=None,
+            q=None,
+            hours=None,
+            limit=50,
+        )
+    )
+    (item,) = page.items
+    assert item.country == "DE"
+    assert item.country_name == "Germany · Europe · EU"
+
+
+def test_grouped_auth_rows_carry_country(monkeypatch) -> None:
+    from app.access.routes import access_grouped
+
+    _patch_display(monkeypatch)
+    grow = ("auth.login", "ok", None, "203.0.113.7", 3, datetime.now(UTC))
+    session = _RowSession({"audit_log": [grow]})
+    (row,) = _run(
+        access_grouped(session=session, _user=None, kinds="auth", q=None, hours=24, limit=100)
+    )
+    assert row.country == "DE"
+    assert row.country_name == "Germany · Europe · EU"
+
+
+def test_audit_entries_carry_country(monkeypatch) -> None:
+    """/api/audit rows get source_country(+name) resolved from source_ip."""
+    from app.audit.routes import list_audit
+    from app.db.models import AuditLog
+
+    _patch_display(monkeypatch)
+    row = AuditLog(
+        id=1,
+        ts=datetime.now(UTC),
+        action="settings.update",
+        result="ok",
+        source_ip="203.0.113.7",
+    )
+    session = _RowSession({"audit_log": [row]})
+    page = _run(
+        list_audit(
+            page=1,
+            page_size=50,
+            action=None,
+            instance_id=None,
+            hours=None,
+            session=session,
+            _user=None,
+        )
+    )
+    (entry,) = page.items
+    assert entry.source_country == "DE"
+    assert entry.source_country_name == "Germany · Europe · EU"

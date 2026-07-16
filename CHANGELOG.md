@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GeoIP country tags now appear next to every dashboard IP, not only on
+  blocked requests: audit log, access timeline (logins, instance access,
+  requests), grouped view, online sessions, the Users page and the footer.
+  Hovering the tag shows everything the local GeoIP database knows — city,
+  region, full country name, continent and EU membership (e.g.
+  "Kaiserslautern, Rheinland-Pfalz · Germany · Europe · EU").
+- The weekly GeoIP auto-download switched from GeoLite2-Country to
+  GeoLite2-City (~35 MB instead of ~6 MB, same free MaxMind license) to feed
+  the hover labels above. It replaces the database in place at the existing
+  path, so country blocking keeps working unchanged and existing
+  installations pick City up on their next download — trigger it early via
+  Access Control → "Refresh now" if you want city labels immediately.
+
 ## [3.1.6] - 2026-07-16
 
 ### Added

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import require_admin_or_superadmin
 from app.db.base import get_session
 from app.db.models import AuditLog, User
+from app.geoip import lookup as geoip_lookup
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
@@ -35,6 +36,9 @@ class AuditEntry(BaseModel):
     result: str
     detail: dict | None
     source_ip: str | None
+    # Resolved live from source_ip via the local GeoIP DB (display only).
+    source_country: str | None = None
+    source_country_name: str | None = None
 
 
 class AuditPage(BaseModel):
@@ -83,20 +87,24 @@ async def list_audit(
         ).all()
         usernames = {u.id: u.username for u in users}
 
-    items = [
-        AuditEntry(
-            id=r.id,
-            ts=r.ts.isoformat(),
-            user_id=r.user_id,
-            username=usernames.get(r.user_id) if r.user_id else None,
-            action=r.action,
-            target_type=r.target_type,
-            target_id=r.target_id,
-            request_id=r.request_id,
-            result=r.result,
-            detail=r.detail,
-            source_ip=r.source_ip,
+    items = []
+    for r in rows:
+        country, country_name = geoip_lookup.country_display(r.source_ip)
+        items.append(
+            AuditEntry(
+                id=r.id,
+                ts=r.ts.isoformat(),
+                user_id=r.user_id,
+                username=usernames.get(r.user_id) if r.user_id else None,
+                action=r.action,
+                target_type=r.target_type,
+                target_id=r.target_id,
+                request_id=r.request_id,
+                result=r.result,
+                detail=r.detail,
+                source_ip=r.source_ip,
+                source_country=country,
+                source_country_name=country_name,
+            )
         )
-        for r in rows
-    ]
     return AuditPage(items=items, total=total, page=page, page_size=page_size)

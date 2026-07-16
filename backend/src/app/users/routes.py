@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from app.auth.roles import ROLE_ADMIN, Role
 from app.auth.security import hash_password
 from app.db.base import get_session
 from app.db.models import Group, User, WebauthnCredential
+from app.geoip import lookup as geoip_lookup
 from app.groups.schemas import GroupBrief
 from app.net import client_ip
 
@@ -61,7 +62,19 @@ class UserOut(BaseModel):
     # account last come from" column on the Users page.
     last_login_ip: str | None = None
     last_login_country: str | None = None
+    # Hover label ("Germany · Europe · EU") — not a column; resolved live below.
+    last_login_country_name: str | None = None
     last_login_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _fill_country_name(self) -> UserOut:
+        # UserOut is built from the ORM row everywhere (from_attributes), so the
+        # display label is derived here instead of at each construction site.
+        # Only attach it while the live DB still agrees with the stored code.
+        code, name = geoip_lookup.country_display(self.last_login_ip)
+        if code == self.last_login_country:
+            self.last_login_country_name = name
+        return self
 
 
 async def _admin_count(session: AsyncSession) -> int:

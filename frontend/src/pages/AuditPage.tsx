@@ -4,6 +4,7 @@ import { FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
 import { fmtDateTime } from "../lib/datetime";
 import AccessLogTab from "../components/AccessLogTab";
+import CountryTag from "../components/CountryTag";
 
 interface AuditEntry {
   id: number;
@@ -17,6 +18,8 @@ interface AuditEntry {
   result: string;
   detail: Record<string, unknown> | null;
   source_ip: string | null;
+  source_country: string | null;
+  source_country_name: string | null;
 }
 
 interface AuditPage {
@@ -171,8 +174,9 @@ function ActionsTab() {
                       {e.result}
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-500">
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">
                     {e.source_ip ?? "—"}
+                    <CountryTag code={e.source_country} name={e.source_country_name} />
                   </td>
                   <td className="max-w-xs truncate px-3 py-2 text-xs text-slate-500">
                     {e.detail ? JSON.stringify(e.detail) : "—"}

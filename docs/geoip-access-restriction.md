@@ -153,3 +153,34 @@ läuft auf der geo-geprüften Dashboard-Session, `handoff` verbrennt ein
 Einmal-Token, `authcheck` verifiziert das instanzgebundene HMAC-Cookie.
 Bewusst NICHT ganz `/api/gui/` ausgenommen. Regressionstest:
 `test_scope_exemptions` (test_geoip.py).
+
+## Nachtrag 2026-07-16 — Umstellung auf GeoLite2-City, Länder-Tags überall
+
+Zwei Änderungen, ein Ziel: Herkunft neben **jeder** Dashboard-IP sichtbar
+machen (Audit-Log, Access-Timeline inkl. Logins/Instanz-Zugriffe/Requests,
+Grouped-Ansicht, Online-Sessions, Users-Seite, Footer), nicht mehr nur bei
+Denials.
+
+- Neues `lookup.country_display(ip)` liefert `(iso_code, hover_label)` für die
+  UI — z. B. `"Kaiserslautern, Rheinland-Pfalz · Germany · Europe · EU"`.
+  Reine Anzeige-Funktion: das Gate entscheidet weiter ausschließlich über
+  `country_for()` (DR-G5-Semantik unverändert).
+- Der Wochen-Download (`updater.py`) zieht jetzt **GeoLite2-City** statt
+  -Country (~35 MB statt ~6 MB Tarball, gleicher freier GeoLite2-Key —
+  live verifiziert). City enthält identische country/continent-Records;
+  installiert wird bewusst **in place** unter dem historischen Pfad
+  `geoip_db_path` (Default weiter `…/GeoLite2-Country.mmdb`): kein
+  Pfadwechsel, daher kein Fail-open-Fenster bis zum ersten Download, und
+  eine noch liegende Country-DB degradiert nur das Hover-Label (kein
+  Stadt-Präfix). DR-G1-Einschränkung „nur Land" gilt damit nur noch fürs
+  Enforcement; die Anzeige kann Stadt/Region. ASN weiterhin nicht.
+- Denial-Zeilen behalten den bei Ereigniszeit gespeicherten Ländercode;
+  das Hover-Label wird live aufgelöst und nur angehängt, solange die
+  aktuelle DB demselben Code zustimmt (keine widersprüchlichen Tooltips
+  nach DB-Updates / IP-Reassignments).
+
+Tests: `test_country_display_full_record` / `_plain_country_db` /
+`_degrades_gracefully` (test_geoip.py), Country-Anreicherung der
+Read-Surfaces in test_access_store.py / test_users.py. Live-Beweis im
+Dev-Stack: City-Download 65,8 MB installiert, Lookups mit Stadt+Region, Gate
+unverändert.

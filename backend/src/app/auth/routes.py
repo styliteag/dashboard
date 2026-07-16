@@ -49,6 +49,7 @@ class UserResponse(BaseModel):
     # Filled only by /auth/me (footer display, DR-G7); None in login responses.
     client_ip: str | None = None
     client_country: str | None = None
+    client_country_name: str | None = None
 
 
 def _user_response(user: User, session_token: str | None = None) -> UserResponse:
@@ -222,6 +223,7 @@ async def me(request: Request, user: Annotated[User, Depends(current_user)]) -> 
     ip = client_ip(request)
     response.client_ip = ip
     response.client_country = geoip_lookup.country_for(ip)
+    _, response.client_country_name = geoip_lookup.country_display(ip)
     return response
 
 

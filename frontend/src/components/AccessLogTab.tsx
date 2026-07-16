@@ -3,11 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Ban, KeyRound, LogIn, Users } from "lucide-react";
 import { api, apiErrorText } from "../lib/api";
 import { fmtDateTime, fmtRelative } from "../lib/datetime";
+import CountryTag from "./CountryTag";
 
 interface OnlineSession {
   username: string | null;
   user_id: number;
   ip: string | null;
+  country: string | null;
+  country_name: string | null;
   login_at: string;
   last_seen_at: string;
 }
@@ -16,6 +19,7 @@ interface PrincipalStat {
   principal: string;
   requests: number;
   last_ip: string | null;
+  last_country: string | null;
 }
 
 interface AccessSummary {
@@ -35,6 +39,7 @@ interface TimelineItem {
   username: string | null;
   ip: string | null;
   country: string | null;
+  country_name: string | null;
   instance?: string | null;
   detail: Record<string, unknown> | null;
 }
@@ -51,6 +56,7 @@ interface GroupedRow {
   username: string | null;
   ip: string | null;
   country: string | null;
+  country_name: string | null;
   instance?: string | null;
   count: number;
   last_ts: string;
@@ -210,6 +216,7 @@ export default function AccessLogTab() {
                   title={`login ${fmtDateTime(o.login_at)} · last seen ${fmtDateTime(o.last_seen_at)}`}
                 >
                   {o.ip ?? "—"}
+                  <CountryTag code={o.country} name={o.country_name} />
                 </span>
               </li>
             ))}
@@ -247,7 +254,14 @@ export default function AccessLogTab() {
             {s?.requests_24h.slice(0, 6).map((p) => (
               <li key={p.principal} className="flex items-baseline justify-between gap-2">
                 <span className="truncate text-slate-200">{p.principal}</span>
-                <span className="font-mono text-xs text-slate-500" title={p.last_ip ?? undefined}>
+                <span
+                  className="font-mono text-xs text-slate-500"
+                  title={
+                    p.last_ip
+                      ? `${p.last_ip}${p.last_country ? ` (${p.last_country})` : ""}`
+                      : undefined
+                  }
+                >
                   {p.requests}
                 </span>
               </li>
@@ -348,6 +362,7 @@ export default function AccessLogTab() {
                         username: g.username,
                         ip: g.ip,
                         country: g.country,
+                        country_name: g.country_name,
                         detail: null,
                       })}
                     </td>
@@ -356,9 +371,9 @@ export default function AccessLogTab() {
                       {g.instance ? ` @ ${g.instance}` : ""}
                     </td>
                     <td className="px-3 py-2 text-xs">{g.username ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-500">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">
                       {g.ip ?? "—"}
-                      {g.country ? ` (${g.country})` : ""}
+                      <CountryTag code={g.country} name={g.country_name} />
                     </td>
                     <td className="px-3 py-2 text-right text-xs text-slate-400">{g.count}</td>
                     <td
@@ -403,9 +418,9 @@ export default function AccessLogTab() {
                     </td>
                     <td className="px-3 py-2">{kindBadge(e)}</td>
                     <td className="px-3 py-2 text-xs">{e.username ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-500">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">
                       {e.ip ?? "—"}
-                      {e.country ? ` (${e.country})` : ""}
+                      <CountryTag code={e.country} name={e.country_name} />
                     </td>
                     <td className="max-w-md truncate px-3 py-2 text-xs text-slate-500">
                       {e.kind === "request"

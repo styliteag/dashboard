@@ -1,4 +1,4 @@
-"""Local GeoLite2-Country lookups (DR-G1) — no network calls, ever.
+"""Local GeoLite2 lookups (DR-G1; City edition since 2026-07-16) — no network calls, ever.
 
 The reader auto-reopens when the mmdb file changes on disk (the weekly download
 job atomically replaces it). A missing/broken database yields ``None`` country
@@ -85,6 +85,50 @@ def country_for(ip: str) -> str | None:
     country = record.get("country") or record.get("registered_country") or {}
     iso = country.get("iso_code") if isinstance(country, dict) else None
     return iso if isinstance(iso, str) and len(iso) == 2 else None
+
+
+def country_display(ip: str | None) -> tuple[str | None, str | None]:
+    """(iso_code, hover label) for UI display of an IP's origin — never enforcement.
+
+    The label is everything the local GeoLite2 DB knows beyond the code. With
+    the City edition: "Frankfurt am Main, Hesse · Germany · Europe · EU"; a
+    plain Country DB (older volumes) degrades to "Germany · Europe · EU", and
+    missing pieces fall back to the bare code. The gate keeps using
+    ``country_for``; do not swap them.
+    """
+    if not ip:
+        return None, None
+    reader = _current_reader()
+    if reader is None:
+        return None, None
+    try:
+        record = reader.get(ip)
+    except ValueError:
+        return None, None
+    if not isinstance(record, dict):
+        return None, None
+    country = record.get("country") or record.get("registered_country") or {}
+    if not isinstance(country, dict):
+        return None, None
+    iso = country.get("iso_code")
+    if not (isinstance(iso, str) and len(iso) == 2):
+        return None, None
+
+    def _en(node: object) -> str | None:
+        names = node.get("names") if isinstance(node, dict) else None
+        return names.get("en") if isinstance(names, dict) else None
+
+    # City-edition extras; absent in a plain Country DB. Subdivisions are
+    # ordered largest→smallest, the last one is the most specific (state).
+    city = _en(record.get("city"))
+    subs = record.get("subdivisions")
+    sub = _en(subs[-1]) if isinstance(subs, list) and subs else None
+    place = ", ".join(p for p in (city, sub) if p)
+
+    parts = [p for p in (place, _en(country) or iso, _en(record.get("continent"))) if p]
+    if country.get("is_in_european_union"):
+        parts.append("EU")
+    return iso, " · ".join(parts)
 
 
 def db_status() -> dict:

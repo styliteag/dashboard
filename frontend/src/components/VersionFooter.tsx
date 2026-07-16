@@ -41,7 +41,11 @@ export default function VersionFooter() {
     <footer className="border-t border-slate-800 bg-slate-950/80 px-6 py-2 text-xs text-slate-500">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <span title="Your IP as seen by the dashboard (country via local GeoIP DB)">
+          <span
+            title={`Your IP as seen by the dashboard (country via local GeoIP DB)${
+              user?.client_country_name ? ` — ${user.client_country_name}` : ""
+            }`}
+          >
             {ownIp ? `your IP ${ownIp}` : ""}
           </span>
           {denials.data && denials.data.total > 0 && (

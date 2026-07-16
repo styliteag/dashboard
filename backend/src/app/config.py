@@ -82,13 +82,16 @@ class Settings(BaseSettings):
     # everyone out. Deliberately env-only (container restart applies it), never
     # editable via the UI: a UI toggle would be unreachable while locked out.
     geoip_disable: bool = False
-    # MaxMind credentials for the weekly GeoLite2-Country auto-download job
+    # MaxMind credentials for the weekly GeoLite2-City auto-download job
     # (download.maxmind.com uses HTTP basic auth: account id + license key).
     # Either empty = the job stays idle; mount/update the mmdb manually instead.
     maxmind_account_id: str = Field(default="", description="MaxMind account id")
     maxmind_license_key: str = Field(default="", description="MaxMind GeoLite2 license key")
-    # Path of the GeoLite2-Country database inside the container (volume-backed
-    # so a downloaded update survives restarts).
+    # Path of the GeoLite2 database inside the container (volume-backed so a
+    # downloaded update survives restarts). The filename is historic: since
+    # 2026-07-16 the updater installs the CITY edition here in place — same
+    # country records for the gate, plus city detail for UI hover labels.
+    # Kept unchanged so existing volumes upgrade without a fail-open window.
     geoip_db_path: str = "/data/geoip/GeoLite2-Country.mmdb"
     # --- CrowdSec bad-actor blocklist (DR-G8). ---
     # Active as soon as an API key is set: ban decisions are pulled from the

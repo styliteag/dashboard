@@ -462,3 +462,37 @@ async def test_delete_non_admin_ok() -> None:
     )
     assert target in session.deleted
     assert session.committed
+
+
+# --- GeoIP hover label on last login (2026-07-16) -----------------------------------
+
+
+def test_userout_resolves_country_hover_label(monkeypatch) -> None:
+    """last_login_country_name is derived live from last_login_ip (display
+    only) and attached only while the GeoIP DB still agrees with the code
+    stored at login time — a reassigned IP must not get a contradicting hover."""
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(
+        routes.geoip_lookup,
+        "country_display",
+        lambda ip: ("DE", "Germany · Europe · EU") if ip else (None, None),
+    )
+    base = dict(
+        id=1,
+        username="u",
+        role="admin",
+        is_superadmin=False,
+        groups=[],
+        created_at=datetime.now(UTC),
+        disabled=False,
+        totp_enabled=False,
+        last_login_ip="203.0.113.7",
+        last_login_at=None,
+    )
+    out = routes.UserOut(**base, last_login_country="DE")
+    assert out.last_login_country_name == "Germany · Europe · EU"
+    stale = routes.UserOut(**base, last_login_country="US")  # DB moved on
+    assert stale.last_login_country_name is None
+    never = routes.UserOut(**{**base, "last_login_ip": None}, last_login_country=None)
+    assert never.last_login_country_name is None

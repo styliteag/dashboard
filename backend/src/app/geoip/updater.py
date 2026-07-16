@@ -1,10 +1,16 @@
-"""Weekly GeoLite2-Country download (DR-G1).
+"""Weekly GeoLite2-City download (DR-G1; City since 2026-07-16).
 
 Pulls the official tarball from download.maxmind.com (HTTP basic auth with
 account id + license key), extracts the single ``.mmdb`` member and replaces
 the active database atomically — a crashed download can never leave a torn
 file, and the lookup reader picks the new mtime up on its next call. Without
 credentials the job is a no-op (manual volume updates keep working).
+
+City replaced Country deliberately IN PLACE (same ``geoip_db_path``, historic
+filename): the City edition carries identical country/continent records, so
+the enforcement gate (``country_for``) is unaffected and existing deployments
+upgrade seamlessly on their next download — no fail-open window from a path
+switch. City merely adds city/subdivision detail for the UI hover labels.
 """
 
 from __future__ import annotations
@@ -22,8 +28,8 @@ from app.config import get_settings
 
 log = structlog.get_logger("app.geoip")
 
-_DOWNLOAD_URL = "https://download.maxmind.com/geoip/databases/GeoLite2-Country/download"
-_MAX_TARBALL = 100 * 1024 * 1024  # GeoLite2-Country is ~6 MB; 100 MB = clearly broken
+_DOWNLOAD_URL = "https://download.maxmind.com/geoip/databases/GeoLite2-City/download"
+_MAX_TARBALL = 100 * 1024 * 1024  # GeoLite2-City is ~35 MB; 100 MB = clearly broken
 
 # Last job outcome for the status endpoint (process-local, single worker).
 _last: dict = {"at": None, "ok": None, "detail": "never ran"}
@@ -46,7 +52,7 @@ def _extract_mmdb(tarball: bytes) -> bytes:
 
 
 async def refresh_geoip_db() -> dict:
-    """Download + atomically install the current GeoLite2-Country mmdb.
+    """Download + atomically install the current GeoLite2-City mmdb.
 
     Returns the outcome dict (also cached for the status endpoint).
     """

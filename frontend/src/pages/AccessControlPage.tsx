@@ -31,6 +31,7 @@ interface GeoipDenials {
     at: string;
     ip: string;
     country: string | null;
+    country_name: string | null;
     path: string;
     reason: string;
   }[];
@@ -503,7 +504,9 @@ export default function AccessControlPage() {
                     <tr key={`${d.at}-${d.ip}-${i}`} className="border-t border-slate-800/60">
                       <td className="py-0.5 text-slate-500">{fmtRelative(d.at)}</td>
                       <td className="py-0.5 text-slate-300">{d.ip}</td>
-                      <td className="py-0.5 text-slate-400">{d.country ?? "—"}</td>
+                      <td className="py-0.5 text-slate-400" title={d.country_name ?? undefined}>
+                        {d.country ?? "—"}
+                      </td>
                       <td className="max-w-[14rem] truncate py-0.5 text-slate-500">{d.path}</td>
                       <td className="py-0.5 text-slate-400">{d.reason}</td>
                     </tr>

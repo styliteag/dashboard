@@ -17,6 +17,7 @@ export interface User {
   // resolves it) for the footer display.
   client_ip?: string | null;
   client_country?: string | null;
+  client_country_name?: string | null;
 }
 
 /** True for roles allowed to mutate (everything except view_only). */
