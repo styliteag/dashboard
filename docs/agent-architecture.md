@@ -1140,3 +1140,40 @@ Gefundener und gefixter Live-Bug: Checkmk ≥2.4 emittiert `<<<df_v2>>>` statt `
 - **Linux-ping-Flags** (2.9.16): `_ping_once` nutzt auf Linux `-w`/`-I` statt
   FreeBSD `-t`/`-S`. Live: Connectivity-Monitor ubn1 → Dashboard-Host ping ok,
   Check `connectivity:8` grün.
+
+## 26. pfSense-Serien-Upgrade aus dem Dashboard (✅ agent 3.1.5, live verifiziert 2026-07-16)
+
+OPNsense-Serien-Upgrades (§ Firmware, agent 3.1.1) haben ihr pfSense-Gegenstück:
+pfSense publiziert jede Release in einem eigenen, gepinnten pkg-Train — eine Box auf
+2.7.2 antwortet in-train „up to date", während 2.8.1 im Nachbar-Train `2_8_1` liegt.
+`firmware.upgrade` löst jetzt auch auf pfSense aus:
+
+1. **Ziel ausschließlich on-box**: `_pfsense_newer_branch()` liest den neuesten
+   stabilen Train aus den lokalen Repo-Deskriptoren (Beta/Devel gefiltert). Ein vom
+   Dashboard mitgeschicktes Ziel wird — wie bei Tunnel-Zielen — nie honoriert.
+2. **Branch-Switch = exakter GUI-Codepfad** (`system_update_settings.php`):
+   `config_set_path('system/pkg_repo_conf_path', …)` + `write_config()` +
+   `pkg_switch_repo()`, via `php -r` durch den `_PF_CONFIG_COMPAT`-Shim (CE-2.6-
+   Flotte), `write_config` auf populated `$config` geguardet.
+3. ZFS-Boot-Environment (`orbit-pre-<version>`), dann `pfSense-upgrade -T 300 -y`.
+   `-T 300` ist tragend: `pkg_switch_repo` spawnt `rc.update_pkg_metadata` im
+   Hintergrund, das das Lockfile hält — mit dem Default-5s-Timeout bricht der Lauf
+   still nach DEVNULL ab (live auf pf2 beobachtet). pgrep-Pattern für Tracking +
+   Updater-Guard: `_PFSENSE_UPGRADE_PROC_PAT` (matcht `-y`, nie `-c`/`-uf`/`-Uc`).
+4. **Disk-Preflight** (`_fw_space_error`, update + upgrade, vor dem Branch-Switch):
+   unter 512 MB frei auf / wird verweigert — die Vendor-Updater sterben auf voller
+   Platte lautlos (pf2: 960-MB-Pool, 5,6 MB frei, pkg starb mitten im Fetch ohne
+   eine Fehlerzeile, Dashboard zeigte „started").
+5. `collect_firmware` und das manuelle `firmware.check` teilen sich
+   `_pfsense_newer_train_verdict` — beide melden `upgrade_major_version`, sonst
+   versteckt ein manueller „Check now" das Serien-Angebot bis zum nächsten 12h-Check.
+   Backend-Mapper und Frontend (roter „Upgrade to X"-Button, Bulk-Flow) waren bereits
+   plattformneutral — null Änderungen nötig.
+
+**Live-Beweis pf2 (10.20.1.217, CE 2.7.2 → 2.8.1, One-Click aus dem Dashboard):**
+Angebot `upgrade_major_version: "2.8.1"` → `POST /instances/7/firmware/upgrade` →
+Branch-Switch + BE `orbit-pre-2.7.2-RELEASE` → 187 Pakete (413 MiB) → Auto-Reboot →
+`/etc/version` = 2.8.1-RELEASE, Agent 3.1.5 reconnected, Verdict heilt auf „up to
+date" (major leer), Rollback-BE vorhanden (777 M). Disk-Refusal ebenfalls live
+bewiesen (vor dem Disk-Resize: „insufficient disk space: 5 MB free on /").
+Commits: 05165c3, fdee003, 3409201.
