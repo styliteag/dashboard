@@ -1,6 +1,6 @@
 ---
 name: lab-verify
-description: Live E2E verification against the dev stack and the physical lab firewalls (opn1/opn2/pf1) — connection map, dev-stack drive-through, agent test loop without self-update churn, OPNsense API probing, orphan-process checks, evidence collection. Use whenever a change touches agent behavior, firewall APIs, tunnels/capture/shell, checks, or anything whose real proof is a live box.
+description: Live E2E verification against the dev stack and the physical lab firewalls (opn1/opn2/pf1/pf2) — connection map, dev-stack drive-through, agent test loop without self-update churn, OPNsense API probing, orphan-process checks, evidence collection. Use whenever a change touches agent behavior, firewall APIs, tunnels/capture/shell, checks, or anything whose real proof is a live box.
 ---
 
 # /lab-verify
@@ -16,6 +16,7 @@ complete map so nothing gets rediscovered.
 | opn1 | 10.20.1.198 | OPNsense 2.6.11 | ipsec to opn2+pf1, one deliberately defunct tunnel (for status testing) |
 | opn2 | 10.20.1.199 | OPNsense 2.6.11 | ipsec to opn1; `orbit` API user provisioned |
 | pf1 | 10.20.1.200 | pfSense CE 2.8.1 | ipsec to opn1; python at `/usr/local/bin/python3.11` |
+| pf2 | 10.20.1.217 | pfSense CE 2.7.2 | deliberately old — series-upgrade testing; WAN 10.21.7.105 (DHCP); ssh/GUI ports not yet confirmed on lab standard (9922/4444) |
 
 - SSH: `ssh -p 9922 root@10.20.1.19x`. **Root shell is tcsh** — bare `2>&1`, `$( )`
   break. Always run through sh:
