@@ -222,6 +222,7 @@ pnpm-debug.log*
 
 # AI assistant files — local-only, not published (CLAUDE.local.md covered by *local.md below)
 .claude/
+.agents/
 CLAUDE.md
 AGENTS.md
 

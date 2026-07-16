@@ -1,15 +1,15 @@
 # UPCOMING — Feature Ideas & Roadmap Candidates
 
-Brainstorm document: things STYLiTE Orbit could grow into. Not a commitment list —
-items graduate from here into `TODO.md` / `docs/agent-architecture.md` when they get
-concrete. Ordered roughly from "small polish" to "big bets".
+Ideas for where STYLiTE Orbit could grow. Not a commitment list — items move into
+`docs/agent-architecture.md` when they get concrete. Ordered roughly from small
+polish to larger bets.
 
 Known-gap backlog (correctness holes, agent lifecycle) lives in
-`docs/agent-architecture.md` §11/§14 and `TODO.md` — not duplicated here.
+`docs/agent-architecture.md` §11/§14 — not duplicated here.
 
 ---
 
-## 🔧 Quick wins & polish
+## Quick wins & polish
 - **Global search** — one search box: instances, devices, VPN tunnels, log events,
   users. Keyboard-first (Cmd-K palette).
 - **CSV/JSON export buttons** — on every table (instances, devices, log events,
@@ -24,7 +24,7 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   user's `password_version` (kills all of a user's sessions via the existing
   `current_user` check, zero new enforcement infrastructure).
 
-## 📈 Monitoring & alerting
+## Monitoring & alerting
 
 - **Alert rules engine** — user-defined thresholds (CPU > x for y min, tunnel down,
   cert expiring in < n days, gateway RTT/loss), per group or per instance, with
@@ -37,7 +37,7 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 - **SLA / availability reports** — monthly uptime per instance and per tunnel,
   rendered as PDF/e-mail for customers ("99.7 % in June").
 
-## 🛰 Agent & fleet operations
+## Agent & fleet operations
 
 - **Config drift / compliance checks** — declarative expectations ("SSH password
   auth off", "DNS servers = X", "firmware ≥ Y") evaluated fleet-wide, with a
@@ -52,7 +52,7 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 - **Wake-up / on-demand refresh** — "refresh now" button that asks the agent to push
   immediately instead of waiting for the next interval.
 
-## 🔐 Security & compliance
+## Security & compliance
 
 - **CVE matching** — map collected firmware/package versions against vulnerability
   feeds (VINCE/NVD, vendor advisories); "3 boxes run an OpenSSL with CVE-2026-XXXX".
@@ -65,7 +65,7 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
 - **Anomaly flags on log events** — highlight *new* event patterns per instance
   ("this box never logged this before") instead of only severity.
 
-## 🤖 AI / assistant
+## Optional LLM features
 
 - **Daily fleet briefing** — one generated paragraph per morning: what changed,
   what's degraded, what needs a human. Delivered via the notification channels.
@@ -73,16 +73,16 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   proposes a classification (noise / action needed) that an admin can confirm —
   feeding back into the curated noise list in `app/logs/events.py`.
 
-## 🏢 Big bets
+## Larger bets
 
 - **Full multi-tenancy** — organizations above groups: per-tenant branding,
   isolated API keys, tenant-scoped admins. The MSP scale-up path
   (backlog §14 Tier 2 names this).
-- **Topology map** — auto-drawn fleet graph: boxes as nodes, IPsec/OpenVPN/WireGuard
-  tunnels as edges, colored by health. All the data already exists; this is the
-  "wow" view for the login screen.
+- **Topology map** — fleet graph: boxes as nodes, IPsec/OpenVPN/WireGuard tunnels
+  as edges, colored by health. The data already exists; this would be a login-screen
+  overview.
 - **More VPN types** — WireGuard and OpenVPN status parity with IPsec (peers,
-  handshake age, transfer), on all three platforms.
+  handshake age, traffic), on all three platforms.
 - **More vendors** — the platform abstraction (agent collectors + Securepoint-style
   pollers) is designed for this: Sophos XG(S), MikroTik (REST API), FortiGate,
   UniFi gateways. Each vendor = poller module + normalized status mapping.
@@ -99,9 +99,9 @@ Known-gap backlog (correctness holes, agent lifecycle) lives in
   webhooks (instance offline, update finished) so customers integrate Orbit into
   their own tooling.
 
-## 🧪 Moonshots
+## Longer-term
 
-- **Autonomous remediation** — for a whitelisted set of failures (stale DHCP lease
+- **Guided remediation** — for a whitelisted set of failures (stale DHCP lease
   daemon, hung IPsec child SA) the dashboard proposes — and with per-group opt-in,
   executes — a known-good fix via the agent, fully audited.
 
@@ -112,4 +112,4 @@ certificate lifecycle view, hub observability, config backup & versioning, top
 talkers / pf state-table, remote packet capture, the OPNsense firewall rules editor,
 Checkmk/Prometheus API-key split, and per-instance tags & notes.
 
-*Last updated: 2026-07-05*
+*Last updated: 2026-07-16*
