@@ -12,43 +12,10 @@ stdlib helper from conftest (non-bootstrap logins never mint a session on
 password alone), and is deleted again in the fixture teardown.
 """
 
-import uuid
-
-import httpx
 import pytest
-from conftest import BASE_URL, login, totp_code
 
-
-@pytest.fixture()
-def scoped_user(superadmin):
-    username = f"contract-scoped-{uuid.uuid4().hex[:8]}"
-    password = "contract-throwaway-pw"
-
-    created = superadmin.post(
-        "/api/users",
-        json={"username": username, "password": password, "role": "view_only", "group_ids": []},
-    )
-    assert created.status_code == 201, f"user create failed: {created.status_code} {created.text}"
-    user_id = created.json()["id"]
-
-    client = httpx.Client(base_url=BASE_URL, timeout=10)
-    try:
-        challenge = login(client, username, password)
-        assert challenge.status_code == 200
-        assert challenge.json()["stage"] == "enroll"
-
-        setup = client.post("/api/auth/mfa/setup/totp")
-        assert setup.status_code == 200, f"totp setup failed: {setup.status_code} {setup.text}"
-        secret = setup.json()["secret"]
-
-        confirm = client.post("/api/auth/mfa/confirm/totp", json={"code": totp_code(secret)})
-        assert confirm.status_code == 200, f"totp confirm failed: {confirm.status_code}"
-
-        yield client
-    finally:
-        client.close()
-        deleted = superadmin.delete(f"/api/users/{user_id}")
-        assert deleted.status_code == 204, f"cleanup failed for user {user_id}"
+# The scoped_user fixture (throwaway zero-group view_only user with a real
+# TOTP enrollment) lives in conftest.py — other route families reuse it.
 
 
 def test_zero_group_user_sees_nothing(scoped_user):
