@@ -444,7 +444,7 @@ Each has happened or nearly happened. Name → wrong move → rule.
 `/lab-verify`. Lab: opn1=10.20.1.198, opn2=10.20.1.199 (OPNsense 2.6.11),
 pf1=10.20.1.200 (pfSense CE 2.8.1), pf2=10.20.1.217 (pfSense CE 2.7.2, reusable
 series-upgrade tester — full upgrade+rollback cycle proven, docs §26),
-pf3=10.20.1.197 (pfSense Plus 22.05, real python-3.8 box, repos EOL-broken); ssh
+pf3=10.20.1.197 (pfSense Plus 23.01, blocked on Netgate registration for further updates); ssh
 port 9922 (root shell is tcsh); GUI/API on :4444. Shared with other developers —
 record what you verified in the commit body.
 

@@ -17,7 +17,7 @@ complete map so nothing gets rediscovered.
 | opn2 | 10.20.1.199 | OPNsense 2.6.11 | ipsec to opn1; `orbit` API user provisioned |
 | pf1 | 10.20.1.200 | pfSense CE 2.8.1 | ipsec to opn1; python at `/usr/local/bin/python3.11` |
 | pf2 | 10.20.1.217 | pfSense CE 2.7.2 | reusable series-upgrade tester: runs in the `orbit-pre-2.7.2-RELEASE` BE, sibling BE `default` = 2.8.1 (full cycle 2.7.2→2.8.1→rollback proven, docs §26); WAN 10.21.7.105 (DHCP) |
-| pf3 | 10.20.1.197 | pfSense Plus 22.05 | hostname pfsense-tas, KVM; **python 3.8** (real floor box); update check broken (22.05 repos EOL — vendor repo fix needed before upgrades); old repo layout Default/Devel/Previous, no repoc, no config_set_path |
+| pf3 | 10.20.1.197 | pfSense Plus 23.01 | hostname pfsense-tas, KVM, instance id=8 "pfplus"; dashboard-updated 22.05→23.01 (EOL repo fix recipe in memory/env_test_lab); **blocked on Netgate Plus registration** for further updates; Proxmox snapshot (22.05) exists |
 
 - SSH: `ssh -p 9922 root@10.20.1.19x`. **Root shell is tcsh** — bare `2>&1`, `$( )`
   break. Always run through sh:
