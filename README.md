@@ -337,7 +337,6 @@ Required CI secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the defa
 - [`docs/agent-architecture.md`](docs/agent-architecture.md) — agent & connectivity design (transports, self-update, pfSense port, relay, Checkmk).
 - [`CHECKMK.md`](CHECKMK.md) — full Checkmk integration guide (what's exposed, API key, datasource program, piggyback hosts, troubleshooting).
 - [`checkmk/README.md`](checkmk/README.md) — Checkmk special-agent install and auth.
-- [`CLAUDE.md`](CLAUDE.md) — repository conventions and done-criteria.
 
 ## License
 

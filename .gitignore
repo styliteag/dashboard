@@ -220,8 +220,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Local Claude Code config
-#.claude/
+# AI assistant files — local-only, not published (CLAUDE.local.md covered by *local.md below)
+.claude/
+CLAUDE.md
+AGENTS.md
 
 # Local secrets / env (root .env already covered above; backend/.env kept for ad-hoc tooling)
 backend/.env
