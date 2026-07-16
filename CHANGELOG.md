@@ -27,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pfSense firmware updates started while another pfSense-upgrade instance
   briefly held its lockfile (the periodic check, or the metadata refresh a
   branch switch spawns) aborted silently after 5s and never installed
-  anything — the updater now waits for the lock for up to 5 minutes
-  (agent 3.1.5).
+  anything — the agent now waits up to 3 minutes for the other instance to
+  finish before starting the updater. The wait happens agent-side because
+  the updater's own -T timeout flag does not exist on older tooling
+  (pfSense 2.7.2 dies with "Illegal option -T") (agent 3.1.7).
 - Firmware updates/upgrades on a box with a nearly full disk died silently
   mid-download while the dashboard showed a successful start. The agent now
   refuses to start a vendor update with less than 512 MB free on / and

@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.6"
+__version__ = "3.1.7"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1903,9 +1903,28 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
     return upgrade_available, version, out, check_failed, extra
 
 
-# The -y run's cmdline carries "-T 300 -y" since 3.1.4 — match both spellings,
-# but never the periodic `-c` check or rc.update_pkg_metadata's -uf/-Uc runs.
+# Matches the apply run (`pfSense-upgrade -y`) but never the periodic `-c`
+# check or rc.update_pkg_metadata's -uf/-Uc runs.
 _PFSENSE_UPGRADE_PROC_PAT = "pfSense-upgrade.*-y"
+
+
+def _pfsense_wait_updater_idle(timeout_s: float = 180.0) -> bool:
+    """Wait until no other pfSense-upgrade instance holds the lockfile.
+
+    pkg_switch_repo spawns rc.update_pkg_metadata in the background, which
+    holds the pfSense-upgrade lockfile for ~30-60s. The wrapper's own lockf
+    aborts after 5s ("Another instance is already running... Aborting!"
+    straight into DEVNULL), and its -T timeout flag only exists on
+    pfSense-upgrade >= 1.3 — on the 2.7.2 tooling (1.2.1) "-T" dies with
+    "Illegal option -T" before doing anything (both observed live on pf2,
+    2026-07-16). Waiting Python-side works on every tooling version.
+    """
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if not _run(["pgrep", "-f", "pfSense-upgrade"], timeout=10).strip():
+            return True
+        time.sleep(2)
+    return False
 
 
 def _vendor_updater_running(plat: str) -> bool:
@@ -4300,11 +4319,10 @@ def _cmd_firmware_update(params: dict) -> dict:
         else:
             return {"success": False, "output": "no supported package manager (apt/dnf)"}
     elif plat == "pfsense":
-        # -T 300: wait for the pfSense-upgrade lockfile instead of the default
-        # 5s abort — the periodic check / rc.update_pkg_metadata briefly holds
-        # it and the wrapper otherwise exits "Another instance is already
-        # running... Aborting!" into DEVNULL (observed live on pf2, 2026-07-16).
-        cmd = ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"]
+        # Plain -y: the -T lockf-timeout flag is >= 1.3 tooling only
+        # ("Illegal option -T" on 2.7.2). Lock contention is handled by
+        # _pfsense_wait_updater_idle below.
+        cmd = ["/usr/local/sbin/pfSense-upgrade", "-y"]
     else:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
@@ -4315,6 +4333,11 @@ def _cmd_firmware_update(params: dict) -> dict:
         be = _zfs_boot_snapshot(installed)
         if be:
             snapshot_note = "; boot environment %s created" % be
+    if plat == "pfsense" and not _pfsense_wait_updater_idle():
+        return {
+            "success": False,
+            "output": "another pfSense-upgrade instance is still running — try again",
+        }
     _STATE.fw_update_ts = time.time()
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     if plat == "linux":
@@ -4351,13 +4374,20 @@ def _cmd_firmware_upgrade(params: dict) -> dict:
         if err:
             return {"success": False, "output": "update branch switch failed: %s" % err}
         be = _zfs_boot_snapshot(_read_pfsense_version())
-        _STATE.fw_update_ts = time.time()
-        # -T 300 is load-bearing here: pkg_switch_repo just spawned
+        # The wait is load-bearing here: pkg_switch_repo just spawned
         # rc.update_pkg_metadata in the background, which holds the
-        # pfSense-upgrade lockfile — with the default 5s lockf timeout this
-        # run aborts silently and the upgrade never starts (pf2, 2026-07-16).
+        # pfSense-upgrade lockfile — starting -y immediately aborts after
+        # the wrapper's 5s lockf timeout, silently into DEVNULL (pf2,
+        # 2026-07-16). Python-side wait instead of -T: that flag is >= 1.3
+        # tooling only ("Illegal option -T" on 2.7.2 kills the run outright).
+        if not _pfsense_wait_updater_idle():
+            return {
+                "success": False,
+                "output": "another pfSense-upgrade instance is still running — try again",
+            }
+        _STATE.fw_update_ts = time.time()
         subprocess.Popen(
-            ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"],
+            ["/usr/local/sbin/pfSense-upgrade", "-y"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

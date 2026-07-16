@@ -218,13 +218,23 @@ def test_firmware_upgrade_pfsense_switches_train_then_starts_upgrade(
         return ""
 
     monkeypatch.setattr(agent, "_pfsense_switch_train", fake_switch)
+    waited: list[bool] = []
+
+    def fake_wait(timeout_s: float = 180.0) -> bool:
+        waited.append(True)
+        return True
+
+    monkeypatch.setattr(agent, "_pfsense_wait_updater_idle", fake_wait)
     captured = _capture_popen(monkeypatch)
     result = agent.execute_command("firmware.upgrade", {})
     assert switched == ["2_8_1"]
-    # -T 300 is load-bearing: pkg_switch_repo's background metadata refresh
-    # holds the pfSense-upgrade lockfile; the default 5s lockf timeout made
-    # the -y run abort silently and the upgrade never started (pf2 incident).
-    assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-T", "300", "-y"]
+    # The idle-wait is load-bearing: pkg_switch_repo's background metadata
+    # refresh holds the pfSense-upgrade lockfile; starting -y immediately
+    # aborted silently after the wrapper's 5s lockf timeout (pf2 incident).
+    # Plain -y, no -T: that flag is >= 1.3 tooling only ("Illegal option -T"
+    # on the 2.7.2 tooling kills the run before it does anything).
+    assert waited == [True]
+    assert captured["cmd"] == ["/usr/local/sbin/pfSense-upgrade", "-y"]
     assert result["success"] is True
     assert "2.8.1" in result["output"]
     assert "orbit-pre-2.7.2-RELEASE" in result["output"]
@@ -319,18 +329,41 @@ def test_firmware_upgrade_full_disk_refused_before_branch_switch(
 
 
 def test_pfsense_upgrade_proc_pattern_matches_only_the_apply_run() -> None:
-    """The pgrep pattern must see the -y run (plain and -T-wrapped since
-    3.1.4) but never the periodic -c check or rc.update_pkg_metadata's
-    -uf/-Uc runs — a false match reads as "vendor updater applying" and
-    suppresses firmware checks fleet-wide."""
+    """The pgrep pattern must see the -y apply run but never the periodic -c
+    check or rc.update_pkg_metadata's -uf/-Uc runs — a false match reads as
+    "vendor updater applying" and suppresses firmware checks fleet-wide."""
     import re
 
     pat = re.compile(agent._PFSENSE_UPGRADE_PROC_PAT)
-    assert pat.search("/usr/local/sbin/pfSense-upgrade -T 300 -y")
     assert pat.search("/usr/local/sbin/pfSense-upgrade -y")
     assert not pat.search("/usr/local/sbin/pfSense-upgrade -c")
     assert not pat.search("/usr/local/sbin/pfSense-upgrade -uf")
     assert not pat.search("/usr/local/sbin/pfSense-upgrade -Uc")
+
+
+def test_firmware_upgrade_pfsense_fails_when_lock_never_frees(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
+    monkeypatch.setattr(agent, "_read_pfsense_branch", lambda: "2_7_2")
+    monkeypatch.setattr(agent, "_pfsense_newer_branch", lambda b: ("2_8_1", "2.8.1"))
+    monkeypatch.setattr(agent, "_read_pfsense_version", lambda: "2.7.2-RELEASE")
+    monkeypatch.setattr(agent, "_zfs_boot_snapshot", lambda v: "")
+    monkeypatch.setattr(agent, "_pfsense_switch_train", lambda t: "")
+    monkeypatch.setattr(agent, "_pfsense_wait_updater_idle", lambda timeout_s=180.0: False)
+    captured = _capture_popen(monkeypatch)
+    result = agent.execute_command("firmware.upgrade", {})
+    assert result["success"] is False
+    assert "still running" in result["output"]
+    assert "cmd" not in captured
+
+
+def test_pfsense_wait_updater_idle_polls_until_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    outputs = ["12345", "12345", ""]
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: outputs.pop(0))
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    assert agent._pfsense_wait_updater_idle(timeout_s=60.0) is True
+    assert outputs == []
 
 
 def test_firmware_check_pfsense_reports_series_target(
