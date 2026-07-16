@@ -16,7 +16,7 @@ complete map so nothing gets rediscovered.
 | opn1 | 10.20.1.198 | OPNsense 2.6.11 | ipsec to opn2+pf1, one deliberately defunct tunnel (for status testing) |
 | opn2 | 10.20.1.199 | OPNsense 2.6.11 | ipsec to opn1; `orbit` API user provisioned |
 | pf1 | 10.20.1.200 | pfSense CE 2.8.1 | ipsec to opn1; python at `/usr/local/bin/python3.11` |
-| pf2 | 10.20.1.217 | pfSense CE 2.7.2 | deliberately old — series-upgrade testing; WAN 10.21.7.105 (DHCP); ssh/GUI ports not yet confirmed on lab standard (9922/4444) |
+| pf2 | 10.20.1.217 | pfSense CE 2.8.1 | series-upgrade test box (2.7.2 → 2.8.1 via dashboard, docs §26); WAN 10.21.7.105 (DHCP); rollback BE `orbit-pre-2.7.2-RELEASE` on box |
 
 - SSH: `ssh -p 9922 root@10.20.1.19x`. **Root shell is tcsh** — bare `2>&1`, `$( )`
   break. Always run through sh:
