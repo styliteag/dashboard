@@ -38,6 +38,10 @@ defmodule OrbitWeb.Router do
 
     get "/", PageController, :home
     post "/logout", SessionController, :delete
+
+    live_session :authenticated, on_mount: OrbitWeb.UserAuth do
+      live "/hub", HubStatusLive
+    end
   end
 
   # Bare pipeline for the agent websocket: bearer-token auth happens in the

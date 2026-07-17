@@ -19,6 +19,7 @@ defmodule OrbitWeb.UserAuth do
   import Phoenix.Controller
 
   alias Orbit.Accounts
+  alias Orbit.Accounts.User
 
   @doc "Mint the fully-authenticated session (after the second factor passed)."
   def log_in_user(conn, user) do
@@ -80,6 +81,33 @@ defmodule OrbitWeb.UserAuth do
       |> put_flash(:error, "Please sign in.")
       |> redirect(to: ~p"/login")
       |> halt()
+    end
+  end
+
+  @doc """
+  LiveView on_mount hook: assign :current_user from the session, or redirect
+  to /login. Same validation as fetch_current_user (password_version + not
+  disabled). Use as `on_mount OrbitWeb.UserAuth` in a live route.
+  """
+  def on_mount(:default, _params, session, socket) do
+    user = live_user_from_session(session)
+
+    if user do
+      {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+    else
+      {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/login")}
+    end
+  end
+
+  defp live_user_from_session(session) do
+    with user_id when is_integer(user_id) <- session["user_id"],
+         true <- session["mfa_passed"] == true,
+         %User{} = user <- Accounts.get_user(user_id),
+         true <- session["password_version"] == user.password_version,
+         false <- user.disabled do
+      user
+    else
+      _ -> nil
     end
   end
 

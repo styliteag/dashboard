@@ -27,8 +27,13 @@
       Groups: {Enum.map_join(@current_user.groups, ", ", & &1.name)}
       <span :if={@current_user.groups == []}>none — no instances visible</span>
     </p>
-    <p class="mt-4 text-sm text-slate-500">
-      LiveView pages land here milestone by milestone (docs/elixir-liveview-rewrite.md M5).
+    <p class="mt-4 text-sm text-slate-400">
+      <a href={~p"/hub"} class="text-emerald-400 hover:text-emerald-300">
+        → Connected agents (live)
+      </a>
+    </p>
+    <p class="mt-2 text-sm text-slate-500">
+      More LiveView pages land here milestone by milestone (docs/elixir-liveview-rewrite.md M5).
     </p>
   </section>
 </main>

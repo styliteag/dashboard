@@ -166,6 +166,18 @@ defmodule Orbit.Hub do
     GenServer.cast(server, {:deliver_tunnel, frame})
   end
 
+  @roster_topic "hub:roster"
+
+  @doc "PubSub topic notified (payload `:roster_changed`) on connect/disconnect."
+  def roster_topic, do: @roster_topic
+
+  # Roster edges (connect/disconnect) are broadcast so LiveViews react
+  # immediately; per-push metric churn is NOT broadcast (too chatty) — live
+  # views poll on a tier timer for the numbers, like the react refetchInterval.
+  defp broadcast_roster_change do
+    Phoenix.PubSub.broadcast(Orbit.PubSub, @roster_topic, :roster_changed)
+  end
+
   @doc """
   Fire-and-forget a live config_update to a connected agent (push_interval,
   ipsec_ping_monitors, connectivity_monitors — §27.8). Best-effort: absent
@@ -205,13 +217,18 @@ defmodule Orbit.Hub do
       connected_at: DateTime.utc_now()
     }
 
+    broadcast_roster_change()
     {:reply, :ok, put_in(state.agents[instance_id], agent)}
   end
 
   def handle_call({:unregister, instance_id, pid}, _from, state) do
     case state.agents[instance_id] do
-      %Agent{pid: ^pid} -> {:reply, :ok, %{state | agents: Map.delete(state.agents, instance_id)}}
-      _ -> {:reply, :stale, state}
+      %Agent{pid: ^pid} ->
+        broadcast_roster_change()
+        {:reply, :ok, %{state | agents: Map.delete(state.agents, instance_id)}}
+
+      _ ->
+        {:reply, :stale, state}
     end
   end
 
