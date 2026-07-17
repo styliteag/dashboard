@@ -75,6 +75,16 @@ defmodule Orbit.Hub do
     GenServer.call(server, {:cache_entry, instance_id})
   end
 
+  @doc """
+  Merge an operator-initiated firmware.check verdict into the cached
+  firmware section (python hub.set_firmware parity), so all four check
+  surfaces see the fresh verdict without waiting for the next push.
+  """
+  @spec set_firmware(GenServer.server(), integer(), map()) :: :ok
+  def set_firmware(server \\ __MODULE__, instance_id, fields) when is_map(fields) do
+    GenServer.cast(server, {:set_firmware, instance_id, fields})
+  end
+
   def record_pong(server \\ __MODULE__, instance_id) do
     GenServer.cast(server, {:record_pong, instance_id})
   end
@@ -329,6 +339,11 @@ defmodule Orbit.Hub do
          }
        end
      end)}
+  end
+
+  def handle_cast({:set_firmware, instance_id, fields}, state) do
+    cache = Orbit.Hub.Cache.merge_section(state.cache, instance_id, "firmware", fields)
+    {:noreply, %{state | cache: cache}}
   end
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do

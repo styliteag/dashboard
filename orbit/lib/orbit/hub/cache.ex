@@ -46,6 +46,20 @@ defmodule Orbit.Hub.Cache do
   @spec entry(t(), integer()) :: map()
   def entry(cache, instance_id), do: Map.get(cache, instance_id, %{})
 
+  @doc """
+  Merge fresh fields into ONE cached section — the operator-initiated
+  firmware.check verdict path (python hub.set_firmware). This is a deliberate
+  targeted write outside the push-ingest guards: keys the command reported
+  win, keys it didn't report keep their cached (agent-pushed) value, so a
+  manual check never blanks e.g. `security_updates` from the last push.
+  """
+  @spec merge_section(t(), integer(), String.t(), map()) :: t()
+  def merge_section(cache, instance_id, section, fields) when is_map(fields) do
+    entry = entry(cache, instance_id)
+    merged = Map.merge(entry[section] || %{}, fields)
+    Map.put(cache, instance_id, Map.put(entry, section, merged))
+  end
+
   @doc "Drop an instance's cache (uninstall/delete)."
   @spec drop(t(), integer()) :: t()
   def drop(cache, instance_id), do: Map.delete(cache, instance_id)

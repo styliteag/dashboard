@@ -15,9 +15,11 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   alias Orbit.Audit
   alias Orbit.Auth.Scope
+  alias Orbit.Checks.Evaluate
   alias Orbit.Checks.Export
   alias Orbit.Checks.ServiceCheck
   alias Orbit.Comments
+  alias Orbit.Firmware
   alias Orbit.Hub
   alias Orbit.Instances.Instance
   alias Orbit.ConfigBackup.Store, as: CfgStore
@@ -26,6 +28,10 @@ defmodule OrbitWeb.InstanceDetailLive do
   @write_roles ~w(admin user)
 
   @refresh_ms 5_000
+  @fw_track_ms 4_000
+  # Update tracking gives up after 15 min of "unknown" — the box may still be
+  # working, but the UI stops implying live progress (FirmwareSection.tsx parity).
+  @fw_track_grace_ms 15 * 60_000
 
   @impl true
   def mount(%{"id" => raw_id}, _session, socket) do
@@ -43,7 +49,12 @@ defmodule OrbitWeb.InstanceDetailLive do
         |> assign(
           instance: inst,
           writable: user.role in @write_roles,
-          admin: user.role == "admin"
+          admin: user.role == "admin",
+          fw_busy: nil,
+          fw_msg: nil,
+          upgrading: false,
+          upgrade_log: [],
+          upgrade_started: nil
         )
         |> load_comments()
         |> load_logs()
@@ -63,6 +74,14 @@ defmodule OrbitWeb.InstanceDetailLive do
     {:noreply, load_metrics(socket)}
   end
 
+  def handle_info(:fw_track, %{assigns: %{upgrading: true}} = socket) do
+    inst = socket.assigns.instance
+    {:noreply, start_async(socket, :fw_track_status, fn -> Firmware.upgrade_status(inst) end)}
+  end
+
+  # Tracking was ended (done/gave up) while a timer tick was in flight.
+  def handle_info(:fw_track, socket), do: {:noreply, socket}
+
   # Comment writes ride the same write-role gate as the JSON route; a view_only
   # session never sees the editors, and the handler re-checks (never trust the
   # hidden UI). Empty text deletes. source_ip is the LiveView audit seam.
@@ -74,6 +93,120 @@ defmodule OrbitWeb.InstanceDetailLive do
   def handle_event("comment_clear", %{"kind" => kind, "entity_key" => ek}, socket) do
     {:noreply, write_comment(socket, kind, ek, "")}
   end
+
+  # Firmware actions ride the same write gate; the handler re-checks (never
+  # trust the hidden UI). Commands block up to 90s, so they run in start_async
+  # off the LiveView process; one action at a time (fw_busy).
+  def handle_event("fw_" <> kind, _params, socket) when kind in ["check", "update", "upgrade"] do
+    {:noreply, fw_start(socket, kind)}
+  end
+
+  defp fw_start(%{assigns: %{writable: false}} = socket, _kind), do: socket
+  defp fw_start(%{assigns: %{fw_busy: busy}} = socket, _kind) when not is_nil(busy), do: socket
+
+  defp fw_start(socket, kind) do
+    inst = socket.assigns.instance
+    user = socket.assigns.current_user
+
+    action = fn ->
+      case kind do
+        "check" -> Firmware.check(inst, user)
+        "update" -> Firmware.update(inst, user)
+        "upgrade" -> Firmware.upgrade(inst, user)
+      end
+    end
+
+    socket
+    |> assign(fw_busy: kind, fw_msg: nil)
+    |> start_async(:fw_action, fn -> {kind, action.()} end)
+  end
+
+  @impl true
+  def handle_async(:fw_action, {:ok, {kind, result}}, socket) do
+    socket = assign(socket, fw_busy: nil)
+
+    case {kind, result} do
+      {"check", {:ok, _msg}} ->
+        {:noreply, socket |> assign(fw_msg: {:ok, "Check complete."}) |> load_metrics()}
+
+      {_start, {:ok, _msg}} ->
+        # Update/upgrade started on the box — begin live progress tracking.
+        Process.send_after(self(), :fw_track, @fw_track_ms)
+
+        {:noreply,
+         assign(socket,
+           fw_msg: {:ok, "#{fw_label(kind)} started — tracking progress."},
+           upgrading: true,
+           upgrade_log: [],
+           upgrade_started: System.monotonic_time(:millisecond)
+         )}
+
+      {_kind, {:error, reason}} ->
+        {:noreply, assign(socket, fw_msg: {:error, fw_error_text(kind, reason)})}
+    end
+  end
+
+  def handle_async(:fw_action, {:exit, _reason}, socket) do
+    {:noreply, assign(socket, fw_busy: nil, fw_msg: {:error, "Action crashed — check the logs."})}
+  end
+
+  def handle_async(:fw_track_status, {:ok, %{status: status, log: log}}, socket) do
+    elapsed = System.monotonic_time(:millisecond) - (socket.assigns.upgrade_started || 0)
+
+    cond do
+      not socket.assigns.upgrading ->
+        {:noreply, socket}
+
+      status == "done" ->
+        # Heal the (up to ~12h) stale on-box verdict with a fresh check, like
+        # the react section does after tracking ends.
+        {:noreply,
+         socket
+         |> assign(
+           upgrading: false,
+           upgrade_log: log,
+           fw_msg: {:ok, "Update finished."},
+           fw_busy: "check"
+         )
+         |> start_async(:fw_action, fw_heal_check(socket))
+         |> load_metrics()}
+
+      status == "unknown" and elapsed > @fw_track_grace_ms ->
+        {:noreply,
+         assign(socket,
+           upgrading: false,
+           fw_msg:
+             {:error,
+              "No progress reported for 15 minutes — the update may still be running on the box."}
+         )}
+
+      true ->
+        Process.send_after(self(), :fw_track, @fw_track_ms)
+        socket = if log == [], do: socket, else: assign(socket, upgrade_log: log)
+        {:noreply, socket}
+    end
+  end
+
+  def handle_async(:fw_track_status, {:exit, _reason}, socket) do
+    Process.send_after(self(), :fw_track, @fw_track_ms)
+    {:noreply, socket}
+  end
+
+  defp fw_heal_check(socket) do
+    inst = socket.assigns.instance
+    user = socket.assigns.current_user
+    fn -> {"check", Firmware.check(inst, user)} end
+  end
+
+  defp fw_label("update"), do: "Update"
+  defp fw_label("upgrade"), do: "Series upgrade"
+  defp fw_label(_), do: "Check"
+
+  defp fw_error_text(_kind, :not_connected), do: "Agent not connected."
+
+  defp fw_error_text(_kind, :locked), do: "Firmware updates are locked for this instance."
+
+  defp fw_error_text(kind, reason) when is_binary(reason), do: "#{fw_label(kind)}: #{reason}"
 
   defp write_comment(%{assigns: %{writable: false}} = socket, _kind, _ek, _text), do: socket
 
@@ -141,6 +274,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       # data exposed this; synthetic pushes had used a bare list.
       ipsec: (entry["ipsec"] || %{})["tunnels"] || [],
       last_seen: entry["last_metrics_ts"],
+      firmware: entry["firmware"],
+      fw_verdict: Evaluate.firmware_check(entry["firmware"]),
       checks: instance_checks(socket.assigns.instance)
     )
   end
@@ -222,6 +357,99 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div
+          :if={Instance.agent_mode?(@instance)}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-slate-400">
+            Firmware
+            <span
+              :if={@instance.firmware_locked}
+              class="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-amber-300"
+            >
+              updates locked
+            </span>
+            <span
+              :if={@fw_verdict}
+              class={["rounded px-1.5 py-0.5 text-xs", state_class(@fw_verdict.state)]}
+            >
+              {state_label(@fw_verdict.state)}
+            </span>
+          </h2>
+
+          <div :if={is_nil(@firmware)} class="text-sm text-slate-500">
+            No firmware data yet — run a check or wait for the next push.
+          </div>
+
+          <dl :if={@firmware} class="space-y-1 text-sm">
+            <.kv label="Installed" value={@firmware["product_version"] || "—"} />
+            <.kv
+              :if={@firmware["upgrade_available"]}
+              label="Available"
+              value={@firmware["product_latest"] || "?"}
+            />
+            <.kv :if={truthy_str(@firmware["branch"])} label="Branch" value={@firmware["branch"]} />
+            <.kv :if={@fw_verdict} label="Status" value={@fw_verdict.summary} />
+            <.kv
+              :if={truthy_str(@firmware["last_check"])}
+              label="Last check"
+              value={@firmware["last_check"]}
+            />
+          </dl>
+
+          <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              phx-click="fw_check"
+              disabled={not @connected or @fw_busy != nil or @upgrading}
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {if @fw_busy == "check", do: "Checking…", else: "Check for updates"}
+            </button>
+            <button
+              :if={not @instance.firmware_locked}
+              phx-click="fw_update"
+              data-confirm={"Start the firmware update on #{@instance.name}? The box may reboot."}
+              disabled={not @connected or @fw_busy != nil or @upgrading}
+              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {if @fw_busy == "update", do: "Starting…", else: "Start update"}
+            </button>
+            <button
+              :if={
+                not @instance.firmware_locked and
+                  truthy_str(@firmware && @firmware["upgrade_major_version"])
+              }
+              phx-click="fw_upgrade"
+              data-confirm={"Start the SERIES upgrade to #{@firmware["upgrade_major_version"]} on #{@instance.name}? This is a major version jump; the box will reboot."}
+              disabled={not @connected or @fw_busy != nil or @upgrading}
+              class="rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {if @fw_busy == "upgrade",
+                do: "Starting…",
+                else: "Series upgrade → #{@firmware["upgrade_major_version"]}"}
+            </button>
+          </div>
+
+          <div
+            :if={@fw_msg}
+            class={[
+              "mt-2 text-xs",
+              elem(@fw_msg, 0) == :ok && "text-emerald-400",
+              elem(@fw_msg, 0) == :error && "text-red-400"
+            ]}
+          >
+            {elem(@fw_msg, 1)}
+          </div>
+
+          <div :if={@upgrading} class="mt-3">
+            <div class="mb-1 text-xs text-amber-300">Update running…</div>
+            <pre
+              :if={@upgrade_log != []}
+              class="max-h-48 overflow-y-auto rounded bg-slate-950 p-2 text-xs text-slate-400"
+            >{Enum.join(Enum.take(@upgrade_log, -20), "\n")}</pre>
+          </div>
         </div>
 
         <div :if={@disks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
@@ -406,6 +634,8 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp conn_badge(true), do: "bg-emerald-900/50 text-emerald-300"
   defp conn_badge(false), do: "bg-slate-800 text-slate-500"
+
+  defp truthy_str(value), do: value not in [nil, ""]
 
   defp pct(nil), do: "—"
   defp pct(v) when is_number(v), do: "#{Float.round(v / 1, 1)}%"
