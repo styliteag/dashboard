@@ -65,7 +65,18 @@ defmodule OrbitWeb.Components.Nav do
           />
         </nav>
       </div>
-      <span class="text-sm text-slate-400">{@current_user.username}</span>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="text-slate-400">{@current_user.username}</span>
+        <form action={~p"/logout"} method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <button
+            type="submit"
+            class="rounded-md border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Sign out
+          </button>
+        </form>
+      </div>
     </header>
     """
   end
