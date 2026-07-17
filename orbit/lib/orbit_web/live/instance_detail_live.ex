@@ -20,6 +20,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   alias Orbit.Comments
   alias Orbit.Hub
   alias Orbit.Instances.Instance
+  alias Orbit.ConfigBackup.Store, as: CfgStore
   alias Orbit.Logs.Store, as: LogStore
 
   @write_roles ~w(admin user)
@@ -116,7 +117,12 @@ defmodule OrbitWeb.InstanceDetailLive do
   # that stays admin-gated behind a dedicated download route).
   defp load_logs(socket) do
     id = socket.assigns.instance.id
-    assign(socket, logfiles: LogStore.latest_per_name(id), log_events: LogStore.list_events(id))
+
+    assign(socket,
+      logfiles: LogStore.latest_per_name(id),
+      log_events: LogStore.list_events(id),
+      config_backups: CfgStore.list(id)
+    )
   end
 
   defp load_metrics(socket) do
@@ -280,6 +286,39 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
+        <div
+          :if={@config_backups != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">
+            Config backups <span class="text-slate-500">({length(@config_backups)})</span>
+          </h2>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              <tr
+                :for={cb <- @config_backups}
+                class="border-b border-slate-800/50 last:border-0"
+              >
+                <td class="py-1.5 pr-4 text-slate-300">{cb_ts(cb.collected_at)}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-slate-500">
+                  {String.slice(cb.sha256, 0, 12)}
+                </td>
+                <td class="py-1.5 pr-4 text-slate-400">{cb.bytes} bytes · {cb.source}</td>
+                <td class="py-1.5 text-right">
+                  <a
+                    :if={@admin}
+                    href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/raw"}
+                    target="_blank"
+                    class="text-xs text-emerald-400 hover:text-emerald-300"
+                  >
+                    download
+                  </a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
           <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
 
@@ -395,6 +434,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp state_class(1), do: "bg-amber-900/50 text-amber-300"
   defp state_class(3), do: "bg-slate-700 text-slate-300"
   defp state_class(_), do: "bg-emerald-900/50 text-emerald-300"
+
+  defp cb_ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
 
   # Syslog severity (0 emerg … 4 warning; lower = worse) for the Logs section.
   defp sev_label(s) when s <= 2, do: "CRIT"

@@ -112,6 +112,7 @@ defmodule OrbitWeb.Router do
     post "/instances/:instance_id/agent/ping", AgentApiController, :ping
     get "/instances/:instance_id/comments", CommentController, :index
     get "/instances/:instance_id/logfiles/:logfile_id/raw", LogsController, :raw
+    get "/instances/:instance_id/config-backups/:backup_id/raw", ConfigBackupController, :raw
   end
 
   # Write-gated api mutations (require_write parity).
