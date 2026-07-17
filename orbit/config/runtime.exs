@@ -41,6 +41,11 @@ config :orbit,
        :trusted_proxy_hops,
        String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))
 
+# Bootstrap-seed force flags (auth/bootstrap.py _resolve_mode): "0"/"false"
+# keeps the seed enabled and skips auto-retirement on rights changes.
+config :orbit, :admin_disabled_raw, System.get_env("DASH_ADMIN_DISABLED", "auto")
+config :orbit, :superadmin_disabled_raw, System.get_env("DASH_SUPERADMIN_DISABLED", "auto")
+
 # CrowdSec blocklist (DR-G8): the key turns it on, DISABLE turns it off
 # without losing the key; independent of the country restriction.
 config :orbit, :crowdsec_api_key, System.get_env("DASH_CROWDSEC_API_KEY")
