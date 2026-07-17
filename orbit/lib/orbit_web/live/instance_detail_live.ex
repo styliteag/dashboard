@@ -312,6 +312,13 @@ defmodule OrbitWeb.InstanceDetailLive do
           >
             Terminal
           </a>
+          <a
+            :if={@writable}
+            href={~p"/instances/#{@instance.id}/edit"}
+            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Edit
+          </a>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">

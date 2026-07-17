@@ -45,6 +45,7 @@ defmodule OrbitWeb.Router do
     live_session :authenticated, on_mount: [OrbitWeb.UserAuth, OrbitWeb.GeoGate] do
       live "/instances", InstancesLive
       live "/instances/:id", InstanceDetailLive
+      live "/instances/:id/edit", InstanceEditLive
       live "/instances/:id/terminal", TerminalLive
       live "/alerts", AlertsLive
       live "/connectivity", ConnectivityLive
