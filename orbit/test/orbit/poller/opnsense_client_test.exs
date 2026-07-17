@@ -97,3 +97,68 @@ defmodule Orbit.Poller.OpnsenseClientTest do
     assert checks["memory"] == 2
   end
 end
+
+defmodule Orbit.Poller.OpnsenseClientFetchTest do
+  @moduledoc "Full fetch_status against a mocked OPNsense API (Req.Test plug — no real box)."
+  use ExUnit.Case, async: true
+
+  alias Orbit.Poller.OpnsenseClient, as: C
+
+  setup do
+    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
+    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
+    :ok
+  end
+
+  test "fetch_status routes both endpoints through parse into raw sections" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      body =
+        case conn.request_path do
+          "/api/diagnostics/system/systemResources" ->
+            %{
+              "cpu" => %{"used" => 42.0},
+              "memory" => %{"total_frmt" => "2000", "used_frmt" => "500"}
+            }
+
+          "/api/diagnostics/system/systemDisk" ->
+            %{"devices" => [%{"device" => "z", "mountpoint" => "/", "used_pct" => 61}]}
+
+          _ ->
+            %{}
+        end
+
+      Req.Test.json(conn, body)
+    end)
+
+    client = %C{
+      base_url: "https://box.example:4444",
+      api_key: "k",
+      api_secret: "s",
+      ssl_verify: false
+    }
+
+    status = C.fetch_status(client)
+
+    assert status["cpu"] == %{"total_pct" => 42.0}
+    assert status["memory"]["total_mb"] == 2000.0
+    assert status["memory"]["used_pct"] == 25.0
+    assert [%{"mountpoint" => "/", "used_pct" => 61.0}] = status["disks"]
+
+    # And it feeds the checks engine (the whole point of shape parity).
+    keys = %{"status" => status} |> Orbit.Checks.Evaluate.evaluate() |> Enum.map(& &1.key)
+    assert "cpu" in keys and "memory" in keys and "disk:/" in keys
+  end
+
+  test "a failing endpoint yields no section, never a crash" do
+    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
+
+    client = %C{
+      base_url: "https://box.example:4444",
+      api_key: "k",
+      api_secret: "s",
+      ssl_verify: false
+    }
+
+    assert C.fetch_status(client) == %{}
+  end
+end

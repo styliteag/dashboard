@@ -55,6 +55,7 @@ defmodule Orbit.Poller.OpnsenseClient do
   end
 
   defp put_section(map, _key, nil), do: map
+  defp put_section(map, _key, []), do: map
   defp put_section(map, key, value), do: Map.put(map, key, value)
 
   @doc "Raw cpu section from systemResources (cpu.used → total_pct)."
@@ -105,12 +106,14 @@ defmodule Orbit.Poller.OpnsenseClient do
   # -- HTTP -----------------------------------------------------------------
 
   defp get(%__MODULE__{} = c, path) do
-    opts = [
-      auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
-      connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
-      receive_timeout: @recv_timeout,
-      retry: false
-    ]
+    opts =
+      [
+        auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        receive_timeout: @recv_timeout,
+        retry: false
+      ]
+      |> maybe_test_plug()
 
     case Req.get(c.base_url <> path, opts) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) -> body
@@ -118,6 +121,15 @@ defmodule Orbit.Poller.OpnsenseClient do
     end
   rescue
     _ -> nil
+  end
+
+  # In :test a Req plug stub replaces the network (config :orbit,
+  # :opnsense_req_plug). nil in dev/prod → real HTTP.
+  defp maybe_test_plug(opts) do
+    case Application.get_env(:orbit, :opnsense_req_plug) do
+      nil -> opts
+      plug -> Keyword.put(opts, :plug, plug)
+    end
   end
 
   defp tls_opts(false), do: [verify: :verify_none]
