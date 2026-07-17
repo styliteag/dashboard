@@ -24,6 +24,7 @@ defmodule OrbitWeb.SettingsLive do
   def handle_event("save", %{"key" => key, "value" => value}, socket) do
     case Settings.set_override(key, value) do
       {:ok, _} ->
+        audit(socket, "settings.update", "ok", %{"name" => key})
         {:noreply, socket |> assign(rows: load_rows()) |> put_flash(:info, "#{key} saved")}
 
       {:error, msg} ->
@@ -33,7 +34,19 @@ defmodule OrbitWeb.SettingsLive do
 
   def handle_event("clear", %{"key" => key}, socket) do
     Settings.clear_override(key)
+    audit(socket, "settings.clear", "ok", %{"name" => key})
     {:noreply, socket |> assign(rows: load_rows()) |> put_flash(:info, "#{key} reset to default")}
+  end
+
+  # LiveView has no conn; source_ip is a documented seam (peer_data via
+  # get_connect_info lands with the access-log port). user_id is the record.
+  defp audit(socket, action, result, detail) do
+    Orbit.Audit.write(
+      action: action,
+      result: result,
+      user_id: socket.assigns.current_user.id,
+      detail: detail
+    )
   end
 
   defp load_rows do

@@ -50,6 +50,7 @@ defmodule OrbitWeb.Router do
 
     live_session :admin, on_mount: {OrbitWeb.UserAuth, :require_admin} do
       live "/settings", SettingsLive
+      live "/audit", AuditLive
     end
   end
 
