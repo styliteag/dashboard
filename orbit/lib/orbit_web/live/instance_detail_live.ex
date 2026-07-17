@@ -54,7 +54,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           fw_msg: nil,
           upgrading: false,
           upgrade_log: [],
-          upgrade_started: nil
+          upgrade_started: nil,
+          enroll_code: nil,
+          agent_busy: false,
+          agent_msg: nil
         )
         |> load_comments()
         |> load_logs()
@@ -99,6 +102,76 @@ defmodule OrbitWeb.InstanceDetailLive do
   # off the LiveView process; one action at a time (fw_busy).
   def handle_event("fw_" <> kind, _params, socket) when kind in ["check", "update", "upgrade"] do
     {:noreply, fw_start(socket, kind)}
+  end
+
+  # Agent enrollment + self-update (AgentSection parity; write-gated).
+  def handle_event("mint_enroll", _params, %{assigns: %{writable: true}} = socket) do
+    inst = socket.assigns.instance
+    {code, expires_at} = Orbit.Enrollment.create_code(inst.id)
+
+    Audit.write(
+      action: "agent.enroll_code",
+      result: "ok",
+      user_id: socket.assigns.current_user.id,
+      target_type: "instance",
+      target_id: inst.id
+    )
+
+    {:noreply, assign(socket, enroll_code: {code, expires_at})}
+  end
+
+  def handle_event("mint_enroll", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "agent_update",
+        _params,
+        %{assigns: %{writable: true, agent_busy: false}} = socket
+      ) do
+    inst = socket.assigns.instance
+    user = socket.assigns.current_user
+
+    {:noreply,
+     socket
+     |> assign(agent_busy: true, agent_msg: nil)
+     |> start_async(:agent_update, fn -> push_agent_update(inst, user) end)}
+  end
+
+  def handle_event("agent_update", _params, socket), do: {:noreply, socket}
+
+  # Canary mechanism (DR-6): one box per click. Same guards as the JSON route —
+  # pushing the served version only trips the agent's anti-rollback (no-op).
+  defp push_agent_update(inst, user) do
+    with %Orbit.Hub.Agent{} = agent <- Hub.get(inst.id),
+         {:ok, params} <- Orbit.Agent.Package.update_params() do
+      if agent.agent_version == params["version"] do
+        {:ok, "already at #{params["version"]}"}
+      else
+        result = Hub.send_command(inst.id, "agent.update", params, 30_000)
+
+        result =
+          if is_map(result), do: result, else: %{"success" => false, "output" => "no agent"}
+
+        Hub.pin_update_result(inst.id, result, params["version"])
+
+        Audit.write(
+          action: "agent.update",
+          result: if(result["success"], do: "ok", else: "error"),
+          user_id: user.id,
+          target_type: "instance",
+          target_id: inst.id,
+          detail: %{"version" => params["version"]}
+        )
+
+        if result["success"] do
+          {:ok, "update to #{params["version"]} pushed — agent restarts"}
+        else
+          {:error, String.slice(to_string(result["output"] || "update failed"), 0, 200)}
+        end
+      end
+    else
+      nil -> {:error, "agent not connected"}
+      {:error, :unavailable} -> {:error, "agent script not available"}
+    end
   end
 
   defp fw_start(%{assigns: %{writable: false}} = socket, _kind), do: socket
@@ -192,6 +265,14 @@ defmodule OrbitWeb.InstanceDetailLive do
     {:noreply, socket}
   end
 
+  def handle_async(:agent_update, {:ok, result}, socket) do
+    {:noreply, socket |> assign(agent_busy: false, agent_msg: result) |> load_metrics()}
+  end
+
+  def handle_async(:agent_update, {:exit, _}, socket) do
+    {:noreply, assign(socket, agent_busy: false, agent_msg: {:error, "update push crashed"})}
+  end
+
   defp fw_heal_check(socket) do
     inst = socket.assigns.instance
     user = socket.assigns.current_user
@@ -276,6 +357,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       last_seen: entry["last_metrics_ts"],
       firmware: entry["firmware"],
       fw_verdict: Evaluate.firmware_check(entry["firmware"]),
+      agent: Hub.get(socket.assigns.instance.id),
+      served_agent_version: Orbit.Agent.Package.served_version(),
       gateways: entry["gateways"] || [],
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
@@ -383,6 +466,66 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div
+          :if={Instance.agent_mode?(@instance)}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Agent</h2>
+          <dl class="space-y-1 text-sm">
+            <.kv
+              label="Status"
+              value={if @agent, do: "connected (#{@agent.pushes} pushes)", else: "not connected"}
+            />
+            <.kv :if={@agent} label="Version" value={@agent.agent_version || "?"} />
+            <.kv :if={@agent} label="Platform" value={@agent.platform || "?"} />
+            <.kv label="Served version" value={@served_agent_version || "—"} />
+            <.kv
+              :if={@agent && @agent.last_update_error}
+              label="Last update error"
+              value={"#{@agent.last_update_version}: #{@agent.last_update_error}"}
+            />
+          </dl>
+
+          <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              phx-click="mint_enroll"
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Mint enroll code
+            </button>
+            <button
+              :if={@agent && @served_agent_version && @agent.agent_version != @served_agent_version}
+              phx-click="agent_update"
+              data-confirm={"Push agent #{@served_agent_version} to #{@instance.name}? The agent restarts (canary: one box at a time)."}
+              disabled={@agent_busy}
+              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {if @agent_busy,
+                do: "Pushing…",
+                else: "Push agent update → #{@served_agent_version}"}
+            </button>
+          </div>
+
+          <div :if={@enroll_code} class="mt-2 text-sm">
+            <span class="text-slate-500">Enroll code: </span>
+            <span class="font-mono text-emerald-300">{elem(@enroll_code, 0)}</span>
+            <span class="text-xs text-slate-500">
+              (valid until {cb_ts(elem(@enroll_code, 1))} — run install.sh on the box and paste it)
+            </span>
+          </div>
+
+          <div
+            :if={@agent_msg}
+            class={[
+              "mt-2 text-xs",
+              elem(@agent_msg, 0) == :ok && "text-emerald-400",
+              elem(@agent_msg, 0) == :error && "text-red-400"
+            ]}
+          >
+            {elem(@agent_msg, 1)}
+          </div>
         </div>
 
         <div
