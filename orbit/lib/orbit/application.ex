@@ -13,6 +13,7 @@ defmodule Orbit.Application do
       {DNSCluster, query: Application.get_env(:orbit, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Orbit.PubSub},
       {Orbit.Auth.LoginLimiter, []},
+      {Orbit.Settings, []},
       # Start to serve requests, typically the last entry
       OrbitWeb.Endpoint
     ]
