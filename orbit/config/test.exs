@@ -25,6 +25,9 @@ config :orbit, OrbitWeb.Endpoint,
 # Throwaway fernet key for crypto-dependent tests (NOT a real master key).
 config :orbit, :dash_master_key, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
+# Maintenance jobs touch the alembic-owned schema the throwaway test DB lacks.
+config :orbit, :start_scheduler, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
