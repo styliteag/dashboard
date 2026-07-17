@@ -13,11 +13,15 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   use OrbitWeb, :live_view
 
+  alias Orbit.Audit
   alias Orbit.Auth.Scope
   alias Orbit.Checks.Export
   alias Orbit.Checks.ServiceCheck
+  alias Orbit.Comments
   alias Orbit.Hub
   alias Orbit.Instances.Instance
+
+  @write_roles ~w(admin user)
 
   @refresh_ms 5_000
 
@@ -32,7 +36,13 @@ defmodule OrbitWeb.InstanceDetailLive do
         Process.send_after(self(), :refresh, @refresh_ms)
       end
 
-      {:ok, socket |> assign(instance: inst) |> load_metrics()}
+      socket =
+        socket
+        |> assign(instance: inst, writable: user.role in @write_roles)
+        |> load_comments()
+        |> load_metrics()
+
+      {:ok, socket}
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
     end
@@ -44,6 +54,57 @@ defmodule OrbitWeb.InstanceDetailLive do
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
     {:noreply, load_metrics(socket)}
+  end
+
+  # Comment writes ride the same write-role gate as the JSON route; a view_only
+  # session never sees the editors, and the handler re-checks (never trust the
+  # hidden UI). Empty text deletes. source_ip is the LiveView audit seam.
+  @impl true
+  def handle_event("comment_save", %{"kind" => kind, "entity_key" => ek} = p, socket) do
+    {:noreply, write_comment(socket, kind, ek, String.trim(p["comment"] || ""))}
+  end
+
+  def handle_event("comment_clear", %{"kind" => kind, "entity_key" => ek}, socket) do
+    {:noreply, write_comment(socket, kind, ek, "")}
+  end
+
+  defp write_comment(%{assigns: %{writable: false}} = socket, _kind, _ek, _text), do: socket
+
+  defp write_comment(socket, kind, entity_key, "") do
+    inst = socket.assigns.instance
+
+    if Comments.remove(inst.id, kind, entity_key) do
+      audit(socket, "comment.delete", kind, entity_key, "")
+    end
+
+    load_comments(socket)
+  end
+
+  defp write_comment(socket, kind, entity_key, text) do
+    if Comments.valid_kind?(kind) do
+      user = socket.assigns.current_user
+      Comments.upsert(socket.assigns.instance.id, kind, entity_key, text, user.username)
+      audit(socket, "comment.set", kind, entity_key, text)
+    end
+
+    load_comments(socket)
+  end
+
+  defp audit(socket, action, kind, entity_key, text) do
+    Audit.write(
+      action: action,
+      result: "ok",
+      user_id: socket.assigns.current_user.id,
+      target_type: "instance",
+      target_id: socket.assigns.instance.id,
+      detail: %{kind: kind, entity_key: entity_key, comment: text}
+    )
+  end
+
+  defp load_comments(socket) do
+    comments = Comments.list_for_instance(socket.assigns.instance.id)
+    fw = Enum.find(comments, &(&1.kind == "firmware" and &1.entity_key == ""))
+    assign(socket, comments: comments, firmware_note: (fw && fw.comment) || "")
   end
 
   defp load_metrics(socket) do
@@ -159,8 +220,55 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-slate-400">IPsec tunnels</h2>
           <ul class="space-y-1 text-sm">
             <li :for={t <- @ipsec} class="flex justify-between text-slate-300">
-              <span class="text-slate-400">{t["name"] || t["child_name"] || "tunnel"}</span>
-              <span class={tunnel_color(t["state"])}>{t["state"] || "?"}</span>
+              <span class="text-slate-400">{t["description"] || t["id"] || "tunnel"}</span>
+              <span class={tunnel_color(t["status"])}>{t["status"] || "?"}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
+
+          <form :if={@writable} phx-submit="comment_save" class="mb-4">
+            <input type="hidden" name="kind" value="firmware" />
+            <input type="hidden" name="entity_key" value="" />
+            <label class="mb-1 block text-xs text-slate-500">Firmware note</label>
+            <textarea
+              name="comment"
+              rows="2"
+              class="w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200"
+              placeholder="operator note on this box's firmware…"
+            >{@firmware_note}</textarea>
+            <button
+              type="submit"
+              class="mt-2 rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+            >
+              Save note
+            </button>
+          </form>
+
+          <div :if={@comments == []} class="text-sm text-slate-500">No notes on this instance.</div>
+
+          <ul :if={@comments != []} class="space-y-2 text-sm">
+            <li
+              :for={c <- @comments}
+              class="flex items-start justify-between gap-3 border-b border-slate-800/50 pb-2"
+            >
+              <div>
+                <div class="text-slate-300">{c.comment}</div>
+                <div class="mt-0.5 text-xs text-slate-500">
+                  {c.kind}<span :if={c.entity_key != ""}>:{c.entity_key}</span> · {c.updated_by}
+                </div>
+              </div>
+              <button
+                :if={@writable}
+                phx-click="comment_clear"
+                phx-value-kind={c.kind}
+                phx-value-entity_key={c.entity_key}
+                class="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+              >
+                Clear
+              </button>
             </li>
           </ul>
         </div>
@@ -199,9 +307,16 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp mem_text(_), do: "—"
 
-  defp tunnel_color("up"), do: "text-emerald-400"
-  defp tunnel_color("connected"), do: "text-emerald-400"
-  defp tunnel_color(_), do: "text-amber-400"
+  # Raw ipsec tunnel status is mixed-case (ESTABLISHED/down/…); mirror the ipsec
+  # check family's up-set. Empty/unknown stays amber, an explicit down goes red.
+  @tunnel_up ~w(up established installed connected 1 true yes)
+  defp tunnel_color(status) do
+    case status |> to_string() |> String.downcase() do
+      s when s in @tunnel_up -> "text-emerald-400"
+      s when s in ["", "?"] -> "text-amber-400"
+      _ -> "text-red-400"
+    end
+  end
 
   defp state_label(1), do: "WARN"
   defp state_label(2), do: "CRIT"
