@@ -99,6 +99,20 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  # Admin-only live routes (config surfaces). Non-admins bounce to home.
+  def on_mount(:require_admin, _params, session, socket) do
+    case live_user_from_session(session) do
+      %User{role: "admin"} = user ->
+        {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+
+      %User{} ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
+
+      _ ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/login")}
+    end
+  end
+
   defp live_user_from_session(session) do
     with user_id when is_integer(user_id) <- session["user_id"],
          true <- session["mfa_passed"] == true,

@@ -46,6 +46,10 @@ defmodule OrbitWeb.Router do
       live "/alerts", AlertsLive
       live "/hub", HubStatusLive
     end
+
+    live_session :admin, on_mount: {OrbitWeb.UserAuth, :require_admin} do
+      live "/settings", SettingsLive
+    end
   end
 
   # Bare pipeline for the agent websocket: bearer-token auth happens in the
