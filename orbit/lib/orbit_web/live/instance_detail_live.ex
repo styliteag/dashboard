@@ -20,6 +20,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   alias Orbit.Comments
   alias Orbit.Hub
   alias Orbit.Instances.Instance
+  alias Orbit.Logs.Store, as: LogStore
 
   @write_roles ~w(admin user)
 
@@ -40,6 +41,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         socket
         |> assign(instance: inst, writable: user.role in @write_roles)
         |> load_comments()
+        |> load_logs()
         |> load_metrics()
 
       {:ok, socket}
@@ -103,6 +105,14 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp load_comments(socket) do
     assign(socket, comments: Comments.list_for_instance(socket.assigns.instance.id))
+  end
+
+  # Logs move at push cadence (hourly), so they load once at mount and are NOT
+  # re-queried on the 5s metric timer. Snapshot metadata only (no raw content —
+  # that stays admin-gated behind a dedicated download route).
+  defp load_logs(socket) do
+    id = socket.assigns.instance.id
+    assign(socket, logfiles: LogStore.latest_per_name(id), log_events: LogStore.list_events(id))
   end
 
   defp load_metrics(socket) do
@@ -224,6 +234,39 @@ defmodule OrbitWeb.InstanceDetailLive do
           </ul>
         </div>
 
+        <div
+          :if={@logfiles != [] or @log_events != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Logs</h2>
+          <div
+            :if={@logfiles != []}
+            class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"
+          >
+            <span :for={lf <- @logfiles}>{lf.name} · {lf.bytes} chars</span>
+          </div>
+          <table :if={@log_events != []} class="w-full text-left text-sm">
+            <tbody>
+              <tr
+                :for={e <- Enum.take(@log_events, 15)}
+                class="border-b border-slate-800/50 last:border-0"
+              >
+                <td class="w-14 py-1.5 pr-3 align-top">
+                  <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(e.severity)]}>
+                    {sev_label(e.severity)}
+                  </span>
+                </td>
+                <td class="whitespace-nowrap py-1.5 pr-3 align-top text-slate-400">{e.program}</td>
+                <td class="py-1.5 align-top text-slate-300">{e.pattern}</td>
+                <td class="w-10 py-1.5 pl-3 text-right align-top text-slate-400">{e.count}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div :if={@log_events == [] and @logfiles != []} class="text-xs text-slate-500">
+            No critical events in the latest snapshots.
+          </div>
+        </div>
+
         <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
           <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
 
@@ -339,4 +382,13 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp state_class(1), do: "bg-amber-900/50 text-amber-300"
   defp state_class(3), do: "bg-slate-700 text-slate-300"
   defp state_class(_), do: "bg-emerald-900/50 text-emerald-300"
+
+  # Syslog severity (0 emerg … 4 warning; lower = worse) for the Logs section.
+  defp sev_label(s) when s <= 2, do: "CRIT"
+  defp sev_label(3), do: "ERR"
+  defp sev_label(_), do: "WARN"
+
+  defp sev_class(s) when s <= 2, do: "bg-red-900/60 text-red-300"
+  defp sev_class(3), do: "bg-orange-900/50 text-orange-300"
+  defp sev_class(_), do: "bg-amber-900/50 text-amber-300"
 end
