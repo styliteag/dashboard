@@ -13,7 +13,7 @@ defmodule Orbit.ConfigBackup.StoreTest do
   test "decode_payload round-trips a valid gzip+base64+sha payload" do
     xml = "<config><system>fw</system></config>"
     assert {:ok, {sha, ^xml}} = Store.decode_payload(payload(xml))
-    assert sha == (:crypto.hash(:sha256, xml) |> Base.encode16(case: :lower))
+    assert sha == :crypto.hash(:sha256, xml) |> Base.encode16(case: :lower)
   end
 
   test "decode_payload rejects a mismatched sha (corrupt/truncated transfer)" do
