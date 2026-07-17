@@ -307,6 +307,14 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <td class="py-1.5 text-right">
                   <a
                     :if={@admin}
+                    href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/diff"}
+                    target="_blank"
+                    class="mr-3 text-xs text-slate-400 hover:text-emerald-300"
+                  >
+                    diff
+                  </a>
+                  <a
+                    :if={@admin}
                     href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/raw"}
                     target="_blank"
                     class="text-xs text-emerald-400 hover:text-emerald-300"

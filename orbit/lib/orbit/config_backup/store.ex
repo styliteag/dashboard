@@ -121,6 +121,58 @@ defmodule Orbit.ConfigBackup.Store do
     )
   end
 
+  @diff_max_lines 4000
+  @diff_max_input_lines 150_000
+
+  @doc """
+  Line diff of one version against the chronologically previous one for the same
+  instance. `{:ok, text, truncated?}` when both exist, `:no_previous` when the
+  version is the oldest, `:error` when a version is missing/undecryptable.
+
+  CPU-bound (Myers is ~O(n*m) on line counts) — callers run it off the loop.
+  """
+  @spec diff_against_previous(integer(), integer()) ::
+          {:ok, String.t(), boolean()} | :no_previous | :error
+  def diff_against_previous(instance_id, backup_id) do
+    prev_id =
+      Repo.one(
+        from(b in Backup,
+          where: b.instance_id == ^instance_id and b.id < ^backup_id,
+          order_by: [desc: b.id],
+          limit: 1,
+          select: b.id
+        )
+      )
+
+    cond do
+      is_nil(prev_id) -> :no_previous
+      true -> do_diff(get_content(instance_id, prev_id), get_content(instance_id, backup_id))
+    end
+  end
+
+  defp do_diff(a, b) when is_binary(a) and is_binary(b) do
+    a_lines = String.split(a, "\n")
+    b_lines = String.split(b, "\n")
+
+    if max(length(a_lines), length(b_lines)) > @diff_max_input_lines do
+      {:ok, "(versions too large to diff — download both and compare locally)", true}
+    else
+      lines =
+        a_lines
+        |> List.myers_difference(b_lines)
+        |> Enum.flat_map(&diff_chunk/1)
+
+      {kept, truncated} = Enum.split(lines, @diff_max_lines)
+      {:ok, Enum.join(kept, "\n"), truncated != []}
+    end
+  end
+
+  defp do_diff(_, _), do: :error
+
+  defp diff_chunk({:eq, _lines}), do: []
+  defp diff_chunk({:del, lines}), do: Enum.map(lines, &("-" <> &1))
+  defp diff_chunk({:ins, lines}), do: Enum.map(lines, &("+" <> &1))
+
   @doc "Decrypted XML for one version (scoped to the instance), or nil."
   @spec get_content(integer(), integer()) :: String.t() | nil
   def get_content(instance_id, id) do
