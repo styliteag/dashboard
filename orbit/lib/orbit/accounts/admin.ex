@@ -163,6 +163,87 @@ defmodule Orbit.Accounts.Admin do
     {:ok, updated}
   end
 
+  # -- groups (groups/routes.py port) ----------------------------------------
+
+  def create_group(name) do
+    name = String.trim(to_string(name || ""))
+
+    if name == "" do
+      {:error, :name_required}
+    else
+      %Orbit.Accounts.Group{}
+      |> Ecto.Changeset.change(%{name: name, created_at: DateTime.utc_now()})
+      |> Repo.insert()
+      |> case do
+        {:ok, group} -> {:ok, group}
+        {:error, _} -> {:error, :conflict}
+      end
+    end
+  rescue
+    Ecto.ConstraintError -> {:error, :conflict}
+  end
+
+  def rename_group(%Orbit.Accounts.Group{} = group, name) do
+    name = String.trim(to_string(name || ""))
+
+    if name == "" do
+      {:error, :name_required}
+    else
+      group
+      |> Ecto.Changeset.change(%{name: name})
+      |> Repo.update()
+      |> case do
+        {:ok, g} -> {:ok, g}
+        {:error, _} -> {:error, :conflict}
+      end
+    end
+  rescue
+    Ecto.ConstraintError -> {:error, :conflict}
+  end
+
+  @doc """
+  Delete a group — two 409 guards (groups/routes.py parity, both
+  security-load-bearing): instances (INCLUDING soft-deleted, they still
+  hold the FK) block the delete; and an active api key bound to ONLY this
+  group blocks it too — apikey_groups CASCADEs, and a key whose last
+  binding disappears becomes GLOBAL (empty set = unscoped, invariant 1).
+  """
+  def delete_group(%Orbit.Accounts.Group{} = group) do
+    instance_count =
+      Repo.one(
+        from(i in Orbit.Instances.Instance, where: i.group_id == ^group.id, select: count())
+      )
+
+    cond do
+      instance_count > 0 ->
+        {:error, :has_instances}
+
+      sole_binding_key_name(group.id) != nil ->
+        {:error, {:sole_apikey_binding, sole_binding_key_name(group.id)}}
+
+      true ->
+        Repo.delete(group)
+    end
+  end
+
+  # Name of an ACTIVE api key whose only group binding is this group (or nil).
+  defp sole_binding_key_name(group_id) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT k.id, k.name FROM api_keys k " <>
+          "JOIN apikey_groups ag ON ag.apikey_id = k.id " <>
+          "WHERE ag.group_id = ? AND k.revoked_at IS NULL",
+        [group_id]
+      )
+
+    Enum.find_value(rows, fn [key_id, name] ->
+      %{rows: [[n]]} =
+        Repo.query!("SELECT COUNT(*) FROM apikey_groups WHERE apikey_id = ?", [key_id])
+
+      if n == 1, do: name
+    end)
+  end
+
   # -- helpers ---------------------------------------------------------------
 
   defp admin_count do
