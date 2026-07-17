@@ -276,8 +276,27 @@ defmodule OrbitWeb.InstanceDetailLive do
       last_seen: entry["last_metrics_ts"],
       firmware: entry["firmware"],
       fw_verdict: Evaluate.firmware_check(entry["firmware"]),
+      gateways: entry["gateways"] || [],
+      interfaces: status["interfaces"] || [],
+      services: entry["services"] || [],
+      external_ip: entry["external_ip"] || %{},
+      pf_top: (entry["pf_top"] || %{})["interfaces"] || [],
+      firewall_log: Enum.take(entry["firewall_log"] || [], 15),
+      check_history: check_history(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance)
     )
+  end
+
+  # Recent check transitions (CheckHistorySection parity) — shared table,
+  # written by both stacks' ingest.
+  defp check_history(instance_id) do
+    Orbit.Repo.query!(
+      "SELECT ts, check_key, old_state, new_state, summary FROM check_events " <>
+        "WHERE instance_id = ? ORDER BY id DESC LIMIT 20",
+      [instance_id]
+    ).rows
+  rescue
+    _ -> []
   end
 
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports
@@ -479,6 +498,148 @@ defmodule OrbitWeb.InstanceDetailLive do
           </ul>
         </div>
 
+        <div :if={@gateways != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Gateways</h2>
+          <table class="w-full text-left text-sm">
+            <thead class="text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-1 pr-4 font-medium">Name</th>
+                <th class="py-1 pr-4 font-medium">Address</th>
+                <th class="py-1 pr-4 font-medium">Status</th>
+                <th class="py-1 pr-4 font-medium">Delay</th>
+                <th class="py-1 font-medium">Loss</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={g <- @gateways} class="border-b border-slate-800/50 last:border-0">
+                <td class="py-1.5 pr-4 text-slate-300">{g["name"]}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-slate-400">{g["address"] || "—"}</td>
+                <td class="py-1.5 pr-4">
+                  <span class={gw_color(g["status"])}>{g["status"] || "?"}</span>
+                </td>
+                <td class="py-1.5 pr-4 text-slate-400">{g["delay"] || "—"}</td>
+                <td class="py-1.5 text-slate-400">{g["loss"] || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div :if={@interfaces != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Interfaces</h2>
+          <table class="w-full text-left text-sm">
+            <thead class="text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-1 pr-4 font-medium">Name</th>
+                <th class="py-1 pr-4 font-medium">Address</th>
+                <th class="py-1 pr-4 font-medium">Status</th>
+                <th class="py-1 pr-4 font-medium">RX/s</th>
+                <th class="py-1 pr-4 font-medium">TX/s</th>
+                <th class="py-1 font-medium">Errors in/out</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={i <- @interfaces} class="border-b border-slate-800/50 last:border-0">
+                <td class="py-1.5 pr-4 text-slate-300">{i["name"]}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-slate-400">{i["address"] || "—"}</td>
+                <td class="py-1.5 pr-4">
+                  <span class={
+                    if(i["status"] == "up", do: "text-emerald-400", else: "text-slate-500")
+                  }>
+                    {i["status"] || "?"}
+                  </span>
+                </td>
+                <td class="py-1.5 pr-4 text-slate-400">{rate(i["rx_rate"])}</td>
+                <td class="py-1.5 pr-4 text-slate-400">{rate(i["tx_rate"])}</td>
+                <td class="py-1.5 text-slate-400">{i["in_errors"] || 0}/{i["out_errors"] || 0}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-6 grid gap-6 md:grid-cols-2">
+          <div :if={@services != []} class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+            <h2 class="mb-3 text-sm font-medium text-slate-400">Services</h2>
+            <ul class="space-y-1 text-sm">
+              <li :for={s <- @services} class="flex justify-between text-slate-300">
+                <span class="text-slate-400">{s["description"] || s["name"]}</span>
+                <span class={if(s["running"], do: "text-emerald-400", else: "text-red-400")}>
+                  {if s["running"], do: "running", else: "stopped"}
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div
+            :if={@external_ip != %{} or @pf_top != []}
+            class="rounded-lg border border-slate-800 bg-slate-900 p-4"
+          >
+            <h2 class="mb-3 text-sm font-medium text-slate-400">Network</h2>
+            <dl :if={@external_ip != %{}} class="mb-3 space-y-1 text-sm">
+              <.kv label="External IPv4" value={@external_ip["ipv4"] || "—"} />
+              <.kv label="External IPv6" value={@external_ip["ipv6"] || "—"} />
+            </dl>
+            <div :if={@pf_top != []}>
+              <div class="mb-1 text-xs text-slate-500">Top talkers (pf states)</div>
+              <ul class="space-y-1 text-sm">
+                <li :for={t <- Enum.take(@pf_top, 8)} class="flex justify-between text-slate-300">
+                  <span class="text-slate-400">{t["name"]}</span>
+                  <span>{bytes(t["bytes"])} · {t["states"]} states</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div
+          :if={@check_history != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Check history</h2>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              <tr
+                :for={[ts, key, old, new, summary] <- @check_history}
+                class="border-b border-slate-800/50 last:border-0"
+              >
+                <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-slate-500">
+                  {cb_ts(ts)}
+                </td>
+                <td class="py-1.5 pr-3 align-top">
+                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(new)]}>
+                    {state_label(old)} → {state_label(new)}
+                  </span>
+                </td>
+                <td class="whitespace-nowrap py-1.5 pr-3 text-slate-400">{key}</td>
+                <td class="py-1.5 text-slate-300">{summary}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          :if={@firewall_log != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Firewall log (latest)</h2>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              <tr :for={l <- @firewall_log} class="border-b border-slate-800/50 last:border-0">
+                <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-slate-500">
+                  {l["__timestamp__"]}
+                </td>
+                <td class="py-1 pr-3">
+                  <span class={fw_action_color(l["action"])}>{l["action"]}</span>
+                </td>
+                <td class="py-1 pr-3 text-slate-400">{l["interface"]}</td>
+                <td class="py-1 pr-3 text-slate-400">{l["protoname"] || l["proto"]}</td>
+                <td class="py-1 font-mono text-xs text-slate-300">
+                  {l["src"] || l["srcip"]} → {l["dst"] || l["dstip"]}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         <div
           :if={@logfiles != [] or @log_events != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
@@ -643,6 +804,31 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp conn_badge(false), do: "bg-slate-800 text-slate-500"
 
   defp truthy_str(value), do: value not in [nil, ""]
+
+  # Interface rates carry the -1.0 no-data sentinel (first push after restart).
+  defp rate(v) when is_number(v) and v >= 0, do: bytes(v) <> "/s"
+  defp rate(_), do: "—"
+
+  defp bytes(v) when is_number(v) and v >= 1_073_741_824,
+    do: "#{Float.round(v / 1_073_741_824, 1)} GB"
+
+  defp bytes(v) when is_number(v) and v >= 1_048_576, do: "#{Float.round(v / 1_048_576, 1)} MB"
+  defp bytes(v) when is_number(v) and v >= 1024, do: "#{Float.round(v / 1024, 1)} KB"
+  defp bytes(v) when is_number(v), do: "#{round(v)} B"
+  defp bytes(_), do: "—"
+
+  @gw_up ~w(online up none)
+  defp gw_color(status) do
+    case status |> to_string() |> String.downcase() do
+      s when s in @gw_up -> "text-emerald-400"
+      "" -> "text-slate-500"
+      _ -> "text-red-400"
+    end
+  end
+
+  defp fw_action_color("pass"), do: "text-emerald-400"
+  defp fw_action_color("block"), do: "text-red-400"
+  defp fw_action_color(_), do: "text-amber-400"
 
   defp pct(nil), do: "—"
   defp pct(v) when is_number(v), do: "#{Float.round(v / 1, 1)}%"
