@@ -25,6 +25,7 @@ defmodule OrbitWeb.SessionController do
     case Accounts.login(username, password, client_ip(conn)) do
       {:ok, {:done, user}} ->
         LoginLimiter.record_success(client_ip(conn))
+        audit_login(conn, "ok", user.id)
 
         conn
         |> UserAuth.log_in_user(user)
@@ -53,6 +54,7 @@ defmodule OrbitWeb.SessionController do
         |> render(:new, error: "Too many failed attempts; try again later.")
 
       {:error, _reason} ->
+        audit_login(conn, "error", nil)
         # invalid_credentials and account_disabled share one message — no
         # account-state oracle on the login form.
         render(conn, :new, error: "Invalid credentials.")
@@ -74,6 +76,7 @@ defmodule OrbitWeb.SessionController do
       user ->
         if Accounts.verify_totp(user, code) do
           LoginLimiter.record_success(client_ip(conn))
+          audit_login(conn, "ok", user.id)
 
           conn
           |> UserAuth.log_in_user(user)
@@ -82,6 +85,7 @@ defmodule OrbitWeb.SessionController do
           # Failed second factor counts toward the same per-IP limiter as a
           # failed password (python parity: brute-forcing codes locks the IP).
           LoginLimiter.record_failure(client_ip(conn))
+          audit_login(conn, "error", user.id, %{"reason" => "bad_totp"})
           render(conn, :totp, error: "Invalid code.")
         end
     end
@@ -89,6 +93,16 @@ defmodule OrbitWeb.SessionController do
 
   def delete(conn, _params) do
     UserAuth.log_out_user(conn)
+  end
+
+  defp audit_login(conn, result, user_id, detail \\ nil) do
+    Orbit.Audit.write(
+      action: "auth.login",
+      result: result,
+      user_id: user_id,
+      source_ip: client_ip(conn),
+      detail: detail
+    )
   end
 
   defp redirect_to_login(conn), do: conn |> redirect(to: ~p"/login")

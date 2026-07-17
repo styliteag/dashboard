@@ -13,8 +13,6 @@ defmodule OrbitWeb.EnrollController do
 
   use OrbitWeb, :controller
 
-  require Logger
-
   alias Orbit.Auth.LoginLimiter
   alias Orbit.Auth.Scope
   alias Orbit.Enrollment
@@ -26,7 +24,15 @@ defmodule OrbitWeb.EnrollController do
     with {id, ""} <- Integer.parse(raw_id),
          %Instance{} <- Scope.get_instance(id, user) do
       {code, expires_at} = Enrollment.create_code(id)
-      Logger.info("agent.enroll_code instance_id=#{id} user_id=#{user.id}")
+
+      Orbit.Audit.write(
+        action: "agent.enroll_code",
+        result: "ok",
+        user_id: user.id,
+        target_type: "instance",
+        target_id: id,
+        source_ip: client_ip(conn)
+      )
 
       json(conn, %{code: code, instance_id: id, expires_at: DateTime.to_iso8601(expires_at)})
     else
@@ -45,11 +51,27 @@ defmodule OrbitWeb.EnrollController do
         case Enrollment.redeem(code) do
           {:ok, token, instance_id} ->
             LoginLimiter.record_success(ip)
-            Logger.info("agent.enroll ok instance_id=#{instance_id}")
+
+            Orbit.Audit.write(
+              action: "agent.enroll",
+              result: "ok",
+              target_type: "instance",
+              target_id: instance_id,
+              source_ip: ip
+            )
+
             json(conn, %{agent_token: token, instance_id: instance_id})
 
           {:error, _reason} ->
             LoginLimiter.record_failure(ip)
+
+            Orbit.Audit.write(
+              action: "agent.enroll",
+              result: "denied",
+              source_ip: ip,
+              detail: %{"reason" => "invalid_or_expired"}
+            )
+
             # invalid and expired share one message — no code-state oracle.
             conn |> put_status(401) |> json(%{detail: "invalid or expired code"})
         end
