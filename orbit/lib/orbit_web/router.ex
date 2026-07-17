@@ -7,6 +7,7 @@ defmodule OrbitWeb.Router do
       require_authenticated_user: 2,
       require_authenticated_api: 2,
       require_write_api: 2,
+      read_principal: 2,
       redirect_if_authenticated: 2
     ]
 
@@ -114,6 +115,21 @@ defmodule OrbitWeb.Router do
     pipe_through :api
 
     post "/agent/enroll", EnrollController, :enroll
+  end
+
+  # Machine exports: read_principal (session OR orbit_ read-only api key).
+  # No :accepts plug — prometheus serves text/plain to */* scrapers.
+  pipeline :read_api do
+    plug :fetch_session
+    plug :fetch_current_user
+    plug :read_principal
+  end
+
+  scope "/api", OrbitWeb do
+    pipe_through :read_api
+
+    get "/export/checkmk", ExportController, :checkmk
+    get "/export/prometheus", ExportController, :prometheus
   end
 
   # Enable LiveDashboard in development

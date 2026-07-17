@@ -111,6 +111,58 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  @doc """
+  Plug: resolve `assigns.principal` for read-only endpoints — a session user
+  OR a valid `orbit_` api key (read-only by construction). Mirror of
+  read_principal (auth/deps.py). API keys are rejected on non-GET methods.
+
+  ApiKey with zero group bindings is GLOBAL; a session user is scoped to their
+  groups (invariant 1). 401 when neither authenticates.
+  """
+  def read_principal(conn, _opts) do
+    case bearer_orbit_key(conn) do
+      nil ->
+        if conn.assigns[:current_user] do
+          Plug.Conn.assign(conn, :principal, conn.assigns.current_user)
+        else
+          conn
+          |> put_status(401)
+          |> Phoenix.Controller.json(%{detail: "not authenticated"})
+          |> halt()
+        end
+
+      token ->
+        resolve_api_key(conn, token)
+    end
+  end
+
+  defp bearer_orbit_key(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> token | _] ->
+        t = String.trim(token)
+        if String.starts_with?(t, "orbit_"), do: t, else: nil
+
+      _ ->
+        nil
+    end
+  end
+
+  defp resolve_api_key(conn, token) do
+    case Accounts.get_api_key_by_token(token) do
+      nil ->
+        conn |> put_status(401) |> Phoenix.Controller.json(%{detail: "invalid API key"}) |> halt()
+
+      _key when conn.method not in ~w(GET HEAD OPTIONS) ->
+        conn
+        |> put_status(403)
+        |> Phoenix.Controller.json(%{detail: "API key is read-only"})
+        |> halt()
+
+      key ->
+        Plug.Conn.assign(conn, :principal, key)
+    end
+  end
+
   @doc "Plug: JSON 401 for unauthenticated api calls (no redirect dance)."
   def require_authenticated_api(conn, _opts) do
     if conn.assigns[:current_user] do

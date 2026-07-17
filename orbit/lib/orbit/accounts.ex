@@ -33,6 +33,19 @@ defmodule Orbit.Accounts do
   @spec get_user(integer()) :: User.t() | nil
   def get_user(id), do: Repo.one(from(u in User, where: u.id == ^id, preload: :groups))
 
+  @doc "A non-revoked `orbit_` api key by its raw token (sha256 lookup), or nil."
+  @spec get_api_key_by_token(String.t()) :: Orbit.Accounts.ApiKey.t() | nil
+  def get_api_key_by_token(token) when is_binary(token) do
+    hash = :crypto.hash(:sha256, token) |> Base.encode16(case: :lower)
+
+    Repo.one(
+      from(k in Orbit.Accounts.ApiKey,
+        where: k.key_hash == ^hash and is_nil(k.revoked_at),
+        preload: :groups
+      )
+    )
+  end
+
   @doc """
   Step 1 of login: password + account state, rate-limited per IP.
 
