@@ -102,9 +102,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   defp load_comments(socket) do
-    comments = Comments.list_for_instance(socket.assigns.instance.id)
-    fw = Enum.find(comments, &(&1.kind == "firmware" and &1.entity_key == ""))
-    assign(socket, comments: comments, firmware_note: (fw && fw.comment) || "")
+    assign(socket, comments: Comments.list_for_instance(socket.assigns.instance.id))
   end
 
   defp load_metrics(socket) do
@@ -229,21 +227,35 @@ defmodule OrbitWeb.InstanceDetailLive do
         <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
           <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
 
-          <form :if={@writable} phx-submit="comment_save" class="mb-4">
-            <input type="hidden" name="kind" value="firmware" />
-            <input type="hidden" name="entity_key" value="" />
-            <label class="mb-1 block text-xs text-slate-500">Firmware note</label>
+          <form :if={@writable} phx-submit="comment_save" class="mb-4 space-y-2">
+            <div class="flex gap-2">
+              <select
+                name="kind"
+                class="rounded border border-slate-700 bg-slate-950 p-1 text-sm text-slate-200"
+              >
+                <option value="firmware">firmware</option>
+                <option value="ipsec">ipsec</option>
+                <option value="connectivity">connectivity</option>
+                <option value="cert">cert</option>
+              </select>
+              <input
+                name="entity_key"
+                value=""
+                placeholder="entity key — tunnel id / monitor id / cert refid (blank for firmware)"
+                class="flex-1 rounded border border-slate-700 bg-slate-950 p-1 text-sm text-slate-200"
+              />
+            </div>
             <textarea
               name="comment"
               rows="2"
               class="w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200"
-              placeholder="operator note on this box's firmware…"
-            >{@firmware_note}</textarea>
+              placeholder="operator note…"
+            ></textarea>
             <button
               type="submit"
-              class="mt-2 rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
             >
-              Save note
+              Add note
             </button>
           </form>
 
