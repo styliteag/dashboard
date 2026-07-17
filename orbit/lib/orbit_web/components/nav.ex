@@ -64,6 +64,13 @@ defmodule OrbitWeb.Components.Nav do
             href={~p"/groups"}
             label="Groups"
           />
+          <.nav_link
+            :if={superadmin?(@current_user)}
+            active={@active}
+            key={:access_control}
+            href={~p"/access-control"}
+            label="Access"
+          />
         </nav>
       </div>
       <div class="flex items-center gap-3 text-sm">

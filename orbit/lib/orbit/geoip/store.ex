@@ -34,6 +34,31 @@ defmodule Orbit.GeoIP.Store do
   def reload(server \\ __MODULE__), do: GenServer.call(server, :reload)
 
   @doc """
+  Upsert the single geoip_config row (store.save_config port): countries
+  upcased+sorted, whitelist deduped in order — entries must already be
+  validated (Rules.classify_entry). Reloads the gate cache immediately so
+  a save never waits on the 60s poll.
+  """
+  def save_config(enabled, countries, whitelist, updated_by) do
+    countries_json =
+      countries |> Enum.map(&String.upcase/1) |> Enum.uniq() |> Enum.sort() |> Jason.encode!()
+
+    whitelist_json = whitelist |> Enum.uniq() |> Jason.encode!()
+
+    Orbit.Repo.query!(
+      "INSERT INTO geoip_config (id, enabled, countries, whitelist, updated_at, updated_by) " <>
+        "VALUES (1, ?, ?, ?, NOW(), ?) " <>
+        "ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), countries = VALUES(countries), " <>
+        "whitelist = VALUES(whitelist), updated_at = NOW(), updated_by = VALUES(updated_by)",
+      [enabled, countries_json, whitelist_json, updated_by]
+    )
+
+    if Process.whereis(__MODULE__), do: reload()
+    Orbit.GeoIP.Dyndns.refresh()
+    :ok
+  end
+
+  @doc """
   Denial-log throttle: one line per IP per 10s window, so a scripted scanner
   cannot flood the log (middleware.py parity). Safe without the store (tests):
   missing table logs everything.

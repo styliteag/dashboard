@@ -78,6 +78,7 @@ defmodule OrbitWeb.Router do
       on_mount: [{OrbitWeb.UserAuth, :require_superadmin}, OrbitWeb.GeoGate] do
       live "/users", UsersLive
       live "/groups", GroupsLive
+      live "/access-control", AccessControlLive
     end
   end
 
