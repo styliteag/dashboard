@@ -31,8 +31,10 @@ checkmk-test:
     cd backend && uv run pytest ../checkmk/tests -q
 
 # Black-box API contract suite against a RUNNING backend (`just dev-up` first).
-# CONTRACT_BASE_URL switches the target: Python :8000 (default), server_ex :4000.
-# The migration gate: a route may only move to server_ex when this passes on both.
+# CONTRACT_BASE_URL switches the target: Python :8000 (default), orbit :4000.
+# Machine-contract pins (checkmk/prometheus/apikey scoping) are the migration
+# gate for the LiveView rewrite (docs/elixir-liveview-rewrite.md M2/M4); the
+# session-JSON fixtures pin the python backend only — its UI api dies with react.
 contract-test *ARGS:
     cd backend && uv run pytest ../contract -q {{ARGS}}
 
