@@ -118,20 +118,12 @@ defmodule OrbitWeb.AgentSocket do
     :ok
   end
 
-  # agent_last_seen + last_success_at stamping per push (hub.py:706-717).
-  # Update-query keeps it fire-and-forget; failures must never kill the socket.
+  # agent_last_seen + last_success_at stamping per push (hub.py:706-717) —
+  # Orbit.Availability also detects the offline→online edge here and fires
+  # the recovered alert. Never raises; failures must never kill the socket.
   defp stamp_last_seen(instance_id, ts) do
     now = parse_ts(ts) || DateTime.utc_now()
-    naive = now |> DateTime.truncate(:second) |> DateTime.to_naive()
-
-    Orbit.Repo.query(
-      "UPDATE instances SET agent_last_seen = ?, last_success_at = ?, last_error_at = NULL WHERE id = ?",
-      [naive, naive, instance_id]
-    )
-    |> case do
-      {:ok, _} -> :ok
-      {:error, err} -> Logger.warning("agent.stamp_failed #{inspect(err)}")
-    end
+    Orbit.Availability.stamp_push(instance_id, now)
   end
 
   defp parse_ts(ts) when is_binary(ts) do
