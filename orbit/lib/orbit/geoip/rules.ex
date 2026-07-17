@@ -171,7 +171,8 @@ defmodule Orbit.GeoIP.Rules do
   defp max_prefix(addr) when tuple_size(addr) == 4, do: 32
   defp max_prefix(addr) when tuple_size(addr) == 8, do: 128
 
-  defp addr_in_cidr?(addr, {net, prefix}) do
+  @doc "Parsed address inside a {net_addr, prefix} CIDR? (shared with crowdsec)."
+  def addr_in_cidr?(addr, {net, prefix}) do
     tuple_size(addr) == tuple_size(net) and
       prefix_bits(addr, prefix) == prefix_bits(net, prefix)
   end

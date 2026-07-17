@@ -41,6 +41,15 @@ config :orbit,
        :trusted_proxy_hops,
        String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))
 
+# CrowdSec blocklist (DR-G8): the key turns it on, DISABLE turns it off
+# without losing the key; independent of the country restriction.
+config :orbit, :crowdsec_api_key, System.get_env("DASH_CROWDSEC_API_KEY")
+config :orbit, :crowdsec_disable, System.get_env("DASH_CROWDSEC_DISABLE") in ~w(1 true yes on)
+
+config :orbit,
+       :crowdsec_lapi_url,
+       System.get_env("DASH_CROWDSEC_LAPI_URL", "http://crowdsec:8080")
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :orbit, OrbitWeb.Endpoint,
