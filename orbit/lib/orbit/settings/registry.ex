@@ -88,6 +88,44 @@ defmodule Orbit.Settings.Registry do
       default: "365",
       min: 7,
       max: 3650
+    },
+    %Def{
+      key: "notify_mattermost_url",
+      type: :str,
+      env: "DASH_NOTIFY_MATTERMOST_URL",
+      default: "",
+      is_secret: true
+    },
+    %Def{
+      key: "notify_telegram_token",
+      type: :str,
+      env: "DASH_NOTIFY_TELEGRAM_TOKEN",
+      default: "",
+      is_secret: true
+    },
+    %Def{
+      key: "notify_telegram_chat_id",
+      type: :str,
+      env: "DASH_NOTIFY_TELEGRAM_CHAT_ID",
+      default: ""
+    },
+    %Def{
+      key: "notify_mattermost_muted",
+      type: :bool,
+      env: "DASH_NOTIFY_MATTERMOST_MUTED",
+      default: "false"
+    },
+    %Def{
+      key: "notify_telegram_muted",
+      type: :bool,
+      env: "DASH_NOTIFY_TELEGRAM_MUTED",
+      default: "false"
+    },
+    %Def{
+      key: "notify_email_muted",
+      type: :bool,
+      env: "DASH_NOTIFY_EMAIL_MUTED",
+      default: "false"
     }
   ]
 

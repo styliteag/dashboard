@@ -42,7 +42,9 @@ defmodule Orbit.Application do
 
   defp access_children do
     if Application.get_env(:orbit, :start_access, true) do
-      [{Orbit.Access.Store, []}]
+      # Selection rules cache feeds the notifier routing (same not-in-test
+      # reasoning: reads the alembic-owned selection_rules table).
+      [{Orbit.Access.Store, []}, {Orbit.Selection, []}]
     else
       []
     end

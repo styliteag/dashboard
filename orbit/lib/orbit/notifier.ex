@@ -1,0 +1,219 @@
+defmodule Orbit.Notifier do
+  @moduledoc """
+  Notification dispatcher — port of notifications/notifier.py. Channels:
+  Mattermost (incoming webhook) and Telegram; the email channel and the
+  per-group channel overrides stay python-side until their slice (an email
+  send reports "skipped: not ported"). Config lives in the shared settings
+  registry (secrets fernet-encrypted); a channel only receives an alert
+  when the selection rules resolve on for its (check_key, instance) —
+  base default OFF, so nothing spams before rules exist (Orbit.Selection).
+
+  Every real alert is mirrored onto the audit log stream regardless of
+  channel config. Failures are logged, never raised; `dispatch_async/5` is
+  fire-and-forget (Task.start) so latency-sensitive callers (agent ingest)
+  are never blocked by channel latency.
+
+  SSRF guard for the user-configured webhook URL: loopback, link-local
+  (incl. 169.254.169.254 cloud metadata), reserved, multicast and
+  unspecified addresses are refused; RFC1918 private ranges are
+  deliberately ALLOWED (self-hosted Mattermost on the internal net is the
+  common legitimate target — notifier.py parity).
+
+  Test seams: `opts[:settings]` (map override), `opts[:req_plug]`.
+  """
+
+  require Logger
+
+  @availability "availability"
+
+  @channels ~w(mattermost telegram email)
+
+  @mute_key %{
+    "mattermost" => "notify_mattermost_muted",
+    "telegram" => "notify_telegram_muted",
+    "email" => "notify_email_muted"
+  }
+
+  @type result :: %{channel: String.t(), status: String.t(), detail: String.t()}
+
+  @doc "Fire-and-forget alert about `check_key` for `instance_id`."
+  def dispatch_async(title, message, instance_id, level \\ "info", check_key \\ @availability) do
+    Task.start(fn -> send_notification(title, message, instance_id, level, check_key) end)
+    :ok
+  end
+
+  @doc "Send an alert to every selected channel (blocking; logs, never raises)."
+  def send_notification(title, message, instance_id, level \\ "info", check_key \\ @availability) do
+    # Mirror onto the always-visible event stream, even with no channel set.
+    Logger.info(
+      "alert title=#{inspect(title)} instance_id=#{instance_id} " <>
+        "check_key=#{check_key} level=#{level} message=#{inspect(message)}"
+    )
+
+    dispatch(title, message, check_key, instance_id, respect_routes: true)
+  end
+
+  @doc """
+  Test send for the Settings surface: bypasses routing and mutes (a test
+  proves connectivity), reaches every configured channel.
+  """
+  def send_test(opts \\ []) do
+    dispatch(
+      "✅ Orbit test notification",
+      "If you can read this, Orbit notifications are working.",
+      @availability,
+      nil,
+      Keyword.put(opts, :respect_routes, false)
+    )
+  end
+
+  @doc false
+  def dispatch(title, message, check_key, instance_id, opts) do
+    respect_routes = Keyword.get(opts, :respect_routes, true)
+    settings = Keyword.get(opts, :settings, &setting/1)
+
+    Enum.map(@channels, fn channel ->
+      cond do
+        respect_routes and not Orbit.Selection.is_on_live(channel, check_key, instance_id) ->
+          %{channel: channel, status: "skipped", detail: "not subscribed"}
+
+        respect_routes and truthy(settings.(@mute_key[channel])) ->
+          %{channel: channel, status: "skipped", detail: "muted"}
+
+        true ->
+          send_channel(channel, settings, title, message, opts)
+      end
+    end)
+  end
+
+  # -- channels --------------------------------------------------------------
+
+  defp send_channel("mattermost", settings, title, message, opts) do
+    url = to_string(settings.("notify_mattermost_url") || "")
+    # Seam: tests inject a guard fn — the default resolves DNS for real.
+    ssrf_check = Keyword.get(opts, :ssrf_check, &ssrf_block_reason/1)
+
+    cond do
+      url == "" ->
+        %{channel: "mattermost", status: "skipped", detail: ""}
+
+      reason = ssrf_check.(url) ->
+        Logger.warning("notify.mattermost.blocked reason=#{reason}")
+        %{channel: "mattermost", status: "failed", detail: reason}
+
+      true ->
+        post("mattermost", url, %{text: "**#{title}**\n#{message}"}, opts)
+    end
+  end
+
+  defp send_channel("telegram", settings, title, message, opts) do
+    token = to_string(settings.("notify_telegram_token") || "")
+    chat = to_string(settings.("notify_telegram_chat_id") || "")
+
+    if token == "" or chat == "" do
+      %{channel: "telegram", status: "skipped", detail: ""}
+    else
+      # Plain text, no parse_mode (notifier.py lesson): with Markdown an
+      # unbalanced metacharacter in an error string made Telegram 400 the
+      # whole message — reliability of delivery beats a bold title.
+      post(
+        "telegram",
+        "https://api.telegram.org/bot#{token}/sendMessage",
+        %{chat_id: chat, text: "#{title}\n#{message}"},
+        opts
+      )
+    end
+  end
+
+  defp send_channel("email", _settings, _title, _message, _opts) do
+    # Email (SMTP) is not ported yet — §14 gap list; python keeps sending.
+    %{channel: "email", status: "skipped", detail: "not ported"}
+  end
+
+  defp post(channel, url, body, opts) do
+    base = [url: url, json: body, receive_timeout: 10_000, retry: false]
+
+    req_opts =
+      case Keyword.get(opts, :req_plug, Application.get_env(:orbit, :notify_req_plug)) do
+        nil -> base
+        plug -> Keyword.put(base, :plug, plug)
+      end
+
+    case Req.post(req_opts) do
+      {:ok, %{status: status}} when status < 400 ->
+        Logger.info("notify.#{channel}.sent status=#{status}")
+        %{channel: channel, status: "sent", detail: ""}
+
+      {:ok, %{status: status}} ->
+        Logger.warning("notify.#{channel}.failed status=#{status}")
+        %{channel: channel, status: "failed", detail: "HTTP #{status}"}
+
+      {:error, error} ->
+        Logger.warning("notify.#{channel}.failed error=#{Exception.message(error)}")
+        %{channel: channel, status: "failed", detail: Exception.message(error)}
+    end
+  end
+
+  # -- SSRF guard ------------------------------------------------------------
+
+  @doc """
+  Reject a webhook URL whose host resolves to a dangerous-but-never-
+  legitimate address. Returns a reason string or nil.
+  """
+  def ssrf_block_reason(url) do
+    uri = URI.parse(url)
+
+    cond do
+      uri.scheme not in ["http", "https"] or uri.host in [nil, ""] ->
+        "URL must be http(s) with a host"
+
+      true ->
+        case resolve_addrs(uri.host) do
+          {:error, _} -> "host does not resolve"
+          {:ok, addrs} -> Enum.find_value(addrs, &blocked_addr_reason/1)
+        end
+    end
+  end
+
+  defp resolve_addrs(host) do
+    chars = String.to_charlist(host)
+
+    case :inet.parse_strict_address(chars) do
+      {:ok, addr} ->
+        {:ok, [addr]}
+
+      {:error, _} ->
+        v4 = :inet_res.lookup(chars, :in, :a, timeout: 5_000)
+        v6 = :inet_res.lookup(chars, :in, :aaaa, timeout: 5_000)
+        if v4 == [] and v6 == [], do: {:error, :nxdomain}, else: {:ok, v4 ++ v6}
+    end
+  end
+
+  # Loopback, link-local (incl. cloud metadata 169.254/16), reserved (240/4),
+  # multicast, unspecified. RFC1918 stays allowed on purpose (moduledoc).
+  defp blocked_addr_reason({127, _, _, _} = a), do: blocked(a)
+  defp blocked_addr_reason({169, 254, _, _} = a), do: blocked(a)
+  defp blocked_addr_reason({0, _, _, _} = a), do: blocked(a)
+  defp blocked_addr_reason({n, _, _, _} = a) when n >= 224, do: blocked(a)
+  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 0} = a), do: blocked(a)
+  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 1} = a), do: blocked(a)
+
+  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFE80 and w <= 0xFEBF,
+    do: blocked(a)
+
+  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFF00, do: blocked(a)
+  defp blocked_addr_reason(_), do: nil
+
+  defp blocked(addr), do: "blocked address #{addr |> :inet.ntoa() |> to_string()}"
+
+  # -- helpers ---------------------------------------------------------------
+
+  defp setting(key) do
+    Orbit.Settings.effective(key)
+  rescue
+    # Unknown key (email settings not yet in orbit's registry) reads as unset.
+    _ -> ""
+  end
+
+  defp truthy(value), do: value in [true, "true", "1", 1]
+end
