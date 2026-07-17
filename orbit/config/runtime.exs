@@ -66,12 +66,22 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  # The python stack's DASH_DATABASE_URL is the shared source of truth
+  # (plan §6 M0): strip the sqlalchemy driver suffix ("mysql+aiomysql://")
+  # so the same env var feeds both stacks. Plain DATABASE_URL still wins
+  # for orbit-only deployments.
   database_url =
     System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
+      case System.get_env("DASH_DATABASE_URL") do
+        nil ->
+          raise """
+          environment variable DATABASE_URL (or DASH_DATABASE_URL) is missing.
+          For example: ecto://USER:PASS@HOST/DATABASE
+          """
+
+        dash_url ->
+          String.replace(dash_url, ~r/^[a-z0-9]+\+[a-z0-9]+:\/\//, "mysql://")
+      end
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
