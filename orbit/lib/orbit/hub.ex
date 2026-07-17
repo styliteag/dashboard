@@ -334,6 +334,7 @@ defmodule Orbit.Hub do
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, DateTime.utc_now())
     maybe_persist_logfiles(instance_id, data)
+    maybe_persist_config_backup(instance_id, data)
     {:noreply, %{state | cache: cache}}
   end
 
@@ -435,4 +436,13 @@ defmodule Orbit.Hub do
   end
 
   defp maybe_persist_logfiles(_instance_id, _data), do: :ok
+
+  # Config-backup decode (gunzip) + Fernet-encrypt is CPU work; persist off the
+  # hub loop, fire-and-forget, like the logfiles path.
+  defp maybe_persist_config_backup(instance_id, %{"config_backup" => payload})
+       when is_map(payload) and payload != %{} do
+    Task.start(fn -> Orbit.ConfigBackup.Store.record(instance_id, payload) end)
+  end
+
+  defp maybe_persist_config_backup(_instance_id, _data), do: :ok
 end
