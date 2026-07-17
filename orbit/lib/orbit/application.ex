@@ -42,7 +42,13 @@ defmodule Orbit.Application do
   defp geoip_children do
     if Application.get_env(:orbit, :start_geoip, true) do
       Orbit.GeoIP.Lookup.start()
-      [{Orbit.GeoIP.Store, []}, {Orbit.GeoIP.Dyndns, []}, {Orbit.GeoIP.Crowdsec, []}]
+
+      [
+        {Orbit.GeoIP.Store, []},
+        {Orbit.GeoIP.Dyndns, []},
+        {Orbit.GeoIP.Crowdsec, []},
+        {Orbit.GeoIP.Denials, []}
+      ]
     else
       []
     end

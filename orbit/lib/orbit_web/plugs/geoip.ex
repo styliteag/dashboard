@@ -67,7 +67,9 @@ defmodule OrbitWeb.Plugs.GeoIP do
 
     case evaluator.(ip) do
       {:allow, "db_unavailable", _} ->
-        # Fail-open on infrastructure failure (DR-G5) — loud, throttled.
+        # Fail-open on infrastructure failure (DR-G5) — loud, throttled;
+        # the stats row counts every occurrence (DR-G9).
+        Orbit.GeoIP.Denials.record_fail_open()
         if Store.should_log?(ip), do: Logger.error("geoip.db_unavailable_fail_open ip=#{ip}")
         conn
 
@@ -80,6 +82,10 @@ defmodule OrbitWeb.Plugs.GeoIP do
   end
 
   defp deny(conn, ip, reason, country) do
+    # Counters/samples record EVERY denial (bounded buffers, DR-G9); only
+    # the log line is throttled.
+    Orbit.GeoIP.Denials.record(ip, country, conn.request_path, reason)
+
     if Store.should_log?(ip) do
       Logger.warning(
         "geoip.denied ip=#{ip} country=#{country || "-"} path=#{conn.request_path} reason=#{reason}"

@@ -31,6 +31,8 @@ defmodule OrbitWeb.GeoGate do
 
     case Orbit.GeoIP.evaluate(ip) do
       {:deny, reason, country} ->
+        Orbit.GeoIP.Denials.record(ip, country, "/live", reason)
+
         if Store.should_log?(ip) do
           Logger.warning(
             "geoip.denied ip=#{ip} country=#{country || "-"} path=/live reason=#{reason}"
