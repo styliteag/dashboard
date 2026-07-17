@@ -49,6 +49,20 @@ defmodule OrbitWeb.Components.Nav do
             href={~p"/audit"}
             label="Audit"
           />
+          <.nav_link
+            :if={superadmin?(@current_user)}
+            active={@active}
+            key={:users}
+            href={~p"/users"}
+            label="Users"
+          />
+          <.nav_link
+            :if={superadmin?(@current_user)}
+            active={@active}
+            key={:groups}
+            href={~p"/groups"}
+            label="Groups"
+          />
         </nav>
       </div>
       <span class="text-sm text-slate-400">{@current_user.username}</span>
@@ -71,4 +85,7 @@ defmodule OrbitWeb.Components.Nav do
 
   defp admin?(%{role: "admin"}), do: true
   defp admin?(_), do: false
+
+  defp superadmin?(%{is_superadmin: true}), do: true
+  defp superadmin?(_), do: false
 end

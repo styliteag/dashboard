@@ -15,8 +15,9 @@ defmodule Orbit.Accounts do
 
   import Ecto.Query
 
-  alias Orbit.Accounts.User
+  alias Orbit.Accounts.{Group, User}
   alias Orbit.Auth.{LoginLimiter, Password, TOTP}
+  alias Orbit.Instances.Instance
   alias Orbit.Repo
 
   @type challenge ::
@@ -32,6 +33,50 @@ defmodule Orbit.Accounts do
 
   @spec get_user(integer()) :: User.t() | nil
   def get_user(id), do: Repo.one(from(u in User, where: u.id == ^id, preload: :groups))
+
+  @doc "All users alphabetical, groups preloaded — the superadmin rights read."
+  @spec list_users() :: [User.t()]
+  def list_users do
+    Repo.all(from(u in User, order_by: u.username, preload: :groups))
+  end
+
+  @doc """
+  Rights-management group overview: every group alphabetical with its member
+  count and (non-deleted) instance count. Counts run as two grouped queries
+  and merge in — no per-group N+1.
+  """
+  @spec list_groups() :: [
+          %{
+            id: integer(),
+            name: String.t(),
+            user_count: non_neg_integer(),
+            instance_count: non_neg_integer()
+          }
+        ]
+  def list_groups do
+    user_counts =
+      from(ug in "user_groups", group_by: ug.group_id, select: {ug.group_id, count(ug.user_id)})
+      |> Repo.all()
+      |> Map.new()
+
+    instance_counts =
+      from(i in Instance,
+        where: is_nil(i.deleted_at),
+        group_by: i.group_id,
+        select: {i.group_id, count(i.id)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    from(g in Group, order_by: g.name, select: %{id: g.id, name: g.name})
+    |> Repo.all()
+    |> Enum.map(fn g ->
+      Map.merge(g, %{
+        user_count: Map.get(user_counts, g.id, 0),
+        instance_count: Map.get(instance_counts, g.id, 0)
+      })
+    end)
+  end
 
   @doc "A non-revoked `orbit_` api key by its raw token (sha256 lookup), or nil."
   @spec get_api_key_by_token(String.t()) :: Orbit.Accounts.ApiKey.t() | nil
