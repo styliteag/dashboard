@@ -83,6 +83,18 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  @doc "Plug: JSON 401 for unauthenticated api calls (no redirect dance)."
+  def require_authenticated_api(conn, _opts) do
+    if conn.assigns[:current_user] do
+      conn
+    else
+      conn
+      |> put_status(401)
+      |> Phoenix.Controller.json(%{detail: "not authenticated"})
+      |> halt()
+    end
+  end
+
   @doc "Plug: send signed-in users away from the login pages."
   def redirect_if_authenticated(conn, _opts) do
     if conn.assigns[:current_user] do

@@ -2,7 +2,12 @@ defmodule OrbitWeb.Router do
   use OrbitWeb, :router
 
   import OrbitWeb.UserAuth,
-    only: [fetch_current_user: 2, require_authenticated_user: 2, redirect_if_authenticated: 2]
+    only: [
+      fetch_current_user: 2,
+      require_authenticated_user: 2,
+      require_authenticated_api: 2,
+      redirect_if_authenticated: 2
+    ]
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -34,11 +39,39 @@ defmodule OrbitWeb.Router do
     post "/logout", SessionController, :delete
   end
 
+  # Bare pipeline for the agent websocket: bearer-token auth happens in the
+  # controller (§27.1); no accepts/session/csrf must run before the upgrade.
+  pipeline :agent_ws do
+    plug :put_secure_browser_headers
+  end
+
   # Machine-facing surface lives under /api (nginx only proxies/upgrades there).
   scope "/api", OrbitWeb do
     pipe_through :api
 
     get "/health-ex", HealthController, :show
+  end
+
+  scope "/api", OrbitWeb do
+    pipe_through :agent_ws
+
+    get "/ws/agent", AgentWSController, :connect
+  end
+
+  # Session-cookie JSON api (python parity: cookie auth, no csrf on /api).
+  # orbit_ api-key auth joins this pipeline in a later slice.
+  pipeline :session_api do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :fetch_current_user
+    plug :require_authenticated_api
+  end
+
+  scope "/api", OrbitWeb do
+    pipe_through :session_api
+
+    get "/agents/connected", AgentApiController, :connected
+    post "/instances/:instance_id/agent/ping", AgentApiController, :ping
   end
 
   # Enable LiveDashboard in development

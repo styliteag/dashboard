@@ -14,6 +14,7 @@ defmodule Orbit.Application do
       {Phoenix.PubSub, name: Orbit.PubSub},
       {Orbit.Auth.LoginLimiter, []},
       {Orbit.Settings, []},
+      {Orbit.Hub, []},
       # Start to serve requests, typically the last entry
       OrbitWeb.Endpoint
     ]
