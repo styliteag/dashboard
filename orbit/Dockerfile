@@ -56,6 +56,8 @@ ENV AGENT_DIR=/app/agent
 
 COPY --from=builder --chown=nobody:root /app/_build/prod/rel/orbit ./
 COPY --chown=nobody:root VERSION ./VERSION
+# License obligation: notices + SBOM ship inside the distributed image.
+COPY --chown=nobody:root THIRD-PARTY-NOTICES.md sbom.cdx.json /app/
 
 USER nobody
 

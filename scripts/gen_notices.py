@@ -194,6 +194,111 @@ def collect_frontend() -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# orbit (Elixir/Hex runtime deps of the release image)
+# --------------------------------------------------------------------------- #
+ORBIT = ROOT / "orbit"
+# Dev bind-mount cache (compose-dev mounts ./orbit/data/deps to /app/deps);
+# bare orbit/deps is the fallback for a host-side `mix deps.get`.
+ORBIT_DEPS_DIRS = (ORBIT / "data" / "deps", ORBIT / "deps")
+
+# mix.lock entries NOT shipped in the release: dev/test-only apps and
+# build-time tooling (runtime: false / asset compilers). Everything else in
+# the lock lands in `mix release` and carries an attribution obligation.
+_ORBIT_EXCLUDE = {
+    "phoenix_live_reload",  # only: :dev
+    "lazy_html",  # only: :test
+    "esbuild",  # runtime only in :dev; the binary never ships
+    "tailwind",  # same
+    "file_system",  # phoenix_live_reload dependency (dev-only closure)
+}
+
+
+def _orbit_deps_dir() -> Path | None:
+    return next((d for d in ORBIT_DEPS_DIRS if d.is_dir()), None)
+
+
+def _orbit_lock_entries() -> list[tuple[str, str, str]]:
+    """(name, version, ecosystem) from mix.lock — hex and git entries."""
+    lock = ORBIT / "mix.lock"
+    if not lock.exists():
+        return []
+    text = lock.read_text()
+    rows: list[tuple[str, str, str]] = []
+    for m in re.finditer(r'"([a-z0-9_]+)": \{:hex, :[a-z0-9_]+, "([^"]+)"', text):
+        rows.append((m.group(1), m.group(2), "hex"))
+    # Git deps (heroicons/daisyui): sparse asset checkouts compiled INTO the
+    # shipped css/components — attribution needed even though they are not
+    # OTP apps in the release.
+    for m in re.finditer(r'"([a-z0-9_]+)": \{:git, "([^"]+)", "([a-f0-9]{7,40})"', text):
+        rows.append((m.group(1), m.group(3)[:12], "github:" + m.group(2)))
+    return rows
+
+
+# Sparse git checkouts (assets subtree only) carry no LICENSE file — both
+# upstreams are MIT; link the canonical text instead of bundling none.
+_ORBIT_GIT_LICENSES = {
+    "heroicons": ("MIT", "https://github.com/tailwindlabs/heroicons/blob/master/LICENSE"),
+    "daisyui": ("MIT", "https://github.com/saadeghi/daisyui/blob/master/LICENSE"),
+}
+
+
+def _orbit_license(dep_dir: Path) -> str:
+    meta = dep_dir / "hex_metadata.config"
+    if meta.exists():
+        m = re.search(r'\{<<"licenses">>,\[(.*?)\]\}', meta.read_text(errors="replace"))
+        if m:
+            names = re.findall(r'<<"([^"]+)">>', m.group(1))
+            if names:
+                return " AND ".join(names)
+    # Git deps have no hex metadata — read the LICENSE head instead.
+    text = _orbit_license_text(dep_dir) or ""
+    if "MIT License" in text or text.startswith("MIT"):
+        return "MIT"
+    return "UNKNOWN"
+
+
+def _orbit_license_text(dep_dir: Path) -> str | None:
+    for pattern in ("LICENSE*", "LICENCE*", "*/LICENSE*"):
+        for p in sorted(dep_dir.glob(pattern)):
+            if p.is_file():
+                return p.read_text(errors="replace")
+    return None
+
+
+def collect_orbit() -> list[dict]:
+    """Hex/git runtime deps of the orbit release (plan §M7: SBOM obligation)."""
+    deps_dir = _orbit_deps_dir()
+    rows: list[dict] = []
+    for name, version, eco in sorted(_orbit_lock_entries()):
+        if name in _ORBIT_EXCLUDE:
+            continue
+        dep_dir = deps_dir / name if deps_dir else None
+        has_dir = dep_dir is not None and dep_dir.is_dir()
+        license_name = _orbit_license(dep_dir) if has_dir else "UNKNOWN"
+        text = _orbit_license_text(dep_dir) if has_dir else None
+
+        if license_name == "UNKNOWN" and name in _ORBIT_GIT_LICENSES:
+            license_name, canonical = _ORBIT_GIT_LICENSES[name]
+            text = f"MIT — sparse asset checkout bundles no license file.\nFull text: {canonical}"
+
+        rows.append(
+            {
+                "name": name,
+                "version": version,
+                "license": license_name,
+                "url": (
+                    eco.removeprefix("github:")
+                    if eco.startswith("github:")
+                    else f"https://hex.pm/packages/{name}"
+                ),
+                "text": text,
+                "_eco": eco,
+            }
+        )
+    return rows
+
+
+# --------------------------------------------------------------------------- #
 # vendored (shipped verbatim, not package-managed)
 # --------------------------------------------------------------------------- #
 def collect_vendored() -> list[dict]:
@@ -251,7 +356,9 @@ def _texts(rows: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def render(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> str:
+def render(
+    backend: list[dict], frontend: list[dict], orbit: list[dict], vendored: list[dict]
+) -> str:
     return "\n".join(
         [
             "# Third-Party Notices",
@@ -272,6 +379,10 @@ def render(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> s
             "",
             _table(frontend),
             "",
+            "## Orbit (Elixir/Hex runtime, orbit release image)",
+            "",
+            _table(orbit),
+            "",
             "## Vendored (shipped verbatim)",
             "",
             _table(vendored),
@@ -287,6 +398,10 @@ def render(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> s
             "### Frontend",
             "",
             _texts(frontend),
+            "",
+            "### Orbit",
+            "",
+            _texts(orbit),
             "",
             "### Vendored",
             "",
@@ -353,7 +468,33 @@ def _cdx_vendored(rows: list[dict]) -> list[dict]:
     return comps
 
 
-def build_sbom(backend: list[dict], frontend: list[dict], vendored: list[dict]) -> dict:
+def _cdx_orbit(rows: list[dict]) -> list[dict]:
+    comps: list[dict] = []
+    for r in rows:
+        eco = r.get("_eco", "hex")
+        if eco.startswith("github:"):
+            repo = eco.removeprefix("github:").removeprefix("https://github.com/")
+            repo = repo.removesuffix(".git")
+            purl = f"pkg:github/{repo}@{r['version']}"
+        else:
+            purl = f"pkg:hex/{r['name']}@{r['version']}"
+        comp = {
+            "type": "library",
+            "bom-ref": purl,
+            "name": r["name"],
+            "version": r["version"],
+            "purl": purl,
+        }
+        lic = _cdx_license(r["license"])
+        if lic:
+            comp["licenses"] = lic
+        comps.append(comp)
+    return comps
+
+
+def build_sbom(
+    backend: list[dict], frontend: list[dict], orbit: list[dict], vendored: list[dict]
+) -> dict:
     version = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "unknown"
     return {
         "bomFormat": "CycloneDX",
@@ -369,6 +510,7 @@ def build_sbom(backend: list[dict], frontend: list[dict], vendored: list[dict]) 
         },
         "components": _cdx_components(backend, "pypi")
         + _cdx_components(frontend, "npm")
+        + _cdx_orbit(orbit)
         + _cdx_vendored(vendored),
     }
 
@@ -376,14 +518,18 @@ def build_sbom(backend: list[dict], frontend: list[dict], vendored: list[dict]) 
 def main() -> None:
     backend = collect_backend()
     frontend = collect_frontend()
+    orbit = collect_orbit()
     vendored = collect_vendored()
-    OUT.write_text(render(backend, frontend, vendored))
-    sbom = build_sbom(backend, frontend, vendored)
+    OUT.write_text(render(backend, frontend, orbit, vendored))
+    sbom = build_sbom(backend, frontend, orbit, vendored)
     SBOM_OUT.write_text(json.dumps(sbom, indent=2, ensure_ascii=False) + "\n")
     notices = OUT.relative_to(ROOT)
     bom = SBOM_OUT.relative_to(ROOT)
-    n = len(backend) + len(frontend) + len(vendored)
-    print(f"wrote {notices} ({len(backend)}+{len(frontend)}+{len(vendored)} components)")
+    n = len(backend) + len(frontend) + len(orbit) + len(vendored)
+    print(
+        f"wrote {notices} "
+        f"({len(backend)}+{len(frontend)}+{len(orbit)}+{len(vendored)} components)"
+    )
     print(f"wrote {bom} (CycloneDX 1.6, {len(sbom['components'])} of {n} components)")
 
 
