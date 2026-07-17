@@ -333,6 +333,7 @@ defmodule Orbit.Hub do
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, DateTime.utc_now())
+    maybe_persist_logfiles(instance_id, data)
     {:noreply, %{state | cache: cache}}
   end
 
@@ -424,4 +425,14 @@ defmodule Orbit.Hub do
   defp generate_request_id do
     Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
   end
+
+  # Logfile persistence + event extraction is CPU work (regex-walks up to ~1 MB)
+  # and DB I/O — never do it in the hub loop. Fire-and-forget off the GenServer,
+  # mirroring the python enqueue; a failed persist must not drop the metrics push.
+  defp maybe_persist_logfiles(instance_id, %{"logfiles" => logfiles})
+       when is_list(logfiles) and logfiles != [] do
+    Task.start(fn -> Orbit.Logs.Store.ingest(instance_id, logfiles) end)
+  end
+
+  defp maybe_persist_logfiles(_instance_id, _data), do: :ok
 end
