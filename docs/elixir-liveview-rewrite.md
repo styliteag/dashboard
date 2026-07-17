@@ -5,7 +5,13 @@ M0–M4 ✅ · M5 ✅ (Kernseiten; Capture-Viewer/GUI-Proxy-Fläche offen) ·
 M6 ✅ (Exit erfüllt: LLM-Anonymizer, Firmware-Orchestrierung, Config-Backup,
 GeoIP/CrowdSec DR-G8/G9, Access-Log/Session-Registry DR-AL1..AL9, Bulk-Ops,
 CSV-Export; Restlücken explizit in `docs/agent-architecture.md` §14-Nachtrag
-2026-07-18) · M7 begonnen
+2026-07-18) · M7 ✅ (Release-Dockerfile trixie-slim/nobody, Compose-Profil
+`orbit`, nginx-Cutover-Vhost `docker/nginx.orbit.conf` — Schaltung hin/zurück
+gegen den Dev-Stack GEPROBT, Release-CI baut `dashboard-orbit`, notices+SBOM
+inkl. Hex; Rest: Frisch-Kisten-Probe auf leerer Maschine) ·
+**Vor M8**: §14-Paritätslücken schließen (Capture-Viewer, GUI-Proxy-Fläche,
+Instanz-CRUD, Users/Groups-Mutationen, 2FA-Enrollment, Notifications,
+Direct-Poll-Arme, …) — M8-Cutover selbst ist User-Entscheid (Maintenance-Fenster).
 
 ## 0. Vorgeschichte / warum Anlauf 2
 
