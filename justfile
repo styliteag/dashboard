@@ -102,6 +102,10 @@ orbit-sh:
 orbit-iex:
     docker compose -f compose-dev.yml run --rm orbit iex -S mix
 
+# Build the production release image locally (CI builds/publishes on release tags)
+orbit-image:
+    docker build -f orbit/Dockerfile -t dashboard-orbit:local .
+
 # --- Stack (production: single combined image) -----------------------------
 
 up: _sign-if-key
