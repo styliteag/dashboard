@@ -87,6 +87,13 @@ defmodule OrbitWeb.AgentSocket do
     {:ok, state}
   end
 
+  # Agent→hub tunnel frames (data/close/started/error) route by stream id to
+  # the consumer process the hub registered at open (§27.5).
+  defp dispatch(%{"type" => "tunnel", "stream" => _} = frame, state) do
+    Hub.deliver_tunnel(frame)
+    {:ok, state}
+  end
+
   defp dispatch(_unknown, state), do: {:ok, state}
 
   @impl true

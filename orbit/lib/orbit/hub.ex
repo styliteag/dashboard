@@ -117,11 +117,49 @@ defmodule Orbit.Hub do
     GenServer.cast(server, {:resolve, request_id, result})
   end
 
+  ## Tunnel multiplex (GUI/shell/capture ride the one agent socket, §27.5) ----
+
+  @doc """
+  Open a tunnel stream to a connected agent. The calling process becomes the
+  stream consumer: it receives `{:tunnel, stream, op, frame}` messages for
+  every agent→hub frame on this stream, and must `close_tunnel/2` on exit.
+  Returns `{:ok, stream}` or `{:error, :not_connected}`.
+
+  `open_extra` carries the per-kind open fields (shell: rows/cols/kind;
+  capture: interface/filter/kind; GUI-TCP: none).
+  """
+  @spec open_tunnel(GenServer.server(), integer(), map()) ::
+          {:ok, String.t()} | {:error, :not_connected}
+  def open_tunnel(server \\ __MODULE__, instance_id, open_extra) do
+    GenServer.call(server, {:open_tunnel, instance_id, self(), open_extra})
+  end
+
+  @doc "Send raw bytes on a stream (base64-framed to the agent)."
+  def tunnel_send(server \\ __MODULE__, stream, data) when is_binary(data) do
+    GenServer.cast(server, {:tunnel_op, stream, "data", %{"data" => Base.encode64(data)}})
+  end
+
+  @doc "Resize a shell stream's PTY."
+  def tunnel_resize(server \\ __MODULE__, stream, rows, cols) do
+    GenServer.cast(server, {:tunnel_op, stream, "resize", %{"rows" => rows, "cols" => cols}})
+  end
+
+  @doc "Close a stream (tells the agent, drops the routing entry)."
+  def close_tunnel(server \\ __MODULE__, stream) do
+    GenServer.cast(server, {:close_tunnel, stream})
+  end
+
+  @doc "Route an inbound tunnel frame from the agent socket to its consumer."
+  def deliver_tunnel(server \\ __MODULE__, frame) do
+    GenServer.cast(server, {:deliver_tunnel, frame})
+  end
+
   # -- GenServer ------------------------------------------------------------
 
   @impl true
   def init(:ok) do
-    {:ok, %{agents: %{}, pending: %{}, cache: %{}}}
+    Process.flag(:trap_exit, false)
+    {:ok, %{agents: %{}, pending: %{}, cache: %{}, streams: %{}}}
   end
 
   @impl true
@@ -189,6 +227,32 @@ defmodule Orbit.Hub do
     {:reply, Orbit.Hub.Cache.entry(state.cache, instance_id), state}
   end
 
+  def handle_call({:open_tunnel, instance_id, consumer, open_extra}, _from, state) do
+    case state.agents[instance_id] do
+      %Agent{pid: pid} ->
+        stream = generate_request_id()
+        ref = Process.monitor(consumer)
+
+        frame =
+          Map.merge(%{"type" => "tunnel", "op" => "open", "stream" => stream}, open_extra)
+
+        send(pid, {:push_frame, frame})
+
+        streams =
+          Map.put(state.streams, stream, %{
+            consumer: consumer,
+            agent_pid: pid,
+            monitor: ref,
+            instance_id: instance_id
+          })
+
+        {:reply, {:ok, stream}, %{state | streams: streams}}
+
+      nil ->
+        {:reply, {:error, :not_connected}, state}
+    end
+  end
+
   @impl true
   def handle_cast({:resolve, request_id, result}, state) do
     case Map.pop(state.pending, request_id) do
@@ -216,6 +280,73 @@ defmodule Orbit.Hub do
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, DateTime.utc_now())
     {:noreply, %{state | cache: cache}}
+  end
+
+  def handle_cast({:tunnel_op, stream, op, fields}, state) do
+    case state.streams[stream] do
+      %{agent_pid: pid} ->
+        frame = Map.merge(%{"type" => "tunnel", "op" => op, "stream" => stream}, fields)
+        send(pid, {:push_frame, frame})
+        {:noreply, state}
+
+      nil ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_cast({:close_tunnel, stream}, state) do
+    {:noreply, drop_stream(state, stream, tell_agent: true)}
+  end
+
+  def handle_cast({:deliver_tunnel, %{"stream" => stream} = frame}, state) do
+    case state.streams[stream] do
+      %{consumer: consumer} ->
+        op = frame["op"]
+        send(consumer, {:tunnel, stream, op, frame})
+        # An agent-side close ends the stream; drop routing without re-telling
+        # the agent (it just told us).
+        if op == "close" do
+          {:noreply, drop_stream(state, stream, tell_agent: false)}
+        else
+          {:noreply, state}
+        end
+
+      nil ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_cast({:deliver_tunnel, _frame}, state), do: {:noreply, state}
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, consumer, _reason}, state) do
+    # A tunnel consumer died — close its streams so the agent tears them down.
+    streams =
+      state.streams
+      |> Enum.filter(fn {_s, meta} -> meta.consumer == consumer end)
+      |> Enum.map(fn {s, _} -> s end)
+
+    new_state = Enum.reduce(streams, state, &drop_stream(&2, &1, tell_agent: true))
+    {:noreply, new_state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  defp drop_stream(state, stream, tell_agent: tell_agent) do
+    case Map.pop(state.streams, stream) do
+      {nil, _} ->
+        state
+
+      {meta, rest} ->
+        Process.demonitor(meta.monitor, [:flush])
+
+        if tell_agent do
+          frame = %{"type" => "tunnel", "op" => "close", "stream" => stream}
+          send(meta.agent_pid, {:push_frame, frame})
+        end
+
+        %{state | streams: rest}
+    end
   end
 
   defp update_agent(state, instance_id, fun) do
