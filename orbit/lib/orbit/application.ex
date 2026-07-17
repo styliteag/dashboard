@@ -18,12 +18,13 @@ defmodule Orbit.Application do
       {Orbit.Shell.Slots, []}
     ]
 
-    # GeoIP gate processes (config store + dyndns resolver) start BEFORE the
-    # endpoint — the gate must have its rules before the first request; the
-    # endpoint stays last so it only serves once everything is up. Scheduler
-    # (maintenance jobs) appends behind a flag; geoip likewise not in :test
-    # (both touch alembic-owned tables the throwaway test DB doesn't have).
-    children = maybe_scheduler(base ++ geoip_children() ++ [OrbitWeb.Endpoint])
+    # GeoIP gate + access accounting start BEFORE the endpoint — both must
+    # be up before the first request; the endpoint stays last so it only
+    # serves once everything is up. Scheduler (maintenance jobs) appends
+    # behind a flag; geoip/access likewise not in :test (all touch
+    # alembic-owned tables the throwaway test DB doesn't have).
+    children =
+      maybe_scheduler(base ++ geoip_children() ++ access_children() ++ [OrbitWeb.Endpoint])
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
@@ -36,6 +37,14 @@ defmodule Orbit.Application do
       children ++ [{Orbit.Scheduler, []}]
     else
       children
+    end
+  end
+
+  defp access_children do
+    if Application.get_env(:orbit, :start_access, true) do
+      [{Orbit.Access.Store, []}]
+    else
+      []
     end
   end
 

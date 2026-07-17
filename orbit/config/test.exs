@@ -32,6 +32,10 @@ config :orbit, :start_scheduler, false
 # gate then runs on the DISABLED default (rules are unit-tested directly).
 config :orbit, :start_geoip, false
 
+# Access store writes alembic-owned tables — not in test; record casts and
+# session opens degrade to no-ops (buffer transitions are unit-tested).
+config :orbit, :start_access, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

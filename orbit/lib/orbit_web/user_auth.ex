@@ -23,11 +23,17 @@ defmodule OrbitWeb.UserAuth do
 
   @doc "Mint the fully-authenticated session (after the second factor passed)."
   def log_in_user(conn, user) do
+    # Session-registry bookkeeping (DR-AL3): the sid rides in the cookie so
+    # requests can stamp last_seen; the registry is NOT consulted for auth.
+    sid = Orbit.Access.Store.new_sid()
+    Orbit.Access.Store.open_session(sid, user.id, Orbit.Net.client_ip(conn))
+
     conn
     |> renew_session()
     |> put_session(:user_id, user.id)
     |> put_session(:password_version, user.password_version)
     |> put_session(:mfa_passed, true)
+    |> put_session(:sid, sid)
   end
 
   @doc "Store the pending-MFA state: password passed, second factor missing."
@@ -54,9 +60,49 @@ defmodule OrbitWeb.UserAuth do
   end
 
   def log_out_user(conn) do
+    # Close the registry row BEFORE the session is renewed away (DR-AL3).
+    Orbit.Access.Store.close_session(get_session(conn, :sid), "logout")
+
     conn
     |> renew_session()
     |> redirect(to: ~p"/login")
+  end
+
+  @doc """
+  Plug: count this request in the access accounting (DR-AL2) — runs after
+  fetch_current_user, records at response time so the status is known. The
+  buffers are bounded casts; anon requests aggregate without IP sample rows
+  (DR-AL8). WebSocket upgrades count as one access via their controller GET.
+  """
+  def track_access(conn, _opts) do
+    register_before_send(conn, fn conn ->
+      case conn.assigns[:current_user] do
+        %User{id: id} ->
+          Orbit.Access.Store.record_request(
+            "user",
+            to_string(id),
+            Orbit.Net.client_ip(conn),
+            conn.method,
+            conn.request_path,
+            conn.status,
+            user_id: id,
+            sid: get_session(conn, :sid)
+          )
+
+        _ ->
+          # No IP for anon — aggregate only (DR-AL8, http_log.py parity).
+          Orbit.Access.Store.record_request(
+            "anon",
+            "anon",
+            nil,
+            conn.method,
+            conn.request_path,
+            conn.status
+          )
+      end
+
+      conn
+    end)
   end
 
   @doc "Plug: resolve assigns.current_user from the session (or nil)."

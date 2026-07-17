@@ -8,7 +8,8 @@ defmodule OrbitWeb.Router do
       require_authenticated_api: 2,
       require_write_api: 2,
       read_principal: 2,
-      redirect_if_authenticated: 2
+      redirect_if_authenticated: 2,
+      track_access: 2
     ]
 
   pipeline :browser do
@@ -19,6 +20,7 @@ defmodule OrbitWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_user
+    plug :track_access
   end
 
   pipeline :api do
@@ -88,6 +90,9 @@ defmodule OrbitWeb.Router do
   # WSAuth, but no accepts/csrf. Auth + close codes live in the controller.
   pipeline :client_ws do
     plug :fetch_session
+    plug :fetch_current_user
+    # WS-open counts as one access (DR-AL2); the upgrade GET carries it.
+    plug :track_access
   end
 
   scope "/api", OrbitWeb do
@@ -103,6 +108,7 @@ defmodule OrbitWeb.Router do
     plug :accepts, ["json"]
     plug :fetch_session
     plug :fetch_current_user
+    plug :track_access
     plug :require_authenticated_api
   end
 
@@ -122,6 +128,7 @@ defmodule OrbitWeb.Router do
     plug :accepts, ["json"]
     plug :fetch_session
     plug :fetch_current_user
+    plug :track_access
     plug :require_write_api
   end
 

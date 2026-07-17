@@ -64,6 +64,30 @@ defmodule Orbit.Settings.Registry do
       default: "30",
       min: 1,
       max: 3650
+    },
+    %Def{
+      key: "access_events_retention_days",
+      type: :int,
+      env: "DASH_ACCESS_EVENTS_RETENTION_DAYS",
+      default: "30",
+      min: 1,
+      max: 365
+    },
+    %Def{
+      key: "access_sessions_retention_days",
+      type: :int,
+      env: "DASH_ACCESS_SESSIONS_RETENTION_DAYS",
+      default: "30",
+      min: 1,
+      max: 365
+    },
+    %Def{
+      key: "access_stats_retention_days",
+      type: :int,
+      env: "DASH_ACCESS_STATS_RETENTION_DAYS",
+      default: "365",
+      min: 7,
+      max: 3650
     }
   ]
 
