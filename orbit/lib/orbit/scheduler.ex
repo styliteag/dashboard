@@ -19,7 +19,9 @@ defmodule Orbit.Scheduler do
   require Logger
 
   @jobs [
-    {:enrollment_cleanup, :timer.hours(1), &__MODULE__.cleanup_enrollment_codes/0}
+    {:enrollment_cleanup, :timer.hours(1), &__MODULE__.cleanup_enrollment_codes/0},
+    {:metrics_prune, :timer.hours(1), &Orbit.Maintenance.Prune.prune_metrics/0},
+    {:ipsec_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_ipsec_events/0}
   ]
 
   # Stagger first runs a little after boot so startup isn't a DB thundering herd.
