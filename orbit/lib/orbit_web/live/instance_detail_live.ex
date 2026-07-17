@@ -57,7 +57,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           upgrade_started: nil,
           enroll_code: nil,
           agent_busy: false,
-          agent_msg: nil
+          agent_msg: nil,
+          ai_busy: false,
+          ai_result: nil,
+          ai_error: nil
         )
         |> load_comments()
         |> load_logs()
@@ -137,6 +140,26 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("agent_update", _params, socket), do: {:noreply, socket}
+
+  # AI log analysis (AiLogAnalysisSection parity) — admin-only like the raw
+  # logs (the LLM sees anonymized text only, invariant 4; still an admin
+  # surface). Runs async: anonymize + provider call take seconds.
+  def handle_event("ai_analyze", %{"provider" => provider}, socket) do
+    cond do
+      not socket.assigns.admin or socket.assigns.ai_busy ->
+        {:noreply, socket}
+
+      true ->
+        instance_id = socket.assigns.instance.id
+
+        {:noreply,
+         socket
+         |> assign(ai_busy: true, ai_result: nil, ai_error: nil)
+         |> start_async(:ai_analyze, fn ->
+           Orbit.LLM.Analyze.analyze_logs(provider, log_text_for(instance_id))
+         end)}
+    end
+  end
 
   # Canary mechanism (DR-6): one box per click. Same guards as the JSON route —
   # pushing the served version only trips the agent's anti-rollback (no-op).
@@ -271,6 +294,29 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_async(:agent_update, {:exit, _}, socket) do
     {:noreply, assign(socket, agent_busy: false, agent_msg: {:error, "update push crashed"})}
+  end
+
+  def handle_async(:ai_analyze, {:ok, result}, socket) do
+    case result do
+      {:ok, analysis} -> {:noreply, assign(socket, ai_busy: false, ai_result: analysis)}
+      {:error, reason} -> {:noreply, assign(socket, ai_busy: false, ai_error: reason)}
+    end
+  end
+
+  def handle_async(:ai_analyze, {:exit, _}, socket) do
+    {:noreply, assign(socket, ai_busy: false, ai_error: "analysis crashed")}
+  end
+
+  # Latest snapshot content per logfile, concatenated with file headers —
+  # the analyze layer anonymizes and caps before anything leaves the box.
+  defp log_text_for(instance_id) do
+    Orbit.Repo.query!(
+      "SELECT l.name, l.content FROM logfiles l " <>
+        "JOIN (SELECT name, MAX(id) AS mid FROM logfiles WHERE instance_id = ? " <>
+        "GROUP BY name) x ON x.mid = l.id ORDER BY l.name",
+      [instance_id]
+    ).rows
+    |> Enum.map_join("\n\n", fn [name, content] -> "===== #{name} =====\n#{content}" end)
   end
 
   defp fw_heal_check(socket) do
@@ -822,6 +868,36 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
           <div :if={@log_events == [] and @logfiles != []} class="text-xs text-slate-500">
             No critical events in the latest snapshots.
+          </div>
+
+          <form
+            :if={@admin and @logfiles != []}
+            phx-submit="ai_analyze"
+            class="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3"
+          >
+            <select
+              name="provider"
+              class="rounded border border-slate-700 bg-slate-950 p-1 text-xs text-slate-300"
+            >
+              <option :for={p <- Orbit.LLM.Analyze.providers()} value={p.id}>{p.label}</option>
+            </select>
+            <button
+              type="submit"
+              disabled={@ai_busy}
+              class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {if @ai_busy, do: "Analyzing…", else: "Analyze with AI"}
+            </button>
+            <span class="text-xs text-slate-600">anonymized before it leaves the box</span>
+          </form>
+
+          <div :if={@ai_error} class="mt-2 text-xs text-red-400">{@ai_error}</div>
+
+          <div :if={@ai_result} class="mt-3 rounded border border-slate-800 bg-slate-950 p-3">
+            <div class="mb-2 text-xs text-slate-500">
+              {@ai_result.provider} · {@ai_result.model}
+            </div>
+            <pre class="whitespace-pre-wrap text-xs text-slate-300">{@ai_result.findings}</pre>
           </div>
         </div>
 

@@ -126,7 +126,31 @@ defmodule Orbit.Settings.Registry do
       type: :bool,
       env: "DASH_NOTIFY_EMAIL_MUTED",
       default: "false"
-    }
+    },
+    %Def{key: "llm_openai_api_key", type: :str, env: "", default: "", is_secret: true},
+    %Def{
+      key: "llm_openai_base_url",
+      type: :str,
+      env: "",
+      default: "https://api.openai.com/v1"
+    },
+    %Def{key: "llm_openai_model", type: :str, env: "", default: "gpt-5.5"},
+    %Def{key: "llm_anthropic_api_key", type: :str, env: "", default: "", is_secret: true},
+    %Def{
+      key: "llm_anthropic_base_url",
+      type: :str,
+      env: "",
+      default: "https://api.anthropic.com"
+    },
+    %Def{key: "llm_anthropic_model", type: :str, env: "", default: "claude-opus-4-8"},
+    %Def{key: "llm_openrouter_api_key", type: :str, env: "", default: "", is_secret: true},
+    %Def{
+      key: "llm_openrouter_base_url",
+      type: :str,
+      env: "",
+      default: "https://openrouter.ai/api/v1"
+    },
+    %Def{key: "llm_openrouter_model", type: :str, env: "", default: "openai/gpt-5.5"}
   ]
 
   @editable Map.new(@defs, &{&1.key, &1})
