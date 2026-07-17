@@ -64,13 +64,7 @@ defmodule OrbitWeb.HubStatusLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-screen bg-slate-950 text-slate-100">
-      <header class="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-3">
-        <div class="flex items-center gap-3">
-          <a href={~p"/"} class="font-semibold text-slate-100">STYLiTE Orbit</a>
-          <span class="rounded bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-300">live</span>
-        </div>
-        <span class="text-sm text-slate-400">{@current_user.username}</span>
-      </header>
+      <.top_nav active={:hub} current_user={@current_user} />
 
       <section class="p-6">
         <h1 class="mb-4 text-lg font-medium text-slate-200">

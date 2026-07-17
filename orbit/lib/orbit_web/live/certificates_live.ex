@@ -58,19 +58,7 @@ defmodule OrbitWeb.CertificatesLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-screen bg-slate-950 text-slate-100">
-      <header class="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-3">
-        <div class="flex items-center gap-3">
-          <a href={~p"/"} class="font-semibold text-slate-100">STYLiTE Orbit</a>
-          <nav class="flex gap-3 text-sm text-slate-400">
-            <a href={~p"/instances"} class="hover:text-slate-200">Instances</a>
-            <a href={~p"/alerts"} class="hover:text-slate-200">Alerts</a>
-            <a href={~p"/certificates"} class="text-slate-200">Certs</a>
-            <a href={~p"/firmware"} class="hover:text-slate-200">Firmware</a>
-            <a href={~p"/vpn"} class="hover:text-slate-200">VPN</a>
-          </nav>
-        </div>
-        <span class="text-sm text-slate-400">{@current_user.username}</span>
-      </header>
+      <.top_nav active={:certificates} current_user={@current_user} />
 
       <section class="p-6">
         <h1 class="mb-4 text-lg font-medium text-slate-200">

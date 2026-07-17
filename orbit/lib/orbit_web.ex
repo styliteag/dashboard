@@ -81,6 +81,8 @@ defmodule OrbitWeb do
       import Phoenix.HTML
       # Core UI components
       import OrbitWeb.CoreComponents
+      # Shared top navigation
+      import OrbitWeb.Components.Nav
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

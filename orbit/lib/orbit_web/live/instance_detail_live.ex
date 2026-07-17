@@ -60,15 +60,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-screen bg-slate-950 text-slate-100">
-      <header class="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-3">
-        <div class="flex items-center gap-3">
-          <a href={~p"/"} class="font-semibold text-slate-100">STYLiTE Orbit</a>
-          <nav class="flex gap-3 text-sm text-slate-400">
-            <a href={~p"/instances"} class="hover:text-slate-200">Instances</a>
-          </nav>
-        </div>
-        <span class="text-sm text-slate-400">{@current_user.username}</span>
-      </header>
+      <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-6 flex items-center gap-3">
