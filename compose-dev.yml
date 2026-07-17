@@ -134,6 +134,8 @@ services:
       DB_NAME: ${DB_NAME:-dash}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
       ORBIT_DB_HOST: db
+      # Served agent code for self-update relay (mounted read-only below).
+      AGENT_DIR: /app/agent
       # Same fernet key as the python backend — orbit reads the same *_enc columns.
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       # Interactive shell gate + WS origin allowlist (mirror the backend service).
@@ -146,6 +148,8 @@ services:
     volumes:
       - ./orbit:/app
       - ./VERSION:/app/VERSION:ro
+      # Served agent code for the self-update relay (read-only, like backend).
+      - ./agent:/app/agent:ro
       - ./orbit/data/deps:/app/deps
       - ./orbit/data/build:/app/_build
       - ./orbit/data/toolchain:/toolchain

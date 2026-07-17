@@ -100,6 +100,7 @@ defmodule OrbitWeb.Router do
     pipe_through :write_api
 
     post "/instances/:instance_id/agent/enroll-code", EnrollController, :create_code
+    post "/instances/:instance_id/agent/update", AgentApiController, :update
   end
 
   # Public enrollment: unauthenticated, rate-limited in the controller.

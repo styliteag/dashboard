@@ -29,6 +29,8 @@ defmodule Orbit.Hub do
       :platform,
       :checkmk_sha256,
       :connected_at,
+      :last_update_error,
+      :last_update_version,
       pushes: 0,
       pongs: 0,
       last_push_at: nil
@@ -115,6 +117,16 @@ defmodule Orbit.Hub do
   @doc "Resolve a pending command future (called by the socket on command_result)."
   def resolve_command(server \\ __MODULE__, request_id, result) do
     GenServer.cast(server, {:resolve, request_id, result})
+  end
+
+  @doc """
+  Pin a self-update outcome on the connected agent: a rejection stays visible
+  in list_connected (the agent stays connected when it refuses); a success
+  restarts the agent → fresh connection, clearing it (update.py:_push_update).
+  """
+  @spec pin_update_result(GenServer.server(), integer(), map(), String.t()) :: :ok
+  def pin_update_result(server \\ __MODULE__, instance_id, result, version) do
+    GenServer.cast(server, {:pin_update_result, instance_id, result, version})
   end
 
   ## Tunnel multiplex (GUI/shell/capture ride the one agent socket, §27.5) ----
@@ -285,6 +297,21 @@ defmodule Orbit.Hub do
 
   def handle_cast({:record_pong, instance_id}, state) do
     {:noreply, update_agent(state, instance_id, fn a -> %{a | pongs: a.pongs + 1} end)}
+  end
+
+  def handle_cast({:pin_update_result, instance_id, result, version}, state) do
+    {:noreply,
+     update_agent(state, instance_id, fn a ->
+       if result["success"] do
+         %{a | last_update_error: nil, last_update_version: nil}
+       else
+         %{
+           a
+           | last_update_error: result["output"] || "update failed",
+             last_update_version: version
+         }
+       end
+     end)}
   end
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
