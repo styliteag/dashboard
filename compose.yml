@@ -126,6 +126,42 @@ services:
       # abort the migration mid-build and crash-loop the task.
       start_period: 600s
 
+  # Orbit (Elixir/LiveView rewrite, plan docs/elixir-liveview-rewrite.md §M7).
+  # Opt-in via `docker compose --profile orbit up -d orbit` — NEVER runs by
+  # default beside the python stack (double polling/notifications, plan §3).
+  # Cutover = swap the app container's nginx vhost to docker/nginx.orbit.conf
+  # (see that file's header) and restart app; rollback = restore the vhost.
+  # No published ports: nginx inside the app container is the only front door.
+  orbit:
+    build:
+      context: .
+      dockerfile: orbit/Dockerfile
+    # Alternatively pull a prebuilt image:
+    # image: styliteag/dashboard-orbit:latest
+    restart: unless-stopped
+    profiles: [orbit]
+    volumes:
+      - geoip_data:/data/geoip
+    environment:
+      # Same DB + fernet key as the python stack — shared schema until M8.
+      DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
+      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
+      SECRET_KEY_BASE: ${ORBIT_SECRET_KEY_BASE:?set in .env - generate with: openssl rand -base64 48}
+      PHX_HOST: ${DASH_PUBLIC_HOST:-localhost}
+      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-1}
+      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
+      # GeoIP gate + CrowdSec blocklist (same vars as the app service).
+      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
+      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
+      DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
+      DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
+      DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
+      TZ: ${TZ:-UTC}
+    depends_on:
+      db:
+        condition: service_healthy
+
   # Firewall GUI proxy (OPTIONAL). Your EXTERNAL Traefik terminates TLS and routes
   # Host(*.${ORBIT_GUI_DOMAIN}) to THIS Caddy (over HTTP); it host-matches gui-<slug>,
   # gates on the orbit_gui cookie (forward_auth), and proxies to that firewall's
