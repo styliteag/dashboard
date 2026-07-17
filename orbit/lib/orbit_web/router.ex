@@ -40,6 +40,7 @@ defmodule OrbitWeb.Router do
     post "/logout", SessionController, :delete
 
     live_session :authenticated, on_mount: OrbitWeb.UserAuth do
+      live "/instances", InstancesLive
       live "/hub", HubStatusLive
     end
   end

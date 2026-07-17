@@ -28,8 +28,12 @@
       <span :if={@current_user.groups == []}>none — no instances visible</span>
     </p>
     <p class="mt-4 text-sm text-slate-400">
+      <a href={~p"/instances"} class="text-emerald-400 hover:text-emerald-300">
+        → Instances
+      </a>
+      <span class="mx-2 text-slate-700">·</span>
       <a href={~p"/hub"} class="text-emerald-400 hover:text-emerald-300">
-        → Connected agents (live)
+        Connected agents (live)
       </a>
     </p>
     <p class="mt-2 text-sm text-slate-500">
