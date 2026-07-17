@@ -15,6 +15,7 @@ defmodule Orbit.Application do
       {Orbit.Auth.LoginLimiter, []},
       {Orbit.Settings, []},
       {Orbit.Hub, []},
+      {Orbit.Shell.Slots, []},
       # Start to serve requests, typically the last entry
       OrbitWeb.Endpoint
     ]

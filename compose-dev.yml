@@ -136,6 +136,10 @@ services:
       ORBIT_DB_HOST: db
       # Same fernet key as the python backend — orbit reads the same *_enc columns.
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
+      # Interactive shell gate + WS origin allowlist (mirror the backend service).
+      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
+      DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"

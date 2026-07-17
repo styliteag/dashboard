@@ -58,6 +58,18 @@ defmodule OrbitWeb.Router do
     get "/ws/agent", AgentWSController, :connect
   end
 
+  # Client-facing WS (shell/capture/gui-tunnel): needs the session cookie for
+  # WSAuth, but no accepts/csrf. Auth + close codes live in the controller.
+  pipeline :client_ws do
+    plug :fetch_session
+  end
+
+  scope "/api", OrbitWeb do
+    pipe_through :client_ws
+
+    get "/ws/shell/:instance_id", ShellWSController, :connect
+  end
+
   # Session-cookie JSON api (python parity: cookie auth, no csrf on /api).
   # orbit_ api-key auth joins this pipeline in a later slice.
   pipeline :session_api do
