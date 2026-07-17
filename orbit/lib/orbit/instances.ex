@@ -69,6 +69,136 @@ defmodule Orbit.Instances do
     end
   end
 
+  @device_types ~w(opnsense pfsense proxmox truenas qnap securepoint linux)
+  # Push-only device types have no direct API — base_url must stay empty (DR-9).
+  @push_only_types ~w(linux)
+
+  def device_types, do: @device_types
+  def push_only_type?(device_type), do: device_type in @push_only_types
+
+  @doc """
+  Create an instance (service.create_instance port): agent-mode gets
+  encrypted placeholder credentials (NOT NULL columns), transport defaults
+  from the mode, a name-derived slug auto-suffixes -2/-3… while an explicit
+  one must be free.
+  """
+  def create_instance(params, group_id) do
+    transport =
+      if params["transport"] in ["push", "direct"], do: params["transport"], else: "push"
+
+    device_type = if params["device_type"] in @device_types, do: params["device_type"], else: nil
+    name = String.trim(params["name"] || "")
+
+    cond do
+      name == "" ->
+        {:error, :name_required}
+
+      device_type == nil ->
+        {:error, :bad_device_type}
+
+      push_only_type?(device_type) and presence(params["base_url"]) != nil ->
+        {:error, :push_only_no_base_url}
+
+      true ->
+        insert_instance(params, group_id, name, transport, device_type)
+    end
+  end
+
+  defp insert_instance(params, group_id, name, transport, device_type) do
+    api_key = presence(params["api_key"]) || "agent-mode-no-key"
+    api_secret = presence(params["api_secret"]) || "agent-mode-no-secret"
+
+    with {:ok, slug} <- resolve_create_slug(params["slug"], name) do
+      %Instance{}
+      |> Ecto.Changeset.change(%{
+        name: name,
+        group_id: group_id,
+        slug: slug,
+        base_url: presence(params["base_url"]) || "",
+        api_key_enc: Orbit.Crypto.encrypt(api_key),
+        api_secret_enc: Orbit.Crypto.encrypt(api_secret),
+        transport: transport,
+        device_type: device_type,
+        ssl_verify: params["ssl_verify"] in [true, "true", "on"],
+        gui_login_enabled: params["gui_login_enabled"] in [true, "true", "on"],
+        shell_enabled: false,
+        ssh_enabled: false,
+        maintenance: false,
+        firmware_locked: false,
+        location: presence(params["location"]),
+        # No agent_token at creation — the enrollment redeem mints it (§16 C2).
+        created_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+      |> Repo.insert()
+      |> case do
+        {:ok, inst} -> {:ok, inst}
+        {:error, _changeset} -> {:error, :conflict}
+      end
+    end
+  rescue
+    # name_active_key/slug uniques are DB-side generated-column constraints —
+    # ecto raises instead of returning a changeset error (409 parity).
+    Ecto.ConstraintError -> {:error, :conflict}
+  end
+
+  # Explicit slug must be free (a clash is an error); name-derived auto-suffixes.
+  defp resolve_create_slug(explicit, name) do
+    case presence(explicit) do
+      nil ->
+        {:ok, auto_suffix_slug(Orbit.Instances.Slug.slugify(name))}
+
+      slug ->
+        cond do
+          not Orbit.Instances.Slug.valid?(slug) -> {:error, :slug_invalid}
+          slug_taken?(slug, 0) -> {:error, :slug_taken}
+          true -> {:ok, slug}
+        end
+    end
+  end
+
+  defp auto_suffix_slug(base), do: auto_suffix_slug(base, base, 2)
+
+  defp auto_suffix_slug(base, candidate, n) do
+    if slug_taken?(candidate, 0) do
+      suffix = "-#{n}"
+      max = Orbit.Instances.Slug.max_len() - String.length(suffix)
+      trimmed = base |> String.slice(0, max) |> String.trim_trailing("-")
+      auto_suffix_slug(base, trimmed <> suffix, n + 1)
+    else
+      candidate
+    end
+  end
+
+  @doc """
+  Target group for a new instance (routes._resolve_create_group port): one
+  of the creator's groups (superadmins may target any); implied when the
+  user has exactly one.
+  """
+  def resolve_create_group(user, group_id_param) do
+    memberships = Orbit.Accounts.User.group_id_set(user)
+    requested = parse_int(group_id_param)
+
+    cond do
+      requested == nil and MapSet.size(memberships) == 1 ->
+        {:ok, memberships |> MapSet.to_list() |> hd()}
+
+      requested == nil ->
+        {:error, :group_required}
+
+      user.is_superadmin ->
+        if Repo.get(Orbit.Accounts.Group, requested),
+          do: {:ok, requested},
+          else: {:error, :unknown_group}
+
+      MapSet.member?(memberships, requested) ->
+        {:ok, requested}
+
+      true ->
+        {:error, :not_a_member}
+    end
+  end
+
   @doc "Soft delete — the slug is freed for reuse (generated-column contract)."
   def soft_delete(%Instance{} = inst) do
     inst

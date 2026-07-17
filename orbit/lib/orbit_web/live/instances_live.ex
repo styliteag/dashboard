@@ -149,6 +149,13 @@ defmodule OrbitWeb.InstancesLive do
             Instances <span class="ml-2 text-sm text-slate-500">({length(@instances)})</span>
           </h1>
           <a
+            :if={@writable}
+            href={~p"/instances/new"}
+            class="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+          >
+            New instance
+          </a>
+          <a
             href={~p"/api/export/instances.csv"}
             class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
           >
