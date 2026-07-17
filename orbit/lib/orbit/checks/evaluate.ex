@@ -37,6 +37,7 @@ defmodule Orbit.Checks.Evaluate do
   @gw_loss_warn 20.0
   @gw_loss_crit 80.0
   @gw_down_words ~w(down force_down offline)
+  @ipsec_up ~w(established installed connected up 1 true yes)
 
   @doc """
   Evaluate every family from a raw cache `status`/section map and return the
@@ -56,6 +57,7 @@ defmodule Orbit.Checks.Evaluate do
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
     |> Enum.concat(gateway_checks(status["gateways"] || sections["gateways"] || []))
+    |> Enum.concat(ipsec_checks(status["ipsec"] || sections["ipsec"]))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -238,6 +240,88 @@ defmodule Orbit.Checks.Evaluate do
   end
 
   def gateway_checks(_), do: []
+
+  @doc """
+  IPsec service + per-tunnel + per-Phase-2-ping checks.
+
+  The service check is emitted ONLY when the box has tunnels configured — a
+  box with no IPsec legitimately runs no strongSwan, so "service not running"
+  there is a permanent false CRIT (incident c37de13: ipsec.service crit'd the
+  fleet on non-IPsec boxes). Configured tunnels stay listed even when the
+  daemon is down, so a genuine crash on an IPsec box still surfaces.
+  """
+  def ipsec_checks(%{"tunnels" => tunnels} = ipsec) when is_list(tunnels) do
+    service =
+      if tunnels != [] do
+        [
+          %ServiceCheck{
+            key: "ipsec.service",
+            state: if(ipsec["running"], do: ServiceCheck.ok(), else: ServiceCheck.crit()),
+            summary:
+              if(ipsec["running"], do: "IPsec service running", else: "IPsec service NOT running")
+          }
+        ]
+      else
+        []
+      end
+
+    service ++ Enum.flat_map(tunnels, &tunnel_checks/1)
+  end
+
+  def ipsec_checks(_), do: []
+
+  defp tunnel_checks(t) do
+    status = (t["status"] || "") |> to_string() |> String.trim() |> String.downcase()
+    up = status in @ipsec_up
+    label = t["description"] || t["id"] || "?"
+
+    tunnel = %ServiceCheck{
+      key: "ipsec.tunnel:#{label}",
+      state: if(up, do: ServiceCheck.ok(), else: ServiceCheck.crit()),
+      summary: "Tunnel #{label} #{if up, do: "up", else: "down"} (#{t["status"]})"
+    }
+
+    [tunnel | ping_checks(label, t["children"] || [])]
+  end
+
+  # Per-Phase-2 ping monitor: a configured ping with no reply is CRIT even when
+  # the child SA is INSTALLED (an installed-but-not-passing tunnel is a
+  # problem); a misconfigured probe is WARN, not a false outage; unconfigured
+  # children (ping_state "none") are skipped.
+  defp ping_checks(label, children) when is_list(children) do
+    for ch <- children,
+        (ch["ping_state"] || "none") |> to_string() |> String.downcase() != "none" do
+      ps = ch["ping_state"] |> to_string() |> String.downcase()
+      selector = ch["remote_ts"] || ch["name"] || "?"
+
+      {state, word} =
+        case ps do
+          "ok" -> {ServiceCheck.ok(), "ping ok"}
+          "fail" -> {ServiceCheck.crit(), "ping FAILED (no reply)"}
+          _ -> {ServiceCheck.warn(), "ping error (check source/destination)"}
+        end
+
+      metrics =
+        [
+          if(is_number(ch["ping_loss_pct"]),
+            do: ServiceCheck.metric("ping_loss_pct", ch["ping_loss_pct"], unit: "%")
+          ),
+          if(is_number(ch["ping_rtt_ms"]),
+            do: ServiceCheck.metric("ping_rtt_ms", ch["ping_rtt_ms"], unit: "ms")
+          )
+        ]
+        |> Enum.reject(&is_nil/1)
+
+      %ServiceCheck{
+        key: "ipsec.tunnel_ping:#{label}/#{selector}",
+        state: state,
+        summary: "Tunnel #{label} P2 #{selector} #{word}",
+        metrics: metrics
+      }
+    end
+  end
+
+  defp ping_checks(_, _), do: []
 
   # Parse a gateway loss string like "0.0%" / "100%" → float, else nil.
   defp loss_pct(raw) when is_binary(raw) do

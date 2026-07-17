@@ -170,6 +170,78 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
+  describe "ipsec_checks — service only when tunnels exist (c37de13)" do
+    test "no tunnels → NO service check (never crit an IPsec-less box)" do
+      assert Evaluate.ipsec_checks(%{"running" => false, "tunnels" => []}) == []
+      assert Evaluate.ipsec_checks(nil) == []
+    end
+
+    test "service running/down + tunnel up/down by phase1 status" do
+      ipsec = %{
+        "running" => true,
+        "tunnels" => [
+          %{"id" => "con1", "description" => "site-a", "status" => "ESTABLISHED"},
+          %{"id" => "con2", "description" => "site-b", "status" => "connecting"}
+        ]
+      }
+
+      checks = Evaluate.ipsec_checks(ipsec)
+      by_key = Map.new(checks, &{&1.key, &1})
+      assert by_key["ipsec.service"].state == 0
+      assert by_key["ipsec.tunnel:site-a"].state == 0
+      assert by_key["ipsec.tunnel:site-b"].state == 2
+    end
+
+    test "daemon down but tunnels configured → service CRIT (genuine crash surfaces)" do
+      checks =
+        Evaluate.ipsec_checks(%{
+          "running" => false,
+          "tunnels" => [%{"id" => "c", "status" => "down"}]
+        })
+
+      assert Enum.find(checks, &(&1.key == "ipsec.service")).state == 2
+    end
+
+    test "per-P2 ping: ok/fail/error, 'none' skipped, installed-but-failing is CRIT" do
+      ipsec = %{
+        "running" => true,
+        "tunnels" => [
+          %{
+            "id" => "t",
+            "description" => "site",
+            "status" => "installed",
+            "children" => [
+              %{
+                "name" => "c1",
+                "remote_ts" => "10.0.0.0/24",
+                "ping_state" => "ok",
+                "ping_rtt_ms" => 4.2
+              },
+              %{
+                "name" => "c2",
+                "remote_ts" => "10.0.1.0/24",
+                "ping_state" => "fail",
+                "ping_loss_pct" => 100.0
+              },
+              %{"name" => "c3", "remote_ts" => "10.0.2.0/24", "ping_state" => "error"},
+              %{"name" => "c4", "remote_ts" => "10.0.3.0/24", "ping_state" => "none"}
+            ]
+          }
+        ]
+      }
+
+      by_key = ipsec |> Evaluate.ipsec_checks() |> Map.new(&{&1.key, &1})
+      assert by_key["ipsec.tunnel:site"].state == 0
+      assert by_key["ipsec.tunnel_ping:site/10.0.0.0/24"].state == 0
+      # Installed child SA but ping fails → CRIT (the whole point).
+      assert by_key["ipsec.tunnel_ping:site/10.0.1.0/24"].state == 2
+      # Misconfigured probe → WARN, not a false outage.
+      assert by_key["ipsec.tunnel_ping:site/10.0.2.0/24"].state == 1
+      # Unconfigured child (none) → no check.
+      refute Map.has_key?(by_key, "ipsec.tunnel_ping:site/10.0.3.0/24")
+    end
+  end
+
   describe "severity ordering (UNKNOWN below WARN)" do
     test "CRIT > WARN > UNKNOWN > OK" do
       ranks = Enum.map([2, 1, 3, 0], &ServiceCheck.severity/1)
