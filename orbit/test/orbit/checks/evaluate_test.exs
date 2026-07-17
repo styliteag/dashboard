@@ -242,6 +242,131 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
+  describe "firmware_check — security vs routine vs failed" do
+    test "no section → nil" do
+      assert Evaluate.firmware_check(nil) == nil
+    end
+
+    test "security update ⇒ WARN, names the count" do
+      c =
+        Evaluate.firmware_check(%{
+          "upgrade_available" => true,
+          "security_updates" => 2,
+          "updates_available" => 5
+        })
+
+      assert c.state == 1
+      assert c.summary =~ "2 security update(s)"
+    end
+
+    test "version upgrade (no security) ⇒ WARN with arrow" do
+      c =
+        Evaluate.firmware_check(%{
+          "upgrade_available" => true,
+          "security_updates" => 0,
+          "product_version" => "2.7.2",
+          "product_latest" => "2.8.1"
+        })
+
+      assert c.state == 1
+      assert c.summary =~ "2.7.2 → 2.8.1"
+    end
+
+    test "failed check ⇒ WARN (never green up-to-date)" do
+      c = Evaluate.firmware_check(%{"check_failed" => true, "product_version" => "2.8.1"})
+      assert c.state == 1
+      assert c.summary =~ "check failed"
+    end
+
+    test "routine non-security updates ⇒ OK but counted (§25)" do
+      c = Evaluate.firmware_check(%{"updates_available" => 3, "security_updates" => 0})
+      assert c.state == 0
+      assert c.summary =~ "3 update(s) pending, none security"
+    end
+
+    test "clean ⇒ OK up to date" do
+      c = Evaluate.firmware_check(%{"product_version" => "2.8.1"})
+      assert c.state == 0
+      assert c.summary =~ "up to date"
+    end
+  end
+
+  describe "service_checks — vital present-only, DNS group, systemd failed" do
+    test "empty → [] (absent service never invents a red check)" do
+      assert Evaluate.service_checks([]) == []
+    end
+
+    test "vital services checked only when present; stopped ⇒ CRIT" do
+      checks =
+        Evaluate.service_checks([
+          %{"name" => "sshd", "running" => true},
+          %{"name" => "configd", "running" => false}
+        ])
+
+      by = Map.new(checks, &{&1.key, &1.state})
+      assert by["service:sshd"] == 0
+      assert by["service:configd"] == 2
+    end
+
+    test "DNS is a group: CRIT only when NO resolver runs" do
+      one_up =
+        Evaluate.service_checks([
+          %{"name" => "unbound", "running" => true},
+          %{"name" => "dnsmasq", "running" => false}
+        ])
+
+      assert Enum.find(one_up, &(&1.key == "service:dns")).state == 0
+
+      none_up = Evaluate.service_checks([%{"name" => "unbound", "running" => false}])
+      assert Enum.find(none_up, &(&1.key == "service:dns")).state == 2
+    end
+
+    test "linux systemd failed unit ⇒ WARN, not crit" do
+      [c] = Evaluate.service_checks([%{"name" => "foo.service", "failed" => true}])
+      assert c.state == 1
+      assert c.summary =~ "failed"
+    end
+  end
+
+  describe "cert_checks — 30/7 day expiry" do
+    test "valid / warn / crit / expired by days remaining" do
+      mk = fn days -> %{"name" => "c", "refid" => "r#{days}", "days_remaining" => days} end
+      assert [%ServiceCheck{state: 0}] = Evaluate.cert_checks([mk.(31)])
+      assert [%ServiceCheck{state: 1}] = Evaluate.cert_checks([mk.(29)])
+      assert [%ServiceCheck{state: 2}] = Evaluate.cert_checks([mk.(6)])
+      [expired] = Evaluate.cert_checks([mk.(-1)])
+      assert expired.state == 2
+      assert expired.summary =~ "EXPIRED"
+    end
+
+    test "GUI marker + refid-based key" do
+      [c] =
+        Evaluate.cert_checks([
+          %{"name" => "web", "refid" => "abc", "days_remaining" => 100, "is_gui" => true}
+        ])
+
+      assert c.key == "cert:abc"
+      assert c.summary =~ "[GUI]"
+    end
+  end
+
+  describe "connectivity_checks — categorical ping semantics" do
+    test "ok/fail/error, none skipped, keyed by monitor id" do
+      results = [
+        %{"id" => 1, "name" => "m1", "destination" => "8.8.8.8", "ping_state" => "ok"},
+        %{"id" => 2, "name" => "m2", "destination" => "1.1.1.1", "ping_state" => "fail"},
+        %{"id" => 3, "name" => "m3", "destination" => "9.9.9.9", "ping_state" => "error"},
+        %{"id" => 4, "name" => "m4", "destination" => "x", "ping_state" => "none"}
+      ]
+
+      by = results |> Evaluate.connectivity_checks() |> Map.new(&{&1.key, &1.state})
+      assert by["connectivity:1"] == 0
+      assert by["connectivity:2"] == 2
+      assert by["connectivity:3"] == 1
+      refute Map.has_key?(by, "connectivity:4")
+    end
+  end
+
   describe "severity ordering (UNKNOWN below WARN)" do
     test "CRIT > WARN > UNKNOWN > OK" do
       ranks = Enum.map([2, 1, 3, 0], &ServiceCheck.severity/1)

@@ -38,6 +38,10 @@ defmodule Orbit.Checks.Evaluate do
   @gw_loss_crit 80.0
   @gw_down_words ~w(down force_down offline)
   @ipsec_up ~w(established installed connected up 1 true yes)
+  @cert_warn_days 30
+  @cert_crit_days 7
+  @vital_services ~w(configd sshd)
+  @dns_services ~w(dnsmasq unbound)
 
   @doc """
   Evaluate every family from a raw cache `status`/section map and return the
@@ -53,11 +57,15 @@ defmodule Orbit.Checks.Evaluate do
       cpu_check(status["cpu"]),
       load_check(status["loadavg"]),
       pf_states_check(status["pf"]),
-      ntp_check(status["ntp"])
+      ntp_check(status["ntp"]),
+      firmware_check(status["firmware"] || sections["firmware"])
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
     |> Enum.concat(gateway_checks(status["gateways"] || sections["gateways"] || []))
     |> Enum.concat(ipsec_checks(status["ipsec"] || sections["ipsec"]))
+    |> Enum.concat(service_checks(status["services"] || sections["services"] || []))
+    |> Enum.concat(cert_checks(status["certificates"] || sections["certificates"] || []))
+    |> Enum.concat(connectivity_checks(status["connectivity"] || sections["connectivity"] || []))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -322,6 +330,180 @@ defmodule Orbit.Checks.Evaluate do
   end
 
   defp ping_checks(_, _), do: []
+
+  @doc """
+  Firmware check. Security updates ⇒ WARN, a failed check ⇒ WARN (never a
+  green "up to date"), routine non-security updates ⇒ OK but counted (§25),
+  else OK. nil when no firmware section.
+  """
+  def firmware_check(nil), do: nil
+
+  def firmware_check(fw) when is_map(fw) do
+    cond do
+      fw["upgrade_available"] && to_number(fw["security_updates"]) > 0 ->
+        fw_check(
+          ServiceCheck.warn(),
+          "#{fw["security_updates"]} security update(s) pending (#{fw["updates_available"]} total)"
+        )
+
+      fw["upgrade_available"] ->
+        fw_check(
+          ServiceCheck.warn(),
+          "Update available: #{fw["product_version"]} → #{fw["product_latest"] || "?"}"
+        )
+
+      fw["check_failed"] ->
+        fw_check(
+          ServiceCheck.warn(),
+          "Firmware update check failed (#{fw["product_version"]} installed)"
+        )
+
+      to_number(fw["updates_available"]) > 0 ->
+        fw_check(
+          ServiceCheck.ok(),
+          "#{fw["updates_available"]} update(s) pending, none security-relevant"
+        )
+
+      true ->
+        fw_check(ServiceCheck.ok(), "Firmware up to date (#{fw["product_version"]})")
+    end
+  end
+
+  def firmware_check(_), do: nil
+
+  defp fw_check(state, summary),
+    do: %ServiceCheck{key: "firmware", state: state, summary: summary}
+
+  @doc """
+  Vital-service checks (only services actually present — an absent service
+  never invents a red check). DNS is a group: CRIT only when NO resolver
+  runs. Linux systemd failed units ⇒ WARN (degradation, unknown blast radius).
+  """
+  def service_checks([]), do: []
+
+  def service_checks(services) when is_list(services) do
+    by_name = Map.new(services, &{&1["name"], &1})
+
+    vital =
+      for name <- @vital_services, svc = by_name[name], svc != nil do
+        %ServiceCheck{
+          key: "service:#{name}",
+          state: if(svc["running"], do: ServiceCheck.ok(), else: ServiceCheck.crit()),
+          summary: "Service #{name} #{if svc["running"], do: "running", else: "STOPPED"}"
+        }
+      end
+
+    dns = Enum.filter(@dns_services, &Map.has_key?(by_name, &1))
+
+    dns_check =
+      if dns != [] do
+        running = Enum.any?(dns, &by_name[&1]["running"])
+
+        [
+          %ServiceCheck{
+            key: "service:dns",
+            state: if(running, do: ServiceCheck.ok(), else: ServiceCheck.crit()),
+            summary: if(running, do: "DNS resolver running", else: "No DNS resolver running")
+          }
+        ]
+      else
+        []
+      end
+
+    seen = MapSet.new(vital ++ dns_check, & &1.key)
+
+    failed =
+      for svc <- services, svc["failed"], "service:#{svc["name"]}" not in seen do
+        %ServiceCheck{
+          key: "service:#{svc["name"]}",
+          state: ServiceCheck.warn(),
+          summary: "Unit #{svc["name"]} failed"
+        }
+      end
+
+    vital ++ dns_check ++ failed
+  end
+
+  def service_checks(_), do: []
+
+  @doc "Certificate-expiry checks. CRIT when expired or <7d, WARN <30d."
+  def cert_checks(certs) when is_list(certs) do
+    for c <- certs, is_number(c["days_remaining"]) do
+      days = c["days_remaining"]
+
+      {state, word} =
+        cond do
+          days < @cert_crit_days ->
+            {ServiceCheck.crit(), if(days < 0, do: "EXPIRED", else: "expires in #{days}d")}
+
+          days < @cert_warn_days ->
+            {ServiceCheck.warn(), "expires in #{days}d"}
+
+          true ->
+            {ServiceCheck.ok(), "valid for #{days}d"}
+        end
+
+      label = c["name"] || c["refid"] || "certificate"
+      gui = if c["is_gui"], do: " [GUI]", else: ""
+
+      %ServiceCheck{
+        key: "cert:#{c["refid"] || label}",
+        state: state,
+        summary: "Certificate #{label}#{gui} #{word}",
+        metrics: [
+          ServiceCheck.metric("cert_days_remaining", days * 1.0,
+            warn: @cert_warn_days * 1.0,
+            crit: @cert_crit_days * 1.0,
+            unit: "d"
+          )
+        ]
+      }
+    end
+  end
+
+  def cert_checks(_), do: []
+
+  @doc """
+  Standalone connectivity-ping checks (one per monitor). Same categorical
+  semantics as the IPsec P2 ping: no reply ⇒ CRIT, misconfigured ⇒ WARN,
+  unevaluated (ping_state 'none') skipped. Keyed by monitor id.
+  """
+  def connectivity_checks(results) when is_list(results) do
+    for r <- results, (r["ping_state"] || "none") |> to_string() |> String.downcase() != "none" do
+      ps = r["ping_state"] |> to_string() |> String.downcase()
+      label = r["name"] || r["destination"] || to_string(r["id"])
+
+      {state, word} =
+        case ps do
+          "ok" -> {ServiceCheck.ok(), "ping ok"}
+          "fail" -> {ServiceCheck.crit(), "ping FAILED (no reply)"}
+          _ -> {ServiceCheck.warn(), "ping error (check source/destination)"}
+        end
+
+      metrics =
+        [
+          if(is_number(r["ping_loss_pct"]),
+            do: ServiceCheck.metric("ping_loss_pct", r["ping_loss_pct"], unit: "%")
+          ),
+          if(is_number(r["ping_rtt_ms"]),
+            do: ServiceCheck.metric("ping_rtt_ms", r["ping_rtt_ms"], unit: "ms")
+          )
+        ]
+        |> Enum.reject(&is_nil/1)
+
+      %ServiceCheck{
+        key: "connectivity:#{r["id"]}",
+        state: state,
+        summary: "Connectivity #{label} → #{r["destination"]} #{word}",
+        metrics: metrics
+      }
+    end
+  end
+
+  def connectivity_checks(_), do: []
+
+  defp to_number(n) when is_number(n), do: n
+  defp to_number(_), do: 0
 
   # Parse a gateway loss string like "0.0%" / "100%" → float, else nil.
   defp loss_pct(raw) when is_binary(raw) do
