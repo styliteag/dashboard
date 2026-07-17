@@ -63,6 +63,7 @@ defmodule OrbitWeb.InstancesLive do
           <a href={~p"/"} class="font-semibold text-slate-100">STYLiTE Orbit</a>
           <nav class="flex gap-3 text-sm text-slate-400">
             <a href={~p"/instances"} class="text-slate-200">Instances</a>
+            <a href={~p"/alerts"} class="hover:text-slate-200">Alerts</a>
             <a href={~p"/hub"} class="hover:text-slate-200">Hub</a>
           </nav>
         </div>
