@@ -166,6 +166,44 @@ defmodule Orbit.Accounts do
   end
 
   @doc """
+  Start TOTP enrollment (mfa_routes.setup_totp port): mint a fresh secret,
+  store it fernet-encrypted with totp_enabled STILL false — it only becomes
+  a factor after the first code confirms. Returns {secret, otpauth_uri}.
+  """
+  def begin_totp_enrollment(%User{} = user) do
+    secret = Orbit.Auth.TOTP.generate_secret()
+
+    {:ok, _} =
+      user
+      |> Ecto.Changeset.change(%{
+        totp_secret_enc: Orbit.Crypto.encrypt(secret),
+        totp_enabled: false
+      })
+      |> Repo.update()
+
+    issuer = Application.get_env(:orbit, :mfa_issuer, "Orbit Dashboard")
+    {secret, Orbit.Auth.TOTP.provisioning_uri(secret, user.username, issuer)}
+  end
+
+  @doc """
+  Finish enrollment (mfa_routes.confirm_totp port): verify the first code
+  against the pending secret, flip totp_enabled. Returns the updated user
+  or an error (no enrollment in progress / invalid code).
+  """
+  def confirm_totp_enrollment(%User{totp_secret_enc: nil}, _code),
+    do: {:error, :no_enrollment}
+
+  def confirm_totp_enrollment(%User{} = user, code) do
+    secret = Orbit.Crypto.decrypt!(user.totp_secret_enc)
+
+    if Orbit.Auth.TOTP.verify(secret, code) do
+      user |> Ecto.Changeset.change(%{totp_enabled: true}) |> Repo.update()
+    else
+      {:error, :invalid_code}
+    end
+  end
+
+  @doc """
   Step 2: TOTP against the fernet-encrypted enrolled secret. Returns false
   for users without an enrolled factor — never a bypass.
   """

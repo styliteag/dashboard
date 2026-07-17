@@ -43,10 +43,12 @@ defmodule OrbitWeb.SessionController do
         |> UserAuth.put_pending_mfa(user)
         |> redirect(to: ~p"/login/totp")
 
-      {:ok, {:enroll, _user}} ->
-        # Mandatory-2FA enrollment UI is not ported yet: fail closed with a
-        # clear message instead of minting a factor-less session.
-        render(conn, :new, error: "This account must enroll 2FA in the legacy UI first.")
+      {:ok, {:enroll, user}} ->
+        # Mandatory 2FA, no factor yet: password passed → pending state,
+        # enrollment page mints the secret (mfa_routes.setup_totp parity).
+        conn
+        |> UserAuth.put_pending_mfa(user)
+        |> redirect(to: ~p"/login/enroll")
 
       {:error, :rate_limited} ->
         conn
@@ -89,6 +91,53 @@ defmodule OrbitWeb.SessionController do
           render(conn, :totp, error: "Invalid code.")
         end
     end
+  end
+
+  # TOTP enrollment during login (mandatory 2FA, mfa_routes.py port). Each
+  # GET mints a fresh pending secret (enabled stays false until confirmed) —
+  # re-loading the page invalidates the previous QR, never a live factor.
+  def enroll_form(conn, _params) do
+    case UserAuth.pending_mfa_user(conn) do
+      nil ->
+        redirect_to_login(conn)
+
+      user ->
+        {secret, uri} = Orbit.Accounts.begin_totp_enrollment(user)
+        render(conn, :enroll, secret: secret, uri: uri, error: nil)
+    end
+  end
+
+  def enroll_verify(conn, %{"code" => code}) do
+    case UserAuth.pending_mfa_user(conn) do
+      nil ->
+        redirect_to_login(conn)
+
+      user ->
+        case Orbit.Accounts.confirm_totp_enrollment(user, code) do
+          {:ok, enrolled} ->
+            LoginLimiter.record_success(client_ip(conn))
+            audit_login(conn, "ok", enrolled.id, %{"reason" => "totp_enrolled"})
+
+            conn
+            |> UserAuth.log_in_user(enrolled)
+            |> redirect(to: ~p"/")
+
+          {:error, _} ->
+            # Failed confirm counts toward the same per-IP limiter as a bad
+            # password (python parity: brute-forcing codes locks the IP).
+            LoginLimiter.record_failure(client_ip(conn))
+            audit_login(conn, "error", user.id, %{"reason" => "invalid_code"})
+            {secret, uri} = current_pending_secret(user)
+            render(conn, :enroll, secret: secret, uri: uri, error: "Invalid code — try again.")
+        end
+    end
+  end
+
+  # Re-render with the SAME pending secret (the user already scanned it).
+  defp current_pending_secret(user) do
+    secret = Orbit.Crypto.decrypt!(user.totp_secret_enc)
+    issuer = Application.get_env(:orbit, :mfa_issuer, "Orbit Dashboard")
+    {secret, Orbit.Auth.TOTP.provisioning_uri(secret, user.username, issuer)}
   end
 
   def delete(conn, _params) do

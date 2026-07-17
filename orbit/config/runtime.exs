@@ -41,6 +41,8 @@ config :orbit,
        :trusted_proxy_hops,
        String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))
 
+config :orbit, :mfa_issuer, System.get_env("DASH_MFA_ISSUER", "Orbit Dashboard")
+
 # Bootstrap-seed force flags (auth/bootstrap.py _resolve_mode): "0"/"false"
 # keeps the seed enabled and skips auto-retirement on rights changes.
 config :orbit, :admin_disabled_raw, System.get_env("DASH_ADMIN_DISABLED", "auto")

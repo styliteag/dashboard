@@ -34,6 +34,8 @@ defmodule OrbitWeb.Router do
     post "/login", SessionController, :create
     get "/login/totp", SessionController, :totp_form
     post "/login/totp", SessionController, :totp_verify
+    get "/login/enroll", SessionController, :enroll_form
+    post "/login/enroll", SessionController, :enroll_verify
   end
 
   scope "/", OrbitWeb do
