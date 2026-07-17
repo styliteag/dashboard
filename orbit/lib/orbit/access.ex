@@ -31,16 +31,67 @@ defmodule Orbit.Access do
   filters the sources; request samples default OFF in the UI (polling
   noise, DR-AL7).
   """
-  def timeline(types, limit \\ 100) do
+  def timeline(types, limit \\ 100, opts \\ []) do
     usernames = usernames_by_id()
+    # Free-text q filters AFTER the merge (covers who/ip/text uniformly,
+    # incl. the attempted username already folded into `who`); fetch more
+    # per source so a filtered view still fills up.
+    q = opts |> Keyword.get(:q, "") |> String.trim() |> String.downcase()
+    fetch = if q == "", do: limit, else: limit * 5
 
     []
-    |> maybe(types, :auth, fn -> auth_events(limit, usernames) end)
-    |> maybe(types, :access, fn -> access_audit_events(limit, usernames) end)
-    |> maybe(types, :denial, fn -> denial_events(limit) end)
-    |> maybe(types, :request, fn -> request_events(limit, usernames) end)
+    |> maybe(types, :auth, fn -> auth_events(fetch, usernames) end)
+    |> maybe(types, :access, fn -> access_audit_events(fetch, usernames) end)
+    |> maybe(types, :denial, fn -> denial_events(fetch) end)
+    |> maybe(types, :request, fn -> request_events(fetch, usernames) end)
+    |> within_hours(Keyword.get(opts, :hours))
+    |> matching(q)
     |> Enum.sort_by(& &1.ts, {:desc, NaiveDateTime})
     |> Enum.take(limit)
+  end
+
+  @doc """
+  Grouped view (DR-AL7 Nachtrag): one row per recurring event with count +
+  last seen; numeric path segments and ids are masked to `#` so polling
+  URLs collapse into one pattern.
+  """
+  def grouped(types, limit \\ 100, opts \\ []) do
+    timeline(types, limit * 10, opts)
+    |> Enum.group_by(&{&1.type, &1.who, mask_numbers(&1.text)})
+    |> Enum.map(fn {{type, who, text}, events} ->
+      %{
+        type: type,
+        who: who,
+        text: text,
+        count: length(events),
+        last_ts: events |> Enum.map(& &1.ts) |> Enum.max(NaiveDateTime),
+        ip: hd(events).ip
+      }
+    end)
+    |> Enum.sort_by(& &1.count, :desc)
+    |> Enum.take(limit)
+  end
+
+  defp within_hours(events, nil), do: events
+
+  defp within_hours(events, hours) do
+    cutoff = naive_ago(hours * 3600)
+    Enum.filter(events, &(NaiveDateTime.compare(&1.ts, cutoff) == :gt))
+  end
+
+  defp matching(events, ""), do: events
+
+  defp matching(events, q) do
+    Enum.filter(events, fn e ->
+      haystack = String.downcase("#{e.who} #{e.ip} #{e.text}")
+      String.contains?(haystack, q)
+    end)
+  end
+
+  defp mask_numbers(text) do
+    text
+    |> String.replace(~r{/\d+}, "/#")
+    |> String.replace(~r/\b\d{2,}\b/, "#")
   end
 
   defp maybe(acc, types, type, fun), do: if(type in types, do: acc ++ fun.(), else: acc)

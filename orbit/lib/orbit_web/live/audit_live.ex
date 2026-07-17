@@ -34,7 +34,13 @@ defmodule OrbitWeb.AuditLive do
 
     socket =
       socket
-      |> assign(tab: :actions, types: MapSet.new([:auth, :access, :denial]))
+      |> assign(
+        tab: :actions,
+        types: MapSet.new([:auth, :access, :denial]),
+        q: "",
+        hours: nil,
+        grouped: false
+      )
       |> load()
 
     {:ok, socket}
@@ -61,6 +67,19 @@ defmodule OrbitWeb.AuditLive do
     {:noreply, load(socket)}
   end
 
+  def handle_event("filter", params, socket) do
+    hours =
+      case Integer.parse(params["hours"] || "") do
+        {n, ""} when n > 0 -> n
+        _ -> nil
+      end
+
+    {:noreply,
+     socket
+     |> assign(q: params["q"] || "", hours: hours, grouped: params["grouped"] == "true")
+     |> load()}
+  end
+
   @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
@@ -68,10 +87,16 @@ defmodule OrbitWeb.AuditLive do
   end
 
   defp load(%{assigns: %{tab: :access}} = socket) do
-    assign(socket,
-      summary: Access.summary(),
-      timeline: Access.timeline(MapSet.to_list(socket.assigns.types), @limit)
-    )
+    types = MapSet.to_list(socket.assigns.types)
+    opts = [q: socket.assigns.q, hours: socket.assigns.hours]
+
+    socket = assign(socket, summary: Access.summary())
+
+    if socket.assigns.grouped do
+      assign(socket, grouped_rows: Access.grouped(types, @limit, opts), timeline: [])
+    else
+      assign(socket, timeline: Access.timeline(types, @limit, opts), grouped_rows: [])
+    end
   end
 
   defp load(socket) do
@@ -199,7 +224,7 @@ defmodule OrbitWeb.AuditLive do
             </div>
           </div>
 
-          <div class="mb-3 flex items-center gap-2 text-xs">
+          <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
             <span class="text-slate-500">Show:</span>
             <button
               :for={{type, label} <- @timeline_types}
@@ -213,9 +238,66 @@ defmodule OrbitWeb.AuditLive do
             >
               {label}
             </button>
+            <form phx-change="filter" phx-submit="filter" class="ml-2 flex items-center gap-2">
+              <input
+                type="text"
+                name="q"
+                value={@q}
+                placeholder="search user / ip / text…"
+                phx-debounce="400"
+                class="w-48 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-xs text-slate-200"
+              />
+              <select
+                name="hours"
+                class="rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-xs text-slate-300"
+              >
+                <option value="" selected={@hours == nil}>all time</option>
+                <option value="24" selected={@hours == 24}>24h</option>
+                <option value="168" selected={@hours == 168}>7d</option>
+                <option value="720" selected={@hours == 720}>30d</option>
+              </select>
+              <label class="flex items-center gap-1 text-slate-400">
+                <input type="hidden" name="grouped" value="false" />
+                <input
+                  type="checkbox"
+                  name="grouped"
+                  value="true"
+                  checked={@grouped}
+                  class="accent-emerald-600"
+                /> grouped
+              </label>
+            </form>
           </div>
 
-          <table class="w-full text-left text-sm">
+          <table :if={@grouped} class="w-full text-left text-sm">
+            <thead class="text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-2 pr-4 font-medium">Count</th>
+                <th class="py-2 pr-4 font-medium">Type</th>
+                <th class="py-2 pr-4 font-medium">Who</th>
+                <th class="py-2 pr-4 font-medium">Event (numbers masked)</th>
+                <th class="py-2 font-medium">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={g <- @grouped_rows} class="border-b border-slate-800/50">
+                <td class="py-1.5 pr-4 text-right text-slate-300">{g.count}</td>
+                <td class="py-1.5 pr-4">
+                  <span class={["rounded px-1.5 py-0.5 text-xs", type_class(g.type)]}>
+                    {type_label(g.type)}
+                  </span>
+                </td>
+                <td class="py-1.5 pr-4 text-slate-300">{g.who}</td>
+                <td class="py-1.5 pr-4 text-slate-400">{g.text}</td>
+                <td class="py-1.5 font-mono text-xs text-slate-500">{fmt_ts(g.last_ts)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-slate-500">
+            No events for the selected filters.
+          </div>
+
+          <table :if={not @grouped} class="w-full text-left text-sm">
             <thead class="text-slate-500">
               <tr class="border-b border-slate-800">
                 <th class="py-2 pr-4 font-medium">Time (UTC)</th>
@@ -239,7 +321,7 @@ defmodule OrbitWeb.AuditLive do
               </tr>
             </tbody>
           </table>
-          <div :if={@timeline == []} class="py-4 text-sm text-slate-500">
+          <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-slate-500">
             No events for the selected types.
           </div>
         </div>
