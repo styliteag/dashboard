@@ -22,6 +22,11 @@ end
 
 config :orbit, OrbitWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Fernet key for the shared *_enc columns — same env var as the python
+# backend (DASH_ prefix). Optional at boot: modules that decrypt fetch it via
+# Orbit.Crypto.master_key!/0 which raises a clear error when unset.
+config :orbit, :dash_master_key, System.get_env("DASH_MASTER_KEY")
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :orbit, OrbitWeb.Endpoint,

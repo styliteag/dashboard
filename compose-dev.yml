@@ -134,6 +134,8 @@ services:
       DB_NAME: ${DB_NAME:-dash}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
       ORBIT_DB_HOST: db
+      # Same fernet key as the python backend — orbit reads the same *_enc columns.
+      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"

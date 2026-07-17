@@ -22,6 +22,9 @@ config :orbit, OrbitWeb.Endpoint,
   secret_key_base: "SKJlLhtx0GLqEO7nR+0h6EfIoSOCIcuwxwNXhsbGxRyTv2/6wBloxVA0l8lDcHyj",
   server: false
 
+# Throwaway fernet key for crypto-dependent tests (NOT a real master key).
+config :orbit, :dash_master_key, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
