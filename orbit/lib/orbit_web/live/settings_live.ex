@@ -122,6 +122,9 @@ defmodule OrbitWeb.SettingsLive do
           <a href={~p"/selection"} class="text-xs text-slate-500 hover:text-slate-300">
             selection rules
           </a>
+          <a href={~p"/apikeys"} class="text-xs text-slate-500 hover:text-slate-300">
+            api keys
+          </a>
         </div>
 
         <div

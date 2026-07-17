@@ -69,6 +69,7 @@ defmodule OrbitWeb.Router do
     live_session :admin_or_superadmin,
       on_mount: [{OrbitWeb.UserAuth, :require_admin_or_superadmin}, OrbitWeb.GeoGate] do
       live "/audit", AuditLive
+      live "/apikeys", ApiKeysLive
     end
 
     live_session :superadmin,
