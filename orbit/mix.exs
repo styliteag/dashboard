@@ -80,6 +80,8 @@ defmodule Orbit.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:argon2_elixir, "~> 4.1"},
       {:req, "~> 0.5"},
+      # GeoIP access restriction: local mmdb lookups (plan §5, DR-G1).
+      {:locus, "~> 2.3"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}

@@ -40,7 +40,7 @@ defmodule OrbitWeb.Router do
     get "/", PageController, :home
     post "/logout", SessionController, :delete
 
-    live_session :authenticated, on_mount: OrbitWeb.UserAuth do
+    live_session :authenticated, on_mount: [OrbitWeb.UserAuth, OrbitWeb.GeoGate] do
       live "/instances", InstancesLive
       live "/instances/:id", InstanceDetailLive
       live "/instances/:id/terminal", TerminalLive
@@ -53,12 +53,13 @@ defmodule OrbitWeb.Router do
       live "/hub", HubStatusLive
     end
 
-    live_session :admin, on_mount: {OrbitWeb.UserAuth, :require_admin} do
+    live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do
       live "/settings", SettingsLive
       live "/audit", AuditLive
     end
 
-    live_session :superadmin, on_mount: {OrbitWeb.UserAuth, :require_superadmin} do
+    live_session :superadmin,
+      on_mount: [{OrbitWeb.UserAuth, :require_superadmin}, OrbitWeb.GeoGate] do
       live "/users", UsersLive
       live "/groups", GroupsLive
     end

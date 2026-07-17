@@ -11,9 +11,11 @@ defmodule OrbitWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # peer_data + x_headers feed the GeoGate on_mount hook (the socket macro
+  # bypasses the plug pipeline, so the geo check must run in the socket).
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:peer_data, :x_headers, session: @session_options]],
+    longpoll: [connect_info: [:peer_data, :x_headers, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -51,5 +53,8 @@ defmodule OrbitWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+  # GeoIP gate (DR-G2): after Plug.Static (assets stay servable), before the
+  # router — every dynamic route including client-WS upgrades is checked.
+  plug OrbitWeb.Plugs.GeoIP
   plug OrbitWeb.Router
 end

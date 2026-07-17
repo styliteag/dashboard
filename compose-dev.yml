@@ -142,6 +142,11 @@ services:
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
       DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
+      # GeoIP gate (same vars + shared mmdb volume as the backend service;
+      # the python updater keeps the db fresh until cutover).
+      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
+      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
+      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-0}
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"
@@ -150,6 +155,7 @@ services:
       - ./VERSION:/app/VERSION:ro
       # Served agent code for the self-update relay (read-only, like backend).
       - ./agent:/app/agent:ro
+      - dev_geoip_data:/data/geoip
       - ./orbit/data/deps:/app/deps
       - ./orbit/data/build:/app/_build
       - ./orbit/data/toolchain:/toolchain

@@ -27,6 +27,20 @@ config :orbit, OrbitWeb.Endpoint, http: [port: String.to_integer(System.get_env(
 # Orbit.Crypto.master_key!/0 which raises a clear error when unset.
 config :orbit, :dash_master_key, System.get_env("DASH_MASTER_KEY")
 
+# GeoIP access restriction (docs/geoip-access-restriction.md) — same env
+# vars as the python backend. DASH_GEOIP_DISABLE is the env-only kill
+# switch (DR-G2); the mmdb lives on the shared geoip volume and is kept
+# fresh by the python updater until cutover.
+config :orbit, :geoip_disable, System.get_env("DASH_GEOIP_DISABLE") in ~w(1 true yes on)
+
+config :orbit,
+       :geoip_db_path,
+       System.get_env("DASH_GEOIP_DB_PATH", "/data/geoip/GeoLite2-Country.mmdb")
+
+config :orbit,
+       :trusted_proxy_hops,
+       String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :orbit, OrbitWeb.Endpoint,

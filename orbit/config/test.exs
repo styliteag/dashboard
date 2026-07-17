@@ -28,6 +28,10 @@ config :orbit, :dash_master_key, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 # Maintenance jobs touch the alembic-owned schema the throwaway test DB lacks.
 config :orbit, :start_scheduler, false
 
+# GeoIP store reads the alembic-owned geoip_config table — not in test; the
+# gate then runs on the DISABLED default (rules are unit-tested directly).
+config :orbit, :start_geoip, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
