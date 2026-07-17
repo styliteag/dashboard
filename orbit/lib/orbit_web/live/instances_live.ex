@@ -97,7 +97,11 @@ defmodule OrbitWeb.InstancesLive do
                   title={status_text(i.online)}
                 ></span>
               </td>
-              <td class="py-2 pr-4 text-slate-200">{i.name}</td>
+              <td class="py-2 pr-4">
+                <a href={~p"/instances/#{i.id}"} class="text-slate-200 hover:text-emerald-300">
+                  {i.name}
+                </a>
+              </td>
               <td class="py-2 pr-4 text-slate-400">{i.device_type}</td>
               <td class="py-2 pr-4 text-slate-400">{i.transport}</td>
               <td class="py-2 pr-4 text-slate-400">{i.group || "—"}</td>

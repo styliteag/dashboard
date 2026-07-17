@@ -43,9 +43,10 @@ defmodule OrbitWeb.HubStatusLive do
     |> Enum.filter(&(Scope.get_instance(&1.instance_id, user) != nil))
     |> Enum.sort_by(& &1.instance_id)
     |> Enum.map(fn agent ->
+      # RAW agent section key is cpu.total_pct (not .total) — see collect_cpu.
       cpu =
         Hub.cache_entry(agent.instance_id)
-        |> get_in(["status", "cpu", "total"])
+        |> get_in(["status", "cpu", "total_pct"])
 
       %{
         instance_id: agent.instance_id,
