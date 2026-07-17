@@ -48,6 +48,7 @@ defmodule OrbitWeb.Router do
       live "/connectivity", ConnectivityLive
       live "/certificates", CertificatesLive
       live "/firmware", FirmwareLive
+      live "/logs", LogEventsLive
       live "/vpn", VpnLive
       live "/hub", HubStatusLive
     end

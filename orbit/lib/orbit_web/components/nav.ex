@@ -35,6 +35,7 @@ defmodule OrbitWeb.Components.Nav do
           <.nav_link active={@active} key={:vpn} href={~p"/vpn"} label="VPN" />
           <.nav_link active={@active} key={:certificates} href={~p"/certificates"} label="Certs" />
           <.nav_link active={@active} key={:firmware} href={~p"/firmware"} label="Firmware" />
+          <.nav_link active={@active} key={:logs} href={~p"/logs"} label="Logs" />
           <.nav_link
             :if={admin?(@current_user)}
             active={@active}
