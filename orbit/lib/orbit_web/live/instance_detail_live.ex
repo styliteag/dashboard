@@ -188,9 +188,14 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp pct(v) when is_number(v), do: "#{Float.round(v / 1, 1)}%"
   defp pct(_), do: "—"
 
-  defp mem_text(%{"used_pct" => up, "total_mb" => tot}) when is_number(up) do
+  defp mem_text(%{"used_pct" => up, "total_mb" => tot})
+       when is_number(up) and is_number(tot) and tot > 0 do
     "#{Float.round(up / 1, 1)}% of #{round(tot)} MB"
   end
+
+  # Some agents (the Linux node) report used_pct without a usable total_mb —
+  # show just the percentage instead of a nonsensical "of 0 MB".
+  defp mem_text(%{"used_pct" => up}) when is_number(up), do: "#{Float.round(up / 1, 1)}%"
 
   defp mem_text(_), do: "—"
 
