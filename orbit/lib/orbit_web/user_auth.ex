@@ -95,6 +95,26 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  @doc "Plug: JSON 403 for a non-write role on an api mutation (require_write parity)."
+  def require_write_api(conn, _opts) do
+    case conn.assigns[:current_user] do
+      %{role: role} when role in ~w(admin user) ->
+        conn
+
+      %{} ->
+        conn
+        |> put_status(403)
+        |> Phoenix.Controller.json(%{detail: "write access required"})
+        |> halt()
+
+      _ ->
+        conn
+        |> put_status(401)
+        |> Phoenix.Controller.json(%{detail: "not authenticated"})
+        |> halt()
+    end
+  end
+
   @doc "Plug: send signed-in users away from the login pages."
   def redirect_if_authenticated(conn, _opts) do
     if conn.assigns[:current_user] do

@@ -6,6 +6,7 @@ defmodule OrbitWeb.Router do
       fetch_current_user: 2,
       require_authenticated_user: 2,
       require_authenticated_api: 2,
+      require_write_api: 2,
       redirect_if_authenticated: 2
     ]
 
@@ -85,6 +86,27 @@ defmodule OrbitWeb.Router do
 
     get "/agents/connected", AgentApiController, :connected
     post "/instances/:instance_id/agent/ping", AgentApiController, :ping
+  end
+
+  # Write-gated api mutations (require_write parity).
+  pipeline :write_api do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :fetch_current_user
+    plug :require_write_api
+  end
+
+  scope "/api", OrbitWeb do
+    pipe_through :write_api
+
+    post "/instances/:instance_id/agent/enroll-code", EnrollController, :create_code
+  end
+
+  # Public enrollment: unauthenticated, rate-limited in the controller.
+  scope "/api", OrbitWeb do
+    pipe_through :api
+
+    post "/agent/enroll", EnrollController, :enroll
   end
 
   # Enable LiveDashboard in development
