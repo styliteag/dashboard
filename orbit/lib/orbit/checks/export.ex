@@ -21,18 +21,25 @@ defmodule Orbit.Checks.Export do
   @doc "Evaluated+overlaid `{instance, checks}` pairs for every visible instance."
   @spec evaluated(Orbit.Auth.Scope.principal(), DateTime.t()) :: [{map(), list()}]
   def evaluated(principal, now) do
-    push_default = Orbit.Settings.effective("push_interval_seconds")
-    stale_floor = Orbit.Settings.effective("agent_stale_seconds")
-
     principal
     |> Orbit.Instances.list_visible()
     |> Enum.filter(&Instance.agent_mode?/1)
-    |> Enum.map(fn inst ->
-      base = inst.id |> Orbit.Hub.cache_entry() |> Evaluate.evaluate()
-      staleness = Staleness.resolve(inst, push_default, stale_floor, now)
-      checks = Overlay.overlay(base, staleness, inst.maintenance == true)
-      {inst_view(inst), checks}
-    end)
+    |> Enum.map(fn inst -> {inst_view(inst), checks_for(inst, now)} end)
+  end
+
+  @doc """
+  Evaluated+overlaid checks for a single, already-scoped agent-mode instance —
+  the per-instance surface. Shares the exact evaluate→overlay chain with the
+  Checkmk/Prometheus/Alerts surfaces so all four agree (the parity rule).
+  """
+  @spec checks_for(Instance.t(), DateTime.t()) :: list()
+  def checks_for(%Instance{} = inst, now) do
+    push_default = Orbit.Settings.effective("push_interval_seconds")
+    stale_floor = Orbit.Settings.effective("agent_stale_seconds")
+
+    base = inst.id |> Orbit.Hub.cache_entry() |> Evaluate.evaluate()
+    staleness = Staleness.resolve(inst, push_default, stale_floor, now)
+    Overlay.overlay(base, staleness, inst.maintenance == true)
   end
 
   @doc "Checkmk special-agent JSON body (version 1)."

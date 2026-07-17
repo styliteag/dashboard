@@ -2,8 +2,11 @@ defmodule OrbitWeb.InstanceDetailLive do
   @moduledoc """
   Per-instance detail: static instance record + live metrics from the hub
   section cache (raw agent sections — cpu.total_pct, memory.used_pct,
-  disks[], system, uptime). Scoped via get_instance (invariant 1): a missing
-  or out-of-scope id redirects to /instances, never revealing existence.
+  disks[], system, uptime) + the evaluated checks for this instance — the
+  per-instance surface of the four-surface parity rule, run through the same
+  Orbit.Checks.Export chain the Checkmk/Prometheus/Alerts surfaces use.
+  Scoped via get_instance (invariant 1): a missing or out-of-scope id
+  redirects to /instances, never revealing existence.
 
   Refreshes metrics on a 5s live-agent tier timer and on hub roster edges.
   """
@@ -11,7 +14,10 @@ defmodule OrbitWeb.InstanceDetailLive do
   use OrbitWeb, :live_view
 
   alias Orbit.Auth.Scope
+  alias Orbit.Checks.Export
+  alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
+  alias Orbit.Instances.Instance
 
   @refresh_ms 5_000
 
@@ -51,9 +57,26 @@ defmodule OrbitWeb.InstanceDetailLive do
       disks: status["disks"] || [],
       system: status["system"] || %{},
       uptime: status["uptime"],
-      ipsec: entry["ipsec"] || [],
-      last_seen: entry["last_metrics_ts"]
+      # Raw ipsec section is a map %{"running", "tunnels" => [...]} — iterate the
+      # tunnel list, not the map (else :for yields {k,v} tuples). Real OPNsense
+      # data exposed this; synthetic pushes had used a bare list.
+      ipsec: (entry["ipsec"] || %{})["tunnels"] || [],
+      last_seen: entry["last_metrics_ts"],
+      checks: instance_checks(socket.assigns.instance)
     )
+  end
+
+  # Per-instance evaluated checks — same evaluate→overlay chain as the exports
+  # and Alerts (four-surface parity). Direct-poll instances have no cached
+  # sections yet (poller not ported), so only agent-mode instances get checks.
+  defp instance_checks(inst) do
+    if Instance.agent_mode?(inst) do
+      inst
+      |> Export.checks_for(DateTime.utc_now())
+      |> Enum.sort_by(&{-ServiceCheck.severity(&1.state), &1.key})
+    else
+      []
+    end
   end
 
   @impl true
@@ -101,6 +124,25 @@ defmodule OrbitWeb.InstanceDetailLive do
               <.kv label="Memory" value={mem_text(@memory)} />
             </dl>
           </div>
+        </div>
+
+        <div :if={@checks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 class="mb-3 text-sm font-medium text-slate-400">
+            Checks <span class="text-slate-500">({length(@checks)})</span>
+          </h2>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              <tr :for={c <- @checks} class="border-b border-slate-800/50 last:border-0">
+                <td class="w-16 py-1.5 pr-4 align-top">
+                  <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
+                    {state_label(c.state)}
+                  </span>
+                </td>
+                <td class="whitespace-nowrap py-1.5 pr-4 align-top text-slate-400">{c.key}</td>
+                <td class="py-1.5 align-top text-slate-300">{c.summary}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div :if={@disks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
@@ -155,4 +197,14 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp tunnel_color("up"), do: "text-emerald-400"
   defp tunnel_color("connected"), do: "text-emerald-400"
   defp tunnel_color(_), do: "text-amber-400"
+
+  defp state_label(1), do: "WARN"
+  defp state_label(2), do: "CRIT"
+  defp state_label(3), do: "UNKNOWN"
+  defp state_label(_), do: "OK"
+
+  defp state_class(2), do: "bg-red-900/60 text-red-300"
+  defp state_class(1), do: "bg-amber-900/50 text-amber-300"
+  defp state_class(3), do: "bg-slate-700 text-slate-300"
+  defp state_class(_), do: "bg-emerald-900/50 text-emerald-300"
 end
