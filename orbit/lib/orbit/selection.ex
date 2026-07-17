@@ -70,6 +70,85 @@ defmodule Orbit.Selection do
   @doc "Synchronous re-load (tests / after writes)."
   def reload(server \\ __MODULE__), do: GenServer.call(server, :reload)
 
+  # -- write side (selection/store.py + model.py validation port) ------------
+
+  @check_categories ~w(agent maintenance ping http memory cpu load swap disk gateway
+    pf_states ntp ipsec.service ipsec.tunnel ipsec.tunnel_ping connectivity service
+    cert iface_errors firmware)
+  @availability "availability"
+  @channels ~w(mattermost telegram email)
+  @consumers ["checkmk" | @channels]
+
+  def consumers, do: @consumers
+
+  @doc "Selectable categories: checkmk never gets availability (host up/down is checkmk's own)."
+  def categories_for("checkmk"), do: @check_categories
+  def categories_for(_channel), do: [@availability | @check_categories]
+
+  def valid_consumer?(consumer), do: consumer in @consumers
+  def valid_mode?(mode), do: mode in ["include", "exclude"]
+
+  @doc "Category token or full check key whose category prefix is known."
+  def valid_selector?(consumer, selector) do
+    category(selector) in categories_for(consumer)
+  end
+
+  @doc "Upsert one rule (identity: consumer+selector+instance, NULL-aware)."
+  def set_rule(consumer, selector, mode, instance_id) do
+    delete_rule(consumer, selector, instance_id)
+
+    Orbit.Repo.query!(
+      "INSERT INTO selection_rules (consumer, selector, mode, instance_id) VALUES (?, ?, ?, ?)",
+      [consumer, selector, mode, instance_id]
+    )
+
+    reload_if_running()
+    :ok
+  end
+
+  @doc "Remove one rule by identity (instance_id NULL needs IS NULL)."
+  def delete_rule(consumer, selector, instance_id) do
+    if instance_id == nil do
+      Orbit.Repo.query!(
+        "DELETE FROM selection_rules WHERE consumer = ? AND selector = ? AND instance_id IS NULL",
+        [consumer, selector]
+      )
+    else
+      Orbit.Repo.query!(
+        "DELETE FROM selection_rules WHERE consumer = ? AND selector = ? AND instance_id = ?",
+        [consumer, selector, instance_id]
+      )
+    end
+
+    reload_if_running()
+    :ok
+  end
+
+  @doc "All rules with instance names for the editor."
+  def list_rules do
+    Orbit.Repo.query!(
+      "SELECT r.id, r.consumer, r.selector, r.mode, r.instance_id, i.name " <>
+        "FROM selection_rules r LEFT JOIN instances i ON i.id = r.instance_id " <>
+        "ORDER BY r.consumer, r.selector"
+    ).rows
+    |> Enum.map(fn [id, consumer, selector, mode, iid, iname] ->
+      %{
+        id: id,
+        consumer: consumer,
+        selector: selector,
+        mode: mode,
+        instance_id: iid,
+        instance_name: iname
+      }
+    end)
+  end
+
+  defp reload_if_running do
+    if Process.whereis(__MODULE__), do: reload()
+  catch
+    :exit, _ -> :ok
+  end
+
   # -- GenServer ------------------------------------------------------------
 
   @impl true

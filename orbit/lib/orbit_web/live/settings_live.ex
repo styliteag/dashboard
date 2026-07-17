@@ -119,6 +119,9 @@ defmodule OrbitWeb.SettingsLive do
           >
             {if @test_busy, do: "Sending…", else: "Send test notification"}
           </button>
+          <a href={~p"/selection"} class="text-xs text-slate-500 hover:text-slate-300">
+            selection rules
+          </a>
         </div>
 
         <div

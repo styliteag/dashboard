@@ -61,6 +61,7 @@ defmodule OrbitWeb.Router do
 
     live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do
       live "/settings", SettingsLive
+      live "/selection", SelectionLive
     end
 
     # Audit/Access oversight: admin OR superadmin (DR-AL1 — the superadmin's
