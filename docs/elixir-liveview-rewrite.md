@@ -1,6 +1,11 @@
 # Plan: Rewrite auf Elixir/Phoenix LiveView (Anlauf 2)
 
-Status: **In Umsetzung** · Branch: `liveview-rewrite` · Stand: 2026-07-17
+Status: **In Umsetzung** · Branch: `liveview-rewrite` · Stand: 2026-07-18 —
+M0–M4 ✅ · M5 ✅ (Kernseiten; Capture-Viewer/GUI-Proxy-Fläche offen) ·
+M6 ✅ (Exit erfüllt: LLM-Anonymizer, Firmware-Orchestrierung, Config-Backup,
+GeoIP/CrowdSec DR-G8/G9, Access-Log/Session-Registry DR-AL1..AL9, Bulk-Ops,
+CSV-Export; Restlücken explizit in `docs/agent-architecture.md` §14-Nachtrag
+2026-07-18) · M7 begonnen
 
 ## 0. Vorgeschichte / warum Anlauf 2
 
