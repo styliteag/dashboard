@@ -48,6 +48,51 @@ defmodule Orbit.Settings do
   @spec reload() :: :ok
   def reload, do: GenServer.call(__MODULE__, :reload)
 
+  @doc """
+  Validate + persist a DB override for an editable key, then resync the cache.
+  Returns `{:ok, coerced_value}` or `{:error, human_message}`. Secret values
+  are fernet-encrypted at rest (mirror of store.set_override).
+  """
+  @spec set_override(String.t(), String.t()) ::
+          {:ok, integer() | boolean() | String.t()} | {:error, String.t()}
+  def set_override(key, raw) do
+    with {:ok, defn} <- fetch_def(key),
+         {:ok, value} <- Registry.coerce(defn, raw) do
+      # No editable key is a secret yet (all 6 are ints). When the fernet-
+      # encrypted keys (LLM api keys) get ported, encrypt here on
+      # defn.is_secret and store is_secret=1 — mirror of store.set_override.
+      Orbit.Repo.query!(
+        "INSERT INTO app_settings (`key`, `value`, `is_secret`) VALUES (?, ?, 0) " <>
+          "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `is_secret` = 0",
+        [key, to_string(value)]
+      )
+
+      reload()
+      {:ok, value}
+    end
+  end
+
+  @doc "Delete an override (revert to the env default), then resync. Returns :ok."
+  @spec clear_override(String.t()) :: :ok | {:error, String.t()}
+  def clear_override(key) do
+    case fetch_def(key) do
+      {:ok, _defn} ->
+        Orbit.Repo.query!("DELETE FROM app_settings WHERE `key` = ?", [key])
+        reload()
+        :ok
+
+      err ->
+        err
+    end
+  end
+
+  defp fetch_def(key) do
+    case Registry.fetch(key) do
+      {:ok, defn} -> {:ok, defn}
+      :error -> {:error, "#{key} is not an editable setting"}
+    end
+  end
+
   @impl true
   def init(_opts) do
     :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])

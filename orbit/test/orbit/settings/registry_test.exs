@@ -49,3 +49,22 @@ defmodule Orbit.Settings.RegistryTest do
     assert :error = Registry.fetch("master_key")
   end
 end
+
+defmodule Orbit.SettingsWriteTest do
+  @moduledoc "DB-free error paths of set/clear_override; the :ok DB path is proven live."
+  use ExUnit.Case, async: true
+
+  test "set_override on an unknown key errors before any DB write" do
+    assert {:error, msg} = Orbit.Settings.set_override("not_a_key", "5")
+    assert msg =~ "not an editable setting"
+  end
+
+  test "set_override with an invalid value errors on coercion (no DB write)" do
+    assert {:error, msg} = Orbit.Settings.set_override("poll_interval_seconds", "abc")
+    assert msg =~ "must be an integer"
+  end
+
+  test "clear_override on an unknown key errors" do
+    assert {:error, _} = Orbit.Settings.clear_override("not_a_key")
+  end
+end
