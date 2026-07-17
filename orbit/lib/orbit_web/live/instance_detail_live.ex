@@ -76,6 +76,13 @@ defmodule OrbitWeb.InstanceDetailLive do
           <span class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}>
             {if @connected, do: "agent connected", else: "no agent"}
           </span>
+          <a
+            :if={@instance.shell_enabled}
+            href={~p"/instances/#{@instance.id}/terminal"}
+            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Terminal
+          </a>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">

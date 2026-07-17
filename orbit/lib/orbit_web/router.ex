@@ -43,6 +43,7 @@ defmodule OrbitWeb.Router do
     live_session :authenticated, on_mount: OrbitWeb.UserAuth do
       live "/instances", InstancesLive
       live "/instances/:id", InstanceDetailLive
+      live "/instances/:id/terminal", TerminalLive
       live "/alerts", AlertsLive
       live "/firmware", FirmwareLive
       live "/vpn", VpnLive

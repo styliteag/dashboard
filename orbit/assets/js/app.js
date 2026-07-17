@@ -25,11 +25,45 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/orbit"
 import topbar from "../vendor/topbar"
 
+// Terminal hook: bridges a root PTY on the box to the browser over the
+// session-authed shell WS (/api/ws/shell/:id). Raw byte stream — no ANSI
+// emulator (vendoring xterm is a later polish); output lands in a <pre>,
+// keystrokes go back as bytes. The full auth order runs server-side in the
+// WS route (write role, scope, shell_enabled, slot cap → close codes).
+const Terminal = {
+  mounted() {
+    const id = this.el.dataset.instanceId
+    const out = this.el.querySelector("[data-term-out]")
+    const proto = location.protocol === "https:" ? "wss" : "ws"
+    const ws = new WebSocket(`${proto}://${location.host}/api/ws/shell/${id}`)
+    ws.binaryType = "arraybuffer"
+    this.ws = ws
+    ws.onmessage = e => {
+      if (typeof e.data === "string") return // json control frames (ping)
+      out.textContent += new TextDecoder().decode(e.data)
+      out.scrollTop = out.scrollHeight
+    }
+    ws.onclose = e => { out.textContent += `\n[connection closed: ${e.code}]\n` }
+    this.el.querySelector("[data-term-input]").addEventListener("keydown", e => {
+      let data
+      if (e.key === "Enter") data = "\r"
+      else if (e.key === "Backspace") data = "\x7f"
+      else if (e.key === "Tab") data = "\t"
+      else if (e.ctrlKey && e.key === "c") data = "\x03"
+      else if (e.key.length === 1) data = e.key
+      else return
+      e.preventDefault()
+      if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data))
+    })
+  },
+  destroyed() { this.ws && this.ws.close() },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, Terminal},
 })
 
 // Show progress bar on live navigation and form submits
