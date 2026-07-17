@@ -154,6 +154,16 @@ defmodule Orbit.Hub do
     GenServer.cast(server, {:deliver_tunnel, frame})
   end
 
+  @doc """
+  Fire-and-forget a live config_update to a connected agent (push_interval,
+  ipsec_ping_monitors, connectivity_monitors — §27.8). Best-effort: absent
+  agent is a no-op (the value is re-sent in the welcome frame on reconnect).
+  """
+  @spec send_config(GenServer.server(), integer(), map()) :: :ok
+  def send_config(server \\ __MODULE__, instance_id, fields) when is_map(fields) do
+    GenServer.cast(server, {:send_config, instance_id, fields})
+  end
+
   # -- GenServer ------------------------------------------------------------
 
   @impl true
@@ -317,6 +327,17 @@ defmodule Orbit.Hub do
   end
 
   def handle_cast({:deliver_tunnel, _frame}, state), do: {:noreply, state}
+
+  def handle_cast({:send_config, instance_id, fields}, state) do
+    case state.agents[instance_id] do
+      %Agent{pid: pid} ->
+        send(pid, {:push_frame, %{"type" => "config_update", "data" => fields}})
+        {:noreply, state}
+
+      nil ->
+        {:noreply, state}
+    end
+  end
 
   @impl true
   def handle_info({:DOWN, _ref, :process, consumer, _reason}, state) do

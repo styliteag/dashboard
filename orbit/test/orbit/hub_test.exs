@@ -96,6 +96,17 @@ defmodule Orbit.HubTest do
     assert {:error, :not_connected} = Hub.send_command(424_242, "ping", %{}, 50)
   end
 
+  test "send_config pushes a config_update to a connected agent", %{hub: hub} do
+    :ok = register_self(hub, 7)
+    Hub.send_config(hub, 7, %{"push_interval" => 45})
+    assert_receive {:push_frame, %{"type" => "config_update", "data" => %{"push_interval" => 45}}}
+  end
+
+  test "send_config to a disconnected instance is a no-op", %{hub: hub} do
+    :ok = Hub.send_config(hub, 99, %{"push_interval" => 45})
+    refute_receive {:push_frame, _}, 50
+  end
+
   test "push/pong counters", %{hub: hub} do
     :ok = register_self(hub, 7)
     Hub.record_push(hub, 7)

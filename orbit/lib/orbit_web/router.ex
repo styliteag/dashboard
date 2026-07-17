@@ -68,6 +68,7 @@ defmodule OrbitWeb.Router do
     pipe_through :client_ws
 
     get "/ws/shell/:instance_id", ShellWSController, :connect
+    get "/ws/capture/:instance_id", CaptureWSController, :connect
   end
 
   # Session-cookie JSON api (python parity: cookie auth, no csrf on /api).
