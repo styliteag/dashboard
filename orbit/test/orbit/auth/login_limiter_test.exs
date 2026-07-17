@@ -43,4 +43,14 @@ defmodule Orbit.Auth.LoginLimiterTest do
     for n <- 1..5, do: LoginLimiter.record_failure(s, "10.0.0.1", n * 1000)
     refute LoginLimiter.record_failure(s, "10.0.0.1", 6000), "already locked → no NEW lock signal"
   end
+
+  test "regression: negative monotonic clock must not lock on the first failure" do
+    # System.monotonic_time/1 is negative on a fresh BEAM. With locked_until
+    # initialised to 0 instead of nil, `0 > negative_now` read as locked and
+    # the very first bad password 429'd the IP (found in the live curl E2E).
+    server = start_supervised!({LoginLimiter, name: nil}, id: :neg_clock)
+    now = -576_460_751_000
+    refute LoginLimiter.record_failure(server, "10.0.0.9", now)
+    refute LoginLimiter.locked?(server, "10.0.0.9", now + 10)
+  end
 end

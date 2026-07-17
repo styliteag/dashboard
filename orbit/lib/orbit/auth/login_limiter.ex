@@ -47,21 +47,26 @@ defmodule Orbit.Auth.LoginLimiter do
 
   @impl true
   def handle_call({:locked?, ip, now}, _from, state) do
+    # locked_until nil = never locked. NEVER model that as 0: monotonic time
+    # is negative on a fresh BEAM, so 0 would read as "locked far in the
+    # future" and every IP would lock on its first failure (found live —
+    # the first curl login E2E answered 429 after one bad password).
     locked =
       case state[ip] do
-        %{locked_until: until} -> until > now
-        nil -> false
+        %{locked_until: until} when is_integer(until) -> until > now
+        _ -> false
       end
 
     {:reply, locked, state}
   end
 
   def handle_call({:record_failure, ip, now}, _from, state) do
-    entry = Map.get(state, ip, %{failures: [], locked_until: 0})
+    entry = Map.get(state, ip, %{failures: [], locked_until: nil})
     failures = [now | Enum.filter(entry.failures, &(now - &1 < @window_ms))]
+    lockable = is_nil(entry.locked_until) or entry.locked_until <= now
 
     {triggered, entry} =
-      if length(failures) >= @max_failed and entry.locked_until <= now do
+      if length(failures) >= @max_failed and lockable do
         {true, %{failures: failures, locked_until: now + @lock_ms}}
       else
         {false, %{entry | failures: failures}}

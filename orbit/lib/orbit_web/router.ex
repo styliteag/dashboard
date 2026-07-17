@@ -1,6 +1,9 @@
 defmodule OrbitWeb.Router do
   use OrbitWeb, :router
 
+  import OrbitWeb.UserAuth,
+    only: [fetch_current_user: 2, require_authenticated_user: 2, redirect_if_authenticated: 2]
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +11,7 @@ defmodule OrbitWeb.Router do
     plug :put_root_layout, html: {OrbitWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
   end
 
   pipeline :api do
@@ -15,9 +19,19 @@ defmodule OrbitWeb.Router do
   end
 
   scope "/", OrbitWeb do
-    pipe_through :browser
+    pipe_through [:browser, :redirect_if_authenticated]
+
+    get "/login", SessionController, :new
+    post "/login", SessionController, :create
+    get "/login/totp", SessionController, :totp_form
+    post "/login/totp", SessionController, :totp_verify
+  end
+
+  scope "/", OrbitWeb do
+    pipe_through [:browser, :require_authenticated_user]
 
     get "/", PageController, :home
+    post "/logout", SessionController, :delete
   end
 
   # Machine-facing surface lives under /api (nginx only proxies/upgrades there).
