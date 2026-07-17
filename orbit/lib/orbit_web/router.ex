@@ -45,6 +45,7 @@ defmodule OrbitWeb.Router do
       live "/instances/:id", InstanceDetailLive
       live "/instances/:id/terminal", TerminalLive
       live "/alerts", AlertsLive
+      live "/certificates", CertificatesLive
       live "/firmware", FirmwareLive
       live "/vpn", VpnLive
       live "/hub", HubStatusLive
