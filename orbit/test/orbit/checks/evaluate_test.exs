@@ -93,6 +93,83 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
+  describe "load_check — per-core saturation, CRIT allowed" do
+    test "no-data sentinel: cores<=0 → nil" do
+      assert Evaluate.load_check(%{"five" => 3.0, "cores" => 0}) == nil
+      assert Evaluate.load_check(nil) == nil
+    end
+
+    test "2/4 per-core thresholds on the 5-min average" do
+      assert %ServiceCheck{state: 0} = Evaluate.load_check(%{"five" => 3.9, "cores" => 2})
+      assert %ServiceCheck{state: 1} = Evaluate.load_check(%{"five" => 4.0, "cores" => 2})
+      # Unlike CPU, load CAN crit: 4x cores.
+      assert %ServiceCheck{state: 2, key: "load"} =
+               Evaluate.load_check(%{"five" => 8.0, "cores" => 2})
+    end
+  end
+
+  describe "pf_states_check — no-data sentinel (states_limit<=0)" do
+    test "direct-poll box (no state table) → nil" do
+      assert Evaluate.pf_states_check(%{
+               "states_limit" => 0,
+               "states_pct" => 0.0,
+               "states_current" => 0
+             }) ==
+               nil
+    end
+
+    test "80/95 fill thresholds" do
+      base = %{"states_limit" => 100_000, "states_current" => 50_000}
+      assert %ServiceCheck{state: 0} = Evaluate.pf_states_check(Map.put(base, "states_pct", 79.0))
+      assert %ServiceCheck{state: 1} = Evaluate.pf_states_check(Map.put(base, "states_pct", 80.0))
+
+      assert %ServiceCheck{state: 2, key: "pf_states"} =
+               Evaluate.pf_states_check(Map.put(base, "states_pct", 95.0))
+    end
+  end
+
+  describe "ntp_check — unsynced is WARN never CRIT" do
+    test "no-data sentinel: stratum<0 → nil" do
+      assert Evaluate.ntp_check(%{"stratum" => -1}) == nil
+      assert Evaluate.ntp_check(nil) == nil
+    end
+
+    test "synced → OK, unsynced → WARN (freshly booted box never red)" do
+      assert %ServiceCheck{state: 0, key: "ntp"} =
+               Evaluate.ntp_check(%{
+                 "stratum" => 2,
+                 "synced" => true,
+                 "offset_ms" => 1.2,
+                 "peer" => "a"
+               })
+
+      assert %ServiceCheck{state: 1} =
+               Evaluate.ntp_check(%{"stratum" => 16, "synced" => false})
+    end
+  end
+
+  describe "gateway_checks — down word ⇒ CRIT, loss 20/80" do
+    test "down status is CRIT regardless of loss" do
+      [c] = Evaluate.gateway_checks([%{"name" => "WAN", "status" => "down", "loss" => "0%"}])
+      assert c.state == 2
+      assert c.key == "gateway:WAN"
+      assert c.summary == "Gateway WAN down"
+    end
+
+    test "loss thresholds when online" do
+      online = fn loss -> %{"name" => "WAN", "status" => "online", "loss" => loss} end
+      assert [%ServiceCheck{state: 0}] = Evaluate.gateway_checks([online.("5%")])
+      assert [%ServiceCheck{state: 1}] = Evaluate.gateway_checks([online.("20%")])
+      assert [%ServiceCheck{state: 2}] = Evaluate.gateway_checks([online.("80%")])
+    end
+
+    test "missing loss → no perfdata, still OK when up" do
+      [c] = Evaluate.gateway_checks([%{"name" => "WAN", "status" => "online"}])
+      assert c.state == 0
+      assert c.metrics == []
+    end
+  end
+
   describe "severity ordering (UNKNOWN below WARN)" do
     test "CRIT > WARN > UNKNOWN > OK" do
       ranks = Enum.map([2, 1, 3, 0], &ServiceCheck.severity/1)

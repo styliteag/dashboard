@@ -28,6 +28,15 @@ defmodule Orbit.Checks.Evaluate do
   @disk_crit 90.0
   # (min_gb, warn, crit) largest-first; disk levels scale with volume size.
   @disk_size_levels [{1024.0, 93.0, 97.0}, {200.0, 90.0, 95.0}, {50.0, 85.0, 93.0}]
+  # Load is saturation (run-queue), normalised per core, 5-min average — CRIT
+  # allowed (unlike CPU) but set high enough not to flap.
+  @load_warn_per_core 2.0
+  @load_crit_per_core 4.0
+  @pf_warn 80.0
+  @pf_crit 95.0
+  @gw_loss_warn 20.0
+  @gw_loss_crit 80.0
+  @gw_down_words ~w(down force_down offline)
 
   @doc """
   Evaluate every family from a raw cache `status`/section map and return the
@@ -40,9 +49,13 @@ defmodule Orbit.Checks.Evaluate do
     [
       memory_check(status["memory"]),
       swap_check(status["memory"]),
-      cpu_check(status["cpu"])
+      cpu_check(status["cpu"]),
+      load_check(status["loadavg"]),
+      pf_states_check(status["pf"]),
+      ntp_check(status["ntp"])
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
+    |> Enum.concat(gateway_checks(status["gateways"] || sections["gateways"] || []))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -112,6 +125,133 @@ defmodule Orbit.Checks.Evaluate do
       }
     end
   end
+
+  @doc """
+  5-min load average normalised per core. nil when no data (cores<=0: direct
+  poll or a pre-1.8.1 agent). CRIT allowed (saturation, not utilization).
+  """
+  def load_check(%{"five" => five, "cores" => cores})
+      when is_number(five) and is_number(cores) and cores > 0 do
+    per_core = five / cores
+    {state, word} = level(per_core, @load_warn_per_core, @load_crit_per_core)
+
+    %ServiceCheck{
+      key: "load",
+      state: state,
+      summary: "Load #{f2(five)} (5m) = #{f2(per_core)}/core over #{cores} cores (#{word})",
+      metrics: [
+        ServiceCheck.metric("load_per_core", Float.round(per_core / 1, 2),
+          warn: @load_warn_per_core,
+          crit: @load_crit_per_core
+        ),
+        ServiceCheck.metric("load5", five)
+      ]
+    }
+  end
+
+  def load_check(_), do: nil
+
+  @doc "pf state-table fill. nil when no data (states_limit<=0, e.g. direct poll)."
+  def pf_states_check(%{"states_limit" => lim, "states_pct" => pct, "states_current" => cur})
+      when is_number(lim) and lim > 0 and is_number(pct) do
+    {state, word} = level(pct, @pf_warn, @pf_crit)
+
+    %ServiceCheck{
+      key: "pf_states",
+      state: state,
+      summary: "pf states #{cur}/#{lim} (#{round(pct)}%, #{word})",
+      metrics: [
+        ServiceCheck.metric("pf_states_pct", pct, warn: @pf_warn, crit: @pf_crit, unit: "%"),
+        ServiceCheck.metric("pf_states", cur * 1.0)
+      ]
+    }
+  end
+
+  def pf_states_check(_), do: nil
+
+  @doc """
+  NTP sync. nil when no data (stratum<0). A reachable-but-unsynced clock is
+  WARN, never CRIT — a freshly booted box must not read red.
+  """
+  def ntp_check(%{"stratum" => stratum} = ntp) when is_number(stratum) and stratum >= 0 do
+    if ntp["synced"] do
+      peer = if ntp["peer"] not in [nil, ""], do: " via #{ntp["peer"]}", else: ""
+      offset = ntp["offset_ms"] || 0.0
+
+      %ServiceCheck{
+        key: "ntp",
+        state: ServiceCheck.ok(),
+        summary: "NTP synced (stratum #{stratum}, offset #{f1(offset)}ms)#{peer}",
+        metrics: [ServiceCheck.metric("ntp_offset_ms", offset, unit: "ms")]
+      }
+    else
+      %ServiceCheck{
+        key: "ntp",
+        state: ServiceCheck.warn(),
+        summary: "NTP not synchronised (no usable peer yet)"
+      }
+    end
+  end
+
+  def ntp_check(_), do: nil
+
+  @doc "One check per gateway. Down status word ⇒ CRIT; loss 20/80."
+  def gateway_checks(gateways) when is_list(gateways) do
+    for g <- gateways, is_map(g) do
+      name = g["name"] || "?"
+      st = (g["status"] || "") |> to_string() |> String.downcase()
+      loss = loss_pct(g["loss"])
+
+      {state, word} =
+        cond do
+          Enum.any?(@gw_down_words, &String.contains?(st, &1)) ->
+            {ServiceCheck.crit(), "down"}
+
+          is_number(loss) and loss >= @gw_loss_crit ->
+            {ServiceCheck.crit(), "loss #{round(loss)}%"}
+
+          is_number(loss) and loss >= @gw_loss_warn ->
+            {ServiceCheck.warn(), "loss #{round(loss)}%"}
+
+          true ->
+            {ServiceCheck.ok(), "online"}
+        end
+
+      metrics =
+        if is_number(loss),
+          do: [
+            ServiceCheck.metric("gw_loss_pct", loss,
+              warn: @gw_loss_warn,
+              crit: @gw_loss_crit,
+              unit: "%"
+            )
+          ],
+          else: []
+
+      %ServiceCheck{
+        key: "gateway:#{name}",
+        state: state,
+        summary: "Gateway #{name} #{word}",
+        metrics: metrics
+      }
+    end
+  end
+
+  def gateway_checks(_), do: []
+
+  # Parse a gateway loss string like "0.0%" / "100%" → float, else nil.
+  defp loss_pct(raw) when is_binary(raw) do
+    case raw |> String.trim() |> String.trim_trailing("%") |> String.trim() |> Float.parse() do
+      {v, _} -> v
+      :error -> nil
+    end
+  end
+
+  defp loss_pct(raw) when is_number(raw), do: raw / 1
+  defp loss_pct(_), do: nil
+
+  defp f1(x) when is_number(x), do: :erlang.float_to_binary(x / 1, decimals: 1)
+  defp f2(x) when is_number(x), do: :erlang.float_to_binary(x / 1, decimals: 2)
 
   # (warn, crit) used-% levels for a volume of the given size.
   defp disk_levels(total_mb) when is_number(total_mb) and total_mb > 0 do
