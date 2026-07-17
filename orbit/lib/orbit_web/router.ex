@@ -57,6 +57,12 @@ defmodule OrbitWeb.Router do
 
     live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do
       live "/settings", SettingsLive
+    end
+
+    # Audit/Access oversight: admin OR superadmin (DR-AL1 — the superadmin's
+    # role is view_only, plain require_admin would lock them out).
+    live_session :admin_or_superadmin,
+      on_mount: [{OrbitWeb.UserAuth, :require_admin_or_superadmin}, OrbitWeb.GeoGate] do
       live "/audit", AuditLive
     end
 

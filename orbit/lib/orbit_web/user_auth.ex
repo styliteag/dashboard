@@ -159,6 +159,23 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  # Admin OR superadmin (DR-AL1): the audit/access oversight surface. Plain
+  # require_admin would lock the superadmin out — their role is view_only
+  # (rights management only), yet login/block oversight is exactly their
+  # domain (python live-incident 2026-07-14: seed superadmin got 403).
+  def on_mount(:require_admin_or_superadmin, _params, session, socket) do
+    case live_user_from_session(session) do
+      %User{} = user when user.role == "admin" or user.is_superadmin ->
+        {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+
+      %User{} ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
+
+      _ ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/login")}
+    end
+  end
+
   # Superadmin-only live routes (rights management). Non-superadmins bounce home.
   def on_mount(:require_superadmin, _params, session, socket) do
     case live_user_from_session(session) do
