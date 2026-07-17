@@ -44,7 +44,7 @@ defmodule OrbitWeb.Components.Nav do
             label="Settings"
           />
           <.nav_link
-            :if={admin?(@current_user)}
+            :if={admin?(@current_user) or superadmin?(@current_user)}
             active={@active}
             key={:audit}
             href={~p"/audit"}
@@ -67,7 +67,9 @@ defmodule OrbitWeb.Components.Nav do
         </nav>
       </div>
       <div class="flex items-center gap-3 text-sm">
-        <span class="text-slate-400">{@current_user.username}</span>
+        <a href={~p"/password"} class="text-slate-400 hover:text-slate-200" title="Change password">
+          {@current_user.username}
+        </a>
         <form action={~p"/logout"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button

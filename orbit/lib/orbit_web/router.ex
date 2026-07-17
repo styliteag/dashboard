@@ -41,6 +41,8 @@ defmodule OrbitWeb.Router do
 
     get "/", PageController, :home
     post "/logout", SessionController, :delete
+    get "/password", SessionController, :password_form
+    post "/password", SessionController, :password_change
 
     live_session :authenticated, on_mount: [OrbitWeb.UserAuth, OrbitWeb.GeoGate] do
       live "/instances", InstancesLive

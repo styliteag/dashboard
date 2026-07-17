@@ -95,6 +95,56 @@ defmodule OrbitWeb.SessionController do
     UserAuth.log_out_user(conn)
   end
 
+  # Change-password self-service (auth/routes.py /password port). Controller,
+  # not LiveView: the session cookie must be re-issued with the bumped
+  # password_version so THIS client survives while every other session dies.
+  def password_form(conn, _params) do
+    render(conn, :password, error: nil)
+  end
+
+  def password_change(conn, %{"old_password" => old, "new_password" => new} = params) do
+    user = conn.assigns.current_user
+
+    cond do
+      not Orbit.Auth.Password.verify(old, user.password_hash) ->
+        audit_password(conn, user, "error", %{"reason" => "bad_old_password"})
+        conn |> put_status(400) |> render(:password, error: "Old password is incorrect.")
+
+      String.length(new) < 8 ->
+        render(conn, :password, error: "New password needs at least 8 characters.")
+
+      new != params["confirm_password"] ->
+        render(conn, :password, error: "Passwords do not match.")
+
+      true ->
+        {:ok, updated} =
+          user
+          |> Ecto.Changeset.change(%{
+            password_hash: Orbit.Auth.Password.hash(new),
+            # Invalidates every OTHER session (per-request version check).
+            password_version: user.password_version + 1
+          })
+          |> Orbit.Repo.update()
+
+        audit_password(conn, user, "ok", nil)
+
+        conn
+        |> put_session(:password_version, updated.password_version)
+        |> put_flash(:info, "Password changed. Other sessions were signed out.")
+        |> redirect(to: ~p"/")
+    end
+  end
+
+  defp audit_password(conn, user, result, detail) do
+    Orbit.Audit.write(
+      action: "auth.password_change",
+      result: result,
+      user_id: user.id,
+      source_ip: client_ip(conn),
+      detail: detail
+    )
+  end
+
   defp audit_login(conn, result, user_id, detail \\ nil) do
     Orbit.Audit.write(
       action: "auth.login",
