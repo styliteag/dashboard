@@ -39,7 +39,11 @@ defmodule OrbitWeb.InstanceDetailLive do
 
       socket =
         socket
-        |> assign(instance: inst, writable: user.role in @write_roles)
+        |> assign(
+          instance: inst,
+          writable: user.role in @write_roles,
+          admin: user.role == "admin"
+        )
         |> load_comments()
         |> load_logs()
         |> load_metrics()
@@ -243,7 +247,16 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@logfiles != []}
             class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"
           >
-            <span :for={lf <- @logfiles}>{lf.name} · {lf.bytes} chars</span>
+            <a
+              :for={lf <- @logfiles}
+              :if={@admin}
+              href={~p"/api/instances/#{@instance.id}/logfiles/#{lf.id}/raw"}
+              target="_blank"
+              class="text-slate-400 underline decoration-slate-700 hover:text-emerald-300"
+            >
+              {lf.name} · {lf.bytes} chars
+            </a>
+            <span :for={lf <- @logfiles} :if={not @admin}>{lf.name} · {lf.bytes} chars</span>
           </div>
           <table :if={@log_events != []} class="w-full text-left text-sm">
             <tbody>

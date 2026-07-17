@@ -131,6 +131,12 @@ defmodule Orbit.Logs.Store do
     |> Enum.uniq_by(& &1.name)
   end
 
+  @doc "One snapshot (with content) for an instance, or nil. Scope is the caller's."
+  @spec get_logfile(integer(), integer()) :: Logfile.t() | nil
+  def get_logfile(instance_id, logfile_id) do
+    Repo.one(from(l in Logfile, where: l.instance_id == ^instance_id and l.id == ^logfile_id))
+  end
+
   @doc "All extracted events for an instance, worst-first (severity, then count)."
   @spec list_events(integer()) :: [LogEvent.t()]
   def list_events(instance_id) do

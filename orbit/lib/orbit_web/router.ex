@@ -111,6 +111,7 @@ defmodule OrbitWeb.Router do
     get "/agents/connected", AgentApiController, :connected
     post "/instances/:instance_id/agent/ping", AgentApiController, :ping
     get "/instances/:instance_id/comments", CommentController, :index
+    get "/instances/:instance_id/logfiles/:logfile_id/raw", LogsController, :raw
   end
 
   # Write-gated api mutations (require_write parity).
