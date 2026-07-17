@@ -18,7 +18,7 @@ defmodule Orbit.Audit do
   alias Orbit.Repo
 
   # Safe-to-log detail keys (mirror of audit/log.py _DETAIL_KEYS).
-  @detail_keys ~w(reason username stage lock_triggered name role mode)
+  @detail_keys ~w(reason username stage lock_triggered name role mode kind entity_key comment)
 
   @doc """
   Insert an audit row + emit the mirrored log line. Fields: :action + :result

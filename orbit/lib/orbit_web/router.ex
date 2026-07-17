@@ -109,6 +109,7 @@ defmodule OrbitWeb.Router do
 
     get "/agents/connected", AgentApiController, :connected
     post "/instances/:instance_id/agent/ping", AgentApiController, :ping
+    get "/instances/:instance_id/comments", CommentController, :index
   end
 
   # Write-gated api mutations (require_write parity).
@@ -124,6 +125,7 @@ defmodule OrbitWeb.Router do
 
     post "/instances/:instance_id/agent/enroll-code", EnrollController, :create_code
     post "/instances/:instance_id/agent/update", AgentApiController, :update
+    put "/instances/:instance_id/comments", CommentController, :set
   end
 
   # Public enrollment: unauthenticated, rate-limited in the controller.
