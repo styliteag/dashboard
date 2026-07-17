@@ -63,6 +63,16 @@ defmodule Orbit.Hub do
     GenServer.cast(server, {:record_push, instance_id})
   end
 
+  @doc "Ingest a metrics push into the per-instance section cache (guarded writes)."
+  def ingest_metrics(server \\ __MODULE__, instance_id, data) do
+    GenServer.cast(server, {:ingest_metrics, instance_id, data})
+  end
+
+  @doc "The cached section entry for an instance (or empty map)."
+  def cache_entry(server \\ __MODULE__, instance_id) do
+    GenServer.call(server, {:cache_entry, instance_id})
+  end
+
   def record_pong(server \\ __MODULE__, instance_id) do
     GenServer.cast(server, {:record_pong, instance_id})
   end
@@ -111,7 +121,7 @@ defmodule Orbit.Hub do
 
   @impl true
   def init(:ok) do
-    {:ok, %{agents: %{}, pending: %{}}}
+    {:ok, %{agents: %{}, pending: %{}, cache: %{}}}
   end
 
   @impl true
@@ -175,6 +185,10 @@ defmodule Orbit.Hub do
     {:reply, :ok, %{state | pending: Map.delete(state.pending, request_id)}}
   end
 
+  def handle_call({:cache_entry, instance_id}, _from, state) do
+    {:reply, Orbit.Hub.Cache.entry(state.cache, instance_id), state}
+  end
+
   @impl true
   def handle_cast({:resolve, request_id, result}, state) do
     case Map.pop(state.pending, request_id) do
@@ -197,6 +211,11 @@ defmodule Orbit.Hub do
 
   def handle_cast({:record_pong, instance_id}, state) do
     {:noreply, update_agent(state, instance_id, fn a -> %{a | pongs: a.pongs + 1} end)}
+  end
+
+  def handle_cast({:ingest_metrics, instance_id, data}, state) do
+    cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, DateTime.utc_now())
+    {:noreply, %{state | cache: cache}}
   end
 
   defp update_agent(state, instance_id, fun) do

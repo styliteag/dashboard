@@ -72,6 +72,7 @@ defmodule OrbitWeb.AgentSocket do
 
   defp dispatch(%{"type" => "metrics", "data" => data}, state) when is_map(data) do
     Hub.record_push(state.instance_id)
+    Hub.ingest_metrics(state.instance_id, data)
     stamp_last_seen(state.instance_id, data["ts"])
     {:ok, state}
   end
