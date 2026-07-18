@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: full agent lifecycle on the instance detail page — enable/disable
+  agent mode (token mint/revoke), refresh-now, reconnect, test-local-API
+  through the relay, show token, uninstall with fallback to direct
+  transport, plus condensed copy-paste install instructions (FreeBSD and
+  Linux) and the public bootstrap download endpoints
+  (/api/agent/script|run|rc|systemd|checkmk).
 - Orbit: instance detail gains the System-health strip (load per core, swap,
   pf state table, NTP), the last-config-revision card, per-collector runtime
   bars on the Agent card, and per-check notify/export toggles (instance

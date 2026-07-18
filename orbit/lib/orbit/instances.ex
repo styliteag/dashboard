@@ -65,6 +65,29 @@ defmodule Orbit.Instances do
     end
   end
 
+  @doc """
+  Switch an instance into agent (push) mode with a fresh bearer token
+  (management.py enable_agent). Returns {:ok, inst, token}.
+  """
+  def enable_agent(%Instance{} = inst) do
+    token = 48 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+    inst
+    |> Ecto.Changeset.change(transport: "push", agent_token: token)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> {:ok, updated, token}
+      other -> other
+    end
+  end
+
+  @doc "Drop agent mode: revoke the token, fall back to direct transport."
+  def disable_agent(%Instance{} = inst) do
+    inst
+    |> Ecto.Changeset.change(transport: "direct", agent_token: nil)
+    |> Repo.update()
+  end
+
   # -- mutations (instances/service.py port) ---------------------------------
 
   @editable_fields ~w(name base_url location notes ping_url ssl_verify gui_login_enabled

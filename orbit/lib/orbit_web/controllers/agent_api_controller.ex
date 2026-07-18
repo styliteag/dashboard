@@ -76,6 +76,37 @@ defmodule OrbitWeb.AgentApiController do
     end
   end
 
+  # Bootstrap file downloads (update.py parity, unauthenticated). Only ever
+  # serves the five fixed files below out of the read-only AGENT_DIR mount —
+  # no path input from the request reaches the filesystem.
+  @downloads %{
+    script: {"orbit_agent.py", "text/x-python", "orbit_agent.py"},
+    rc: {"rc.d/orbit_agent", "text/plain", "orbit_agent"},
+    run: {"run-agent.sh", "text/plain", "run-agent.sh"},
+    systemd: {"systemd/orbit-agent.service", "text/plain", "orbit-agent.service"},
+    checkmk: {"vendor/check_mk_agent.linux", "text/plain", "check_mk_agent.linux"}
+  }
+
+  def download_script(conn, _params), do: serve_agent_file(conn, :script)
+  def download_rc(conn, _params), do: serve_agent_file(conn, :rc)
+  def download_run(conn, _params), do: serve_agent_file(conn, :run)
+  def download_systemd(conn, _params), do: serve_agent_file(conn, :systemd)
+  def download_checkmk(conn, _params), do: serve_agent_file(conn, :checkmk)
+
+  defp serve_agent_file(conn, key) do
+    {rel, content_type, filename} = Map.fetch!(@downloads, key)
+    path = Path.join(Orbit.Agent.Package.agent_dir(), rel)
+
+    if File.exists?(path) do
+      conn
+      |> put_resp_content_type(content_type)
+      |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+      |> send_file(200, path)
+    else
+      conn |> put_status(404) |> json(%{detail: "#{filename} not available"})
+    end
+  end
+
   defp do_update(conn, id, agent, params) do
     cond do
       # Pushing the served version to an agent already on it only trips the

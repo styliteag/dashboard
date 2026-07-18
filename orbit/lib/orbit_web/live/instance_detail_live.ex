@@ -71,7 +71,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           chart_range: "24h",
           ipsec_busy: MapSet.new(),
           ipsec_msg: nil,
-          ipsec_expanded: MapSet.new()
+          ipsec_expanded: MapSet.new(),
+          show_token: false
         )
         |> load_comments()
         |> load_logs()
@@ -266,6 +267,54 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("agent_update", _params, socket), do: {:noreply, socket}
 
+  # Agent lifecycle (AgentSection parity; management.py port). All
+  # write-gated; the slow relay calls run in start_async.
+  def handle_event("agent_enable", _params, %{assigns: %{writable: true}} = socket) do
+    case Orbit.Instances.enable_agent(socket.assigns.instance) do
+      {:ok, inst, _token} ->
+        audit_agent(socket, "agent.enable", "ok")
+        {:noreply, socket |> assign(instance: inst) |> load_metrics()}
+
+      _ ->
+        {:noreply, assign(socket, agent_msg: {:error, "enable failed"})}
+    end
+  end
+
+  def handle_event("agent_disable", _params, %{assigns: %{writable: true}} = socket) do
+    case Orbit.Instances.disable_agent(socket.assigns.instance) do
+      {:ok, inst} ->
+        Hub.unregister(inst.id)
+        audit_agent(socket, "agent.disable", "ok")
+        {:noreply, socket |> assign(instance: inst, show_token: false) |> load_metrics()}
+
+      _ ->
+        {:noreply, assign(socket, agent_msg: {:error, "disable failed"})}
+    end
+  end
+
+  def handle_event("agent_show_token", _params, %{assigns: %{writable: true}} = socket) do
+    # The token is a bearer credential to the agent WS — write-gated like
+    # the python /agent/token route; never audited into detail (no values).
+    {:noreply, assign(socket, show_token: not socket.assigns.show_token)}
+  end
+
+  def handle_event("agent_" <> kind, _params, %{assigns: %{writable: true}} = socket)
+      when kind in ["refresh", "reconnect", "uninstall", "test_api"] do
+    inst = socket.assigns.instance
+    user = socket.assigns.current_user
+    agent = Hub.get(inst.id)
+
+    {:noreply,
+     socket
+     |> assign(agent_msg: nil)
+     |> start_async({:agent_action, kind}, fn ->
+       agent_lifecycle_action(kind, inst, user, agent)
+     end)}
+  end
+
+  # Non-writable fallback for every agent_* lifecycle event above.
+  def handle_event("agent_" <> _kind, _params, socket), do: {:noreply, socket}
+
   # Open GUI (GUI proxy §18) — write-gated; re-checks openable (agent may
   # have dropped since render), mints the handoff URL and pushes it to the
   # browser to open. Audits agent.gui_open (source_ip is the LiveView seam).
@@ -312,6 +361,167 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Canary mechanism (DR-6): one box per click. Shared push logic lives in
   # Orbit.Agent.Update (also drives the list page's "Update all agents").
   defp push_agent_update(inst, user), do: Orbit.Agent.Update.push(inst, user)
+
+  # Lightweight authenticated probe per platform, so the test exercises the
+  # relay CREDENTIALS, not just web-server reachability (relay.py parity).
+  @relay_probe_paths %{
+    "opnsense" => "api/core/system/status",
+    "pfsense" => "api/v2/system/version"
+  }
+
+  defp agent_lifecycle_action("refresh", inst, user, _agent) do
+    result = Hub.send_command(inst.id, "refresh.full", %{}, 60_000)
+    result = if is_map(result), do: result, else: %{"success" => false}
+    audit_lifecycle(user, inst, "agent.refresh", result)
+
+    if result["success"],
+      do: {:ok, :none, "fresh full snapshot pushed"},
+      else: {:error, to_string(result["output"] || "refresh failed")}
+  end
+
+  defp agent_lifecycle_action("reconnect", inst, user, _agent) do
+    result = Hub.send_command(inst.id, "reconnect", %{}, 15_000)
+    result = if is_map(result), do: result, else: %{"success" => false}
+    audit_lifecycle(user, inst, "agent.reconnect", result)
+
+    if result["success"],
+      do: {:ok, :none, "agent reconnecting"},
+      else: {:error, to_string(result["output"] || "reconnect failed")}
+  end
+
+  defp agent_lifecycle_action("uninstall", inst, user, _agent) do
+    result = Hub.send_command(inst.id, "agent.uninstall", %{"deprovision" => true}, 30_000)
+    result = if is_map(result), do: result, else: %{"success" => false}
+    audit_lifecycle(user, inst, "agent.uninstall", result)
+
+    if result["success"] do
+      # Ack received — the box tears the agent down; drop agent mode so the
+      # dashboard stops expecting pushes (enroll.py uninstall parity).
+      case Orbit.Instances.disable_agent(inst) do
+        {:ok, updated} ->
+          Hub.unregister(inst.id)
+          {:ok, {:instance, updated}, "agent uninstalling — instance back to direct transport"}
+
+        _ ->
+          {:error, "agent acked but transport switch failed"}
+      end
+    else
+      {:error, to_string(result["output"] || "uninstall failed")}
+    end
+  end
+
+  defp agent_lifecycle_action("test_api", inst, _user, agent) do
+    platform = String.downcase(to_string((agent && agent.platform) || ""))
+
+    params = %{
+      "method" => "GET",
+      "path" => Map.get(@relay_probe_paths, platform, ""),
+      "headers" => %{},
+      "body" => Base.encode64("")
+    }
+
+    t0 = System.monotonic_time(:millisecond)
+    result = Hub.send_command(inst.id, "http.relay", params, 15_000)
+    latency = System.monotonic_time(:millisecond) - t0
+    status = if is_map(result), do: result["status"] || 0, else: 0
+
+    cond do
+      status == 0 ->
+        {:error,
+         "local API call failed: #{if is_map(result), do: result["error"] || "no response", else: "no response"}"}
+
+      status in 200..299 ->
+        {:ok, :none, "local API OK — HTTP #{status} in #{latency} ms"}
+
+      true ->
+        {:error, "local API answered HTTP #{status}"}
+    end
+  end
+
+  defp audit_lifecycle(user, inst, action, result) do
+    Audit.write(
+      action: action,
+      result: if(result["success"], do: "ok", else: "error"),
+      user_id: user.id,
+      target_type: "instance",
+      target_id: inst.id
+    )
+  end
+
+  # ---- install guide -------------------------------------------------------
+
+  defp dash_url, do: OrbitWeb.Endpoint.url()
+
+  defp dash_ws_url do
+    uri = URI.parse(dash_url())
+    proto = if uri.scheme == "https", do: "wss", else: "ws"
+    "#{proto}://#{uri.host}#{if uri.port not in [80, 443], do: ":#{uri.port}"}/api/ws/agent"
+  end
+
+  defp install_download_cmds(%Instance{device_type: "linux"}) do
+    base = dash_url()
+
+    """
+    mkdir -p /usr/local/orbit-agent /usr/local/etc
+    curl -fsSo /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script
+    curl -fsSo /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
+    curl -fsSo /usr/local/orbit-agent/check_mk_agent.linux #{base}/api/agent/checkmk
+    chmod 755 /usr/local/orbit-agent/run-agent.sh /usr/local/orbit-agent/check_mk_agent.linux
+    curl -fsSo /etc/systemd/system/orbit-agent.service #{base}/api/agent/systemd\
+    """
+  end
+
+  defp install_download_cmds(_inst) do
+    base = dash_url()
+
+    """
+    mkdir -p /usr/local/orbit-agent
+    fetch -o /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script
+    fetch -o /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
+    chmod 755 /usr/local/orbit-agent/run-agent.sh
+    fetch -o /usr/local/etc/rc.d/orbit_agent #{base}/api/agent/rc
+    chmod 755 /usr/local/etc/rc.d/orbit_agent\
+    """
+  end
+
+  defp install_config_cmd(inst, enroll_code) do
+    interval = if inst.device_type == "linux", do: 120, else: 30
+
+    cred =
+      case enroll_code do
+        {code, _expires} -> %{"enroll_code" => code}
+        _ -> %{"agent_token" => inst.agent_token || "PASTE_TOKEN_HERE"}
+      end
+
+    cfg =
+      Map.merge(
+        %{"dashboard_url" => dash_ws_url(), "push_interval" => interval, "log_level" => "INFO"},
+        cred
+      )
+
+    """
+    printf '%s\\n' '#{Jason.encode!(cfg)}' > /usr/local/etc/orbit-agent.conf
+    chmod 600 /usr/local/etc/orbit-agent.conf\
+    """
+  end
+
+  defp install_start_cmd(%Instance{device_type: "linux"}) do
+    "systemctl daemon-reload\nsystemctl enable --now orbit-agent"
+  end
+
+  defp install_start_cmd(_inst) do
+    "sysrc orbit_agent_enable=YES\nservice orbit_agent start"
+  end
+
+  defp audit_agent(socket, action, result) do
+    Audit.write(
+      action: action,
+      result: result,
+      user_id: socket.assigns.current_user.id,
+      target_type: "instance",
+      target_id: socket.assigns.instance.id
+    )
+  end
 
   # One tunnel action over the agent relay. Reconnect terminates the live SA
   # first (best-effort — a half-down tunnel must not block the re-initiate).
@@ -472,6 +682,26 @@ defmodule OrbitWeb.InstanceDetailLive do
   def handle_async(:fw_track_status, {:exit, _reason}, socket) do
     Process.send_after(self(), :fw_track, @fw_track_ms)
     {:noreply, socket}
+  end
+
+  def handle_async({:agent_action, _kind}, {:ok, outcome}, socket) do
+    socket =
+      case outcome do
+        {:ok, {:instance, inst}, text} ->
+          socket |> assign(instance: inst, agent_msg: {:ok, text}) |> load_metrics()
+
+        {:ok, :none, text} ->
+          assign(socket, agent_msg: {:ok, text})
+
+        {:error, text} ->
+          assign(socket, agent_msg: {:error, String.slice(text, 0, 200)})
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_async({:agent_action, _kind}, {:exit, _}, socket) do
+    {:noreply, assign(socket, agent_msg: {:error, "action crashed"})}
   end
 
   def handle_async(:agent_update, {:ok, result}, socket) do
@@ -986,7 +1216,74 @@ defmodule OrbitWeb.InstanceDetailLive do
                 do: "Pushing…",
                 else: "Push agent update → #{@served_agent_version}"}
             </button>
+            <button
+              phx-click="agent_refresh"
+              title="Force a full re-collect now (logfiles/firmware/backup are normally throttled)"
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Refresh now
+            </button>
+            <button
+              :if={@agent}
+              phx-click="agent_reconnect"
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Reconnect
+            </button>
+            <button
+              :if={@agent}
+              phx-click="agent_test_api"
+              title="Authenticated API call through the agent relay"
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Test local API
+            </button>
+            <button
+              phx-click="agent_show_token"
+              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              {if @show_token, do: "Hide token", else: "Show token"}
+            </button>
+            <button
+              :if={@agent}
+              phx-click="agent_uninstall"
+              data-confirm={"Uninstall the agent from #{@instance.name}? The box falls back to direct transport."}
+              class="rounded border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950"
+            >
+              Uninstall agent
+            </button>
+            <button
+              phx-click="agent_disable"
+              data-confirm={"Disable agent mode on #{@instance.name}? The token is revoked; a running agent can no longer connect."}
+              class="rounded border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950"
+            >
+              Disable agent mode
+            </button>
           </div>
+
+          <div :if={@show_token and @instance.agent_token} class="mt-2 text-xs">
+            <span class="text-slate-500">Agent token: </span>
+            <code class="break-all font-mono text-emerald-300">{@instance.agent_token}</code>
+          </div>
+
+          <%!-- Guided install (AgentSection walkthrough parity, condensed to
+               the copy-paste essentials; the enroll code above slots into
+               the config). tcsh-safe printf, no heredocs. --%>
+          <details :if={@writable} class="mt-3 text-xs">
+            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+              Install instructions
+            </summary>
+            <div class="mt-2 space-y-2">
+              <p class="text-slate-500">
+                Run as root on the box. 1) download, 2) write config {if @enroll_code,
+                  do: "(one-time enroll code baked in)",
+                  else: "(mint an enroll code above, or paste the token)"}, 3) start.
+              </p>
+              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_download_cmds(@instance)}</pre>
+              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_config_cmd(@instance, @enroll_code)}</pre>
+              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_start_cmd(@instance)}</pre>
+            </div>
+          </details>
 
           <div :if={@enroll_code} class="mt-2 text-sm">
             <span class="text-slate-500">Enroll code: </span>
@@ -996,6 +1293,38 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
           </div>
 
+          <div
+            :if={@agent_msg}
+            class={[
+              "mt-2 text-xs",
+              elem(@agent_msg, 0) == :ok && "text-emerald-400",
+              elem(@agent_msg, 0) == :error && "text-red-400"
+            ]}
+          >
+            {elem(@agent_msg, 1)}
+          </div>
+        </div>
+
+        <%!-- Direct-poll boxes: offer the switch INTO agent mode (management
+             enable_agent parity). Securepoint is pull-only by design. --%>
+        <div
+          :if={
+            not Instance.agent_mode?(@instance) and @writable and
+              @instance.device_type != "securepoint"
+          }
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Agent</h2>
+          <p class="mb-2 text-sm text-slate-500">
+            This box is polled directly. Switch to the push agent for live metrics,
+            shell, capture and the GUI tunnel.
+          </p>
+          <button
+            phx-click="agent_enable"
+            class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+          >
+            Enable agent mode
+          </button>
           <div
             :if={@agent_msg}
             class={[

@@ -167,6 +167,14 @@ defmodule OrbitWeb.Router do
     pipe_through :api
 
     post "/agent/enroll", EnrollController, :enroll
+
+    # Bootstrap downloads (update.py parity, no auth — the token/enroll code
+    # is the credential; these files are public on every install anyway).
+    get "/agent/script", AgentApiController, :download_script
+    get "/agent/rc", AgentApiController, :download_rc
+    get "/agent/run", AgentApiController, :download_run
+    get "/agent/systemd", AgentApiController, :download_systemd
+    get "/agent/checkmk", AgentApiController, :download_checkmk
   end
 
   # GUI-proxy subrequests: reached container-to-container from the reverse
