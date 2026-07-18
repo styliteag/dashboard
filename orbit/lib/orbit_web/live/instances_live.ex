@@ -664,8 +664,8 @@ defmodule OrbitWeb.InstancesLive do
                     class="accent-primary"
                   />
                 </th>
-                <.sort_th col="status" label="Status" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="name" label="Name" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="status" label="Status" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="location" label="Location" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="mode" label="Agent / Mode" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="tags" label="Tags" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -685,7 +685,6 @@ defmodule OrbitWeb.InstancesLive do
                     class="accent-primary"
                   />
                 </td>
-                <td class="px-3 py-2"><.status_badge row={i} /></td>
                 <td class="px-3 py-2">
                   <a href={~p"/instances/#{i.id}"} class="text-base-content hover:text-primary">
                     {i.name}
@@ -694,6 +693,7 @@ defmodule OrbitWeb.InstancesLive do
                   <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
                   <div class="text-xs text-base-content/40">{i.device_type}</div>
                 </td>
+                <td class="px-3 py-2"><.status_badge row={i} /></td>
                 <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>
                 <td class="px-3 py-2 text-base-content/70">
                   <span :if={i.agent_mode}>
