@@ -132,4 +132,44 @@ defmodule Orbit.NotifierTest do
     assert %{channel: "mattermost", status: "failed", detail: "blocked address 127.0.0.1"} =
              Enum.find(results, &(&1.channel == "mattermost"))
   end
+
+  describe "group channel overrides (GroupChannelSettings parity)" do
+    test "an override replaces the channel's own keys; absent json keys read empty" do
+      base = settings(@both)
+      overlay = Notifier.settings_for("telegram", base, %{"telegram" => %{"token" => "grp-tok"}})
+
+      assert overlay.("notify_telegram_token") == "grp-tok"
+      # chat_id not in the override config → "", NEVER the global value.
+      assert overlay.("notify_telegram_chat_id") == ""
+      # Non-channel keys (mutes, other channels) stay global.
+      assert overlay.("notify_mattermost_url") == @both["notify_mattermost_url"]
+    end
+
+    test "no override for the channel → the global settings pass through unchanged" do
+      base = settings(@both)
+      assert Notifier.settings_for("telegram", base, %{"email" => %{}}) == base
+      assert Notifier.settings_for("telegram", base, %{}) == base
+    end
+
+    test "dispatch sends to the group target instead of the global one" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test_pid, {:host, conn.host})
+        Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      results =
+        Notifier.dispatch("t", "m", "availability", 7,
+          respect_routes: false,
+          settings: settings(@both),
+          overrides: %{"mattermost" => %{"url" => "https://group.example.com/hooks/xyz"}},
+          req_plug: {Req.Test, __MODULE__},
+          ssrf_check: fn _url -> nil end
+        )
+
+      assert %{status: "sent"} = Enum.find(results, &(&1.channel == "mattermost"))
+      assert_received {:host, "group.example.com"}
+    end
+  end
 end

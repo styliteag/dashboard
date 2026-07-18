@@ -67,10 +67,37 @@ defmodule Orbit.Notifier do
     )
   end
 
+  # Per-group channel overrides (channel_config.py): JSON key in the
+  # fernet-encrypted group_channels.config_enc → the notify_* setting the
+  # (unchanged) senders read. A configured group channel REPLACES the global
+  # target for that send; missing JSON keys read as "" (never the global
+  # value); routing + mutes stay global either way.
+  @channel_fields %{
+    "mattermost" => %{"notify_mattermost_url" => "url"},
+    "telegram" => %{
+      "notify_telegram_token" => "token",
+      "notify_telegram_chat_id" => "chat_id"
+    },
+    "email" => %{
+      "notify_email_smtp_host" => "smtp_host",
+      "notify_email_smtp_port" => "smtp_port",
+      "notify_email_security" => "security",
+      "notify_email_from" => "from",
+      "notify_email_to" => "to",
+      "notify_email_username" => "username",
+      "notify_email_password" => "password"
+    }
+  }
+
   @doc false
   def dispatch(title, message, check_key, instance_id, opts) do
     respect_routes = Keyword.get(opts, :respect_routes, true)
     settings = Keyword.get(opts, :settings, &setting/1)
+
+    overrides =
+      Keyword.get_lazy(opts, :overrides, fn ->
+        if instance_id, do: group_channel_overrides(instance_id), else: %{}
+      end)
 
     Enum.map(@channels, fn channel ->
       cond do
@@ -81,9 +108,55 @@ defmodule Orbit.Notifier do
           %{channel: channel, status: "skipped", detail: "muted"}
 
         true ->
-          send_channel(channel, settings, title, message, opts)
+          send_channel(channel, settings_for(channel, settings, overrides), title, message, opts)
       end
     end)
+  end
+
+  @doc """
+  Settings accessor for one channel send: with a group override, the
+  channel's own notify_* keys come from the override config (absent JSON
+  keys read as "", GroupChannelSettings parity); everything else — mutes,
+  other channels — stays global.
+  """
+  def settings_for(channel, settings, overrides) do
+    case overrides do
+      %{^channel => config} when is_map(config) ->
+        fields = @channel_fields[channel] || %{}
+
+        fn key ->
+          case fields do
+            %{^key => json_key} -> Map.get(config, json_key, "")
+            _ -> settings.(key)
+          end
+        end
+
+      _ ->
+        settings
+    end
+  end
+
+  # `channel -> decrypted config` for the instance's group. Fail-OPEN to %{}
+  # (= global targets) on any error — a broken row or missing fernet key must
+  # degrade an alert to the global channel, never drop it.
+  defp group_channel_overrides(instance_id) do
+    rows =
+      Orbit.Repo.query!(
+        "SELECT gc.channel, gc.config_enc FROM group_channels gc " <>
+          "JOIN instances i ON i.group_id = gc.group_id WHERE i.id = ?",
+        [instance_id]
+      ).rows
+
+    Map.new(rows, fn [channel, config_enc] ->
+      {channel, config_enc |> Orbit.Crypto.decrypt() |> Jason.decode!()}
+    end)
+  rescue
+    e ->
+      Logger.warning(
+        "notify.group_channels_load_failed instance_id=#{instance_id} error=#{Exception.message(e)}"
+      )
+
+      %{}
   end
 
   # -- channels --------------------------------------------------------------
