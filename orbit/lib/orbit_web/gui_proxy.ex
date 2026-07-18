@@ -106,9 +106,23 @@ defmodule OrbitWeb.GuiProxy do
 
   defp proxy(conn, id) do
     with {:ok, port} <- TunnelManager.ensure(id),
-         {:ok, body, conn} <- read_body(conn, length: 25_000_000),
-         {:ok, resp} <- forward_with_retry(conn, port, body, 4) do
-      send_upstream(conn, resp)
+         {:ok, body, conn} <- read_body(conn, length: 25_000_000) do
+      case forward_with_retry(conn, port, body, 4) do
+        # SSE / chunked response: already streamed to the browser (send_chunked
+        # + chunk in the callback), the conn is sent — just hand it back.
+        {:streamed, conn} ->
+          conn
+
+        {:buffered, resp} ->
+          send_upstream(conn, resp)
+
+        other ->
+          Logger.warning(
+            "gui_proxy.forward_failed path=#{conn.request_path} err=#{inspect(other)}"
+          )
+
+          conn |> send_resp(502, "firewall gui unavailable") |> halt()
+      end
     else
       other ->
         Logger.warning("gui_proxy.forward_failed path=#{conn.request_path} err=#{inspect(other)}")
@@ -118,31 +132,24 @@ defmodule OrbitWeb.GuiProxy do
 
   # The FIRST request after a fresh forwarder races the tunnel bring-up:
   # tcp accept → agent open_tunnel → on-box connect → TLS/h2 handshake all
-  # happen on demand, and Finch's h2 pool answers :pool_not_available until
-  # the connection stands (user report: first tab load 502s, reload works).
-  # Connection-establishment failures never reached the firewall, so the
-  # retry is safe for any method.
-  @retryable_reasons [:pool_not_available, :closed, :econnrefused]
+  # happen on demand, and the h2 pool answers :pool_not_available until the
+  # connection stands (user report: first tab load 502s, reload works). These
+  # connection-establishment failures never reached the firewall (nothing was
+  # streamed yet), so the retry is safe for any method.
+  @retryable_reasons [:pool_not_available, :closed, :econnrefused, :connect_timeout]
 
   defp forward_with_retry(conn, port, body, attempts_left) do
     case forward(conn, port, body) do
-      {:error, %Req.HTTPError{reason: reason}} = err when reason in @retryable_reasons ->
-        retry_or_give_up(err, conn, port, body, attempts_left)
-
-      {:error, %Req.TransportError{reason: reason}} = err when reason in @retryable_reasons ->
-        retry_or_give_up(err, conn, port, body, attempts_left)
+      {:error, %{reason: reason}} = err when reason in @retryable_reasons ->
+        if attempts_left > 1 do
+          Process.sleep(250)
+          forward_with_retry(conn, port, body, attempts_left - 1)
+        else
+          err
+        end
 
       other ->
         other
-    end
-  end
-
-  defp retry_or_give_up(err, conn, port, body, attempts_left) do
-    if attempts_left > 1 do
-      Process.sleep(250)
-      forward_with_retry(conn, port, body, attempts_left - 1)
-    else
-      err
     end
   end
 
@@ -166,39 +173,82 @@ defmodule OrbitWeb.GuiProxy do
       conn.req_headers
       |> Enum.reject(fn {k, _} -> k in ["host", "connection", "content-length"] end)
 
-    do_forward(method, url, headers, body, retries_left(method))
+    do_forward(conn, method, url, headers, body, retries_left(method))
   end
 
   # GET/HEAD are safe to replay; a mutating method must never be retried.
   defp retries_left(m) when m in [:get, :head], do: 3
   defp retries_left(_), do: 0
 
-  defp do_forward(method, url, headers, body, retries) do
-    result =
-      Req.request(
-        finch: Orbit.GUI.Finch,
-        method: method,
-        url: url,
-        headers: headers,
-        # nil (not "") for bodyless methods: an empty DATA frame makes lighttpd's
-        # h2 parser 400 a GET.
-        body: if(body == "", do: nil, else: body),
-        redirect: false,
-        retry: false,
-        receive_timeout: 30_000,
-        decode_body: false
-      )
+  # Stream the response off the firewall. A text/event-stream (OPNsense's
+  # live traffic/log/CPU widgets) is passed through with send_chunked/chunk
+  # so it never buffers to completion (that timed out — user report); every
+  # other response accumulates and returns {:buffered, resp} for the
+  # existing send path. The h2 corruption + concurrency notes above still
+  # hold — this is the same Finch h2 pool, just streamed.
+  defp do_forward(conn, method, url, headers, body, retries) do
+    req =
+      Finch.build(method, url, headers, if(body == "", do: nil, else: body))
 
-    # All h2 streams on a connection are busy — transient, a stream frees within
-    # a few ms; retry idempotent methods instead of surfacing a 502 mid-page.
-    case result do
-      {:error, %Req.HTTPError{reason: :too_many_concurrent_requests}} when retries > 0 ->
-        Process.sleep(15)
-        do_forward(method, url, headers, body, retries - 1)
+    acc = %{status: nil, resp_headers: [], body: [], mode: :buffer, conn: conn}
 
-      other ->
-        other
+    try do
+      # receive_timeout is BETWEEN chunks — an idle SSE stream past this errors
+      # and closes; the browser's EventSource just reconnects. request_timeout
+      # off so a long-lived stream isn't capped as a whole.
+      case Finch.stream(req, Orbit.GUI.Finch, acc, &stream_step/2,
+             receive_timeout: 65_000,
+             request_timeout: :infinity
+           ) do
+        {:ok, %{mode: :stream, conn: conn}} ->
+          {:streamed, conn}
+
+        {:ok, %{status: status, resp_headers: hs, body: iodata}} ->
+          {:buffered, %{status: status, headers: hs, body: IO.iodata_to_binary(iodata)}}
+
+        # Finch.stream error tuple carries the accumulator as a third element.
+        {:error, %{reason: :too_many_concurrent_requests}, _acc} when retries > 0 ->
+          # All h2 streams on a connection are busy — transient (~ms); retry
+          # idempotent methods rather than 502 mid-page.
+          Process.sleep(15)
+          do_forward(conn, method, url, headers, body, retries - 1)
+
+        {:error, reason, _acc} ->
+          {:error, reason}
+      end
+    catch
+      # The browser hung up mid-stream — normal for SSE (tab closed, nav away).
+      {:client_gone, streamed_conn} -> {:streamed, streamed_conn}
     end
+  end
+
+  # Finch.stream callback (threads the acc map).
+  defp stream_step({:status, status}, acc), do: %{acc | status: status}
+
+  defp stream_step({:headers, headers}, acc) do
+    if sse?(headers) do
+      conn = acc.conn |> copy_headers(headers) |> Plug.Conn.send_chunked(acc.status)
+      %{acc | resp_headers: headers, mode: :stream, conn: conn}
+    else
+      %{acc | resp_headers: headers}
+    end
+  end
+
+  defp stream_step({:data, data}, %{mode: :stream, conn: conn} = acc) do
+    case Plug.Conn.chunk(conn, data) do
+      {:ok, conn} -> %{acc | conn: conn}
+      {:error, _closed} -> throw({:client_gone, conn})
+    end
+  end
+
+  defp stream_step({:data, data}, acc), do: %{acc | body: [acc.body | [data]]}
+  defp stream_step(_other, acc), do: acc
+
+  defp sse?(headers) do
+    Enum.any?(headers, fn {k, v} ->
+      String.downcase(to_string(k)) == "content-type" and
+        v |> to_string() |> String.downcase() |> String.contains?("text/event-stream")
+    end)
   end
 
   defp send_upstream(conn, resp) do

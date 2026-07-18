@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer fails with "firewall gui unavailable" — the proxy now retries the
   initial connection while the on-demand tunnel (agent stream + TLS/HTTP-2
   handshake) comes up.
+- Orbit GUI proxy: the live widgets inside a proxied firewall UI (traffic
+  graph, firewall log, CPU) now work — server-sent-event streams are passed
+  through chunked instead of buffering to a timeout.
 
 ### Added
 
