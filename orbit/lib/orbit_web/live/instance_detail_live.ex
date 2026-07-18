@@ -205,41 +205,9 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
-  # Canary mechanism (DR-6): one box per click. Same guards as the JSON route —
-  # pushing the served version only trips the agent's anti-rollback (no-op).
-  defp push_agent_update(inst, user) do
-    with %Orbit.Hub.Agent{} = agent <- Hub.get(inst.id),
-         {:ok, params} <- Orbit.Agent.Package.update_params() do
-      if agent.agent_version == params["version"] do
-        {:ok, "already at #{params["version"]}"}
-      else
-        result = Hub.send_command(inst.id, "agent.update", params, 30_000)
-
-        result =
-          if is_map(result), do: result, else: %{"success" => false, "output" => "no agent"}
-
-        Hub.pin_update_result(inst.id, result, params["version"])
-
-        Audit.write(
-          action: "agent.update",
-          result: if(result["success"], do: "ok", else: "error"),
-          user_id: user.id,
-          target_type: "instance",
-          target_id: inst.id,
-          detail: %{"version" => params["version"]}
-        )
-
-        if result["success"] do
-          {:ok, "update to #{params["version"]} pushed — agent restarts"}
-        else
-          {:error, String.slice(to_string(result["output"] || "update failed"), 0, 200)}
-        end
-      end
-    else
-      nil -> {:error, "agent not connected"}
-      {:error, :unavailable} -> {:error, "agent script not available"}
-    end
-  end
+  # Canary mechanism (DR-6): one box per click. Shared push logic lives in
+  # Orbit.Agent.Update (also drives the list page's "Update all agents").
+  defp push_agent_update(inst, user), do: Orbit.Agent.Update.push(inst, user)
 
   defp fw_start(%{assigns: %{writable: false}} = socket, _kind), do: socket
   defp fw_start(%{assigns: %{fw_busy: busy}} = socket, _kind) when not is_nil(busy), do: socket
