@@ -66,14 +66,21 @@ defmodule OrbitWeb.Components.ListKit do
   attr :instance_id, :integer, required: true
   attr :openable, :boolean, required: true, doc: "Orbit.GUI.openable(inst) == :ok, precomputed"
 
+  attr :path, :string,
+    default: nil,
+    doc: "deep-link inside the firewall GUI (e.g. /ui/ipsec/sessions); nil = GUI root"
+
+  attr :title, :string, default: "Open WebGUI (tunneled)"
+
   def webui_link(assigns) do
     ~H"""
     <button
       :if={@openable}
       phx-click="row_gui_open"
       phx-value-id={@instance_id}
-      title="Open WebGUI (tunneled)"
-      aria-label="Open WebGUI (tunneled)"
+      phx-value-path={@path}
+      title={@title}
+      aria-label={@title}
       class="inline-flex items-center rounded p-0.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
     >
       <%!-- heroicon: arrow-top-right-on-square (outline) --%>
@@ -132,14 +139,16 @@ defmodule OrbitWeb.Components.ListKit do
   pushes the one-shot handoff URL to the `phx:gui_open_url` window hook.
   Write role required — same gate as the detail page button.
   """
-  def gui_open_row(socket, raw_id) do
+  def gui_open_row(socket, raw_id, path \\ nil) do
     user = socket.assigns.current_user
 
     with true <- user.role in ~w(admin user),
          {id, ""} <- Integer.parse(to_string(raw_id)),
          inst when not is_nil(inst) <- Scope.get_instance(id, user),
          :ok <- Orbit.GUI.openable(inst) do
-      url = Orbit.GUI.open_flow(inst, nil)
+      # open_flow clamps the deep-link path via GUI.safe_next (open-redirect
+      # guard); a nil/blank path lands on the GUI root.
+      url = Orbit.GUI.open_flow(inst, presence(path))
 
       Orbit.Audit.write(
         action: "agent.gui_open",
@@ -154,4 +163,13 @@ defmodule OrbitWeb.Components.ListKit do
       _ -> socket
     end
   end
+
+  defp presence(nil), do: nil
+  defp presence(""), do: nil
+  defp presence(p) when is_binary(p), do: p
+
+  @doc "The firewall's own IPsec status page per device type (nil → GUI root)."
+  def ipsec_ui_path("opnsense"), do: "/ui/ipsec/sessions"
+  def ipsec_ui_path("pfsense"), do: "/status_ipsec.php"
+  def ipsec_ui_path(_other), do: nil
 end

@@ -21,6 +21,8 @@ defmodule OrbitWeb.InstancesLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit, only: [webui_link: 1, shell_link: 1, gui_open_row: 3]
+
   alias Orbit.Audit
   alias Orbit.Bulk
   alias Orbit.Hub
@@ -221,6 +223,10 @@ defmodule OrbitWeb.InstancesLive do
     {:noreply, assign(socket, update_msg: nil)}
   end
 
+  def handle_event("row_gui_open", %{"id" => id} = p, socket) do
+    {:noreply, gui_open_row(socket, id, p["path"])}
+  end
+
   @impl true
   def handle_async(:bulk, {:ok, {:ok, results}}, socket) do
     {:noreply, assign(socket, bulk_busy: false, bulk_results: results)}
@@ -297,7 +303,9 @@ defmodule OrbitWeb.InstancesLive do
           online: Instances.online?(inst),
           agent_connected: agent_connected,
           bucket: Instances.status_bucket(inst, agent_connected),
-          alerts: alert_counts[inst.id] || %{crit: 0, warn: 0}
+          alerts: alert_counts[inst.id] || %{crit: 0, warn: 0},
+          shell_enabled: inst.shell_enabled,
+          gui_openable: Orbit.GUI.openable(inst) == :ok
         }
       end)
 
@@ -600,6 +608,8 @@ defmodule OrbitWeb.InstancesLive do
               >
                 {i.name}
               </a>
+              <.webui_link instance_id={i.id} openable={i.gui_openable} />
+              <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
               <.status_badge row={i} />
             </div>
             <div class="mt-2 space-y-1 text-xs text-base-content/70">
@@ -680,6 +690,8 @@ defmodule OrbitWeb.InstancesLive do
                   <a href={~p"/instances/#{i.id}"} class="text-base-content hover:text-primary">
                     {i.name}
                   </a>
+                  <.webui_link instance_id={i.id} openable={i.gui_openable} />
+                  <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
                   <div class="text-xs text-base-content/40">{i.device_type}</div>
                 </td>
                 <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>

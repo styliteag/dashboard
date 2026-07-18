@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through chunked instead of buffering to a timeout.
 
 ### Added
+- Orbit: the VPN page's WebGUI icon now deep-links to the firewall's own
+  IPsec status page (/ui/ipsec/sessions on OPNsense, /status_ipsec.php on
+  pfSense) instead of the GUI root, matching the old UI.
+- Orbit: the Instances list rows (list and grid) get the WebUI and Terminal
+  quick links they were missing — same per-row icons as the fleet pages.
 
 - Orbit (LiveView rewrite): metric history charts on the instance detail page
   — CPU, RAM, load, pf states, agent collect time and the uptime sawtooth,

@@ -78,8 +78,8 @@ defmodule OrbitWeb.VpnLive do
     {:noreply, assign(socket, sort_col: col, sort_dir: dir)}
   end
 
-  def handle_event("row_gui_open", %{"id" => id}, socket) do
-    {:noreply, gui_open_row(socket, id)}
+  def handle_event("row_gui_open", %{"id" => id} = p, socket) do
+    {:noreply, gui_open_row(socket, id, p["path"])}
   end
 
   def handle_event("toggle_expand", %{"key" => key}, socket) do
@@ -364,6 +364,7 @@ defmodule OrbitWeb.VpnLive do
           %{
             instance_id: inst.id,
             instance_name: inst.name,
+            device_type: inst.device_type,
             shell_enabled: inst.shell_enabled,
             gui_openable: gui_openable,
             id: to_string(t["id"] || t["description"] || "tunnel"),
@@ -532,7 +533,12 @@ defmodule OrbitWeb.VpnLive do
                     >
                       {t.instance_name}
                     </a>
-                    <.webui_link instance_id={t.instance_id} openable={t.gui_openable} />
+                    <.webui_link
+                      instance_id={t.instance_id}
+                      openable={t.gui_openable}
+                      path={ipsec_ui_path(t.device_type)}
+                      title="Open the firewall's IPsec status page (tunneled)"
+                    />
                     <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
                   </td>
                   <td class="px-3 py-2 text-base-content/80">{t.label}</td>
