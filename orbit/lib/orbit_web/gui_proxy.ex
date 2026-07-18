@@ -22,6 +22,7 @@ defmodule OrbitWeb.GuiProxy do
   import Plug.Conn
 
   alias Orbit.GUI.Auth
+  alias Orbit.GUI.SessionStash
   alias Orbit.GUI.TunnelManager
 
   @cookie Auth.cookie_name()
@@ -54,19 +55,39 @@ defmodule OrbitWeb.GuiProxy do
   end
 
   defp handoff(conn, id) do
-    if Auth.verify(conn.query_params["t"] || "") == id do
+    token = conn.query_params["t"] || ""
+
+    if Auth.verify(token) == id do
       conn
       |> put_resp_cookie(@cookie, Auth.sign(id, 8 * 3600),
         http_only: true,
+        secure: conn.scheme == :https,
         same_site: "Lax",
         path: "/"
       )
+      |> put_stashed_cookies(token)
       |> put_resp_header("location", Orbit.GUI.safe_next(conn.query_params["next"]))
       |> send_resp(302, "")
       |> halt()
     else
       conn |> send_resp(403, "invalid handoff token") |> halt()
     end
+  end
+
+  # Replay the firewall's own session cookies (stashed at gui/open by the
+  # agent's gui.login) onto THIS proxy origin, so the very first proxied
+  # request already carries a logged-in session — the pre-authentication.
+  # Origin-scoped (path "/", same_site Lax); secure only when the proxy
+  # origin is https (dev is plain http on <slug>.localhost, so no secure).
+  defp put_stashed_cookies(conn, token) do
+    Enum.reduce(SessionStash.pop(token), conn, fn {name, value}, acc ->
+      put_resp_cookie(acc, name, value,
+        http_only: true,
+        secure: conn.scheme == :https,
+        same_site: "Lax",
+        path: "/"
+      )
+    end)
   end
 
   defp gated_proxy(conn, id) do
