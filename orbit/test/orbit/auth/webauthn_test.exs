@@ -130,4 +130,122 @@ defmodule Orbit.Auth.WebauthnTest do
       assert {:error, :invalid_credential} = Webauthn.verify_registration("nope", challenge)
     end
   end
+
+  # A real P-256 keypair + a real ECDSA signature: unlike "none" registration,
+  # Wax.authenticate verifies the assertion signature, so garbage keys won't do.
+  @auth_cred_id :binary.copy(<<0xCD>>, 20)
+
+  defp p256_keypair do
+    {pub, priv} = :crypto.generate_key(:ecdh, :secp256r1)
+    <<0x04, x::binary-size(32), y::binary-size(32)>> = pub
+
+    cose =
+      CBOR.encode(%{
+        1 => 2,
+        3 => -7,
+        -1 => 1,
+        -2 => %CBOR.Tag{tag: :bytes, value: x},
+        -3 => %CBOR.Tag{tag: :bytes, value: y}
+      })
+
+    {priv, cose}
+  end
+
+  defp cred(cred_id, cose, transports \\ nil) do
+    %{
+      credential_id: Base.url_encode64(cred_id, padding: false),
+      public_key: cose,
+      transports: transports
+    }
+  end
+
+  # Assertion authenticator data is just rpIdHash + flags + signCount (no
+  # attested-credential-data, AT flag off); the signed message is
+  # authData ‖ sha256(clientDataJSON), signed ES256 (DER, WebAuthn wire format).
+  defp auth_vector(challenge, priv, cred_id, sign_count) do
+    origin = challenge.origin |> List.wrap() |> List.first()
+    auth_data = :crypto.hash(:sha256, challenge.rp_id) <> <<0x05>> <> <<sign_count::32>>
+
+    client_data =
+      Jason.encode!(%{
+        "type" => "webauthn.get",
+        "challenge" => Base.url_encode64(challenge.bytes, padding: false),
+        "origin" => origin
+      })
+
+    msg = auth_data <> :crypto.hash(:sha256, client_data)
+    sig = :crypto.sign(:ecdsa, :sha256, msg, [priv, :secp256r1])
+
+    %{
+      "id" => Base.url_encode64(cred_id, padding: false),
+      "rawId" => Base.url_encode64(cred_id, padding: false),
+      "type" => "public-key",
+      "response" => %{
+        "authenticatorData" => Base.url_encode64(auth_data, padding: false),
+        "clientDataJSON" => Base.url_encode64(client_data, padding: false),
+        "signature" => Base.url_encode64(sig, padding: false),
+        "userHandle" => nil
+      }
+    }
+  end
+
+  describe "authentication_options/1" do
+    test "emits allowCredentials + an authentication challenge" do
+      creds = [cred(@auth_cred_id, <<>>, "internal,hybrid")]
+      {options, challenge} = Webauthn.authentication_options(creds)
+
+      assert %Wax.Challenge{type: :authentication} = challenge
+      assert options["rpId"] == challenge.rp_id
+      assert options["challenge"] == Base.url_encode64(challenge.bytes, padding: false)
+
+      assert [%{"type" => "public-key", "transports" => ["internal", "hybrid"]}] =
+               options["allowCredentials"]
+    end
+  end
+
+  describe "verify_authentication/3" do
+    test "accepts an assertion signed by the stored key and returns the new counter" do
+      {priv, cose} = p256_keypair()
+      creds = [cred(@auth_cred_id, cose, "internal")]
+      {_options, challenge} = Webauthn.authentication_options(creds)
+      assertion = auth_vector(challenge, priv, @auth_cred_id, 9)
+
+      assert {:ok, verified} = Webauthn.verify_authentication(assertion, challenge, creds)
+      assert verified.credential_id == Base.url_encode64(@auth_cred_id, padding: false)
+      assert verified.sign_count == 9
+    end
+
+    test "rejects an assertion for a credential the user does not have (cross-user guard)" do
+      {priv, cose} = p256_keypair()
+      creds = [cred(@auth_cred_id, cose)]
+      {_options, challenge} = Webauthn.authentication_options(creds)
+      assertion = auth_vector(challenge, priv, @auth_cred_id, 1)
+
+      # Empty creds = the pending user owns no matching key → no COSE to verify.
+      assert {:error, _} = Webauthn.verify_authentication(assertion, challenge, [])
+    end
+
+    test "rejects a tampered signature" do
+      {priv, cose} = p256_keypair()
+      creds = [cred(@auth_cred_id, cose)]
+      {_options, challenge} = Webauthn.authentication_options(creds)
+
+      bad =
+        challenge
+        |> auth_vector(priv, @auth_cred_id, 1)
+        |> put_in(["response", "signature"], Base.url_encode64(<<0::560>>, padding: false))
+
+      assert {:error, _} = Webauthn.verify_authentication(bad, challenge, creds)
+    end
+
+    test "rejects a stale challenge (fresh challenge → clientdata mismatch)" do
+      {priv, cose} = p256_keypair()
+      creds = [cred(@auth_cred_id, cose)]
+      {_options, challenge} = Webauthn.authentication_options(creds)
+      assertion = auth_vector(challenge, priv, @auth_cred_id, 1)
+      {_options, other} = Webauthn.authentication_options(creds)
+
+      assert {:error, _} = Webauthn.verify_authentication(assertion, other, creds)
+    end
+  end
 end

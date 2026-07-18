@@ -301,6 +301,24 @@ defmodule Orbit.Accounts do
   @spec last_factor?(boolean(), non_neg_integer()) :: boolean()
   def last_factor?(totp_enabled?, count), do: not totp_enabled? and count <= 1
 
+  @doc """
+  Record a successful passkey assertion: bump the clone-detection counter and
+  stamp last_used_at. Scoped by user_id AND credential_id so an assertion never
+  touches another user's row (webauthn_auth_verify parity). No-op if the id
+  doesn't belong to the user.
+  """
+  @spec record_passkey_use(User.t(), String.t(), non_neg_integer()) :: :ok
+  def record_passkey_use(%User{id: id}, credential_id, sign_count) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(c in WebauthnCredential,
+      where: c.user_id == ^id and c.credential_id == ^credential_id
+    )
+    |> Repo.update_all(set: [sign_count: sign_count, last_used_at: now])
+
+    :ok
+  end
+
   defp normalize_name(name) when is_binary(name) do
     case String.trim(name) do
       "" -> nil

@@ -31,14 +31,9 @@ defmodule OrbitWeb.SessionController do
         |> UserAuth.log_in_user(user)
         |> redirect(to: ~p"/")
 
-      {:ok, {:verify, user, %{totp: true}}} ->
-        conn
-        |> UserAuth.put_pending_mfa(user)
-        |> redirect(to: ~p"/login/totp")
-
       {:ok, {:verify, user, _factors}} ->
-        # Passkey-only account — WebAuthn ships later in the rewrite; TOTP
-        # form still renders so a totp+passkey user is never locked out.
+        # Any enrolled second factor → the /login/totp page, which offers the
+        # code form and/or the passkey button per the user's actual factors.
         conn
         |> UserAuth.put_pending_mfa(user)
         |> redirect(to: ~p"/login/totp")
@@ -65,8 +60,12 @@ defmodule OrbitWeb.SessionController do
 
   def totp_form(conn, _params) do
     case UserAuth.pending_mfa_user(conn) do
-      nil -> redirect_to_login(conn)
-      _user -> render(conn, :totp, error: nil)
+      nil ->
+        redirect_to_login(conn)
+
+      user ->
+        factors = Accounts.factor_state(user)
+        render(conn, :totp, error: nil, totp: factors.totp, webauthn: factors.webauthn)
     end
   end
 
@@ -88,10 +87,77 @@ defmodule OrbitWeb.SessionController do
           # failed password (python parity: brute-forcing codes locks the IP).
           LoginLimiter.record_failure(client_ip(conn))
           audit_login(conn, "error", user.id, %{"reason" => "bad_totp"})
-          render(conn, :totp, error: "Invalid code.")
+          factors = Accounts.factor_state(user)
+
+          render(conn, :totp,
+            error: "Invalid code.",
+            totp: factors.totp,
+            webauthn: factors.webauthn
+          )
         end
     end
   end
+
+  # -- Passkey login (webauthn_auth_options / _verify port) ------------------
+  # Both run on the pending-MFA session (password already passed). The user's
+  # credentials come ONLY from pending_mfa_user — an assertion can never satisfy
+  # another account. The challenge is stashed in the session between the calls.
+
+  @wa_challenge :wa_login_challenge
+
+  def passkey_options(conn, _params) do
+    case UserAuth.pending_mfa_user(conn) do
+      nil ->
+        conn |> put_status(401) |> json(%{error: "no pending login"})
+
+      user ->
+        case Accounts.list_credentials(user) do
+          [] ->
+            conn |> put_status(400) |> json(%{error: "no passkey enrolled"})
+
+          creds ->
+            {options, challenge} = Orbit.Auth.Webauthn.authentication_options(creds)
+            conn |> put_session(@wa_challenge, challenge) |> json(options)
+        end
+    end
+  end
+
+  def passkey_verify(conn, %{"credential" => credential}) do
+    user = UserAuth.pending_mfa_user(conn)
+    challenge = get_session(conn, @wa_challenge)
+    ip = client_ip(conn)
+
+    cond do
+      LoginLimiter.locked?(ip) ->
+        conn |> put_status(429) |> json(%{error: "too many attempts"})
+
+      is_nil(user) or is_nil(challenge) ->
+        conn |> put_status(400) |> json(%{error: "no pending login"})
+
+      true ->
+        creds = Accounts.list_credentials(user)
+
+        case Orbit.Auth.Webauthn.verify_authentication(credential, challenge, creds) do
+          {:ok, %{credential_id: cred_id, sign_count: sign_count}} ->
+            Accounts.record_passkey_use(user, cred_id, sign_count)
+            LoginLimiter.record_success(ip)
+            audit_login(conn, "ok", user.id, %{"reason" => "passkey"})
+
+            conn
+            |> delete_session(@wa_challenge)
+            |> UserAuth.log_in_user(user)
+            |> json(%{ok: true})
+
+          {:error, _reason} ->
+            LoginLimiter.record_failure(ip)
+            audit_login(conn, "error", user.id, %{"reason" => "passkey_failed"})
+            conn |> put_status(400) |> json(%{error: "passkey verification failed"})
+        end
+    end
+  end
+
+  def passkey_verify(conn, _params),
+    do: conn |> put_status(400) |> json(%{error: "missing credential"})
 
   # TOTP enrollment during login (mandatory 2FA, mfa_routes.py port). Each
   # GET mints a fresh pending secret (enabled stays false until confirmed) —

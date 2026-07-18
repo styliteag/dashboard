@@ -14,8 +14,11 @@ defmodule Orbit.Auth.Webauthn do
   keeping `public_key` as the **raw COSE bytes** sliced from the authenticator
   data so they are byte-identical to what the python stack stores.
 
-  Only registration + its options are here (this slice is passkey MANAGEMENT).
-  Authentication (passkey login) is a later slice with its own vector.
+  `authentication_options/1` + `verify_authentication/3` are the login (assertion)
+  half. The challenge is stashed keyless (no COSE keys) so it stays small in the
+  session cookie; the caller passes the pending user's credentials fresh at
+  verify (`Wax.authenticate/6` credentials arg) — which is also the cross-user
+  guard: only THIS user's keys can satisfy the assertion.
   """
 
   # COSE algorithm identifiers advertised to the authenticator (it picks one).
@@ -109,6 +112,77 @@ defmodule Orbit.Auth.Webauthn do
 
   def verify_registration(_credential, _challenge), do: {:error, :invalid_credential}
 
+  @doc """
+  `{options_map, %Wax.Challenge{}}` for `navigator.credentials.get`.
+
+  The challenge is stashed WITHOUT the COSE keys (they are re-supplied at verify)
+  so it stays small in the session cookie. `creds` are the pending user's stored
+  credentials; the options list them so the browser can pick a matching key.
+  """
+  @spec authentication_options([map()]) :: {map(), Wax.Challenge.t()}
+  def authentication_options(creds) do
+    challenge = Wax.new_authentication_challenge(origin: origins(), rp_id: rp_id())
+
+    options = %{
+      "challenge" => b64(challenge.bytes),
+      "timeout" => 60_000,
+      "rpId" => rp_id(),
+      "userVerification" => "preferred",
+      "allowCredentials" => Enum.map(creds, &descriptor/1)
+    }
+
+    {options, challenge}
+  end
+
+  @doc """
+  Verify an assertion (the `@simplewebauthn/browser` AuthenticationResponseJSON
+  map) against the stashed challenge, checking the signature with the COSE key
+  of the matching credential among `creds` (only THIS user's keys — the
+  cross-user guard). On success → `{:ok, %{credential_id, sign_count}}`; the
+  caller bumps that row's sign_count + last_used_at.
+  """
+  @spec verify_authentication(map(), Wax.Challenge.t(), [map()]) ::
+          {:ok, %{credential_id: String.t(), sign_count: non_neg_integer()}} | {:error, term()}
+  def verify_authentication(credential, %Wax.Challenge{} = challenge, creds)
+      when is_map(credential) and is_list(creds) do
+    with {:ok, cred_id_b64} <- fetch(credential, "id"),
+         {:ok, response} <- fetch(credential, "response"),
+         {:ok, adata_b64} <- fetch(response, "authenticatorData"),
+         {:ok, sig_b64} <- fetch(response, "signature"),
+         {:ok, cdj_b64} <- fetch(response, "clientDataJSON"),
+         {:ok, cred_id} <- b64d(cred_id_b64),
+         {:ok, auth_data_bin} <- b64d(adata_b64),
+         {:ok, sig} <- b64d(sig_b64),
+         {:ok, client_data_json} <- b64d(cdj_b64),
+         allowed = credential_keys(creds),
+         {:ok, auth_data} <-
+           Wax.authenticate(cred_id, auth_data_bin, sig, client_data_json, challenge, allowed) do
+      {:ok, %{credential_id: cred_id_b64, sign_count: auth_data.sign_count}}
+    else
+      {:error, _} = err -> err
+      other -> {:error, other}
+    end
+  end
+
+  def verify_authentication(_credential, _challenge, _creds), do: {:error, :invalid_credential}
+
+  # {raw credential_id, COSE key map} pairs for wax's authenticate/6, decoded
+  # from the stored base64url id + raw COSE bytes. A bad row is skipped, not
+  # fatal (another key may still match).
+  defp credential_keys(creds) do
+    for c <- creds,
+        {:ok, id} <- [Base.url_decode64(c.credential_id, padding: false)],
+        {:ok, cose, _} <- [safe_cbor(c.public_key)] do
+      {id, cose}
+    end
+  end
+
+  defp safe_cbor(bytes) do
+    Wax.Utils.CBOR.decode(bytes)
+  rescue
+    _ -> :error
+  end
+
   # -- COSE extraction ------------------------------------------------------
 
   # Slice the *raw* COSE public-key bytes out of the authenticator data instead
@@ -130,10 +204,12 @@ defmodule Orbit.Auth.Webauthn do
 
   # -- helpers --------------------------------------------------------------
 
+  # cred may be a WebauthnCredential struct (structs don't implement Access, so
+  # never cred[:transports]) or a plain map — Map.get handles both key forms.
   defp descriptor(%{credential_id: cid} = cred) do
     base = %{"type" => "public-key", "id" => cid}
 
-    case parse_transports(cred[:transports] || cred["transports"]) do
+    case parse_transports(Map.get(cred, :transports) || Map.get(cred, "transports")) do
       [] -> base
       ts -> Map.put(base, "transports", ts)
     end

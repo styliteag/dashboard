@@ -1,7 +1,11 @@
 <main class="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
   <div class="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
     <h1 class="mb-1 text-xl font-semibold text-slate-100">Two-factor authentication</h1>
-    <p class="mb-6 text-sm text-slate-400">Enter the 6-digit code from your authenticator app.</p>
+    <p class="mb-6 text-sm text-slate-400">
+      {if @totp,
+        do: "Enter the 6-digit code from your authenticator app.",
+        else: "Sign in with your passkey."}
+    </p>
 
     <p
       :if={@error}
@@ -10,7 +14,13 @@
       {@error}
     </p>
 
-    <form action={~p"/login/totp"} method="post" class="space-y-4">
+    <p
+      id="passkey-error"
+      class="mb-4 hidden rounded-md border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-300"
+    >
+    </p>
+
+    <form :if={@totp} action={~p"/login/totp"} method="post" class="space-y-4">
       <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
       <input
         type="text"
@@ -32,6 +42,21 @@
       </button>
     </form>
 
+    <div :if={@totp and @webauthn} class="my-4 flex items-center gap-3 text-xs text-slate-500">
+      <span class="h-px flex-1 bg-slate-800"></span>
+      or <span class="h-px flex-1 bg-slate-800"></span>
+    </div>
+
+    <button
+      :if={@webauthn}
+      type="button"
+      id="passkey-login"
+      data-csrf={Plug.CSRFProtection.get_csrf_token()}
+      class="w-full rounded-md border border-slate-700 bg-slate-800 px-4 py-2 font-medium text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+    >
+      Use a passkey
+    </button>
+
     <a
       href={~p"/login"}
       class="mt-4 block text-center text-sm text-slate-400 hover:text-slate-200"
@@ -39,4 +64,72 @@
       Back to login
     </a>
   </div>
+
+  <script :if={@webauthn}>
+    (function () {
+      const btn = document.getElementById("passkey-login");
+      if (!btn) return;
+      const csrf = btn.dataset.csrf;
+      const errEl = document.getElementById("passkey-error");
+      const showErr = (m) => { if (errEl) { errEl.textContent = m; errEl.classList.remove("hidden"); } };
+
+      const b64urlToBuf = (s) => {
+        const pad = "=".repeat((4 - (s.length % 4)) % 4);
+        const bin = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+        const b = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+        return b.buffer;
+      };
+      const bufToB64url = (buf) => {
+        const b = new Uint8Array(buf);
+        let s = "";
+        for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+        return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      };
+
+      btn.addEventListener("click", async () => {
+        if (!window.PublicKeyCredential) { showErr("This browser has no passkey support."); return; }
+        btn.disabled = true;
+        try {
+          const opts = await fetch("/login/passkey/options", {
+            method: "POST", headers: { "x-csrf-token": csrf },
+          }).then((r) => { if (!r.ok) throw new Error("options"); return r.json(); });
+
+          const publicKey = {
+            ...opts,
+            challenge: b64urlToBuf(opts.challenge),
+            allowCredentials: (opts.allowCredentials || []).map((c) => ({ ...c, id: b64urlToBuf(c.id) })),
+          };
+          const cred = await navigator.credentials.get({ publicKey });
+          const r = cred.response;
+          const payload = {
+            credential: {
+              id: cred.id,
+              rawId: bufToB64url(cred.rawId),
+              type: cred.type,
+              authenticatorAttachment: cred.authenticatorAttachment || null,
+              clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+              response: {
+                authenticatorData: bufToB64url(r.authenticatorData),
+                clientDataJSON: bufToB64url(r.clientDataJSON),
+                signature: bufToB64url(r.signature),
+                userHandle: r.userHandle ? bufToB64url(r.userHandle) : null,
+              },
+            },
+          };
+          const res = await fetch("/login/passkey/verify", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-csrf-token": csrf },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) { window.location = "/"; } else { showErr("Passkey sign-in failed."); }
+        } catch (e) {
+          const dismissed = e && (e.name === "NotAllowedError" || e.name === "AbortError");
+          showErr(dismissed ? "Passkey prompt was dismissed." : "Could not use a passkey.");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
 </main>
