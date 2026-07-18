@@ -15,7 +15,8 @@ defmodule Orbit.Application do
       {Orbit.Auth.LoginLimiter, []},
       {Orbit.Settings, []},
       {Orbit.Hub, []},
-      {Orbit.Shell.Slots, []}
+      {Orbit.Shell.Slots, []},
+      {Orbit.Capture.Snapshots, []}
     ]
 
     # GeoIP gate + access accounting start BEFORE the endpoint — both must

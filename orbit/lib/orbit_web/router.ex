@@ -142,6 +142,7 @@ defmodule OrbitWeb.Router do
     get "/instances/:instance_id/config-backups/:backup_id/raw", ConfigBackupController, :raw
     get "/instances/:instance_id/config-backups/:backup_id/diff", ConfigBackupController, :diff
     get "/export/instances.csv", ExportController, :instances_csv
+    get "/captures/:cap_id/pcap", CaptureDownloadController, :pcap
   end
 
   # Write-gated api mutations (require_write parity).
