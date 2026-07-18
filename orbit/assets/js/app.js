@@ -59,11 +59,56 @@ const Terminal = {
   destroyed() { this.ws && this.ws.close() },
 }
 
+// Capture hook: streams a live tcpdump on the box over the session-authed
+// capture WS (/api/ws/capture/:id). The agent sends base64 pcap-ish text
+// lines as binary frames; started/error arrive as JSON control frames.
+// interface/filter come from the element's data attrs (set by the form).
+const Capture = {
+  mounted() {
+    const el = this.el
+    const out = el.querySelector("[data-cap-out]")
+    const status = el.querySelector("[data-cap-status]")
+    const id = el.dataset.instanceId
+    const iface = encodeURIComponent(el.dataset.interface || "")
+    const filter = encodeURIComponent(el.dataset.filter || "")
+    const proto = location.protocol === "https:" ? "wss" : "ws"
+    const ws = new WebSocket(
+      `${proto}://${location.host}/api/ws/capture/${id}?interface=${iface}&filter=${filter}`,
+    )
+    ws.binaryType = "arraybuffer"
+    this.ws = ws
+    let lines = 0
+    ws.onmessage = e => {
+      if (typeof e.data === "string") {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.op === "started") status.textContent = "capturing…"
+          else if (msg.op === "error") status.textContent = `error: ${msg.message || "capture failed"}`
+        } catch (_) {}
+        return
+      }
+      const text = new TextDecoder().decode(e.data)
+      out.textContent += text
+      lines += (text.match(/\n/g) || []).length
+      // Bound the DOM: keep the last ~2000 lines.
+      if (lines > 2000) {
+        const kept = out.textContent.split("\n").slice(-2000)
+        out.textContent = kept.join("\n")
+        lines = kept.length
+      }
+      out.scrollTop = out.scrollHeight
+    }
+    ws.onclose = e => { status.textContent = `closed (${e.code})` }
+    ws.onerror = () => { status.textContent = "connection error" }
+  },
+  destroyed() { this.ws && this.ws.close() },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal},
+  hooks: {...colocatedHooks, Terminal, Capture},
 })
 
 // Show progress bar on live navigation and form submits

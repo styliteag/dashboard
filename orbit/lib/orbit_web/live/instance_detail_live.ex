@@ -462,6 +462,13 @@ defmodule OrbitWeb.InstanceDetailLive do
           </a>
           <a
             :if={@writable}
+            href={~p"/instances/#{@instance.id}/capture"}
+            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Capture
+          </a>
+          <a
+            :if={@writable}
             href={~p"/instances/#{@instance.id}/edit"}
             class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
           >
