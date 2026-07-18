@@ -39,6 +39,7 @@ defmodule OrbitWeb.VpnLive do
      |> assign(
        search: "",
        state_filter: "all",
+       active_tag: nil,
        sort_col: "state",
        sort_dir: :asc,
        busy: MapSet.new(),
@@ -67,6 +68,14 @@ defmodule OrbitWeb.VpnLive do
   def handle_event("state_filter", %{"bucket" => b}, socket) when b in ~w(all up down) do
     b = if socket.assigns.state_filter == b, do: "all", else: b
     {:noreply, assign(socket, state_filter: b)}
+  end
+
+  def handle_event("tag_filter", %{"tag" => ""}, socket),
+    do: {:noreply, assign(socket, active_tag: nil)}
+
+  def handle_event("tag_filter", %{"tag" => tag}, socket) do
+    tag = if socket.assigns.active_tag == tag, do: nil, else: tag
+    {:noreply, assign(socket, active_tag: tag)}
   end
 
   def handle_event("sort", %{"col" => col}, socket) when col in @sort_cols do
@@ -378,7 +387,8 @@ defmodule OrbitWeb.VpnLive do
             uptime_s: int0(t["seconds_established"]),
             bytes_in: int0(t["bytes_in"]),
             bytes_out: int0(t["bytes_out"]),
-            children: t["children"] || []
+            children: t["children"] || [],
+            tags: inst.tags || []
           }
         end
       end)
@@ -400,7 +410,8 @@ defmodule OrbitWeb.VpnLive do
       q == "" or
         String.contains?(String.downcase(t.instance_name), q) or
         String.contains?(String.downcase(to_string(t.label)), q) or
-        String.contains?(String.downcase(t.remote), q)
+        String.contains?(String.downcase(t.remote), q) or
+        Enum.any?(t.tags, &String.contains?(String.downcase(&1), q))
     end)
     |> Enum.filter(fn t ->
       case a.state_filter do
@@ -409,6 +420,7 @@ defmodule OrbitWeb.VpnLive do
         "down" -> not t.up
       end
     end)
+    |> Enum.filter(&(a.active_tag == nil or a.active_tag in &1.tags))
     |> Enum.sort_by(sort_key(a.sort_col), a.sort_dir)
   end
 
@@ -424,7 +436,8 @@ defmodule OrbitWeb.VpnLive do
       assign(assigns,
         rows: visible(assigns),
         up_count: Enum.count(assigns.tunnels, & &1.up),
-        down_count: Enum.count(assigns.tunnels, &(not &1.up))
+        down_count: Enum.count(assigns.tunnels, &(not &1.up)),
+        all_tags: assigns.tunnels |> Enum.flat_map(& &1.tags) |> Enum.uniq() |> Enum.sort()
       )
 
     ~H"""
@@ -467,11 +480,25 @@ defmodule OrbitWeb.VpnLive do
             type="text"
             name="q"
             value={@search}
-            placeholder="Search instance, tunnel, remote…"
+            placeholder="Search instance, tunnel, remote, tag…"
             phx-debounce="300"
             class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </form>
+
+        <div :if={@all_tags != []} class="mb-3 flex flex-wrap gap-2">
+          <button phx-click="tag_filter" phx-value-tag="" class={chip(@active_tag == nil)}>
+            All
+          </button>
+          <button
+            :for={tag <- @all_tags}
+            phx-click="tag_filter"
+            phx-value-tag={tag}
+            class={chip(@active_tag == tag)}
+          >
+            {tag}
+          </button>
+        </div>
 
         <div
           :if={@msg}
