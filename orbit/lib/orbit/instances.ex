@@ -34,6 +34,37 @@ defmodule Orbit.Instances do
   def online?(%Instance{last_success_at: succ, last_error_at: err}),
     do: DateTime.compare(succ, err) == :gt
 
+  @doc """
+  Three-way status bucket for the list KPI tiles and row badges
+  (statusBucket parity, InstancesPage.tsx): agent-mode boxes bucket by the
+  live WS connection; polled boxes by the 5-minute success/error window.
+  Tiles are counted from the same function the badges render from, so the
+  two can never drift.
+  """
+  @spec status_bucket(Instance.t(), boolean(), DateTime.t()) :: String.t()
+  def status_bucket(%Instance{} = inst, agent_connected, now \\ DateTime.utc_now()) do
+    if Instance.agent_mode?(inst) do
+      if agent_connected, do: "online", else: "offline"
+    else
+      cutoff = DateTime.add(now, -300)
+      succ = inst.last_success_at
+      err = inst.last_error_at
+
+      cond do
+        succ != nil and DateTime.compare(succ, cutoff) != :lt and
+            (err == nil or DateTime.compare(succ, err) == :gt) ->
+          "online"
+
+        succ != nil and DateTime.compare(succ, cutoff) != :lt and err != nil and
+          DateTime.compare(err, cutoff) != :lt and DateTime.compare(err, succ) != :lt ->
+          "degraded"
+
+        true ->
+          "offline"
+      end
+    end
+  end
+
   # -- mutations (instances/service.py port) ---------------------------------
 
   @editable_fields ~w(name base_url location notes ping_url ssl_verify gui_login_enabled

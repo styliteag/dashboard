@@ -296,37 +296,12 @@ defmodule OrbitWeb.InstancesLive do
               agent.agent_version != served,
           online: Instances.online?(inst),
           agent_connected: agent_connected,
-          bucket: bucket(inst, agent_connected),
+          bucket: Instances.status_bucket(inst, agent_connected),
           alerts: alert_counts[inst.id] || %{crit: 0, warn: 0}
         }
       end)
 
     assign(socket, instances: rows, served_version: served)
-  end
-
-  # statusBucket parity: agent-mode boxes bucket by the live WS connection;
-  # polled boxes by the 5-minute success/error window.
-  defp bucket(inst, agent_connected) do
-    if Instance.agent_mode?(inst) do
-      if agent_connected, do: "online", else: "offline"
-    else
-      cutoff = DateTime.add(DateTime.utc_now(), -300)
-      succ = inst.last_success_at
-      err = inst.last_error_at
-
-      cond do
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and
-            (err == nil or DateTime.compare(succ, err) == :gt) ->
-          "online"
-
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and err != nil and
-          DateTime.compare(err, cutoff) != :lt and DateTime.compare(err, succ) != :lt ->
-          "degraded"
-
-        true ->
-          "offline"
-      end
-    end
   end
 
   # ---- filtering + sorting --------------------------------------------------
