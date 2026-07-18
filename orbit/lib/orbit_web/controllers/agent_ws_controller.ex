@@ -24,8 +24,12 @@ defmodule OrbitWeb.AgentWSController do
 
         token ->
           case instance_for_token(token) do
-            %Instance{} = instance -> %{instance: instance}
-            nil -> %{auth_error: {4003, "invalid token"}}
+            %Instance{} = instance ->
+              %{instance: instance}
+
+            nil ->
+              Orbit.Hub.bump(:auth_failures)
+              %{auth_error: {4003, "invalid token"}}
           end
       end
 

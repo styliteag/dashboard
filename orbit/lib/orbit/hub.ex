@@ -51,6 +51,20 @@ defmodule Orbit.Hub do
     GenServer.call(server, {:unregister, instance_id, self()})
   end
 
+  @doc """
+  In-memory hub counters + start time (stats.py /hub/stats parity). The
+  numbers reset with the process — that is the point (live health, not
+  history).
+  """
+  def stats(server \\ __MODULE__) do
+    GenServer.call(server, :stats)
+  end
+
+  @doc "Bump one hub counter (auth_failures, json_errors, unknown_messages, …)."
+  def bump(server \\ __MODULE__, key) when is_atom(key) do
+    GenServer.cast(server, {:bump, key})
+  end
+
   @doc "Connected agent metadata (or nil)."
   def get(server \\ __MODULE__, instance_id) do
     GenServer.call(server, {:get, instance_id})
@@ -203,11 +217,31 @@ defmodule Orbit.Hub do
   @impl true
   def init(:ok) do
     Process.flag(:trap_exit, false)
-    {:ok, %{agents: %{}, pending: %{}, cache: %{}, streams: %{}, ipsec_dup: %{}}}
+
+    {:ok,
+     %{
+       agents: %{},
+       pending: %{},
+       cache: %{},
+       streams: %{},
+       ipsec_dup: %{},
+       counters: %{},
+       started_at: DateTime.utc_now()
+     }}
   end
 
   @impl true
+  def handle_call(:stats, _from, state) do
+    {:reply,
+     %{
+       counters: Map.get(state, :counters, %{}),
+       started_at: Map.get(state, :started_at) || DateTime.utc_now()
+     }, state}
+  end
+
   def handle_call({:register, instance_id, pid, meta}, _from, state) do
+    state = bump_counter(state, :connects)
+
     case state.agents[instance_id] do
       %Agent{pid: old_pid} when old_pid != pid ->
         # Last-writer-wins: tell the old socket to close (4000-range close is
@@ -235,7 +269,9 @@ defmodule Orbit.Hub do
     case state.agents[instance_id] do
       %Agent{pid: ^pid} ->
         broadcast_roster_change()
-        {:reply, :ok, %{state | agents: Map.delete(state.agents, instance_id)}}
+
+        {:reply, :ok,
+         %{bump_counter(state, :disconnects) | agents: Map.delete(state.agents, instance_id)}}
 
       _ ->
         {:reply, :stale, state}
@@ -311,11 +347,17 @@ defmodule Orbit.Hub do
 
       {caller, pending} ->
         send(caller, {:command_result, request_id, result})
-        {:noreply, %{state | pending: pending}}
+        {:noreply, %{bump_counter(state, :command_results) | pending: pending}}
     end
   end
 
+  def handle_cast({:bump, key}, state) do
+    {:noreply, bump_counter(state, key)}
+  end
+
   def handle_cast({:record_push, instance_id}, state) do
+    state = bump_counter(state, :pushes)
+
     {:noreply,
      update_agent(state, instance_id, fn a ->
        %{a | pushes: a.pushes + 1, last_push_at: DateTime.utc_now()}
@@ -323,6 +365,7 @@ defmodule Orbit.Hub do
   end
 
   def handle_cast({:record_pong, instance_id}, state) do
+    state = bump_counter(state, :pongs)
     {:noreply, update_agent(state, instance_id, fn a -> %{a | pongs: a.pongs + 1} end)}
   end
 
@@ -388,6 +431,8 @@ defmodule Orbit.Hub do
   end
 
   def handle_cast({:deliver_tunnel, %{"stream" => stream} = frame}, state) do
+    state = bump_counter(state, :tunnel_frames)
+
     case state.streams[stream] do
       %{consumer: consumer} ->
         op = frame["op"]
@@ -454,6 +499,12 @@ defmodule Orbit.Hub do
       nil -> state
       agent -> put_in(state.agents[instance_id], fun.(agent))
     end
+  end
+
+  # Hot-reload-safe: the running state map may predate the :counters key.
+  defp bump_counter(state, key) do
+    counters = Map.get(state, :counters, %{})
+    Map.put(state, :counters, Map.update(counters, key, 1, &(&1 + 1)))
   end
 
   defp generate_request_id do

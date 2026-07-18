@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: the Hub page reaches full parity with the old one — pushes/min and
+  errors-total KPIs, the error-counter grid (auth failures, bad JSON,
+  unknown frames — red when non-zero), the message-counter grid (pushes,
+  command results, tunnel frames, pongs, connects, disconnects), CRIT
+  alerts grouped as chips linking to the owning page, and the in-memory
+  uptime note; the Elixir hub now counts all of these itself.
 - Orbit: the console-password policy note is back on the instance detail
   overview — an amber banner when "Password protect the console menu" is
   enabled on the box (fleet standard is no console password).

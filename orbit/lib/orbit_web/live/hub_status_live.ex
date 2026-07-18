@@ -26,26 +26,71 @@ defmodule OrbitWeb.HubStatusLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    {:ok,
-     assign(socket,
-       agents: visible_agents(socket.assigns.current_user),
-       push_rate: Orbit.Metrics.push_rate("6h")
-     )}
+    {:ok, load(socket)}
+  end
+
+  defp load(socket) do
+    stats = Hub.stats()
+
+    assign(socket,
+      agents: visible_agents(socket.assigns.current_user),
+      push_rate: Orbit.Metrics.push_rate("6h"),
+      counters: stats.counters,
+      started_at: stats.started_at,
+      crit_tabs: crit_tabs(socket.assigns.current_user)
+    )
+  end
+
+  # Red/CRIT alerts grouped by the page that owns them (HubStatusPage
+  # alertTab) — each chip links where the operator actually fixes it.
+  defp crit_tabs(user) do
+    user
+    |> Orbit.Checks.Export.evaluated(DateTime.utc_now())
+    |> Enum.flat_map(fn {_inst, checks} -> Enum.filter(checks, &(&1.state == 2)) end)
+    |> Enum.group_by(&alert_tab(&1.key))
+    |> Enum.map(fn {{to, label}, checks} -> %{to: to, label: label, count: length(checks)} end)
+    |> Enum.sort_by(&(-&1.count))
+  end
+
+  defp alert_tab(key) do
+    cat = key |> String.split(":", parts: 2) |> hd()
+
+    cond do
+      cat == "cert" -> {"/certificates", "Certificates"}
+      cat in ["ipsec.tunnel", "ipsec.tunnel_ping", "ipsec.service"] -> {"/vpn", "VPN"}
+      cat == "connectivity" -> {"/connectivity", "Connectivity"}
+      cat == "gateway" -> {"/alerts?q=gateway", "Gateways"}
+      cat == "firmware" -> {"/firmware", "Firmware"}
+      true -> {"/alerts", "System"}
+    end
+  end
+
+  # Counters that indicate something is wrong — rendered red when non-zero.
+  defp error_counters do
+    [
+      {:auth_failures, "Auth failures"},
+      {:json_errors, "Bad JSON frames"},
+      {:unknown_messages, "Unknown messages"}
+    ]
+  end
+
+  defp traffic_counters do
+    [
+      {:pushes, "Metric pushes"},
+      {:command_results, "Command results"},
+      {:tunnel_frames, "Tunnel frames"},
+      {:pongs, "Pongs"},
+      {:connects, "Connects"},
+      {:disconnects, "Disconnects"}
+    ]
   end
 
   @impl true
-  def handle_info(:roster_changed, socket) do
-    {:noreply, assign(socket, agents: visible_agents(socket.assigns.current_user))}
-  end
+  def handle_info(:roster_changed, socket), do: {:noreply, load(socket)}
 
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
-
-    {:noreply,
-     assign(socket,
-       agents: visible_agents(socket.assigns.current_user),
-       push_rate: Orbit.Metrics.push_rate("6h")
-     )}
+    {:noreply, load(socket)}
   end
 
   @impl true
@@ -90,11 +135,24 @@ defmodule OrbitWeb.HubStatusLive do
 
   @impl true
   def render(assigns) do
+    per_minute =
+      case assigns.push_rate do
+        # The newest bucket is the still-filling current minute — report the
+        # last full one (HubStatusPage parity).
+        rate when length(rate) > 1 -> trunc(Enum.at(rate, -2).value)
+        _ -> 0
+      end
+
     assigns =
       assign(assigns,
         total_pushes: assigns.agents |> Enum.map(& &1.pushes) |> Enum.sum(),
         update_errors: Enum.count(assigns.agents, & &1.update_error),
-        served_version: Orbit.Agent.Package.served_version()
+        served_version: Orbit.Agent.Package.served_version(),
+        per_minute: per_minute,
+        errors_total:
+          error_counters()
+          |> Enum.map(fn {k, _} -> Map.get(assigns.counters, k, 0) end)
+          |> Enum.sum()
       )
 
     ~H"""
@@ -102,9 +160,13 @@ defmodule OrbitWeb.HubStatusLive do
       <.top_nav active={:hub} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          Connected agents <span class="ml-2 text-sm text-slate-500">({length(@agents)})</span>
+        <h1 class="mb-1 text-lg font-medium text-slate-200">
+          Hub status <span class="ml-2 text-sm text-slate-500">({length(@agents)} connected)</span>
         </h1>
+        <p class="mb-4 text-xs text-slate-500">
+          In-memory since {Calendar.strftime(@started_at, "%Y-%m-%d %H:%M UTC")} — a restart
+          resets these numbers.
+        </p>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
@@ -112,8 +174,21 @@ defmodule OrbitWeb.HubStatusLive do
             <div class="text-2xl font-semibold text-emerald-400">{length(@agents)}</div>
           </div>
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
+            <div class="text-xs text-slate-500">Pushes / min</div>
+            <div class="text-2xl font-semibold text-sky-400">{@per_minute}</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
             <div class="text-xs text-slate-500">Total pushes</div>
             <div class="text-2xl font-semibold text-slate-100">{@total_pushes}</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
+            <div class="text-xs text-slate-500">Errors total</div>
+            <div class={[
+              "text-2xl font-semibold",
+              if(@errors_total > 0, do: "text-red-400", else: "text-slate-100")
+            ]}>
+              {@errors_total}
+            </div>
           </div>
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
             <div class="text-xs text-slate-500">Update errors</div>
@@ -140,6 +215,47 @@ defmodule OrbitWeb.HubStatusLive do
             color="#38bdf8"
             domain_max={:auto}
           />
+        </div>
+
+        <%!-- Red/CRIT alerts by owning tab — chips link where you fix it. --%>
+        <div :if={@crit_tabs != []} class="mb-4">
+          <h2 class="mb-2 text-sm font-semibold text-slate-300">Red / CRIT alerts by tab</h2>
+          <div class="flex flex-wrap gap-2">
+            <a
+              :for={t <- @crit_tabs}
+              href={t.to}
+              class="rounded-lg border border-red-900/60 bg-red-900/20 px-3 py-1.5 text-xs text-red-300 hover:bg-red-900/30"
+            >
+              {t.label}: {t.count}
+            </a>
+          </div>
+        </div>
+
+        <h2 class="mb-2 mt-6 text-sm font-semibold text-slate-300">Error counters</h2>
+        <div class="mb-4 grid gap-3 sm:grid-cols-3">
+          <div
+            :for={{key, label} <- error_counters()}
+            class="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
+          >
+            <p class="text-xs text-slate-500">{label}</p>
+            <p class={[
+              "text-lg font-semibold",
+              if(Map.get(@counters, key, 0) > 0, do: "text-red-400", else: "text-slate-200")
+            ]}>
+              {Map.get(@counters, key, 0)}
+            </p>
+          </div>
+        </div>
+
+        <h2 class="mb-2 mt-6 text-sm font-semibold text-slate-300">Message counters</h2>
+        <div class="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div
+            :for={{key, label} <- traffic_counters()}
+            class="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
+          >
+            <p class="text-xs text-slate-500">{label}</p>
+            <p class="text-lg font-semibold text-slate-200">{Map.get(@counters, key, 0)}</p>
+          </div>
         </div>
 
         <div :if={@agents == []} class="text-sm text-slate-500">

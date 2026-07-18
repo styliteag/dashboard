@@ -41,8 +41,12 @@ defmodule OrbitWeb.AgentSocket do
   @impl true
   def handle_in({text, [opcode: :text]}, state) do
     case Jason.decode(text) do
-      {:ok, frame} -> dispatch(frame, state)
-      {:error, _} -> {:ok, state}
+      {:ok, frame} ->
+        dispatch(frame, state)
+
+      {:error, _} ->
+        Hub.bump(:json_errors)
+        {:ok, state}
     end
   end
 
@@ -103,7 +107,10 @@ defmodule OrbitWeb.AgentSocket do
     {:ok, state}
   end
 
-  defp dispatch(_unknown, state), do: {:ok, state}
+  defp dispatch(_unknown, state) do
+    Hub.bump(:unknown_messages)
+    {:ok, state}
+  end
 
   @impl true
   def handle_info({:push_frame, frame}, state) do
