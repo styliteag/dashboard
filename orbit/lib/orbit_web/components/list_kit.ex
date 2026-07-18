@@ -73,9 +73,23 @@ defmodule OrbitWeb.Components.ListKit do
       phx-click="row_gui_open"
       phx-value-id={@instance_id}
       title="Open WebGUI (tunneled)"
-      class="inline-flex items-center rounded p-0.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+      aria-label="Open WebGUI (tunneled)"
+      class="inline-flex items-center rounded p-0.5 align-text-bottom text-slate-400 hover:bg-slate-800 hover:text-slate-200"
     >
-      ⧉
+      <%!-- heroicon: arrow-top-right-on-square (outline) --%>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        class="h-3.5 w-3.5"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+        />
+      </svg>
     </button>
     """
   end
@@ -91,9 +105,23 @@ defmodule OrbitWeb.Components.ListKit do
       target="_blank"
       rel="noopener"
       title="Open root terminal"
-      class="inline-flex items-center rounded p-0.5 text-amber-400/80 hover:bg-slate-800 hover:text-amber-300"
+      aria-label="Open root terminal"
+      class="inline-flex items-center rounded p-0.5 align-text-bottom text-amber-400/80 hover:bg-slate-800 hover:text-amber-300"
     >
-      ⌘
+      <%!-- heroicon: command-line (outline) --%>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        class="h-3.5 w-3.5"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
+        />
+      </svg>
     </a>
     """
   end

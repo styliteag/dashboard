@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: UI polish pass — pointer cursors on all buttons (Tailwind v4
+  preflight left them default), emerald keyboard-focus rings, 150ms color
+  transitions on interactive elements, subtle table-row hover, a clear
+  active state in the top navigation, and real SVG icons for the WebUI/
+  Terminal quick links instead of unicode glyphs.
 - Orbit: the Hub page reaches full parity with the old one — pushes/min and
   errors-total KPIs, the error-counter grid (auth failures, bad JSON,
   unknown frames — red when non-zero), the message-counter grid (pushes,

@@ -104,3 +104,23 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* ---- UI polish (ui-ux-pro-max pass, 2026-07-19) -------------------------
+   Tailwind v4 preflight leaves buttons with cursor:default — every enabled
+   button in this app is an action. Focus ring for keyboard nav (emerald,
+   matches the accent), gentle color transitions on interactive elements,
+   and a subtle hover on data-table rows. Motion is color-only, so no
+   prefers-reduced-motion branch is needed. */
+@layer base {
+  button:not(:disabled) { cursor: pointer; }
+  a, button, summary, select, input[type="checkbox"] {
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  }
+  :focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 1px;
+  }
+  tbody tr:hover {
+    background-color: rgb(30 41 59 / 0.35); /* slate-800/35 — readable, not loud */
+  }
+}

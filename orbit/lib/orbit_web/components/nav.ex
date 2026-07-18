@@ -104,7 +104,16 @@ defmodule OrbitWeb.Components.Nav do
 
   defp nav_link(assigns) do
     ~H"""
-    <a href={@href} class={["hover:text-slate-200", @active == @key && "text-slate-200"]}>
+    <a
+      href={@href}
+      class={[
+        "rounded-md px-2 py-1",
+        if(@active == @key,
+          do: "bg-slate-800 font-medium text-emerald-300",
+          else: "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+        )
+      ]}
+    >
       {@label}
     </a>
     """
