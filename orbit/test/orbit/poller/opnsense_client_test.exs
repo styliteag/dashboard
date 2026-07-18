@@ -104,14 +104,8 @@ defmodule Orbit.Poller.OpnsenseClientFetchTest do
 
   alias Orbit.Poller.OpnsenseClient, as: C
 
-  setup do
-    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
-    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
-    :ok
-  end
-
   test "fetch_status routes both endpoints through parse into raw sections" do
-    Req.Test.stub(__MODULE__, fn conn ->
+    Req.Test.stub(Orbit.Poller.OpnsenseClient, fn conn ->
       body =
         case conn.request_path do
           "/api/diagnostics/system/systemResources" ->
@@ -150,7 +144,9 @@ defmodule Orbit.Poller.OpnsenseClientFetchTest do
   end
 
   test "a failing endpoint yields no section, never a crash" do
-    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
+    Req.Test.stub(Orbit.Poller.OpnsenseClient, fn conn ->
+      Plug.Conn.send_resp(conn, 500, "boom")
+    end)
 
     client = %C{
       base_url: "https://box.example:4444",

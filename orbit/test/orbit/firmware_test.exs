@@ -190,10 +190,7 @@ defmodule Orbit.FirmwareTest do
 
   # Direct-poll (agent-less) firmware goes to the OPNsense client, not the hub.
   test "direct-poll check runs the vendor API via the injected client", ctx do
-    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
-    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
-
-    Req.Test.stub(__MODULE__, fn conn ->
+    Req.Test.stub(Orbit.Poller.OpnsenseClient, fn conn ->
       Req.Test.json(conn, %{"status" => "updates available"})
     end)
 
@@ -215,10 +212,7 @@ defmodule Orbit.FirmwareTest do
   end
 
   test "direct-poll upgrade_status maps the vendor upgradestatus" do
-    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
-    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
-
-    Req.Test.stub(__MODULE__, fn conn ->
+    Req.Test.stub(Orbit.Poller.OpnsenseClient, fn conn ->
       Req.Test.json(conn, %{"status" => "done", "log" => "a\nb"})
     end)
 

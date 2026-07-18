@@ -5,12 +5,6 @@ defmodule Orbit.PollerTest do
   alias Orbit.Instances.Instance
   alias Orbit.Poller
 
-  setup do
-    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
-    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
-    :ok
-  end
-
   defp direct_instance(id) do
     enc = Orbit.Crypto.encrypt("cred")
 
@@ -27,7 +21,7 @@ defmodule Orbit.PollerTest do
   end
 
   test "polls a direct instance and ingests the parsed sections into the hub cache" do
-    Req.Test.stub(__MODULE__, fn conn ->
+    Req.Test.stub(Orbit.Poller.OpnsenseClient, fn conn ->
       body =
         case conn.request_path do
           "/api/diagnostics/system/systemResources" ->

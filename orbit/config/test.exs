@@ -40,6 +40,12 @@ config :orbit, :start_access, false
 # started explicitly by the tests that exercise them.
 config :orbit, :start_gui, false
 
+# One shared Req.Test plug name for the OPNsense client. Tests stub it
+# per-process (Req.Test ownership, $callers-propagated) — never via
+# Application.put_env in a setup block: that global write raced across
+# async test modules and made fetch_status sections vanish mid-test.
+config :orbit, :opnsense_req_plug, {Req.Test, Orbit.Poller.OpnsenseClient}
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
