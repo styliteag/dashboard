@@ -63,7 +63,9 @@ defmodule Orbit.Checks.Export do
   @doc "Prometheus text exposition."
   @spec prometheus(Orbit.Auth.Scope.principal(), DateTime.t()) :: String.t()
   def prometheus(principal, now) do
-    principal |> evaluated(now) |> Prometheus.render()
+    # Per-instance families first, then the dashboard-global denial counters
+    # (no instance labels — parity with the python route append).
+    (principal |> evaluated(now) |> Prometheus.render()) <> Prometheus.render_geoip_denials()
   end
 
   # Duck-typed instance view the renderers consume (id/name/device_type/mode).
