@@ -94,6 +94,16 @@ defmodule Orbit.Firewall do
     write(inst, "/api/firewall/filter/apply", "firewall.rule.apply", opts)
   end
 
+  @doc "Move a rule directly before another (reorder). action → firewall.rule.move."
+  def move_rule(inst, selected_uuid, target_uuid, opts \\ []) do
+    write(
+      inst,
+      "/api/firewall/filter/move_rule_before/#{selected_uuid}/#{target_uuid}",
+      "firewall.rule.move",
+      opts
+    )
+  end
+
   @doc "Get one rule's full field set (for the editor)."
   def get_rule(inst, uuid, opts \\ []) do
     case relay(inst, "GET", "/api/firewall/filter/get_rule/#{uuid}", nil, opts) do
