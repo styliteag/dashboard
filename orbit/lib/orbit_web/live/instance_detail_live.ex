@@ -433,6 +433,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
       external_ip: entry["external_ip"] || %{},
+      certificates: entry["certificates"] || [],
       pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
       check_history: check_history(socket.assigns.instance.id),
@@ -884,6 +885,53 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
+        <%!-- Certificate inventory + expiry (CertificatesSection parity): agent
+              push only; soonest expiry first; hidden when the box reports none
+              (direct-poll / Securepoint). days_remaining recomputed from
+              not_after at render so the countdown never freezes on stale pushes. --%>
+        <div
+          :if={@certificates != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Certificates</h2>
+          <div class="overflow-x-auto rounded-lg border border-slate-800">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-950 text-left text-xs text-slate-500">
+                <tr>
+                  <th class="px-3 py-2">Name</th>
+                  <th class="px-3 py-2">Type</th>
+                  <th class="px-3 py-2">Expires</th>
+                  <th class="px-3 py-2">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={c <- cert_sorted(@certificates)} class="border-t border-slate-800">
+                  <td class="px-3 py-2 font-medium">
+                    <span class="inline-flex items-center gap-1.5">
+                      {c["name"]}
+                      <span
+                        :if={c["is_gui"]}
+                        class="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] text-sky-300"
+                      >
+                        GUI
+                      </span>
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 text-slate-400">
+                    {String.upcase(to_string(c["type"] || ""))}
+                  </td>
+                  <td class="px-3 py-2 font-mono text-xs text-slate-400">
+                    {cert_date(c["not_after"])}
+                  </td>
+                  <td class={["px-3 py-2", expiry_class(cert_days(c))]}>
+                    {expiry_label(cert_days(c))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div
           :if={@check_history != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
@@ -1150,6 +1198,35 @@ defmodule OrbitWeb.InstanceDetailLive do
     </div>
     """
   end
+
+  # Certificates soonest-expiry first (CertificatesSection sort).
+  defp cert_sorted(certs), do: Enum.sort_by(certs, &cert_days/1)
+
+  # Days until expiry, recomputed from not_after (ISO8601) so a stale push
+  # doesn't freeze the countdown; falls back to the pushed days_remaining.
+  defp cert_days(%{"not_after" => na} = c) when is_binary(na) do
+    case DateTime.from_iso8601(na) do
+      {:ok, dt, _} -> DateTime.diff(dt, DateTime.utc_now(), :day)
+      _ -> to_int(c["days_remaining"])
+    end
+  end
+
+  defp cert_days(c), do: to_int(c["days_remaining"])
+
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(_), do: 0
+
+  # not_after → date only (YYYY-MM-DD); mirrors fmtDate.
+  defp cert_date(na) when is_binary(na), do: String.slice(na, 0, 10)
+  defp cert_date(_), do: "—"
+
+  defp expiry_label(d) when d < 0, do: "expired #{-d}d ago"
+  defp expiry_label(0), do: "expires today"
+  defp expiry_label(d), do: "#{d}d left"
+
+  defp expiry_class(d) when d < 7, do: "text-red-400"
+  defp expiry_class(d) when d < 30, do: "text-amber-400"
+  defp expiry_class(_), do: "text-emerald-400"
 
   # "ip:port" (bracketed for IPv6) — mirrors TopTalkersSection.host().
   defp hostport(ip, port) do
