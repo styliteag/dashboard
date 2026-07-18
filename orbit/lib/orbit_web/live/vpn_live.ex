@@ -47,6 +47,7 @@ defmodule OrbitWeb.VpnLive do
        ping_editor: nil,
        ping_test: nil,
        ping_test_busy: false,
+       history: nil,
        writable: socket.assigns.current_user.role in @write_roles
      )
      |> load()}
@@ -120,6 +121,32 @@ defmodule OrbitWeb.VpnLive do
     else
       _ -> {:noreply, socket}
     end
+  end
+
+  # Tunnel history dialog (TunnelHistoryDialog/TunnelGraphDialog parity):
+  # recorded transitions + an up/down timeline. Read-only, still re-scoped.
+  def handle_event("history_open", %{"iid" => iid, "tunnel" => tunnel_id} = params, socket) do
+    with {nid, ""} <- Integer.parse(iid),
+         inst when not is_nil(inst) <- Scope.get_instance(nid, socket.assigns.current_user) do
+      events = Orbit.Ipsec.History.read(inst.id, tunnel_id, 100)
+
+      {:noreply,
+       assign(socket,
+         history: %{
+           instance_name: inst.name,
+           tunnel_id: tunnel_id,
+           label: params["label"] || tunnel_id,
+           up: params["up"] == "true",
+           events: events
+         }
+       )}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("history_close", _params, socket) do
+    {:noreply, assign(socket, history: nil)}
   end
 
   def handle_event("p2mon_cancel", _params, socket) do
@@ -510,6 +537,16 @@ defmodule OrbitWeb.VpnLive do
                   <td class="px-3 py-2 text-slate-400">{bytes(t.bytes_in)} / {bytes(t.bytes_out)}</td>
                   <td :if={@writable} class="px-3 py-2 text-right text-xs">
                     <button
+                      phx-click="history_open"
+                      phx-value-iid={t.instance_id}
+                      phx-value-tunnel={t.id}
+                      phx-value-label={t.label}
+                      phx-value-up={to_string(t.up)}
+                      class="mr-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                    >
+                      History
+                    </button>
+                    <button
                       phx-click="reconnect"
                       phx-value-iid={t.instance_id}
                       phx-value-id={t.id}
@@ -567,6 +604,71 @@ defmodule OrbitWeb.VpnLive do
               <% end %>
             </tbody>
           </table>
+        </div>
+
+        <%!-- Tunnel history dialog: up/down timeline + recorded transitions. --%>
+        <div
+          :if={@history}
+          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+        >
+          <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-medium text-slate-200">
+                Tunnel history — {@history.label}
+                <span class="ml-1 text-xs text-slate-500">{@history.instance_name}</span>
+              </h3>
+              <button
+                phx-click="history_close"
+                class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <%!-- Up/down timeline from the phase1 flips (oldest event → now). --%>
+            <div class="mt-4">
+              <div class="h-4 w-full overflow-hidden rounded bg-slate-800">
+                <div class="relative h-full w-full">
+                  <div
+                    :for={seg <- timeline_segments(@history.events, @history.up, DateTime.utc_now())}
+                    class={["absolute h-full", if(seg.up, do: "bg-emerald-600", else: "bg-red-600")]}
+                    style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
+                  >
+                  </div>
+                </div>
+              </div>
+              <div class="mt-1 flex justify-between text-[10px] text-slate-600">
+                <span :if={@history.events != []}>
+                  {fmt_event_ts(List.last(@history.events).ts)}
+                </span>
+                <span :if={@history.events == []}>no recorded transitions yet</span>
+                <span>now</span>
+              </div>
+            </div>
+
+            <table :if={@history.events != []} class="mt-4 w-full text-left text-xs">
+              <thead class="text-slate-500">
+                <tr class="border-b border-slate-800">
+                  <th class="py-1 pr-3 font-medium">Time (UTC)</th>
+                  <th class="py-1 pr-3 font-medium">Event</th>
+                  <th class="py-1 pr-3 font-medium">Phase 2</th>
+                  <th class="py-1 font-medium">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={e <- @history.events} class="border-b border-slate-800/50 last:border-0">
+                  <td class="py-1 pr-3 font-mono text-slate-500">{fmt_event_ts(e.ts)}</td>
+                  <td class={["py-1 pr-3", event_color(e.event_type)]}>{e.event_type}</td>
+                  <td class="py-1 pr-3 text-slate-500">{e.child_name}</td>
+                  <td class="py-1 text-slate-400">{e.old_value} → {e.new_value}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p :if={@history.events == []} class="mt-4 text-sm text-slate-500">
+              No transitions recorded yet — events appear as soon as the tunnel
+              changes state (orbit records them per agent push).
+            </p>
+          </div>
         </div>
 
         <%!-- Edit-ping dialog (PingMonitorDialog parity): Test runs the
@@ -683,6 +785,45 @@ defmodule OrbitWeb.VpnLive do
     </main>
     """
   end
+
+  # Up/down segments for the history graph: phase1_up/_down events (ASC)
+  # partition the window from the oldest event to now; the newest segment
+  # takes the tunnel's live state. Non-phase1 events don't cut segments.
+  def timeline_segments(events, currently_up, now) do
+    flips =
+      events
+      |> Enum.filter(&(&1.event_type in ["phase1_up", "phase1_down"]))
+      |> Enum.sort_by(& &1.ts, DateTime)
+
+    case flips do
+      [] ->
+        [%{left: 0.0, width: 100.0, up: currently_up}]
+
+      [first | _] ->
+        span = max(DateTime.diff(now, first.ts), 1)
+        x = fn ts -> min(max(DateTime.diff(ts, first.ts) / span * 100, 0.0), 100.0) end
+
+        # State BEFORE the first flip is its inverse.
+        head_up = first.event_type == "phase1_down"
+
+        {segments, last_x, last_up} =
+          Enum.reduce(flips, {[], 0.0, head_up}, fn e, {acc, left, up} ->
+            cut = x.(e.ts)
+
+            {[%{left: left, width: cut - left, up: up} | acc], cut, e.event_type == "phase1_up"}
+          end)
+
+        Enum.reverse([%{left: last_x, width: 100.0 - last_x, up: last_up} | segments])
+    end
+  end
+
+  defp event_color("phase1_up"), do: "text-emerald-400"
+  defp event_color("ping_ok"), do: "text-emerald-400"
+  defp event_color("phase1_down"), do: "text-red-400"
+  defp event_color("ping_fail"), do: "text-red-400"
+  defp event_color(_), do: "text-amber-400"
+
+  defp fmt_event_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S UTC")
 
   defp child_up?(ch) do
     String.downcase(to_string(ch["status"] || "")) in @ipsec_up

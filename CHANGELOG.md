@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: tunnel history is back — a History dialog per tunnel on the VPN
+  page with an up/down timeline graph and the recorded transitions
+  (phase-1 up/down, phase-2 count changes, ping ok/fail); the Elixir hub
+  now records these transitions on every push, so history keeps growing
+  after cutover.
 - Orbit: phase-2 ping monitors get a proper edit dialog on the VPN page —
   source/destination/count/enabled plus a Test button that live-pings the
   current form values through the agent before saving; the expand arrow

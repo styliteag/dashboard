@@ -348,10 +348,14 @@ defmodule Orbit.Hub do
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
     now = DateTime.utc_now()
+    # Diff BEFORE ingest replaces the cached section — the previous snapshot
+    # is the baseline for the ipsec history (hub.py:617 parity).
+    prev_ipsec = Orbit.Hub.Cache.entry(state.cache, instance_id)["ipsec"]
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now)
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)
     maybe_persist_metrics(instance_id, now, data)
+    maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data)
     {:noreply, %{state | cache: cache}}
   end
 
@@ -471,6 +475,23 @@ defmodule Orbit.Hub do
   defp maybe_persist_metrics(instance_id, now, data) do
     if Application.get_env(:orbit, :write_metrics, true) do
       Task.start(fn -> Orbit.Metrics.write_push(instance_id, now, data) end)
+    end
+  end
+
+  # IPsec state transitions feed the tunnel-history dialog. Diffed against
+  # the pre-ingest cache; an empty/absent ipsec section in the push is a
+  # collector failure and never diffs (truthy-guard semantics, same as the
+  # cache). Shares the :write_metrics test gate — same table-less test DB.
+  defp maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data) do
+    with true <- Application.get_env(:orbit, :write_metrics, true),
+         %{"tunnels" => prev_tunnels} <- prev_ipsec,
+         %{"tunnels" => new_tunnels} when new_tunnels != [] <- data["ipsec"] do
+      case Orbit.Ipsec.History.diff(prev_tunnels, new_tunnels) do
+        [] -> :ok
+        events -> Task.start(fn -> Orbit.Ipsec.History.record(instance_id, now, events) end)
+      end
+    else
+      _ -> :ok
     end
   end
 end
