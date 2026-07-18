@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: the fleet VPN page gains the phase-2 expander (traffic selectors,
+  child status, ping state) and inline phase-2 ping-monitor add/remove per
+  child SA — same controls as the instance detail, one query for the whole
+  fleet.
 - Orbit: the instance detail page is tabbed again like the old UI —
   Overview, Config, Checks, Network, Capture, Firewall, VPN, Connectivity,
   Log, Firmware, Agent — with the same device-capability filter (no agent

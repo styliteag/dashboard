@@ -43,6 +43,7 @@ defmodule OrbitWeb.VpnLive do
        sort_dir: :asc,
        busy: MapSet.new(),
        msg: nil,
+       expanded: MapSet.new(),
        writable: socket.assigns.current_user.role in @write_roles
      )
      |> load()}
@@ -75,6 +76,64 @@ defmodule OrbitWeb.VpnLive do
 
   def handle_event("row_gui_open", %{"id" => id}, socket) do
     {:noreply, gui_open_row(socket, id)}
+  end
+
+  def handle_event("toggle_expand", %{"key" => key}, socket) do
+    expanded = socket.assigns.expanded
+
+    expanded =
+      if MapSet.member?(expanded, key),
+        do: MapSet.delete(expanded, key),
+        else: MapSet.put(expanded, key)
+
+    {:noreply, assign(socket, expanded: expanded)}
+  end
+
+  # Phase-2 ping monitors from the fleet view — the instance id comes from
+  # the DOM, so it re-resolves through the caller's scope (invariant 1).
+  def handle_event("p2mon_create", %{"mon" => attrs}, socket) do
+    with true <- socket.assigns.writable,
+         {iid, ""} <- Integer.parse(to_string(attrs["instance_id"] || "")),
+         inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user) do
+      case Orbit.Monitors.create_ipsec(inst.id, attrs) do
+        :ok ->
+          Audit.write(
+            action: "ipsec.ping_monitor.create",
+            result: "ok",
+            user_id: socket.assigns.current_user.id,
+            target_type: "instance",
+            target_id: inst.id
+          )
+
+          {:noreply, socket |> assign(msg: nil) |> load()}
+
+        {:error, msg} ->
+          {:noreply, assign(socket, msg: {:error, msg})}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("p2mon_delete", %{"id" => raw, "iid" => raw_iid}, socket) do
+    with true <- socket.assigns.writable,
+         {id, ""} <- Integer.parse(raw),
+         {iid, ""} <- Integer.parse(raw_iid),
+         inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user) do
+      :ok = Orbit.Monitors.delete_ipsec(inst.id, id)
+
+      Audit.write(
+        action: "ipsec.ping_monitor.delete",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: inst.id
+      )
+
+      {:noreply, socket |> assign(msg: nil) |> load()}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   # Fleet-row reconnect: same relay pair as the detail page. The instance id
@@ -131,11 +190,15 @@ defmodule OrbitWeb.VpnLive do
   end
 
   defp load(socket) do
-    tunnels =
+    agent_instances =
       socket.assigns.current_user
       |> Instances.list_visible()
       |> Enum.filter(&Instances.Instance.agent_mode?/1)
-      |> Enum.flat_map(fn inst ->
+
+    monitors = Orbit.Monitors.list_ipsec_for(Enum.map(agent_instances, & &1.id))
+
+    tunnels =
+      Enum.flat_map(agent_instances, fn inst ->
         ipsec = Hub.cache_entry(inst.id)["ipsec"] || %{}
         gui_openable = Orbit.GUI.openable(inst) == :ok
 
@@ -157,12 +220,19 @@ defmodule OrbitWeb.VpnLive do
             phase2_total: int0(t["phase2_total"]),
             uptime_s: int0(t["seconds_established"]),
             bytes_in: int0(t["bytes_in"]),
-            bytes_out: int0(t["bytes_out"])
+            bytes_out: int0(t["bytes_out"]),
+            children: t["children"] || []
           }
         end
       end)
 
-    assign(socket, tunnels: tunnels)
+    assign(socket, tunnels: tunnels, monitors: monitors)
+  end
+
+  defp p2_monitor(monitors, instance_id, child_name) do
+    monitors
+    |> Map.get(instance_id, [])
+    |> Enum.find(&(&1.child_name == to_string(child_name || "")))
   end
 
   defp visible(a) do
@@ -279,52 +349,135 @@ defmodule OrbitWeb.VpnLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={t <- @rows} class="border-b border-slate-800/50 last:border-0">
-                <td class="px-3 py-2">
-                  <span class={[
-                    "inline-block h-2.5 w-2.5 rounded-full",
-                    if(t.up, do: "bg-emerald-500", else: "bg-red-500")
-                  ]}></span>
-                </td>
-                <td class="px-3 py-2">
-                  <a
-                    href={~p"/instances/#{t.instance_id}"}
-                    class="text-slate-200 hover:text-emerald-300"
-                  >
-                    {t.instance_name}
-                  </a>
-                  <.webui_link instance_id={t.instance_id} openable={t.gui_openable} />
-                  <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
-                </td>
-                <td class="px-3 py-2 text-slate-300">{t.label}</td>
-                <td class="px-3 py-2 text-slate-500">{t.remote}</td>
-                <td class="px-3 py-2 text-slate-400">
-                  <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>
-                  <span :if={t.phase2_total == 0}>—</span>
-                </td>
-                <td class="px-3 py-2 text-slate-400">{duration(t.uptime_s)}</td>
-                <td class="px-3 py-2 text-slate-400">{bytes(t.bytes_in)} / {bytes(t.bytes_out)}</td>
-                <td :if={@writable} class="px-3 py-2 text-right text-xs">
-                  <button
-                    phx-click="reconnect"
-                    phx-value-iid={t.instance_id}
-                    phx-value-id={t.id}
-                    phx-value-uid={t.unique_id}
-                    disabled={MapSet.member?(@busy, "#{t.instance_id}:#{t.id}")}
-                    class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {if MapSet.member?(@busy, "#{t.instance_id}:#{t.id}"),
-                      do: "…",
-                      else: "Reconnect"}
-                  </button>
-                </td>
-              </tr>
+              <%= for t <- @rows do %>
+                <% key = "#{t.instance_id}:#{t.id}" %>
+                <tr class="border-b border-slate-800/50 last:border-0">
+                  <td class="px-3 py-2">
+                    <span class={[
+                      "inline-block h-2.5 w-2.5 rounded-full",
+                      if(t.up, do: "bg-emerald-500", else: "bg-red-500")
+                    ]}></span>
+                  </td>
+                  <td class="px-3 py-2">
+                    <a
+                      href={~p"/instances/#{t.instance_id}"}
+                      class="text-slate-200 hover:text-emerald-300"
+                    >
+                      {t.instance_name}
+                    </a>
+                    <.webui_link instance_id={t.instance_id} openable={t.gui_openable} />
+                    <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
+                  </td>
+                  <td class="px-3 py-2 text-slate-300">
+                    <button
+                      :if={t.children != []}
+                      phx-click="toggle_expand"
+                      phx-value-key={key}
+                      class="mr-1 text-slate-500 hover:text-slate-300"
+                    >
+                      {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
+                    </button>
+                    {t.label}
+                  </td>
+                  <td class="px-3 py-2 text-slate-500">{t.remote}</td>
+                  <td class="px-3 py-2 text-slate-400">
+                    <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>
+                    <span :if={t.phase2_total == 0}>—</span>
+                  </td>
+                  <td class="px-3 py-2 text-slate-400">{duration(t.uptime_s)}</td>
+                  <td class="px-3 py-2 text-slate-400">{bytes(t.bytes_in)} / {bytes(t.bytes_out)}</td>
+                  <td :if={@writable} class="px-3 py-2 text-right text-xs">
+                    <button
+                      phx-click="reconnect"
+                      phx-value-iid={t.instance_id}
+                      phx-value-id={t.id}
+                      phx-value-uid={t.unique_id}
+                      disabled={MapSet.member?(@busy, "#{t.instance_id}:#{t.id}")}
+                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {if MapSet.member?(@busy, "#{t.instance_id}:#{t.id}"),
+                        do: "…",
+                        else: "Reconnect"}
+                    </button>
+                  </td>
+                </tr>
+                <tr
+                  :for={ch <- t.children}
+                  :if={MapSet.member?(@expanded, key)}
+                  class="border-b border-slate-800/30 bg-slate-950/40 text-xs last:border-0"
+                >
+                  <td class="px-3 py-1"></td>
+                  <td class="px-3 py-1 text-slate-600">{t.instance_name}</td>
+                  <td class="px-3 py-1 pl-8 text-slate-500">{ch["name"] || "child"}</td>
+                  <td class="px-3 py-1 text-slate-500" colspan="2">
+                    {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
+                  </td>
+                  <td class={[
+                    "px-3 py-1",
+                    if(child_up?(ch), do: "text-emerald-400", else: "text-red-400")
+                  ]}>
+                    {ch["status"] || "?"}
+                  </td>
+                  <td class="px-3 py-1 text-slate-500" colspan={if @writable, do: 2, else: 1}>
+                    <% mon = p2_monitor(@monitors, t.instance_id, ch["name"]) %>
+                    <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
+                      ping {ch["ping_state"]}
+                    </span>
+                    <span :if={mon && @writable}>
+                      <span class="text-slate-600">
+                        monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
+                      </span>
+                      <button
+                        phx-click="p2mon_delete"
+                        phx-value-id={mon.id}
+                        phx-value-iid={t.instance_id}
+                        data-confirm="Remove this Phase-2 ping monitor?"
+                        class="ml-1 text-red-400/70 hover:text-red-300"
+                      >
+                        remove
+                      </button>
+                    </span>
+                    <form
+                      :if={is_nil(mon) and @writable}
+                      phx-submit="p2mon_create"
+                      class="inline-flex items-center gap-1"
+                    >
+                      <input type="hidden" name="mon[instance_id]" value={t.instance_id} />
+                      <input type="hidden" name="mon[tunnel_id]" value={t.id} />
+                      <input type="hidden" name="mon[child_name]" value={ch["name"] || ""} />
+                      <input type="hidden" name="mon[local_ts]" value={ch["local_ts"] || ""} />
+                      <input type="hidden" name="mon[remote_ts]" value={ch["remote_ts"] || ""} />
+                      <input
+                        name="mon[source]"
+                        value={ch["suggested_source"] || ""}
+                        placeholder="source"
+                        class="w-24 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                      />
+                      <input
+                        name="mon[destination]"
+                        placeholder="destination"
+                        class="w-24 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                      />
+                      <button
+                        type="submit"
+                        class="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 hover:bg-slate-800"
+                      >
+                        add monitor
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              <% end %>
             </tbody>
           </table>
         </div>
       </section>
     </main>
     """
+  end
+
+  defp child_up?(ch) do
+    String.downcase(to_string(ch["status"] || "")) in @ipsec_up
   end
 
   defp int0(v) when is_number(v), do: trunc(v)

@@ -185,6 +185,40 @@ defmodule Orbit.Monitors do
     :ok
   end
 
+  @doc "Phase-2 monitors for MANY instances at once (fleet VPN view): %{instance_id => [monitor]}."
+  def list_ipsec_for(instance_ids) when is_list(instance_ids) do
+    case instance_ids do
+      [] ->
+        %{}
+
+      ids ->
+        placeholders = Enum.map_join(ids, ", ", fn _ -> "?" end)
+
+        Orbit.Repo.query!(
+          "SELECT instance_id, id, tunnel_id, child_name, local_ts, remote_ts, source, " <>
+            "destination, enabled, ping_count FROM ipsec_ping_monitors " <>
+            "WHERE instance_id IN (#{placeholders}) ORDER BY child_name",
+          ids
+        ).rows
+        |> Enum.group_by(&hd/1, fn [iid, id, tunnel_id, child, lts, rts, src, dst, enabled, count] ->
+          %{
+            instance_id: iid,
+            id: id,
+            tunnel_id: tunnel_id,
+            child_name: child,
+            local_ts: lts,
+            remote_ts: rts,
+            source: src,
+            destination: dst,
+            enabled: enabled == 1 or enabled == true,
+            ping_count: count
+          }
+        end)
+    end
+  rescue
+    _ -> %{}
+  end
+
   # ---- agent config push -----------------------------------------------------
 
   @doc """
