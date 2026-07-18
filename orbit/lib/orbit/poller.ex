@@ -3,9 +3,10 @@ defmodule Orbit.Poller do
   Direct-poll orchestration — the bridge that makes a direct (API-polled)
   instance feed the exact same Checks engine + hub cache as a push instance.
 
-  `poll_instance/1` builds the device client, fetches the live status as raw
-  sections, and ingests them into the hub cache (guarded writes, same path
-  the agent push takes). One evaluation path, two transports.
+  `poll_instance/1` builds the device client (OPNsense API or Securepoint
+  spcgi, by device_type), fetches the live status as raw sections, and
+  ingests them into the hub cache (guarded writes, same path the agent push
+  takes). One evaluation path, two transports, several vendors.
 
   The periodic poll scheduler that drives this over every direct instance is
   deliberately NOT wired into Orbit.Scheduler yet: during the transition both
@@ -16,6 +17,7 @@ defmodule Orbit.Poller do
 
   alias Orbit.Instances.Instance
   alias Orbit.Poller.OpnsenseClient
+  alias Orbit.Securepoint.Client, as: SecurepointClient
 
   @doc """
   Poll one direct-transport instance: fetch its live status and ingest it into
@@ -27,11 +29,24 @@ defmodule Orbit.Poller do
     if Instance.agent_mode?(inst) do
       {:error, :push_instance}
     else
-      with {:ok, client} <- OpnsenseClient.new(inst) do
-        status = OpnsenseClient.fetch_status(client)
+      with {:ok, status} <- fetch(inst) do
         Orbit.Hub.ingest_metrics(inst.id, status)
         {:ok, map_size(status)}
       end
+    end
+  end
+
+  # Vendor dispatch by device_type — OPNsense/pfSense direct API vs the
+  # Securepoint spcgi pull. Both return raw sections the checks engine reads.
+  defp fetch(%Instance{device_type: "securepoint"} = inst) do
+    with {:ok, client} <- SecurepointClient.new(inst) do
+      {:ok, SecurepointClient.fetch_status(client)}
+    end
+  end
+
+  defp fetch(%Instance{} = inst) do
+    with {:ok, client} <- OpnsenseClient.new(inst) do
+      {:ok, OpnsenseClient.fetch_status(client)}
     end
   end
 end
