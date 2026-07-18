@@ -433,7 +433,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
       external_ip: entry["external_ip"] || %{},
-      pf_top: (entry["pf_top"] || %{})["interfaces"] || [],
+      pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
       check_history: check_history(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance)
@@ -806,23 +806,81 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
 
           <div
-            :if={@external_ip != %{} or @pf_top != []}
+            :if={@external_ip != %{}}
             class="rounded-lg border border-slate-800 bg-slate-900 p-4"
           >
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Network</h2>
-            <dl :if={@external_ip != %{}} class="mb-3 space-y-1 text-sm">
-              <.kv label="External IPv4" value={@external_ip["ipv4"] || "—"} />
-              <.kv label="External IPv6" value={@external_ip["ipv6"] || "—"} />
+            <h2 class="mb-3 text-sm font-medium text-slate-400">External IP</h2>
+            <dl class="space-y-1 text-sm">
+              <.kv label="IPv4" value={@external_ip["ipv4"] || "—"} />
+              <.kv label="IPv6" value={@external_ip["ipv6"] || "—"} />
+              <.kv :if={@external_ip["source_ip"]} label="Seen as" value={@external_ip["source_ip"]} />
             </dl>
-            <div :if={@pf_top != []}>
-              <div class="mb-1 text-xs text-slate-500">Top talkers (pf states)</div>
-              <ul class="space-y-1 text-sm">
-                <li :for={t <- Enum.take(@pf_top, 8)} class="flex justify-between text-slate-300">
-                  <span class="text-slate-400">{t["name"]}</span>
-                  <span>{bytes(t["bytes"])} · {t["states"]} states</span>
-                </li>
-              </ul>
-            </div>
+          </div>
+        </div>
+
+        <%!-- Top Talkers (TopTalkersSection parity): pf state-table insight —
+              top source/dest talkers by state-lifetime bytes, per-interface /
+              protocol state counts, and the biggest flows. Agent push only
+              (direct/Securepoint instances never have pf_top). --%>
+        <div
+          :if={(@pf_top["total_states"] || 0) > 0}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">
+            Top Talkers
+            <span class="font-normal text-slate-500">· {@pf_top["total_states"]} states</span>
+          </h2>
+
+          <div class="grid gap-4 lg:grid-cols-2">
+            <.talker_table title="Source" rows={@pf_top["top_sources"] || []} />
+            <.talker_table title="Destination" rows={@pf_top["top_dests"] || []} />
+          </div>
+
+          <div class="mt-3 flex flex-wrap gap-2 text-xs">
+            <span
+              :for={i <- @pf_top["interfaces"] || []}
+              class="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-slate-400"
+              title={bytes(i["bytes"])}
+            >
+              {i["name"]}: {i["states"]} states
+            </span>
+            <span
+              :for={p <- @pf_top["protocols"] || []}
+              class="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-slate-500"
+              title={bytes(p["bytes"])}
+            >
+              {p["proto"]}: {p["states"]}
+            </span>
+          </div>
+
+          <div
+            :if={(@pf_top["top_flows"] || []) != []}
+            class="mt-4 overflow-x-auto rounded-lg border border-slate-800"
+          >
+            <table class="w-full text-sm">
+              <thead class="bg-slate-950 text-left text-xs text-slate-500">
+                <tr>
+                  <th class="px-3 py-2">Source</th>
+                  <th class="px-3 py-2">Destination</th>
+                  <th class="px-3 py-2">Proto</th>
+                  <th class="px-3 py-2">Interface</th>
+                  <th class="px-3 py-2 text-right">Bytes</th>
+                  <th class="px-3 py-2 text-right">Packets</th>
+                  <th class="px-3 py-2 text-right">Age</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={f <- @pf_top["top_flows"] || []} class="border-t border-slate-800">
+                  <td class="px-3 py-2 font-mono text-xs">{hostport(f["src"], f["sport"])}</td>
+                  <td class="px-3 py-2 font-mono text-xs">{hostport(f["dst"], f["dport"])}</td>
+                  <td class="px-3 py-2 text-slate-400">{f["proto"]}</td>
+                  <td class="px-3 py-2 text-slate-400">{f["iface"]}</td>
+                  <td class="px-3 py-2 text-right font-mono text-xs">{bytes(f["bytes"])}</td>
+                  <td class="px-3 py-2 text-right font-mono text-xs">{f["pkts"]}</td>
+                  <td class="px-3 py-2 text-right font-mono text-xs">{dur(f["age_s"])}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1065,6 +1123,53 @@ defmodule OrbitWeb.InstanceDetailLive do
     </div>
     """
   end
+
+  attr :title, :string, required: true
+  attr :rows, :list, required: true
+
+  # One Top-Talkers table (source or destination) — ip / states / bytes.
+  defp talker_table(assigns) do
+    ~H"""
+    <div class="overflow-x-auto rounded-lg border border-slate-800">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-950 text-left text-xs text-slate-500">
+          <tr>
+            <th class="px-3 py-2">{@title}</th>
+            <th class="px-3 py-2 text-right">States</th>
+            <th class="px-3 py-2 text-right">Bytes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={t <- @rows} class="border-t border-slate-800">
+            <td class="px-3 py-2 font-mono text-xs">{t["ip"]}</td>
+            <td class="px-3 py-2 text-right">{t["states"]}</td>
+            <td class="px-3 py-2 text-right font-mono text-xs">{bytes(t["bytes"])}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  # "ip:port" (bracketed for IPv6) — mirrors TopTalkersSection.host().
+  defp hostport(ip, port) do
+    ip = to_string(ip || "")
+    port = to_string(port || "")
+
+    cond do
+      port == "" -> ip
+      String.contains?(ip, ":") -> "[#{ip}]:#{port}"
+      true -> "#{ip}:#{port}"
+    end
+  end
+
+  # Coarse flow-age (seconds → "1h2m" / "3m4s" / "5s").
+  defp dur(s) when is_number(s) and s >= 3600,
+    do: "#{div(trunc(s), 3600)}h#{rem(div(trunc(s), 60), 60)}m"
+
+  defp dur(s) when is_number(s) and s >= 60, do: "#{div(trunc(s), 60)}m#{rem(trunc(s), 60)}s"
+  defp dur(s) when is_number(s), do: "#{trunc(s)}s"
+  defp dur(_), do: "—"
 
   defp conn_badge(true), do: "bg-emerald-900/50 text-emerald-300"
   defp conn_badge(false), do: "bg-slate-800 text-slate-500"
