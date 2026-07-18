@@ -1219,6 +1219,17 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
+        <%!-- Console-password policy note (InstanceDetailPage parity): the
+             fleet standard is NO password on the console menu. --%>
+        <div
+          :if={@tab == "overview" and @system["console_password_protected"] == true}
+          class="mt-4 rounded-md border border-amber-700/60 bg-amber-900/10 px-3 py-2 text-sm text-amber-300"
+        >
+          <span class="font-medium">Console password protection enabled.</span>
+          We prefer no password on the console. Disable “Password protect the console
+          menu” under System → Settings → Administration → Console / Serial Communications.
+        </div>
+
         <%!-- System health strip (SystemHealthSection parity): load per core,
              swap, pf state table, NTP — plus the last config revision
              (ConfigSection parity). Sections the box never reported stay

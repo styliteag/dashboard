@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: the console-password policy note is back on the instance detail
+  overview — an amber banner when "Password protect the console menu" is
+  enabled on the box (fleet standard is no console password).
 - Orbit: the VPN page has a dedicated Graph button per tunnel (three-lane
   state view, larger lanes) next to History (lanes + transition table),
   matching the old UI's two separate popups.
