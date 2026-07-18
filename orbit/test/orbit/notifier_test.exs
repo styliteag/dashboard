@@ -32,6 +32,56 @@ defmodule Orbit.NotifierTest do
              Map.new(results, &{&1.channel, &1.status})
   end
 
+  test "email sends via the injected smtp when host/from/to are set" do
+    test_pid = self()
+
+    email_cfg = %{
+      "notify_email_smtp_host" => "smtp.example.com",
+      "notify_email_from" => "orbit@example.com",
+      "notify_email_to" => "ops@example.com, oncall@example.com"
+    }
+
+    results =
+      Notifier.send_test(
+        settings: settings(email_cfg),
+        smtp: fn cfg, mail ->
+          send(test_pid, {:smtp, cfg, mail})
+          :ok
+        end
+      )
+
+    assert %{channel: "email", status: "sent"} = Enum.find(results, &(&1.channel == "email"))
+    assert_received {:smtp, cfg, mail}
+    assert cfg.recipients == ["ops@example.com", "oncall@example.com"]
+    assert mail =~ "Subject: ✅ Orbit test notification"
+    assert mail =~ "From: orbit@example.com"
+  end
+
+  test "email skips when host/from/to incomplete and reports smtp failure" do
+    # Missing recipients → skipped, no smtp call.
+    r1 =
+      Notifier.send_test(
+        settings: settings(%{"notify_email_smtp_host" => "h", "notify_email_from" => "f"}),
+        smtp: fn _c, _m -> flunk("smtp called without recipients") end
+      )
+
+    assert %{channel: "email", status: "skipped"} = Enum.find(r1, &(&1.channel == "email"))
+
+    # Fully configured but the relay errors → failed.
+    r2 =
+      Notifier.send_test(
+        settings:
+          settings(%{
+            "notify_email_smtp_host" => "h",
+            "notify_email_from" => "f@x",
+            "notify_email_to" => "t@x"
+          }),
+        smtp: fn _c, _m -> {:error, :nxdomain} end
+      )
+
+    assert %{channel: "email", status: "failed"} = Enum.find(r2, &(&1.channel == "email"))
+  end
+
   test "unconfigured channels skip; http >=400 is a failure, not sent" do
     Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
 

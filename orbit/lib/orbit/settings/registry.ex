@@ -150,7 +150,43 @@ defmodule Orbit.Settings.Registry do
       env: "",
       default: "https://openrouter.ai/api/v1"
     },
-    %Def{key: "llm_openrouter_model", type: :str, env: "", default: "openai/gpt-5.5"}
+    %Def{key: "llm_openrouter_model", type: :str, env: "", default: "openai/gpt-5.5"},
+    %Def{
+      key: "notify_email_smtp_host",
+      type: :str,
+      env: "DASH_NOTIFY_EMAIL_SMTP_HOST",
+      default: ""
+    },
+    %Def{
+      key: "notify_email_smtp_port",
+      type: :int,
+      env: "DASH_NOTIFY_EMAIL_SMTP_PORT",
+      default: "587",
+      min: 1,
+      max: 65_535
+    },
+    %Def{
+      key: "notify_email_security",
+      type: :str,
+      env: "DASH_NOTIFY_EMAIL_SECURITY",
+      default: "starttls",
+      options: ~w(starttls ssl none)
+    },
+    %Def{key: "notify_email_from", type: :str, env: "DASH_NOTIFY_EMAIL_FROM", default: ""},
+    %Def{key: "notify_email_to", type: :str, env: "DASH_NOTIFY_EMAIL_TO", default: ""},
+    %Def{
+      key: "notify_email_username",
+      type: :str,
+      env: "DASH_NOTIFY_EMAIL_USERNAME",
+      default: ""
+    },
+    %Def{
+      key: "notify_email_password",
+      type: :str,
+      env: "DASH_NOTIFY_EMAIL_PASSWORD",
+      default: "",
+      is_secret: true
+    }
   ]
 
   @editable Map.new(@defs, &{&1.key, &1})

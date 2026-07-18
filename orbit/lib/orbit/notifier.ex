@@ -1,9 +1,9 @@
 defmodule Orbit.Notifier do
   @moduledoc """
   Notification dispatcher — port of notifications/notifier.py. Channels:
-  Mattermost (incoming webhook) and Telegram; the email channel and the
-  per-group channel overrides stay python-side until their slice (an email
-  send reports "skipped: not ported"). Config lives in the shared settings
+  Mattermost (incoming webhook), Telegram and Email (SMTP via gen_smtp:
+  starttls/ssl/none, optional auth). Per-group channel overrides stay
+  python-side until their slice. Config lives in the shared settings
   registry (secrets fernet-encrypted); a channel only receives an alert
   when the selection rules resolve on for its (check_key, instance) —
   base default OFF, so nothing spams before rules exist (Orbit.Selection).
@@ -125,9 +125,84 @@ defmodule Orbit.Notifier do
     end
   end
 
-  defp send_channel("email", _settings, _title, _message, _opts) do
-    # Email (SMTP) is not ported yet — §14 gap list; python keeps sending.
-    %{channel: "email", status: "skipped", detail: "not ported"}
+  defp send_channel("email", settings, title, message, opts) do
+    host = to_string(settings.("notify_email_smtp_host") || "")
+    from = to_string(settings.("notify_email_from") || "")
+    recipients = parse_recipients(to_string(settings.("notify_email_to") || ""))
+
+    if host == "" or from == "" or recipients == [] do
+      %{channel: "email", status: "skipped", detail: ""}
+    else
+      send_email(settings, host, from, recipients, title, message, opts)
+    end
+  end
+
+  defp parse_recipients(raw) do
+    raw |> String.split(~r/[,\s]+/, trim: true) |> Enum.reject(&(&1 == ""))
+  end
+
+  defp send_email(settings, host, from, recipients, title, message, opts) do
+    # Test seam: inject a sender fn; the default is the real gen_smtp path.
+    sender = Keyword.get(opts, :smtp, &deliver_email/2)
+
+    config = %{
+      host: host,
+      port: to_int(settings.("notify_email_smtp_port"), 587),
+      security: to_string(settings.("notify_email_security") || "starttls"),
+      username: to_string(settings.("notify_email_username") || ""),
+      password: to_string(settings.("notify_email_password") || ""),
+      from: from,
+      recipients: recipients
+    }
+
+    mail =
+      "From: #{from}\r\nTo: #{Enum.join(recipients, ", ")}\r\n" <>
+        "Subject: #{title}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n#{message}"
+
+    case sender.(config, mail) do
+      :ok ->
+        Logger.info("notify.email.sent recipients=#{length(recipients)}")
+        %{channel: "email", status: "sent", detail: ""}
+
+      {:error, reason} ->
+        Logger.warning("notify.email.failed error=#{inspect(reason)}")
+        %{channel: "email", status: "failed", detail: to_string(inspect(reason))}
+    end
+  end
+
+  # gen_smtp delivery (_smtp_send port). security: "ssl" = implicit TLS,
+  # "starttls" = upgrade after connect, "none" = plaintext; auth only when a
+  # username is set. Blocking — runs on the caller (already a Task via
+  # dispatch_async, or the synchronous test path).
+  defp deliver_email(cfg, mail) do
+    tls =
+      case cfg.security do
+        "ssl" -> :always
+        "starttls" -> :if_available
+        _ -> :never
+      end
+
+    base = [relay: cfg.host, port: cfg.port, tls: tls, ssl: cfg.security == "ssl"]
+
+    smtp_opts =
+      if cfg.username != "",
+        do: base ++ [username: cfg.username, password: cfg.password, auth: :always],
+        else: base
+
+    envelope = {cfg.from, cfg.recipients, mail}
+
+    case :gen_smtp_client.send_blocking(envelope, smtp_opts) do
+      receipt when is_binary(receipt) -> :ok
+      {:error, _type, reason} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp to_int(v, default) do
+    case Integer.parse(to_string(v || "")) do
+      {n, ""} -> n
+      _ -> default
+    end
   end
 
   defp post(channel, url, body, opts) do

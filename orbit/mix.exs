@@ -82,6 +82,8 @@ defmodule Orbit.MixProject do
       {:req, "~> 0.5"},
       # GeoIP access restriction: local mmdb lookups (plan §5, DR-G1).
       {:locus, "~> 2.3"},
+      # SMTP for the email notification channel (notifier.py _smtp_send port).
+      {:gen_smtp, "~> 1.2"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}
