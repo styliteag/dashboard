@@ -150,6 +150,12 @@ services:
       DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
       DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
       DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
+      # GUI proxy (§18): on in dev so the Open-GUI button renders. Orbit's
+      # own TCP forwarder binds 14400+id; the browser reaches it via the dev
+      # port convention https://localhost:900{id} (no Caddy — transparent tunnel).
+      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
+      DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
+      DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"

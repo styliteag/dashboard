@@ -71,7 +71,14 @@ defmodule Orbit.GUI do
 
   def safe_next(_), do: "/"
 
-  @doc "Per-instance GUI origin: {slug}/{id} template, else the dev port."
+  @doc """
+  Per-instance GUI origin. With a template set (prod: gui-<slug>.<domain>
+  behind the front reverse proxy), {slug}/{id} are substituted. Without one
+  the dev port convention https://localhost:900{id} is used — that origin
+  must be fronted by a reverse proxy (nginx/Caddy) that rewrites /__orbit/*
+  to the handoff, gates on the orbit_gui cookie via /api/gui/authcheck and
+  proxies the rest to this instance's forwarder port (14400 + id).
+  """
   def base_url(%Instance{} = inst) do
     case Application.get_env(:orbit, :gui_base_template, "") do
       "" ->
