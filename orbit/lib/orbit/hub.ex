@@ -203,7 +203,7 @@ defmodule Orbit.Hub do
   @impl true
   def init(:ok) do
     Process.flag(:trap_exit, false)
-    {:ok, %{agents: %{}, pending: %{}, cache: %{}, streams: %{}}}
+    {:ok, %{agents: %{}, pending: %{}, cache: %{}, streams: %{}, ipsec_dup: %{}}}
   end
 
   @impl true
@@ -348,15 +348,27 @@ defmodule Orbit.Hub do
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
     now = DateTime.utc_now()
-    # Diff BEFORE ingest replaces the cached section — the previous snapshot
-    # is the baseline for the ipsec history (hub.py:617 parity).
+    # Duplicate-SA streak (hub.py _annotate_dup_persistence): annotate the
+    # push BEFORE it hits the cache and the diff, so both see the debounced
+    # phase2_dup_persistent flag. Diff runs against the PRE-ingest snapshot.
+    # Map.get on the STATE too: a hot code reload leaves the running
+    # GenServer with the pre-upgrade state map (no :ipsec_dup key yet).
+    dup_state = Map.get(state, :ipsec_dup, %{})
+
+    {data, dup_streaks} =
+      Orbit.Ipsec.History.annotate_dup(data, Map.get(dup_state, instance_id, %{}))
+
     prev_ipsec = Orbit.Hub.Cache.entry(state.cache, instance_id)["ipsec"]
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now)
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)
     maybe_persist_metrics(instance_id, now, data)
     maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data)
-    {:noreply, %{state | cache: cache}}
+
+    {:noreply,
+     state
+     |> Map.put(:cache, cache)
+     |> Map.put(:ipsec_dup, Map.put(dup_state, instance_id, dup_streaks))}
   end
 
   def handle_cast({:tunnel_op, stream, op, fields}, state) do

@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: the tunnel History dialog renders the three-lane state graph
+  (Phase 1 / Phase 2 / Ping — green up, amber partial, red down, grey no
+  data), and persistent duplicate CHILD_SAs are detected again: the Elixir
+  hub debounces the agent's dup signal over three pushes, shows the ⚠ N×
+  SAs note on the phase-2 rows and records phase2_dup_on/off history
+  events, exactly like the Python hub did.
 - Orbit: tunnel history is back — a History dialog per tunnel on the VPN
   page with an up/down timeline graph and the recorded transitions
   (phase-1 up/down, phase-2 count changes, ping ok/fail); the Elixir hub

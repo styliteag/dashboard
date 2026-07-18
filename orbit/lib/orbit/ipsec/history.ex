@@ -7,9 +7,9 @@ defmodule Orbit.Ipsec.History do
   reads the most recent rows per tunnel.
 
   Ported event kinds: phase1_up / phase1_down / phase1_changed,
-  phase2_changed, ping_ok / ping_fail. The python `phase2_dup_*` pair is
-  NOT ported yet — it rides a hub-side debounce flag
-  (phase2_dup_persistent) the orbit hub doesn't compute.
+  phase2_changed, ping_ok / ping_fail, phase2_dup_on / phase2_dup_off
+  (the latter fed by `annotate_dup/2` — the hub-side 3-push streak that
+  debounces the agent's instantaneous dup_count).
   """
 
   @up ~w(up established installed connected 1 true yes)
@@ -86,7 +86,7 @@ defmodule Orbit.Ipsec.History do
     Enum.flat_map(new["children"] || [], fn child ->
       case prev_children[child_key(child)] do
         nil -> []
-        pc -> ping_event(id, pc, child)
+        pc -> ping_event(id, pc, child) ++ dup_event(id, pc, child)
       end
     end)
   end
@@ -104,6 +104,64 @@ defmodule Orbit.Ipsec.History do
       true -> []
     end
   end
+
+  # Persistent-duplicate note appearing/clearing (hub.py _annotate_dup_persistence
+  # + history._dup_event). The selector pair rides in old_value so the
+  # timeline reads on its own.
+  defp dup_event(id, prev, new) do
+    if truthy_flag(prev["phase2_dup_persistent"]) == truthy_flag(new["phase2_dup_persistent"]) do
+      []
+    else
+      selector =
+        String.trim(
+          "#{new["local_ts"] || prev["local_ts"]} → #{new["remote_ts"] || prev["remote_ts"]}"
+        )
+
+      if truthy_flag(new["phase2_dup_persistent"]) do
+        [event(id, new["name"] || "", "phase2_dup_on", selector, "#{new["dup_count"] || 2}× SAs")]
+      else
+        [event(id, new["name"] || "", "phase2_dup_off", selector, "resolved")]
+      end
+    end
+  end
+
+  defp truthy_flag(v), do: v == true
+
+  # ---- dup persistence (hub-side streak, 3 consecutive pushes) --------------
+
+  @dup_persist_polls 3
+
+  @doc """
+  Annotate `phase2_dup_persistent` on children whose duplicate Phase-2
+  (agent's instantaneous dup_count > 1) survived #{@dup_persist_polls}
+  consecutive pushes — a transient rekey blip never lights the note.
+  Returns `{annotated_data, new_streaks}`; without an ipsec section the
+  data AND the streaks pass through unchanged (collector failure).
+  """
+  def annotate_dup(%{"ipsec" => %{"tunnels" => tunnels} = ipsec} = data, prev_streaks)
+      when is_list(tunnels) do
+    {annotated, streaks} =
+      Enum.map_reduce(tunnels, %{}, fn t, acc ->
+        {children, acc} =
+          Enum.map_reduce(t["children"] || [], acc, fn c, acc ->
+            if num(c["dup_count"]) > 1 do
+              key = "#{tunnel_key(t)}|#{c["local_ts"]}|#{c["remote_ts"]}"
+              streak = Map.get(prev_streaks, key, 0) + 1
+
+              {Map.put(c, "phase2_dup_persistent", streak >= @dup_persist_polls),
+               Map.put(acc, key, streak)}
+            else
+              {Map.put(c, "phase2_dup_persistent", false), acc}
+            end
+          end)
+
+        {Map.put(t, "children", children), acc}
+      end)
+
+    {put_in(data, ["ipsec"], Map.put(ipsec, "tunnels", annotated)), streaks}
+  end
+
+  def annotate_dup(data, prev_streaks), do: {data, prev_streaks}
 
   defp event(tunnel_id, child, kind, old, new) do
     %{
@@ -141,6 +199,91 @@ defmodule Orbit.Ipsec.History do
     )
 
     length(events)
+  end
+
+  # ---- graph lanes (TunnelGraphDialog parity) --------------------------------
+
+  @doc """
+  Three state lanes (phase1 / phase2 / ping) for the graph: each lane is a
+  list of `%{left, width, state}` segments (percent of the window, state in
+  :up | :down | :partial | :unknown). Window = oldest event → now; the
+  newest segment takes the tunnel's LIVE state so the right edge is always
+  current. Answers only "was it up?" — dup notes are deliberately not a lane.
+  """
+  def lanes(events, live, %DateTime{} = now) do
+    sorted = Enum.sort_by(events, & &1.ts, DateTime)
+
+    window_start =
+      case sorted do
+        [first | _] -> first.ts
+        [] -> DateTime.add(now, -3600)
+      end
+
+    span = max(DateTime.diff(now, window_start), 1)
+    x = fn ts -> min(max(DateTime.diff(ts, window_start) / span * 100, 0.0), 100.0) end
+
+    %{
+      window_start: window_start,
+      phase1: build_lane(sorted, &phase1_state/1, live_up_state(live.up), x),
+      phase2: build_lane(sorted, &phase2_state/1, p2_state(live.phase2_up, live.phase2_total), x),
+      ping: build_lane(sorted, &ping_state/1, nil, x)
+    }
+  end
+
+  defp live_up_state(true), do: :up
+  defp live_up_state(_), do: :down
+
+  defp p2_state(_up, 0), do: :unknown
+  defp p2_state(up, _total) when up <= 0, do: :down
+  defp p2_state(up, total) when up >= total, do: :up
+  defp p2_state(_up, _total), do: :partial
+
+  defp phase1_state(%{event_type: "phase1_up"}), do: :up
+  defp phase1_state(%{event_type: "phase1_down"}), do: :down
+
+  defp phase1_state(%{event_type: "phase1_changed", new_value: v}) do
+    if String.downcase(to_string(v)) in @up, do: :up, else: :down
+  end
+
+  defp phase1_state(_), do: nil
+
+  defp phase2_state(%{event_type: "phase2_changed", new_value: v}) do
+    case String.split(to_string(v), "/", parts: 2) do
+      [up, total] -> p2_state(int(up), int(total))
+      _ -> nil
+    end
+  end
+
+  defp phase2_state(_), do: nil
+
+  defp ping_state(%{event_type: "ping_ok"}), do: :up
+  defp ping_state(%{event_type: "ping_fail"}), do: :down
+  defp ping_state(_), do: nil
+
+  defp int(s) do
+    case Integer.parse(String.trim(s)) do
+      {n, _} -> n
+      _ -> 0
+    end
+  end
+
+  # One lane: fold the mapped events into state cuts; unknown before the
+  # first relevant event; live_state (when given) overrides the tail.
+  defp build_lane(sorted_events, state_fn, live_state, x) do
+    cuts =
+      for e <- sorted_events, state = state_fn.(e), state != nil, do: {x.(e.ts), state}
+
+    {segments, last_left, last_state} =
+      Enum.reduce(cuts, {[], 0.0, :unknown}, fn {cut, state}, {acc, left, cur} ->
+        {[%{left: left, width: cut - left, state: cur} | acc], cut, state}
+      end)
+
+    tail_state = live_state || last_state
+
+    all =
+      Enum.reverse([%{left: last_left, width: 100.0 - last_left, state: tail_state} | segments])
+
+    Enum.reject(all, &(&1.width <= 0.0))
   end
 
   @doc "Most-recent-first history for one tunnel (capped; ix_ipsec_event_lookup)."

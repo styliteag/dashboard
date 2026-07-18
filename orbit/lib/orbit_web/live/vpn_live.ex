@@ -130,6 +130,9 @@ defmodule OrbitWeb.VpnLive do
          inst when not is_nil(inst) <- Scope.get_instance(nid, socket.assigns.current_user) do
       events = Orbit.Ipsec.History.read(inst.id, tunnel_id, 100)
 
+      live =
+        Enum.find(socket.assigns.tunnels, &(&1.instance_id == inst.id and &1.id == tunnel_id))
+
       {:noreply,
        assign(socket,
          history: %{
@@ -137,6 +140,8 @@ defmodule OrbitWeb.VpnLive do
            tunnel_id: tunnel_id,
            label: params["label"] || tunnel_id,
            up: params["up"] == "true",
+           phase2_up: (live && live.phase2_up) || 0,
+           phase2_total: (live && live.phase2_total) || 0,
            events: events
          }
        )}
@@ -582,6 +587,13 @@ defmodule OrbitWeb.VpnLive do
                     <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
                     </span>
+                    <span
+                      :if={ch["phase2_dup_persistent"] == true}
+                      title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
+                      class="mr-2 text-amber-400"
+                    >
+                      ⚠ {ch["dup_count"] || 2}× SAs
+                    </span>
                     <span :if={mon} class="mr-2 text-slate-600">
                       monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
                       <span :if={not mon.enabled}>(disabled)</span>
@@ -625,24 +637,49 @@ defmodule OrbitWeb.VpnLive do
               </button>
             </div>
 
-            <%!-- Up/down timeline from the phase1 flips (oldest event → now). --%>
-            <div class="mt-4">
-              <div class="h-4 w-full overflow-hidden rounded bg-slate-800">
-                <div class="relative h-full w-full">
+            <%!-- Three state lanes from the transition log (TunnelGraphDialog
+                 parity): green up, red down, amber partial, grey no data. --%>
+            <% lanes =
+              Orbit.Ipsec.History.lanes(
+                @history.events,
+                %{
+                  up: @history.up,
+                  phase2_up: @history.phase2_up,
+                  phase2_total: @history.phase2_total
+                },
+                DateTime.utc_now()
+              ) %>
+            <div class="mt-4 space-y-2">
+              <div
+                :for={
+                  {label, segs} <- [
+                    {"Phase 1", lanes.phase1},
+                    {"Phase 2", lanes.phase2},
+                    {"Ping", lanes.ping}
+                  ]
+                }
+                class="flex items-center gap-2"
+              >
+                <span class="w-16 text-right text-[10px] text-slate-500">{label}</span>
+                <div class="relative h-3.5 flex-1 overflow-hidden rounded bg-slate-800">
                   <div
-                    :for={seg <- timeline_segments(@history.events, @history.up, DateTime.utc_now())}
-                    class={["absolute h-full", if(seg.up, do: "bg-emerald-600", else: "bg-red-600")]}
+                    :for={seg <- segs}
+                    class={["absolute h-full", lane_color(seg.state)]}
                     style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
                   >
                   </div>
                 </div>
               </div>
-              <div class="mt-1 flex justify-between text-[10px] text-slate-600">
-                <span :if={@history.events != []}>
-                  {fmt_event_ts(List.last(@history.events).ts)}
-                </span>
+              <div class="flex justify-between pl-[4.5rem] text-[10px] text-slate-600">
+                <span :if={@history.events != []}>{fmt_event_ts(lanes.window_start)}</span>
                 <span :if={@history.events == []}>no recorded transitions yet</span>
                 <span>now</span>
+              </div>
+              <div class="flex gap-3 pl-[4.5rem] text-[10px] text-slate-500">
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-600"></span>up</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-500"></span>partial</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-red-600"></span>down</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-700"></span>no data</span>
               </div>
             </div>
 
@@ -786,36 +823,10 @@ defmodule OrbitWeb.VpnLive do
     """
   end
 
-  # Up/down segments for the history graph: phase1_up/_down events (ASC)
-  # partition the window from the oldest event to now; the newest segment
-  # takes the tunnel's live state. Non-phase1 events don't cut segments.
-  def timeline_segments(events, currently_up, now) do
-    flips =
-      events
-      |> Enum.filter(&(&1.event_type in ["phase1_up", "phase1_down"]))
-      |> Enum.sort_by(& &1.ts, DateTime)
-
-    case flips do
-      [] ->
-        [%{left: 0.0, width: 100.0, up: currently_up}]
-
-      [first | _] ->
-        span = max(DateTime.diff(now, first.ts), 1)
-        x = fn ts -> min(max(DateTime.diff(ts, first.ts) / span * 100, 0.0), 100.0) end
-
-        # State BEFORE the first flip is its inverse.
-        head_up = first.event_type == "phase1_down"
-
-        {segments, last_x, last_up} =
-          Enum.reduce(flips, {[], 0.0, head_up}, fn e, {acc, left, up} ->
-            cut = x.(e.ts)
-
-            {[%{left: left, width: cut - left, up: up} | acc], cut, e.event_type == "phase1_up"}
-          end)
-
-        Enum.reverse([%{left: last_x, width: 100.0 - last_x, up: last_up} | segments])
-    end
-  end
+  defp lane_color(:up), do: "bg-emerald-600"
+  defp lane_color(:partial), do: "bg-amber-500"
+  defp lane_color(:down), do: "bg-red-600"
+  defp lane_color(:unknown), do: "bg-slate-700"
 
   defp event_color("phase1_up"), do: "text-emerald-400"
   defp event_color("ping_ok"), do: "text-emerald-400"

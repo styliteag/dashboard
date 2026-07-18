@@ -1922,6 +1922,13 @@ defmodule OrbitWeb.InstanceDetailLive do
                     <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
                     </span>
+                    <span
+                      :if={ch["phase2_dup_persistent"] == true}
+                      title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
+                      class="mr-2 text-amber-400"
+                    >
+                      ⚠ {ch["dup_count"] || 2}× SAs
+                    </span>
                     <span :if={mon && @writable}>
                       <span class="text-slate-600">
                         monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
