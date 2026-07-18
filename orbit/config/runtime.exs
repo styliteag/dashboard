@@ -48,9 +48,11 @@ config :orbit, :mfa_issuer, System.get_env("DASH_MFA_ISSUER", "Orbit Dashboard")
 config :orbit, :gui_proxy_enabled, System.get_env("DASH_GUI_PROXY_ENABLED") in ~w(1 true yes on)
 config :orbit, :gui_caddy_admin_url, System.get_env("DASH_GUI_CADDY_ADMIN_URL", "")
 config :orbit, :gui_domain, System.get_env("ORBIT_GUI_DOMAIN", "")
-# Per-instance GUI origin template; {slug}/{id} substituted. Empty → dev
-# port convention https://localhost:900{id} (gui_base_template port).
+# Per-instance GUI origin template; {slug}/{id} substituted. Empty → the
+# dev host convention http://<slug>.localhost:<gui_dev_port>, host-matched
+# and reverse-proxied by OrbitWeb.GuiProxy on the app port.
 config :orbit, :gui_base_template, System.get_env("DASH_GUI_BASE_TEMPLATE", "")
+config :orbit, :gui_dev_port, String.to_integer(System.get_env("DASH_GUI_DEV_PORT", "8000"))
 
 config :orbit,
        :gui_idle_minutes,

@@ -72,17 +72,18 @@ defmodule Orbit.GUI do
   def safe_next(_), do: "/"
 
   @doc """
-  Per-instance GUI origin. With a template set (prod: gui-<slug>.<domain>
-  behind the front reverse proxy), {slug}/{id} are substituted. Without one
-  the dev port convention https://localhost:900{id} is used — that origin
-  must be fronted by a reverse proxy (nginx/Caddy) that rewrites /__orbit/*
-  to the handoff, gates on the orbit_gui cookie via /api/gui/authcheck and
-  proxies the rest to this instance's forwarder port (14400 + id).
+  Per-instance GUI origin — a host on the SAME port as the app, handled by
+  OrbitWeb.GuiProxy. With a template set (prod: `https://gui-<slug>.<domain>`
+  behind TLS termination), {slug}/{id} are substituted. Without one (dev),
+  the origin is `http://<slug>.localhost:<port>` — the browser hits orbit,
+  which host-matches, gates and reverse-proxies to the firewall over the
+  internal forwarder. No Caddy, no per-instance ports.
   """
   def base_url(%Instance{} = inst) do
     case Application.get_env(:orbit, :gui_base_template, "") do
       "" ->
-        "https://localhost:#{9000 + inst.id}"
+        port = Application.get_env(:orbit, :gui_dev_port, 8000)
+        "http://#{inst.slug}.localhost:#{port}"
 
       template ->
         template
@@ -103,15 +104,9 @@ defmodule Orbit.GUI do
   forwarder is localhost-only in dev.
   """
   def handoff_url(inst, token, path) do
-    case Application.get_env(:orbit, :gui_base_template, "") do
-      "" ->
-        # Direct-to-forwarder (dev): the firewall's own login page.
-        "https://localhost:#{Orbit.GUI.TunnelManager.port_for(inst.id)}#{safe_next(path)}"
-
-      _template ->
-        url = "#{base_url(inst)}/__orbit/auth?t=#{token}"
-        nxt = safe_next(path)
-        if nxt == "/", do: url, else: url <> "&next=" <> URI.encode(nxt, &URI.char_unreserved?/1)
-    end
+    base = base_url(inst)
+    url = "#{base}/__orbit/auth?t=#{token}"
+    nxt = safe_next(path)
+    if nxt == "/", do: url, else: url <> "&next=" <> URI.encode(nxt, &URI.char_unreserved?/1)
   end
 end

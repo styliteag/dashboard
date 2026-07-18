@@ -60,7 +60,9 @@ defmodule Orbit.GUI.TunnelManager do
       nil ->
         port = port_for(instance_id)
 
-        case :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, ip: {0, 0, 0, 0}]) do
+        # Bind loopback only — the GuiProxy plug reaches it at 127.0.0.1;
+        # never exposed to the host (host-matched proxy is the front door).
+        case :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}]) do
           {:ok, lsock} ->
             parent = self()
             acceptor = spawn_link(fn -> accept_loop(lsock, instance_id, state.hub, parent) end)

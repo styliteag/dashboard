@@ -45,6 +45,11 @@ defmodule OrbitWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # GUI reverse proxy (§18): a GUI-host request (<slug>.localhost /
+  # gui-<slug>.<domain>) is handled here and halted; any other host passes
+  # through. BEFORE the parsers so the request body reaches the firewall raw.
+  plug OrbitWeb.GuiProxy
+
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],

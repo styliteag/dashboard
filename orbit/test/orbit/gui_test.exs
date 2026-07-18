@@ -27,9 +27,10 @@ defmodule Orbit.GUITest do
   end
 
   describe "base_url/1 + handoff_url/3" do
-    test "dev port convention without a template" do
+    test "dev host convention: <slug>.localhost on the app port" do
       Application.put_env(:orbit, :gui_base_template, "")
-      assert GUI.base_url(%Instance{id: 3, slug: "opn1"}) == "https://localhost:9003"
+      Application.put_env(:orbit, :gui_dev_port, 8000)
+      assert GUI.base_url(%Instance{id: 3, slug: "opn1"}) == "http://opn1.localhost:8000"
     end
 
     test "template substitutes slug and id" do
@@ -37,7 +38,7 @@ defmodule Orbit.GUITest do
       assert GUI.base_url(%Instance{id: 3, slug: "opn1"}) == "https://gui-opn1.example.com"
     end
 
-    test "handoff url with a proxy template carries the token + deep-link" do
+    test "handoff url carries the token + deep-link on the gui origin" do
       Application.put_env(:orbit, :gui_base_template, "https://gui-{slug}.example.com")
       inst = %Instance{id: 3, slug: "opn1"}
       url = GUI.handoff_url(inst, "tok123", "/ui/x")
@@ -45,14 +46,6 @@ defmodule Orbit.GUITest do
       # A "/" next is omitted (no redirect param).
       assert GUI.handoff_url(inst, "tok123", "/") ==
                "https://gui-opn1.example.com/__orbit/auth?t=tok123"
-    end
-
-    test "dev (no template) opens the forwarder port directly, no handoff" do
-      Application.put_env(:orbit, :gui_base_template, "")
-      inst = %Instance{id: 3, slug: "opn1"}
-      # 14400 + 3 = 14403, the transparent forwarder.
-      assert GUI.handoff_url(inst, "tok", "/ui/x") == "https://localhost:14403/ui/x"
-      assert GUI.handoff_url(inst, "tok", "/") == "https://localhost:14403/"
     end
   end
 end
