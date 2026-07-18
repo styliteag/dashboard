@@ -61,6 +61,28 @@ defmodule Orbit.Metrics do
   end
 
   @doc """
+  Fleet push activity: pushes per bucket across all instances, counted via
+  the `cpu.total` rows (written exactly once per push/poll — the cheapest
+  honest push counter; the react hub chart sampled client-side instead).
+  """
+  def push_rate(range) do
+    {window, bucket} = range_bucket(range)
+    bucket = max(bucket, 60)
+    end_naive = naive_utc_now()
+    start_naive = NaiveDateTime.add(end_naive, -window)
+
+    Orbit.Repo.query!(
+      "SELECT FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV #{bucket} * #{bucket}) AS ts, " <>
+        "COUNT(*) AS value FROM metrics " <>
+        "WHERE metric = 'cpu.total' AND ts >= ? AND ts <= ? GROUP BY 1 ORDER BY 1",
+      [start_naive, end_naive]
+    ).rows
+    |> Enum.map(fn [ts, value] -> %{ts: as_utc(ts), value: to_float(value)} end)
+  rescue
+    _ -> []
+  end
+
+  @doc """
   Differentiate a monotonic counter series into per-second rates (iface byte
   counters → bytes/sec). Drops the first point (no predecessor); counter
   resets (negative delta, e.g. reboot) clamp to 0.0 instead of spiking.

@@ -12,6 +12,7 @@ defmodule OrbitWeb.HubStatusLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.MetricChart
 
   alias Orbit.Auth.Scope
   alias Orbit.Hub
@@ -25,7 +26,11 @@ defmodule OrbitWeb.HubStatusLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    {:ok, assign(socket, agents: visible_agents(socket.assigns.current_user))}
+    {:ok,
+     assign(socket,
+       agents: visible_agents(socket.assigns.current_user),
+       push_rate: Orbit.Metrics.push_rate("6h")
+     )}
   end
 
   @impl true
@@ -35,7 +40,12 @@ defmodule OrbitWeb.HubStatusLive do
 
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
-    {:noreply, assign(socket, agents: visible_agents(socket.assigns.current_user))}
+
+    {:noreply,
+     assign(socket,
+       agents: visible_agents(socket.assigns.current_user),
+       push_rate: Orbit.Metrics.push_rate("6h")
+     )}
   end
 
   @impl true
@@ -118,6 +128,18 @@ defmodule OrbitWeb.HubStatusLive do
             <div class="text-xs text-slate-500">Served agent</div>
             <div class="text-2xl font-semibold text-slate-100">{@served_version || "—"}</div>
           </div>
+        </div>
+
+        <%!-- Fleet push activity (HubStatusPage rate-chart parity): pushes
+             per minute-bucket over the last 6h, counted from the metric
+             rows every push writes. --%>
+        <div class="mb-4 max-w-xl">
+          <.metric_chart
+            label="Pushes / min (fleet, 6h)"
+            points={@push_rate}
+            color="#38bdf8"
+            domain_max={:auto}
+          />
         </div>
 
         <div :if={@agents == []} class="text-sm text-slate-500">
