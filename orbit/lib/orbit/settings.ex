@@ -44,6 +44,9 @@ defmodule Orbit.Settings do
     end
   end
 
+  @doc "True when the key has a DB override (i.e. is not on its env/default)."
+  def overridden?(key), do: :ets.lookup(@table, key) != []
+
   @doc "Reload all overrides from the DB (boot, after writes, periodic)."
   @spec reload() :: :ok
   def reload, do: GenServer.call(__MODULE__, :reload)

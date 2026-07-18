@@ -90,6 +90,22 @@ defmodule Orbit.Settings.Registry do
       max: 3650
     },
     %Def{
+      key: "ipsec_event_retention_days",
+      type: :int,
+      env: "DASH_IPSEC_EVENT_RETENTION_DAYS",
+      default: "90",
+      min: 1,
+      max: 3650
+    },
+    %Def{
+      key: "gui_idle_minutes",
+      type: :int,
+      env: "DASH_GUI_IDLE_MINUTES",
+      default: "15",
+      min: 1,
+      max: 1440
+    },
+    %Def{
       key: "notify_mattermost_url",
       type: :str,
       env: "DASH_NOTIFY_MATTERMOST_URL",
@@ -188,6 +204,262 @@ defmodule Orbit.Settings.Registry do
       is_secret: true
     }
   ]
+
+  # UI metadata (label / group / help / restart) per key — mirror of the
+  # python SettingDef fields, so the Settings page renders friendly labels,
+  # grouped tabs, help text and the needs-restart badge. Keys absent here
+  # fall back to a humanized label + "Other" group.
+  @meta %{
+    "poll_interval_seconds" => %{
+      group: "Polling",
+      label: "Default poll interval",
+      help:
+        "Default per-instance poll cadence for direct-API devices (seconds).  Instances can override it.",
+      restart: false
+    },
+    "poll_tick_seconds" => %{
+      group: "Polling",
+      label: "Scheduler tick",
+      help:
+        "How often the poller wakes to check which instances are due (seconds).  Finest achievable poll resolution.",
+      restart: true
+    },
+    "poll_concurrency" => %{
+      group: "Polling",
+      label: "Poll concurrency",
+      help: "Max instances polled in parallel per tick.",
+      restart: false
+    },
+    "push_interval_seconds" => %{
+      group: "Polling",
+      label: "Default agent push interval",
+      help:
+        "Default agent push cadence (seconds), mirrored to the agent.  Instances can override it.",
+      restart: false
+    },
+    "agent_stale_seconds" => %{
+      group: "Polling",
+      label: "Agent offline floor",
+      help:
+        "Floor for marking a push-mode instance offline when no push arrives  (seconds). The real threshold scales up with a slower push interval.",
+      restart: false
+    },
+    "metrics_retention_days" => %{
+      group: "Retention",
+      label: "Metrics retention",
+      help: "Raw metrics are pruned after this many days.",
+      restart: false
+    },
+    "ipsec_event_retention_days" => %{
+      group: "Retention",
+      label: "IPsec event retention",
+      help: "IPsec tunnel state-change history kept this many days.",
+      restart: false
+    },
+    "check_event_retention_days" => %{
+      group: "Retention",
+      label: "Check event retention",
+      help: "Service-check state-change history kept this many days.",
+      restart: false
+    },
+    "access_events_retention_days" => %{
+      group: "Retention",
+      label: "Access sample retention",
+      help: "Sampled per-request access rows (user IPs) kept this many days.",
+      restart: false
+    },
+    "access_sessions_retention_days" => %{
+      group: "Retention",
+      label: "Login session retention",
+      help: "Ended login sessions kept this many days.",
+      restart: false
+    },
+    "access_stats_retention_days" => %{
+      group: "Retention",
+      label: "Access aggregate retention",
+      help: "Hourly per-principal request counters kept this many days.",
+      restart: false
+    },
+    "gui_idle_minutes" => %{
+      group: "GUI proxy",
+      label: "GUI proxy idle close",
+      help:
+        "Close an idle firewall-GUI tunnel after this many minutes with no active connections.",
+      restart: false
+    },
+    "log_level" => %{
+      group: "Service",
+      label: "Log level",
+      help: "Backend log verbosity.",
+      restart: true
+    },
+    "log_format" => %{
+      group: "Service",
+      label: "Log format",
+      help: "Backend log output: human-readable console lines or JSON lines.",
+      restart: true
+    },
+    "notify_mattermost_url" => %{
+      group: "Mattermost",
+      label: "Webhook URL",
+      help: "Incoming-webhook URL of a Mattermost channel. Stored encrypted.",
+      restart: false
+    },
+    "notify_telegram_token" => %{
+      group: "Telegram",
+      label: "Bot token",
+      help:
+        "Telegram bot API token. Stored encrypted. Telegram is used only when  both token and chat ID are set.",
+      restart: false
+    },
+    "notify_telegram_chat_id" => %{
+      group: "Telegram",
+      label: "Chat ID",
+      help: "Target chat/channel ID the bot posts to.",
+      restart: false
+    },
+    "notify_email_smtp_host" => %{
+      group: "Email",
+      label: "SMTP host",
+      help: "SMTP server hostname. Email is used only when host, from and to are all set.",
+      restart: false
+    },
+    "notify_email_smtp_port" => %{
+      group: "Email",
+      label: "SMTP port",
+      help: "SMTP server port (587 for STARTTLS, 465 for implicit TLS, 25 for none).",
+      restart: false
+    },
+    "notify_email_security" => %{
+      group: "Email",
+      label: "Transport security",
+      help: "STARTTLS (587), implicit TLS/SSL (465) or none (plaintext, 25).",
+      restart: false
+    },
+    "notify_email_from" => %{
+      group: "Email",
+      label: "From address",
+      help: "Envelope/From sender address for alert emails.",
+      restart: false
+    },
+    "notify_email_to" => %{
+      group: "Email",
+      label: "Recipients",
+      help: "One or more recipient addresses, comma- or space-separated.",
+      restart: false
+    },
+    "notify_email_username" => %{
+      group: "Email",
+      label: "SMTP username",
+      help: "SMTP auth username. Leave empty for an unauthenticated relay.",
+      restart: false
+    },
+    "notify_email_password" => %{
+      group: "Email",
+      label: "SMTP password",
+      help: "SMTP auth password. Stored encrypted.",
+      restart: false
+    },
+    "notify_mattermost_muted" => %{
+      group: "Maintenance",
+      label: "Mute Mattermost alerts",
+      help:
+        "Pause Mattermost alert delivery. Real alerts are skipped while muted;  an explicit Send test still fires. Toggle off to resume.",
+      restart: false
+    },
+    "notify_telegram_muted" => %{
+      group: "Maintenance",
+      label: "Mute Telegram alerts",
+      help:
+        "Pause Telegram alert delivery. Real alerts are skipped while muted;  an explicit Send test still fires. Toggle off to resume.",
+      restart: false
+    },
+    "notify_email_muted" => %{
+      group: "Maintenance",
+      label: "Mute Email alerts",
+      help:
+        "Pause Email alert delivery. Real alerts are skipped while muted;  an explicit Send test still fires. Toggle off to resume.",
+      restart: false
+    },
+    "checkmk_blackout" => %{
+      group: "Maintenance",
+      label: "Checkmk blackout",
+      help:
+        "Return an empty Checkmk export so every service goes stale/gone. Use  during maintenance to suppress Checkmk alerting. Toggle off to resume.",
+      restart: false
+    },
+    "checkmk_aggregate" => %{
+      group: "Checkmk",
+      label: "Aggregate services",
+      help:
+        "Collapse high-fan-out checks (certificates, IPsec tunnels, services,  interfaces, gateways, connectivity, disks) into one aggregate service per  category — the worst member state wins and the offenders are named in the  summary. Cuts a box from hundreds of Checkmk services to a handful. Turning  this off (or on) changes which services Checkmk discovers.",
+      restart: false
+    },
+    "llm_openai_api_key" => %{
+      group: "AI",
+      label: "OpenAI API key",
+      help: "API key for OpenAI-compatible chat completions.",
+      restart: false
+    },
+    "llm_openai_base_url" => %{
+      group: "AI",
+      label: "OpenAI base URL",
+      help: "Override the OpenAI API base URL (self-hosted / proxy).",
+      restart: false
+    },
+    "llm_openai_model" => %{
+      group: "AI",
+      label: "OpenAI model",
+      help: "Model id used for log analysis.",
+      restart: false
+    },
+    "llm_anthropic_api_key" => %{
+      group: "AI",
+      label: "Anthropic API key",
+      help: "API key for Anthropic (Claude) messages.",
+      restart: false
+    },
+    "llm_anthropic_base_url" => %{
+      group: "AI",
+      label: "Anthropic base URL",
+      help: "Override the Anthropic API base URL.",
+      restart: false
+    },
+    "llm_anthropic_model" => %{
+      group: "AI",
+      label: "Anthropic model",
+      help: "Model id used for log analysis.",
+      restart: false
+    },
+    "llm_openrouter_api_key" => %{
+      group: "AI",
+      label: "OpenRouter API key",
+      help: "API key for OpenRouter.",
+      restart: false
+    },
+    "llm_openrouter_base_url" => %{
+      group: "AI",
+      label: "OpenRouter base URL",
+      help: "Override the OpenRouter API base URL.",
+      restart: false
+    },
+    "llm_openrouter_model" => %{
+      group: "AI",
+      label: "OpenRouter model",
+      help: "Model id used for log analysis.",
+      restart: false
+    }
+  }
+
+  @doc "UI metadata for a key: %{group, label, help, restart}."
+  def meta(key) do
+    Map.get(@meta, key, %{
+      group: "Other",
+      label: key |> String.replace("_", " ") |> String.capitalize(),
+      help: "",
+      restart: false
+    })
+  end
 
   @editable Map.new(@defs, &{&1.key, &1})
 

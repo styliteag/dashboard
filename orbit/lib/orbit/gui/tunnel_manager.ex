@@ -102,7 +102,7 @@ defmodule Orbit.GUI.TunnelManager do
   @impl true
   def handle_info(:reap, state) do
     if state.reap_ms, do: Process.send_after(self(), :reap, state.reap_ms)
-    idle_minutes = Application.get_env(:orbit, :gui_idle_minutes, 15)
+    idle_minutes = Orbit.Settings.effective("gui_idle_minutes")
     {:noreply, if(idle_minutes > 0, do: do_reap(state, idle_minutes * 60), else: state)}
   end
 

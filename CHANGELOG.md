@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Orbit: the Settings page is rebuilt to match the old UI — real tabs
+  (General, Mattermost, Telegram, Email, AI, Checkmk, Prometheus) with rich
+  rows per setting (friendly label, help text, key + default line, "default"
+  and "needs restart" badges, typed inputs, per-row Save + reset). Channel
+  tabs carry the mute toggle + test, AI the provider test buttons, Checkmk
+  and Prometheus the API-key/selection links. Two settings that were
+  env-only (GUI proxy idle timeout, IPsec event retention) are now
+  DB-overridable and appear in the list.
+
 - Orbit: inline editable comments in the list views — a pencil per row on
   Instances (the box's notes), VPN tunnels and Connectivity monitors opens
   a small popover to add/edit/clear a comment, matching the old UI's

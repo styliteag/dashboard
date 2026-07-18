@@ -20,12 +20,18 @@ defmodule OrbitWeb.SettingsLive do
     {:ok,
      assign(socket,
        rows: load_rows(),
+       tab: "general",
        flash_key: nil,
        test_busy: false,
        test_results: nil,
        llm_busy: nil,
        llm_result: nil
      )}
+  end
+
+  @impl true
+  def handle_event("set_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, tab: tab, test_results: nil, llm_result: nil)}
   end
 
   @impl true
@@ -121,84 +127,86 @@ defmodule OrbitWeb.SettingsLive do
   defp load_rows do
     Registry.editable()
     |> Map.values()
-    |> Enum.sort_by(& &1.key)
     |> Enum.map(fn defn ->
       effective = to_string(Settings.effective(defn.key))
+      meta = Registry.meta(defn.key)
 
       %{
         key: defn.key,
         type: defn.type,
         secret: defn.is_secret,
+        options: defn.options,
+        label: meta.label,
+        help: meta.help,
+        group: meta.group,
+        restart: meta.restart,
+        overridden: Settings.overridden?(defn.key),
         # Secrets never render by value (invariant 3): set/not-set only.
         default: if(defn.is_secret, do: "", else: System.get_env(defn.env, defn.default)),
         effective: if(defn.is_secret, do: secret_state(effective), else: effective),
-        input: if(defn.is_secret, do: "", else: effective),
-        group: group_for(defn.key)
+        input: if(defn.is_secret, do: "", else: effective)
       }
     end)
+    |> Enum.sort_by(& &1.label)
   end
 
-  # Section grouping by key prefix (SettingsPage tabs, condensed to headed
-  # sections — python's registry carries an explicit group, the orbit key
-  # names encode the same information).
-  @group_order ["Polling & agents", "Retention", "Notifications", "AI providers", "Other"]
+  # Tabs (SettingsPage parity). Each tab shows one or more registry groups;
+  # the channel/checkmk tabs additionally render their mute/toggle + test.
+  @tabs [
+    {"general", "General", ["Polling", "Retention", "GUI proxy", "Service", "Other"]},
+    {"mattermost", "Mattermost", ["Mattermost"]},
+    {"telegram", "Telegram", ["Telegram"]},
+    {"email", "Email", ["Email"]},
+    {"ai", "AI", ["AI"]},
+    {"checkmk", "Checkmk", ["Checkmk"]},
+    {"prometheus", "Prometheus", []}
+  ]
 
-  def group_order, do: @group_order
+  def tabs, do: @tabs
 
-  defp group_for("notify_" <> _), do: "Notifications"
-  defp group_for("llm_" <> _), do: "AI providers"
-
-  defp group_for(key) do
-    cond do
-      String.ends_with?(key, "_retention_days") -> "Retention"
-      String.starts_with?(key, "poll") or String.starts_with?(key, "push") -> "Polling & agents"
-      String.starts_with?(key, "agent_") -> "Polling & agents"
-      true -> "Other"
-    end
+  defp rows_for_tab(rows, tab) do
+    groups = Enum.find_value(@tabs, [], fn {k, _, gs} -> if k == tab, do: gs end)
+    Enum.filter(rows, &(&1.group in groups))
   end
+
+  # The per-channel mute toggle lives on that channel's tab (not the field list).
+  defp mute_row(rows, key), do: Enum.find(rows, &(&1.key == key))
 
   defp secret_state(""), do: "(not set)"
   defp secret_state(_), do: "•••• (set)"
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, tab_rows: rows_for_tab(assigns.rows, assigns.tab))
+
     ~H"""
     <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">
-        <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-base-content">Settings</h1>
-          <button
-            phx-click="notify_test"
-            disabled={@test_busy}
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {if @test_busy, do: "Sending…", else: "Send test notification"}
-          </button>
-          <a href={~p"/selection"} class="text-xs text-base-content/60 hover:text-base-content/80">
-            selection rules
-          </a>
-          <a href={~p"/apikeys"} class="text-xs text-base-content/60 hover:text-base-content/80">
-            api keys
-          </a>
-        </div>
+        <h1 class="mb-1 text-lg font-medium text-base-content">Settings</h1>
+        <p class="mb-4 text-xs text-base-content/60">
+          Override the defaults that otherwise come from the environment / <code>.env</code>.
+          Infra and security settings (database URL, master key, proxy hops…) stay
+          environment-only.
+        </p>
 
-        <div
-          :if={@test_results}
-          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-3 text-sm"
-        >
-          <div :for={r <- @test_results} class="flex items-center gap-2">
-            <span class="w-24 text-base-content/70">{r.channel}</span>
-            <span class={[
-              r.status == "sent" && "text-primary",
-              r.status == "failed" && "text-error",
-              r.status == "skipped" && "text-base-content/60"
-            ]}>
-              {r.status}{if r.detail != "", do: " — #{r.detail}"}
-            </span>
-          </div>
-        </div>
+        <nav class="mb-6 flex flex-wrap gap-1 border-b border-base-300 pb-2">
+          <button
+            :for={{key, label, _groups} <- tabs()}
+            phx-click="set_tab"
+            phx-value-tab={key}
+            class={[
+              "rounded-md px-3 py-1 text-sm",
+              if(@tab == key,
+                do: "bg-base-300 font-medium text-primary",
+                else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </nav>
 
         <p
           :if={@flash[:info]}
@@ -208,119 +216,212 @@ defmodule OrbitWeb.SettingsLive do
         </p>
         <p
           :if={@flash[:error]}
-          class="mb-3 rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm text-error"
+          class="mb-3 rounded-md border border-error/40 bg-error/15 px-3 py-2 text-sm text-error"
         >
           {@flash[:error]}
         </p>
 
-        <div
-          :if={@llm_result}
-          class={[
-            "mb-4 rounded px-3 py-2 text-sm",
-            case @llm_result do
-              {:ok, _} -> "bg-primary/15 text-primary"
-              _ -> "bg-error/15 text-error"
-            end
-          ]}
-        >
-          {elem(@llm_result, 1)}
+        <%!-- General + AI + settings-bearing tabs: the rich setting rows. --%>
+        <div class="space-y-3">
+          <.setting_row :for={r <- @tab_rows} row={r} />
         </div>
 
-        <section
-          :for={group <- group_order()}
-          :if={Enum.any?(@rows, &(&1.group == group))}
-          class="mb-8"
+        <p
+          :if={
+            @tab_rows == [] and
+              @tab not in ["mattermost", "telegram", "email", "checkmk", "prometheus"]
+          }
+          class="text-sm text-base-content/60"
         >
-          <div class="mb-2 flex items-center gap-3">
-            <h2 class="text-sm font-semibold text-base-content/70">{group}</h2>
-            <div :if={group == "AI providers"} class="flex gap-1">
-              <button
-                :for={p <- Orbit.LLM.Analyze.providers()}
-                phx-click="llm_test"
-                phx-value-provider={p.id}
-                disabled={@llm_busy != nil}
-                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300 disabled:opacity-50"
-              >
-                {if @llm_busy == p.id, do: "Testing…", else: "Test #{p.label}"}
-              </button>
+          No settings in this tab.
+        </p>
+
+        <%!-- Channel tabs: intro + mute toggle + connectivity test. The field
+             rows above already rendered this channel's group. --%>
+        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4 space-y-3">
+          <.mute_toggle
+            :if={mute_row(@rows, "notify_#{@tab}_muted")}
+            row={mute_row(@rows, "notify_#{@tab}_muted")}
+          />
+          <button
+            phx-click="notify_test"
+            disabled={@test_busy}
+            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-40"
+          >
+            {if @test_busy, do: "Sending…", else: "Send test notification"}
+          </button>
+          <div :if={@test_results} class="rounded-lg border border-base-300 bg-base-200 p-3 text-sm">
+            <div :for={res <- @test_results} class="flex items-center gap-2">
+              <span class="w-24 text-base-content/70">{res.channel}</span>
+              <span class={[
+                res.status == "sent" && "text-primary",
+                res.status == "failed" && "text-error",
+                res.status == "skipped" && "text-base-content/60"
+              ]}>
+                {res.status}{if res.detail != "", do: " — #{res.detail}"}
+              </span>
             </div>
           </div>
-          <table class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Key</th>
-                <th class="py-2 pr-4 font-medium">Effective</th>
-                <th class="py-2 pr-4 font-medium">Default</th>
-                <th class="py-2 pr-4 font-medium">Set</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={r <- @rows} :if={r.group == group} class="border-b border-base-300/50">
-                <td class="py-2 pr-4 text-base-content">{r.key}</td>
-                <td class="py-2 pr-4 text-primary">{r.effective}</td>
-                <td class="py-2 pr-4 text-base-content/60">{r.default}</td>
-                <td class="py-2 pr-4">
-                  <%!-- Bool settings (the notify mutes) save on click. --%>
-                  <form :if={r.type == :bool} phx-submit="save" class="flex items-center gap-2">
-                    <input type="hidden" name="key" value={r.key} />
-                    <input
-                      type="hidden"
-                      name="value"
-                      value={if r.effective in ["true", "1"], do: "false", else: "true"}
-                    />
-                    <button
-                      type="submit"
-                      class={[
-                        "rounded px-2 py-1 text-xs",
-                        if(r.effective in ["true", "1"],
-                          do: "bg-warning text-white hover:bg-warning/80",
-                          else: "border border-base-content/20 text-base-content/80 hover:bg-base-300"
-                        )
-                      ]}
-                    >
-                      {if r.effective in ["true", "1"], do: "muted — unmute", else: "mute"}
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="clear"
-                      phx-value-key={r.key}
-                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
-                    >
-                      Reset
-                    </button>
-                  </form>
-                  <form :if={r.type != :bool} phx-submit="save" class="flex items-center gap-2">
-                    <input type="hidden" name="key" value={r.key} />
-                    <input
-                      type={if r.secret, do: "password", else: "text"}
-                      name="value"
-                      value={r.input}
-                      placeholder={if r.secret, do: "blank = keep", else: nil}
-                      autocomplete="off"
-                      class="w-24 rounded border border-base-content/20 bg-base-100 px-2 py-1 text-base-content focus:border-primary focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="clear"
-                      phx-value-key={r.key}
-                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
-                    >
-                      Reset
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+        </div>
+
+        <%!-- AI tab: provider test buttons. --%>
+        <div :if={@tab == "ai"} class="mt-4">
+          <div class="flex flex-wrap gap-2">
+            <button
+              :for={p <- Orbit.LLM.Analyze.providers()}
+              phx-click="llm_test"
+              phx-value-provider={p.id}
+              disabled={@llm_busy != nil}
+              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300 disabled:opacity-50"
+            >
+              {if @llm_busy == p.id, do: "Testing…", else: "Test #{p.label}"}
+            </button>
+          </div>
+          <div
+            :if={@llm_result}
+            class={[
+              "mt-3 rounded px-3 py-2 text-sm",
+              case @llm_result do
+                {:ok, _} -> "bg-primary/10 text-primary"
+                _ -> "bg-error/15 text-error"
+              end
+            ]}
+          >
+            {elem(@llm_result, 1)}
+          </div>
+        </div>
+
+        <%!-- Checkmk tab: blackout toggle + api keys link. --%>
+        <div :if={@tab == "checkmk"} class="mt-4 space-y-3">
+          <.mute_toggle
+            :if={mute_row(@rows, "checkmk_blackout")}
+            row={mute_row(@rows, "checkmk_blackout")}
+          />
+          <a href={~p"/apikeys"} class="inline-block text-sm text-primary hover:underline">
+            Manage Checkmk API keys →
+          </a>
+          <a href={~p"/selection"} class="ml-4 inline-block text-sm text-primary hover:underline">
+            Service selection rules →
+          </a>
+        </div>
+
+        <%!-- Prometheus tab: no settings, just the api key surface. --%>
+        <div :if={@tab == "prometheus"} class="mt-4">
+          <p class="mb-2 text-sm text-base-content/70">
+            Prometheus scrapes <code>/api/export/prometheus</code> with a read-only API key.
+          </p>
+          <a href={~p"/apikeys"} class="text-sm text-primary hover:underline">
+            Manage Prometheus API keys →
+          </a>
+        </div>
       </section>
     </main>
+    """
+  end
+
+  # One rich setting row: label + badges, help, key/default line, typed input.
+  attr :row, :map, required: true
+
+  defp setting_row(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-base-300 bg-base-200/60 p-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-base-content">{@row.label}</span>
+            <span
+              :if={not @row.overridden}
+              class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
+            >
+              default
+            </span>
+            <span
+              :if={@row.restart}
+              class="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] text-warning"
+            >
+              needs restart
+            </span>
+          </div>
+          <p :if={@row.help != ""} class="mt-0.5 text-xs text-base-content/60">{@row.help}</p>
+          <p class="mt-0.5 font-mono text-[11px] text-base-content/40">
+            {@row.key}{if @row.default not in [nil, ""], do: " · default #{@row.default}"}
+          </p>
+        </div>
+
+        <form phx-submit="save" class="flex shrink-0 items-center gap-2">
+          <input type="hidden" name="key" value={@row.key} />
+          <select
+            :if={@row.type == :str and @row.options not in [nil, []]}
+            name="value"
+            class="rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
+          >
+            <option :for={o <- @row.options} value={o} selected={@row.input == o}>{o}</option>
+          </select>
+          <input
+            :if={not (@row.type == :str and @row.options not in [nil, []])}
+            type={
+              cond do
+                @row.secret -> "password"
+                @row.type == :int -> "number"
+                true -> "text"
+              end
+            }
+            name="value"
+            value={@row.input}
+            placeholder={if @row.secret, do: "blank = keep", else: nil}
+            autocomplete="off"
+            class="w-28 rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
+          />
+          <button
+            type="submit"
+            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
+          >
+            Save
+          </button>
+          <button
+            :if={@row.overridden}
+            type="button"
+            phx-click="clear"
+            phx-value-key={@row.key}
+            title="Reset to the environment default"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+          >
+            ↺
+          </button>
+        </form>
+      </div>
+    </div>
+    """
+  end
+
+  # A bool setting as one-click mute/unmute (notify mutes, checkmk blackout).
+  attr :row, :map, required: true
+
+  defp mute_toggle(assigns) do
+    on = assigns.row.effective in ["true", "1"]
+    assigns = assign(assigns, on: on)
+
+    ~H"""
+    <form phx-submit="save" class="flex items-center gap-3">
+      <input type="hidden" name="key" value={@row.key} />
+      <input type="hidden" name="value" value={to_string(not @on)} />
+      <div>
+        <span class="text-sm text-base-content">{@row.label}</span>
+        <p :if={@row.help != ""} class="text-xs text-base-content/60">{@row.help}</p>
+      </div>
+      <button
+        type="submit"
+        class={[
+          "rounded px-3 py-1 text-xs",
+          if(@on,
+            do: "bg-warning text-white hover:bg-warning/80",
+            else: "border border-base-content/20 text-base-content/80 hover:bg-base-300"
+          )
+        ]}
+      >
+        {if @on, do: "on — turn off", else: "turn on"}
+      </button>
+    </form>
     """
   end
 end

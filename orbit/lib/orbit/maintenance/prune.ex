@@ -57,18 +57,11 @@ defmodule Orbit.Maintenance.Prune do
   @doc "Delete IPsec tunnel events older than the retention window. Returns rows deleted."
   @spec prune_ipsec_events() :: non_neg_integer()
   def prune_ipsec_events do
-    days = env_days("DASH_IPSEC_EVENT_RETENTION_DAYS", 90)
+    days = Orbit.Settings.effective("ipsec_event_retention_days")
     deleted = prune_before("ipsec_tunnel_events", cutoff(days))
     if deleted > 0, do: Logger.info("ipsec_events.pruned rows=#{deleted}")
     deleted
   end
 
   defp cutoff(days), do: DateTime.add(DateTime.utc_now(), -days * 86_400, :second)
-
-  defp env_days(var, default) do
-    case var |> System.get_env(to_string(default)) |> Integer.parse() do
-      {n, _} when n > 0 -> n
-      _ -> default
-    end
-  end
 end
