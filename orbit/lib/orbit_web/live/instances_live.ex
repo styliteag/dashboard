@@ -305,7 +305,8 @@ defmodule OrbitWeb.InstancesLive do
           bucket: Instances.status_bucket(inst, agent_connected),
           alerts: alert_counts[inst.id] || %{crit: 0, warn: 0},
           shell_enabled: inst.shell_enabled,
-          gui_openable: Orbit.GUI.openable(inst) == :ok
+          gui_openable: Orbit.GUI.openable(inst) == :ok,
+          base_url: Instance.primary_base_url(inst)
         }
       end)
 
@@ -614,6 +615,15 @@ defmodule OrbitWeb.InstancesLive do
             </div>
             <div class="mt-2 space-y-1 text-xs text-base-content/70">
               <div>{i.device_type} · {if i.agent_mode, do: "agent", else: "api"}</div>
+              <a
+                :if={i.base_url != ""}
+                href={i.base_url}
+                target="_blank"
+                rel="noreferrer"
+                class="block truncate hover:text-base-content/70 hover:underline"
+              >
+                {i.base_url}
+              </a>
               <div :if={i.location}>{i.location}</div>
               <div :if={i.tags != []} class="flex flex-wrap gap-1">
                 <span
@@ -691,7 +701,19 @@ defmodule OrbitWeb.InstancesLive do
                   </a>
                   <.webui_link instance_id={i.id} openable={i.gui_openable} />
                   <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
-                  <div class="text-xs text-base-content/40">{i.device_type}</div>
+                  <div class="flex items-center gap-2 text-xs text-base-content/40">
+                    <span>{i.device_type}</span>
+                    <a
+                      :if={i.base_url != ""}
+                      href={i.base_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      class="truncate hover:text-base-content/70 hover:underline"
+                      onclick="event.stopPropagation()"
+                    >
+                      {i.base_url}
+                    </a>
+                  </div>
                 </td>
                 <td class="px-3 py-2"><.status_badge row={i} /></td>
                 <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>
