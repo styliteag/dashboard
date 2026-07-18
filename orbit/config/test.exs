@@ -44,6 +44,9 @@ config :orbit, :start_gui, false
 # no metrics table and the fire-and-forget task would race the SQL sandbox.
 config :orbit, :write_metrics, false
 
+# Static Req.Test plug for the GeoLite2 updater (same per-process stub rule).
+config :orbit, :geoip_req_plug, {Req.Test, Orbit.GeoIP.Updater}
+
 # One shared Req.Test plug name for the OPNsense client. Tests stub it
 # per-process (Req.Test ownership, $callers-propagated) — never via
 # Application.put_env in a setup block: that global write raced across

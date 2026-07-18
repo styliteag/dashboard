@@ -153,6 +153,9 @@ services:
       # the python updater keeps the db fresh until cutover).
       DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
       DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
+      # Weekly GeoLite2 refresh now also runs in orbit (idle without creds).
+      DASH_MAXMIND_ACCOUNT_ID: ${DASH_MAXMIND_ACCOUNT_ID:-}
+      DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
       DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-0}
       DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
       DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}

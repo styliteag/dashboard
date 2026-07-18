@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: the weekly GeoLite2-City database refresh now also runs in the
+  Elixir stack (idle without MaxMind credentials, atomic install) — after
+  cutover the GeoIP database keeps updating without the Python scheduler.
 - Orbit: the instances list regains the old UI's interaction — clickable KPI
   tiles (Total/Online/Degraded/Offline) that filter by status, search over
   name/location/tags, device-type and tag chips, a maintenance-only filter,

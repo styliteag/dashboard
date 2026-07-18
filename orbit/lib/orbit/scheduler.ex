@@ -23,7 +23,9 @@ defmodule Orbit.Scheduler do
     {:metrics_prune, :timer.hours(1), &Orbit.Maintenance.Prune.prune_metrics/0},
     {:ipsec_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_ipsec_events/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
-    {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0}
+    {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
+    # Weekly GeoLite2-City refresh (DR-G1); idle no-op without credentials.
+    {:geoip_db_refresh, :timer.hours(24 * 7), &Orbit.GeoIP.Updater.refresh/0}
   ]
 
   # Stagger first runs a little after boot so startup isn't a DB thundering herd.

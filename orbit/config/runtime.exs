@@ -41,6 +41,14 @@ config :orbit,
        :trusted_proxy_hops,
        String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))
 
+# Weekly GeoLite2 refresh (DR-G1). Empty credentials = job idles; manual
+# volume updates keep working. Never inherited in :test — the dev container
+# carries real creds via .env, and the updater tests must control them.
+if config_env() != :test do
+  config :orbit, :maxmind_account_id, System.get_env("DASH_MAXMIND_ACCOUNT_ID", "")
+  config :orbit, :maxmind_license_key, System.get_env("DASH_MAXMIND_LICENSE_KEY", "")
+end
+
 config :orbit, :mfa_issuer, System.get_env("DASH_MFA_ISSUER", "Orbit Dashboard")
 
 # WebAuthn / passkeys (webauthn_svc.py + mfa_routes.py port). `rp_id` is the
