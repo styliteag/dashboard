@@ -36,6 +36,10 @@ config :orbit, :start_geoip, false
 # session opens degrade to no-ops (buffer transitions are unit-tested).
 config :orbit, :start_access, false
 
+# GUI-proxy support processes (stash + forwarder manager) — off in test;
+# started explicitly by the tests that exercise them.
+config :orbit, :start_gui, false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

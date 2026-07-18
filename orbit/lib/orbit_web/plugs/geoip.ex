@@ -32,7 +32,12 @@ defmodule OrbitWeb.Plugs.GeoIP do
   @exempt_prefixes [
     "/api/ws/agent",
     "/api/agent/enroll",
-    "/api/health"
+    "/api/health",
+    # GUI-proxy subrequests arrive container-to-container (the proxy's IP,
+    # not the operator's) — geo-checking them only misfires (§18 Nachtrag,
+    # prod incident 2026-07-14). gui/open runs on the geo-checked session.
+    "/api/gui/authcheck",
+    "/api/gui/handoff"
   ]
 
   @deny_text "access restricted from your location"

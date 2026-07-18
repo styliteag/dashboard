@@ -155,6 +155,7 @@ defmodule OrbitWeb.Router do
     post "/instances/:instance_id/agent/enroll-code", EnrollController, :create_code
     post "/instances/:instance_id/agent/update", AgentApiController, :update
     put "/instances/:instance_id/comments", CommentController, :set
+    post "/instances/:instance_id/gui/open", GuiController, :open
   end
 
   # Public enrollment: unauthenticated, rate-limited in the controller.
@@ -162,6 +163,21 @@ defmodule OrbitWeb.Router do
     pipe_through :api
 
     post "/agent/enroll", EnrollController, :enroll
+  end
+
+  # GUI-proxy subrequests: reached container-to-container from the reverse
+  # proxy (handoff sets the cookie, authcheck gates every asset). No session
+  # auth — the orbit_gui HMAC cookie is the credential. Geo-exempt (the
+  # client IP here is the proxy container, not the operator — §18 Nachtrag).
+  pipeline :gui_public do
+    plug :fetch_cookies
+  end
+
+  scope "/api/gui", OrbitWeb do
+    pipe_through :gui_public
+
+    get "/handoff", GuiController, :handoff
+    get "/authcheck", GuiController, :authcheck
   end
 
   # Machine exports: read_principal (session OR orbit_ read-only api key).

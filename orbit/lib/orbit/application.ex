@@ -24,7 +24,9 @@ defmodule Orbit.Application do
     # behind a flag; geoip/access likewise not in :test (all touch
     # alembic-owned tables the throwaway test DB doesn't have).
     children =
-      maybe_scheduler(base ++ geoip_children() ++ access_children() ++ [OrbitWeb.Endpoint])
+      maybe_scheduler(
+        base ++ geoip_children() ++ access_children() ++ gui_children() ++ [OrbitWeb.Endpoint]
+      )
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
@@ -60,6 +62,21 @@ defmodule Orbit.Application do
         {Orbit.GeoIP.Dyndns, []},
         {Orbit.GeoIP.Crowdsec, []},
         {Orbit.GeoIP.Denials, []}
+      ]
+    else
+      []
+    end
+  end
+
+  # GUI-proxy support: the session-cookie stash + the per-instance TCP
+  # forwarder manager (idle reaper armed). In-memory + cheap, so on in every
+  # env; forwarders bind on demand from gui/open. :start_gui=false in tests
+  # keeps the reaper timer out of the async suite.
+  defp gui_children do
+    if Application.get_env(:orbit, :start_gui, true) do
+      [
+        {Orbit.GUI.SessionStash, []},
+        {Orbit.GUI.TunnelManager, [reap_ms: :timer.minutes(1)]}
       ]
     else
       []

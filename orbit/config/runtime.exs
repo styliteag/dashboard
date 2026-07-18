@@ -43,6 +43,19 @@ config :orbit,
 
 config :orbit, :mfa_issuer, System.get_env("DASH_MFA_ISSUER", "Orbit Dashboard")
 
+# GUI proxy (§18): Caddy sidecar fronts a per-instance TCP forwarder. Off
+# unless the admin URL is set; the domain shapes the gui-<slug> vhosts.
+config :orbit, :gui_proxy_enabled, System.get_env("DASH_GUI_PROXY_ENABLED") in ~w(1 true yes on)
+config :orbit, :gui_caddy_admin_url, System.get_env("DASH_GUI_CADDY_ADMIN_URL", "")
+config :orbit, :gui_domain, System.get_env("ORBIT_GUI_DOMAIN", "")
+# Per-instance GUI origin template; {slug}/{id} substituted. Empty → dev
+# port convention https://localhost:900{id} (gui_base_template port).
+config :orbit, :gui_base_template, System.get_env("DASH_GUI_BASE_TEMPLATE", "")
+
+config :orbit,
+       :gui_idle_minutes,
+       String.to_integer(System.get_env("DASH_GUI_IDLE_MINUTES", "15"))
+
 # Bootstrap-seed force flags (auth/bootstrap.py _resolve_mode): "0"/"false"
 # keeps the seed enabled and skips auto-retirement on rights changes.
 config :orbit, :admin_disabled_raw, System.get_env("DASH_ADMIN_DISABLED", "auto")
