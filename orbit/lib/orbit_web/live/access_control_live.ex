@@ -38,7 +38,9 @@ defmodule OrbitWeb.AccessControlLive do
       db_available: Lookup.db_available?(),
       crowdsec: Crowdsec.status(),
       resolved: Dyndns.resolved_ips() |> Enum.sort(),
-      blocks: blocks_by_reason()
+      blocks: blocks_by_reason(),
+      refresh_busy: Map.get(socket.assigns, :refresh_busy, false),
+      last_refresh: Orbit.GeoIP.Updater.last_download()
     )
   end
 
@@ -73,6 +75,16 @@ defmodule OrbitWeb.AccessControlLive do
   defp decimal_to_int(_), do: 0
 
   @impl true
+  def handle_event("refresh_db", _params, %{assigns: %{refresh_busy: false}} = socket) do
+    {:noreply,
+     socket
+     |> assign(refresh_busy: true)
+     |> start_async(:refresh_db, fn -> Orbit.GeoIP.Updater.refresh() end)}
+  end
+
+  def handle_event("refresh_db", _params, %{assigns: %{refresh_busy: true}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("save", %{"cfg" => params}, socket) do
     enabled = params["enabled"] in ["true", "on"]
     countries = parse_countries(params["countries"])
@@ -164,6 +176,16 @@ defmodule OrbitWeb.AccessControlLive do
             <div class={if @db_available, do: "text-emerald-400", else: "text-red-400"}>
               {if @db_available, do: "loaded", else: "NOT available (gate fails open)"}
             </div>
+            <div class="mt-1 text-xs text-slate-500">
+              last refresh: {refresh_text(@last_refresh)}
+            </div>
+            <button
+              phx-click="refresh_db"
+              disabled={@refresh_busy}
+              class="mt-2 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            >
+              {if @refresh_busy, do: "Downloading…", else: "Refresh now"}
+            </button>
           </div>
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
             <div class="text-xs text-slate-500">CrowdSec blocklist</div>
@@ -244,5 +266,28 @@ defmodule OrbitWeb.AccessControlLive do
 
   defp input_cls do
     "w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+  end
+
+  # Manual GeoLite2 refresh (AccessControlPage refreshDb parity) — the same
+  # download the weekly scheduler job runs; idles without MaxMind creds.
+  @impl true
+  def handle_async(:refresh_db, {:ok, _outcome}, socket) do
+    {:noreply, socket |> assign(refresh_busy: false) |> load()}
+  end
+
+  def handle_async(:refresh_db, {:exit, _}, socket) do
+    {:noreply, socket |> assign(refresh_busy: false) |> load()}
+  end
+
+  defp refresh_text(%{at: nil}), do: "never"
+
+  defp refresh_text(%{at: at, ok: ok, detail: detail}) do
+    prefix = Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+
+    case ok do
+      true -> "#{prefix} — ok"
+      false -> "#{prefix} — FAILED: #{detail}"
+      nil -> "#{prefix} — #{detail}"
+    end
   end
 end

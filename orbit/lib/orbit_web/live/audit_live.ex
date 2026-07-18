@@ -39,7 +39,10 @@ defmodule OrbitWeb.AuditLive do
         types: MapSet.new([:auth, :access, :denial]),
         q: "",
         hours: nil,
-        grouped: false
+        grouped: false,
+        action_q: "",
+        action_hours: nil,
+        action_limit: 100
       )
       |> load()
 
@@ -61,6 +64,23 @@ defmodule OrbitWeb.AuditLive do
         else: MapSet.put(types, type)
 
     {:noreply, socket |> assign(types: types) |> load()}
+  end
+
+  def handle_event("action_filter", params, socket) do
+    hours =
+      case Integer.parse(to_string(params["hours"] || "")) do
+        {h, ""} when h > 0 -> h
+        _ -> nil
+      end
+
+    {:noreply,
+     socket
+     |> assign(action_q: params["q"] || "", action_hours: hours, action_limit: 100)
+     |> load()}
+  end
+
+  def handle_event("action_more", _params, socket) do
+    {:noreply, socket |> assign(action_limit: socket.assigns.action_limit + 200) |> load()}
   end
 
   def handle_event("refresh", _params, socket) do
@@ -100,26 +120,68 @@ defmodule OrbitWeb.AuditLive do
   end
 
   defp load(socket) do
-    assign(socket, rows: load_rows())
+    a = socket.assigns
+
+    assign(socket,
+      rows: load_rows(a[:action_q] || "", a[:action_hours], a[:action_limit] || @limit)
+    )
   end
 
-  defp load_rows do
+  # Actions-tab filters (AuditPage parity): free-text on action/target,
+  # hours window, load-more pagination; user_id resolves to the username.
+  defp load_rows(q, hours, limit) do
+    {where, params} =
+      []
+      |> then(fn acc ->
+        if q != "",
+          do: [{"(action LIKE ? OR target_type LIKE ?)", ["%#{q}%", "%#{q}%"]} | acc],
+          else: acc
+      end)
+      |> then(fn acc ->
+        case hours do
+          h when is_integer(h) and h > 0 ->
+            cutoff =
+              DateTime.utc_now()
+              |> DateTime.add(-h * 3600)
+              |> DateTime.to_naive()
+              |> NaiveDateTime.truncate(:second)
+
+            [{"ts >= ?", [cutoff]} | acc]
+
+          _ ->
+            acc
+        end
+      end)
+      |> Enum.reduce({[], []}, fn {frag, ps}, {fs, all} -> {[frag | fs], all ++ ps} end)
+
+    where_sql = if where == [], do: "", else: " WHERE " <> Enum.join(where, " AND ")
+
     %{rows: rows} =
       Orbit.Repo.query!(
         "SELECT ts, action, result, user_id, target_type, target_id, source_ip " <>
-          "FROM audit_log ORDER BY id DESC LIMIT #{@limit}"
+          "FROM audit_log" <> where_sql <> " ORDER BY id DESC LIMIT #{limit}",
+        params
       )
+
+    usernames = usernames_by_id()
 
     for [ts, action, result, user_id, ttype, tid, ip] <- rows do
       %{
         ts: ts,
         action: action,
         result: result,
-        user_id: user_id,
+        user: usernames[user_id] || (user_id && "##{user_id}") || "—",
         target: target(ttype, tid),
         ip: ip
       }
     end
+  end
+
+  defp usernames_by_id do
+    Orbit.Repo.query!("SELECT id, username FROM users").rows
+    |> Map.new(fn [id, name] -> {id, name} end)
+  rescue
+    _ -> %{}
   end
 
   defp target(nil, _), do: "—"
@@ -160,6 +222,29 @@ defmodule OrbitWeb.AuditLive do
         </div>
 
         <div :if={@tab == :actions}>
+          <form
+            phx-change="action_filter"
+            onsubmit="return false"
+            class="mb-3 flex flex-wrap items-center gap-2"
+          >
+            <input
+              type="text"
+              name="q"
+              value={@action_q}
+              placeholder="Filter action or target…"
+              phx-debounce="300"
+              class="max-w-xs flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none"
+            />
+            <select
+              name="hours"
+              class="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-slate-300"
+            >
+              <option value="" selected={@action_hours == nil}>All time</option>
+              <option :for={h <- [1, 6, 24, 168]} value={h} selected={@action_hours == h}>
+                last {h}h
+              </option>
+            </select>
+          </form>
           <table class="w-full text-left text-sm">
             <thead class="text-slate-500">
               <tr class="border-b border-slate-800">
@@ -180,12 +265,19 @@ defmodule OrbitWeb.AuditLive do
                     {r.result}
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-slate-400">{r.user_id || "—"}</td>
+                <td class="py-2 pr-4 text-slate-400">{r.user}</td>
                 <td class="py-2 pr-4 text-slate-400">{r.target}</td>
                 <td class="py-2 pr-4 text-slate-500">{r.ip || "—"}</td>
               </tr>
             </tbody>
           </table>
+          <button
+            :if={length(@rows) >= @action_limit}
+            phx-click="action_more"
+            class="mt-3 rounded border border-slate-700 px-3 py-1 text-xs text-slate-400 hover:bg-slate-800"
+          >
+            Load more
+          </button>
         </div>
 
         <div :if={@tab == :access}>

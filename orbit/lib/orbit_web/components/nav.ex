@@ -87,10 +87,15 @@ defmodule OrbitWeb.Components.Nav do
             Sign out
           </button>
         </form>
+        <%!-- Version tag (VersionFooter parity, compacted into the nav —
+             every page shares this header, no separate footer needed). --%>
+        <span class="text-xs text-slate-600" title="Orbit version">v{app_version()}</span>
       </div>
     </header>
     """
   end
+
+  defp app_version, do: Application.spec(:orbit, :vsn) |> to_string()
 
   attr :active, :atom, required: true
   attr :key, :atom, required: true
