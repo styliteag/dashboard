@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: connectivity monitors on the instance detail page — live ping
+  results (state/RTT/loss) joined per monitor, create/enable/disable/delete,
+  and the agent now receives both monitor sets (standalone + IPsec phase-2)
+  right after every reconnect, so probes keep running when Orbit owns the
+  hub.
 - Orbit: full agent lifecycle on the instance detail page — enable/disable
   agent mode (token mint/revoke), refresh-now, reconnect, test-local-API
   through the relay, show token, uninstall with fallback to direct

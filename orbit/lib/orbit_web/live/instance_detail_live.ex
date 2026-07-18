@@ -78,6 +78,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         |> load_logs()
         |> load_metrics()
         |> load_charts()
+        |> load_monitors()
 
       {:ok, socket}
     else
@@ -314,6 +315,35 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   # Non-writable fallback for every agent_* lifecycle event above.
   def handle_event("agent_" <> _kind, _params, socket), do: {:noreply, socket}
+
+  # Standalone connectivity monitors (ConnectivitySection parity) — every
+  # mutation re-pushes the set to the agent so probing starts immediately.
+  def handle_event("conn_create", %{"monitor" => attrs}, %{assigns: %{writable: true}} = socket) do
+    case Orbit.Monitors.create_connectivity(socket.assigns.instance.id, attrs) do
+      :ok ->
+        audit_agent(socket, "connectivity.monitor.create", "ok")
+        {:noreply, load_monitors(socket)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, conn_error: msg)}
+    end
+  end
+
+  def handle_event("conn_toggle", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
+    {id, ""} = Integer.parse(raw)
+    :ok = Orbit.Monitors.toggle_connectivity(socket.assigns.instance.id, id)
+    audit_agent(socket, "connectivity.monitor.update", "ok")
+    {:noreply, load_monitors(socket)}
+  end
+
+  def handle_event("conn_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
+    {id, ""} = Integer.parse(raw)
+    :ok = Orbit.Monitors.delete_connectivity(socket.assigns.instance.id, id)
+    audit_agent(socket, "connectivity.monitor.delete", "ok")
+    {:noreply, load_monitors(socket)}
+  end
+
+  def handle_event("conn_" <> _kind, _params, socket), do: {:noreply, socket}
 
   # Open GUI (GUI proxy §18) — write-gated; re-checks openable (agent may
   # have dropped since render), mints the handoff URL and pushes it to the
@@ -877,6 +907,13 @@ defmodule OrbitWeb.InstanceDetailLive do
     _ -> assign(socket, chart_points: %{})
   end
 
+  defp load_monitors(socket) do
+    assign(socket,
+      conn_monitors: Orbit.Monitors.list_connectivity(socket.assigns.instance.id),
+      conn_error: nil
+    )
+  end
+
   defp load_metrics(socket) do
     entry = Hub.cache_entry(socket.assigns.instance.id)
     status = entry["status"] || %{}
@@ -898,6 +935,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       # data exposed this; synthetic pushes had used a bare list.
       ipsec: (entry["ipsec"] || %{})["tunnels"] || [],
       ipsec_running: (entry["ipsec"] || %{})["running"],
+      connectivity: entry["connectivity"] || [],
       last_seen: entry["last_metrics_ts"],
       firmware: entry["firmware"],
       fw_verdict: Evaluate.firmware_check(entry["firmware"]),
@@ -1438,6 +1476,123 @@ defmodule OrbitWeb.InstanceDetailLive do
               <span>{pct(d["used_pct"])}</span>
             </li>
           </ul>
+        </div>
+
+        <%!-- Standalone connectivity monitors (ConnectivitySection parity):
+             live ping results from the agent's last push, plus CRUD. The
+             agent echoes each monitor's id, so results join by id. --%>
+        <div
+          :if={Instance.agent_mode?(@instance)}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
+          <h2 class="mb-3 text-sm font-medium text-slate-400">Connectivity monitors</h2>
+
+          <div :if={@conn_error} class="mb-2 rounded bg-red-900/40 px-2 py-1 text-xs text-red-300">
+            {@conn_error}
+          </div>
+
+          <table :if={@conn_monitors != []} class="w-full text-left text-sm">
+            <thead class="text-xs text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-1 pr-3 font-medium">Monitor</th>
+                <th class="py-1 pr-3 font-medium">Source → Destination</th>
+                <th class="py-1 pr-3 font-medium">State</th>
+                <th class="py-1 pr-3 font-medium">RTT / Loss</th>
+                <th :if={@writable} class="py-1 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for m <- @conn_monitors do %>
+                <% result = Enum.find(@connectivity, &(&1["id"] == m.id)) %>
+                <tr class="border-b border-slate-800/50 last:border-0">
+                  <td class="py-1.5 pr-3 text-slate-300">
+                    {m.name}
+                    <span :if={not m.enabled} class="ml-1 text-xs text-slate-600">(disabled)</span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-slate-400">
+                    {if m.source == "", do: "default", else: m.source} → {m.destination}
+                  </td>
+                  <td class={["py-1.5 pr-3", ping_state_color(result && result["ping_state"])]}>
+                    {(result && result["ping_state"]) || "no data yet"}
+                  </td>
+                  <td class="py-1.5 pr-3 text-slate-400">
+                    <span :if={result && is_number(result["ping_rtt_ms"])}>
+                      {result["ping_rtt_ms"]} ms
+                    </span>
+                    <span :if={result && is_number(result["ping_loss_pct"])}>
+                      · {result["ping_loss_pct"]}%
+                    </span>
+                  </td>
+                  <td :if={@writable} class="py-1.5 text-right text-xs">
+                    <button
+                      phx-click="conn_toggle"
+                      phx-value-id={m.id}
+                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                    >
+                      {if m.enabled, do: "Disable", else: "Enable"}
+                    </button>
+                    <button
+                      phx-click="conn_delete"
+                      phx-value-id={m.id}
+                      data-confirm={"Delete monitor #{m.name}?"}
+                      class="ml-1 rounded border border-red-900 px-2 py-0.5 text-red-400 hover:bg-red-950"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+
+          <p :if={@conn_monitors == []} class="text-sm text-slate-500">
+            No monitors configured — the agent pings each (source, destination)
+            pair every push cycle.
+          </p>
+
+          <form
+            :if={@writable}
+            phx-submit="conn_create"
+            class="mt-3 flex flex-wrap items-end gap-2 text-xs"
+          >
+            <div>
+              <label class="mb-0.5 block text-slate-500">Name *</label>
+              <input
+                name="monitor[name]"
+                required
+                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-slate-500">Source (blank = default)</label>
+              <input
+                name="monitor[source]"
+                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-slate-500">Destination *</label>
+              <input
+                name="monitor[destination]"
+                required
+                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-slate-500">Pings</label>
+              <input
+                name="monitor[ping_count]"
+                value="3"
+                class="w-14 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              />
+            </div>
+            <button
+              type="submit"
+              class="rounded bg-emerald-700 px-3 py-1 text-white hover:bg-emerald-600"
+            >
+              Add monitor
+            </button>
+          </form>
         </div>
 
         <%!-- IPsec (IPsecSection parity): live SA table with phase-2 expand and
@@ -2166,6 +2321,11 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp tunnel_up?(status) do
     status |> to_string() |> String.downcase() |> Kernel.in(@tunnel_up)
   end
+
+  defp ping_state_color("ok"), do: "text-emerald-400"
+  defp ping_state_color("fail"), do: "text-red-400"
+  defp ping_state_color(nil), do: "text-slate-500"
+  defp ping_state_color(_), do: "text-amber-400"
 
   defp num0(v) when is_number(v), do: trunc(v)
   defp num0(_), do: 0

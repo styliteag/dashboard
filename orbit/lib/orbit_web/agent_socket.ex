@@ -67,6 +67,13 @@ defmodule OrbitWeb.AgentSocket do
       "push_interval" => state.push_interval
     }
 
+    # Re-push the monitor sets right after the welcome — the agent's sets
+    # start EMPTY on every (re)connect and are only populated by a
+    # config_update; without this, monitors stay unprobed until someone
+    # edits them (ws.py:149 parity). Best-effort: a failure here must never
+    # tear down the agent connection.
+    Task.start(fn -> Orbit.Monitors.push_to_agent(state.instance_id) end)
+
     {:push, {:text, Jason.encode!(welcome)}, %{state | hello_seen: true}}
   end
 

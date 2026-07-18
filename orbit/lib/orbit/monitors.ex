@@ -1,0 +1,187 @@
+defmodule Orbit.Monitors do
+  @moduledoc """
+  Ping monitors, both families (ipsec/ping_service.py + connectivity/
+  service.py port):
+
+  - **IPsec Phase-2 monitors** (`ipsec_ping_monitors`) — a (source,
+    destination) probe per child SA, keyed by the swanctl child name.
+  - **Standalone connectivity monitors** (`connectivity_monitors`) — a
+    named probe not tied to any tunnel; the agent echoes the row id so the
+    `connectivity:<id>` check key stays stable across renames.
+
+  The agent's monitor sets start EMPTY and are only populated by a
+  config_update — the socket re-pushes both sets right after every welcome
+  (see OrbitWeb.AgentSocket), and every mutation here pushes immediately.
+  Agent-mode only; a direct-poll instance has no agent to ping from.
+  """
+
+  require Logger
+
+  alias Orbit.Hub
+
+  # ---- standalone connectivity monitors ------------------------------------
+
+  def list_connectivity(instance_id) do
+    Orbit.Repo.query!(
+      "SELECT id, name, source, destination, enabled, ping_count " <>
+        "FROM connectivity_monitors WHERE instance_id = ? ORDER BY name",
+      [instance_id]
+    ).rows
+    |> Enum.map(fn [id, name, source, destination, enabled, ping_count] ->
+      %{
+        id: id,
+        name: name,
+        source: source,
+        destination: destination,
+        enabled: enabled == 1 or enabled == true,
+        ping_count: ping_count
+      }
+    end)
+  rescue
+    _ -> []
+  end
+
+  @doc "Create a standalone monitor. {:ok, id} | {:error, msg}."
+  def create_connectivity(instance_id, attrs) do
+    with {:ok, name, destination} <- validate_conn(attrs) do
+      Orbit.Repo.query!(
+        "INSERT INTO connectivity_monitors " <>
+          "(instance_id, name, source, destination, enabled, ping_count, created_at, updated_at) " <>
+          "VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())",
+        [
+          instance_id,
+          name,
+          String.trim(attrs["source"] || ""),
+          destination,
+          true,
+          ping_count(attrs)
+        ]
+      )
+
+      push_to_agent(instance_id)
+      :ok
+    end
+  rescue
+    e in MyXQL.Error ->
+      if e.mysql && e.mysql.code == 1062,
+        do: {:error, "a monitor with this name already exists"},
+        else: {:error, "save failed"}
+  end
+
+  def toggle_connectivity(instance_id, monitor_id) do
+    Orbit.Repo.query!(
+      "UPDATE connectivity_monitors SET enabled = NOT enabled, updated_at = NOW() " <>
+        "WHERE id = ? AND instance_id = ?",
+      [monitor_id, instance_id]
+    )
+
+    push_to_agent(instance_id)
+    :ok
+  end
+
+  def delete_connectivity(instance_id, monitor_id) do
+    Orbit.Repo.query!(
+      "DELETE FROM connectivity_monitors WHERE id = ? AND instance_id = ?",
+      [monitor_id, instance_id]
+    )
+
+    push_to_agent(instance_id)
+    :ok
+  end
+
+  defp validate_conn(attrs) do
+    name = String.trim(attrs["name"] || "")
+    destination = String.trim(attrs["destination"] || "")
+
+    cond do
+      name == "" -> {:error, "name is required"}
+      destination == "" -> {:error, "destination is required"}
+      true -> {:ok, name, destination}
+    end
+  end
+
+  defp ping_count(attrs) do
+    case Integer.parse(to_string(attrs["ping_count"] || "3")) do
+      {n, ""} when n in 1..20 -> n
+      _ -> 3
+    end
+  end
+
+  # ---- ipsec phase-2 monitors -----------------------------------------------
+
+  def list_ipsec(instance_id) do
+    Orbit.Repo.query!(
+      "SELECT id, tunnel_id, child_name, local_ts, remote_ts, source, destination, " <>
+        "enabled, ping_count FROM ipsec_ping_monitors WHERE instance_id = ? ORDER BY child_name",
+      [instance_id]
+    ).rows
+    |> Enum.map(fn [id, tunnel_id, child, lts, rts, src, dst, enabled, count] ->
+      %{
+        id: id,
+        tunnel_id: tunnel_id,
+        child_name: child,
+        local_ts: lts,
+        remote_ts: rts,
+        source: src,
+        destination: dst,
+        enabled: enabled == 1 or enabled == true,
+        ping_count: count
+      }
+    end)
+  rescue
+    _ -> []
+  end
+
+  # ---- agent config push -----------------------------------------------------
+
+  @doc """
+  Serialize both families into the agent's config_update shape (pure).
+  Connectivity rows include `id` (the agent echoes it per result); ipsec
+  rows are keyed by child_name.
+  """
+  def config_payload(ipsec_monitors, connectivity_monitors) do
+    %{
+      "ipsec_ping_monitors" =>
+        for m <- ipsec_monitors do
+          %{
+            "tunnel_id" => m.tunnel_id,
+            "child_name" => m.child_name,
+            "local_ts" => m.local_ts,
+            "remote_ts" => m.remote_ts,
+            "source" => m.source,
+            "destination" => m.destination,
+            "enabled" => m.enabled,
+            "ping_count" => m.ping_count
+          }
+        end,
+      "connectivity_monitors" =>
+        for m <- connectivity_monitors do
+          %{
+            "id" => m.id,
+            "name" => m.name,
+            "source" => m.source,
+            "destination" => m.destination,
+            "enabled" => m.enabled,
+            "ping_count" => m.ping_count
+          }
+        end
+    }
+  end
+
+  @doc """
+  Push the instance's current monitor sets to its connected agent
+  (best-effort; an offline agent gets them re-sent after its next hello).
+  """
+  def push_to_agent(instance_id) do
+    Hub.send_config(
+      instance_id,
+      config_payload(list_ipsec(instance_id), list_connectivity(instance_id))
+    )
+
+    :ok
+  rescue
+    e ->
+      Logger.warning("monitors.push_failed instance_id=#{instance_id} #{Exception.message(e)}")
+      :ok
+  end
+end
