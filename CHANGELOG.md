@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: per-group notification channels — alerts for a group's instances go
+  to the group's own Mattermost/Telegram/Email target instead of the global
+  one, and the Groups page gains the channel editor (masked secrets,
+  "keep stored" on save, remove falls back to global).
 - Orbit: the weekly GeoLite2-City database refresh now also runs in the
   Elixir stack (idle without MaxMind credentials, atomic install) — after
   cutover the GeoIP database keeps updating without the Python scheduler.
