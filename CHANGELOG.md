@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: the instance detail page is tabbed again like the old UI —
+  Overview, Config, Checks, Network, Capture, Firewall, VPN, Connectivity,
+  Log, Firmware, Agent — with the same device-capability filter (no agent
+  tabs on Securepoint, rule editor only on OPNsense) and the active tab in
+  the URL; plus an inline two-version config-backup diff viewer with
+  colored +/- lines.
 - Orbit: the Settings page is organized into sections (Polling & agents,
   Retention, Notifications, AI providers), the notification mutes become
   one-click mute/unmute toggles, and each AI provider gets a Test button

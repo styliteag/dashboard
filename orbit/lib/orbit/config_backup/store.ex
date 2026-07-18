@@ -150,6 +150,11 @@ defmodule Orbit.ConfigBackup.Store do
     end
   end
 
+  @doc "Diff two arbitrary stored versions (inline viewer). Same bounds as above."
+  def diff_between(instance_id, id_a, id_b) do
+    do_diff(get_content(instance_id, id_a), get_content(instance_id, id_b))
+  end
+
   defp do_diff(a, b) when is_binary(a) and is_binary(b) do
     a_lines = String.split(a, "\n")
     b_lines = String.split(b, "\n")

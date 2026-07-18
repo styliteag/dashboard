@@ -72,7 +72,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           ipsec_busy: MapSet.new(),
           ipsec_msg: nil,
           ipsec_expanded: MapSet.new(),
-          show_token: false
+          show_token: false,
+          cb_diff: nil
         )
         |> load_comments()
         |> load_logs()
@@ -84,6 +85,41 @@ defmodule OrbitWeb.InstanceDetailLive do
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
     end
+  end
+
+  # Tab from the URL (?tab=) — patch-navigation keeps the LiveView mounted;
+  # an unknown or not-available tab (e.g. "agent" on a Securepoint) falls
+  # back to overview, mirroring the react TABS fallback effect.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    valid =
+      for {key, _label, :tab} <- tabs_for(socket.assigns.instance), do: key
+
+    tab = if params["tab"] in valid, do: params["tab"], else: "overview"
+    {:noreply, assign(socket, tab: tab)}
+  end
+
+  # Tab visibility mirrors the react device-capability filter: Securepoint
+  # is pull-only (no agent tabs), the rule editor is OPNsense-specific,
+  # linux nodes have no config.xml / VPN.
+  defp tabs_for(inst) do
+    agent = Instance.agent_mode?(inst)
+    linux = inst.device_type == "linux"
+
+    [
+      {"overview", "Overview", :tab},
+      unless(linux, do: {"config", "Config", :tab}),
+      {"checks", "Checks", :tab},
+      {"network", "Network", :tab},
+      if(agent, do: {"capture", "Capture", :link}),
+      if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
+      unless(linux, do: {"security", "VPN", :tab}),
+      if(agent, do: {"connectivity", "Connectivity", :tab}),
+      {"log", "Log", :tab},
+      if(agent, do: {"firmware", "Firmware", :tab}),
+      unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
+    ]
+    |> Enum.reject(&is_nil/1)
   end
 
   @impl true
@@ -365,6 +401,29 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("p2mon_" <> _kind, _params, socket), do: {:noreply, socket}
+
+  # Inline config-backup diff (admin-only, same gate as the raw links).
+  def handle_event("cb_diff", %{"from" => from, "to" => to}, %{assigns: %{admin: true}} = socket) do
+    with {fid, ""} <- Integer.parse(from),
+         {tid, ""} <- Integer.parse(to),
+         {:ok, text, truncated} <- CfgStore.diff_between(socket.assigns.instance.id, fid, tid) do
+      diff =
+        case String.trim(text) do
+          "" -> {:no_changes}
+          _ -> {:lines, String.split(text, "\n"), truncated}
+        end
+
+      {:noreply, assign(socket, cb_diff: diff)}
+    else
+      _ -> {:noreply, assign(socket, cb_diff: {:no_changes})}
+    end
+  end
+
+  def handle_event("cb_diff", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cb_diff_clear", _params, socket) do
+    {:noreply, assign(socket, cb_diff: nil)}
+  end
 
   # Open GUI (GUI proxy §18) — write-gated; re-checks openable (agent may
   # have dropped since render), mints the handoff URL and pushes it to the
@@ -1062,7 +1121,40 @@ defmodule OrbitWeb.InstanceDetailLive do
           </a>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-2">
+        <%!-- Tab bar (InstanceDetailPage TABS parity): patch links keep the
+             LiveView (and its timers/state) mounted; Capture/Firewall are
+             sub-pages and navigate. --%>
+        <nav class="mb-6 flex flex-wrap gap-1 border-b border-slate-800 pb-2">
+          <%= for {key, label, kind} <- tabs_for(@instance) do %>
+            <.link
+              :if={kind == :tab}
+              patch={~p"/instances/#{@instance.id}?tab=#{key}"}
+              class={[
+                "rounded-md px-3 py-1 text-sm",
+                if(@tab == key,
+                  do: "bg-slate-800 text-slate-100",
+                  else: "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                )
+              ]}
+            >
+              {label}
+            </.link>
+            <.link
+              :if={kind == :link}
+              navigate={
+                if(key == "capture",
+                  do: ~p"/instances/#{@instance.id}/capture",
+                  else: ~p"/instances/#{@instance.id}/firewall"
+                )
+              }
+              class="rounded-md px-3 py-1 text-sm text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+            >
+              {label}
+            </.link>
+          <% end %>
+        </nav>
+
+        <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
             <h2 class="mb-3 text-sm font-medium text-slate-400">Instance</h2>
             <dl class="space-y-1 text-sm">
@@ -1092,7 +1184,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              swap, pf state table, NTP — plus the last config revision
              (ConfigSection parity). Sections the box never reported stay
              hidden (no-data ⇒ no tile, never a fake 0). --%>
-        <div class="mt-6 grid gap-6 md:grid-cols-2">
+        <div :if={@tab == "overview"} class="mt-6 grid gap-6 md:grid-cols-2">
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
             <h2 class="mb-3 text-sm font-medium text-slate-400">System health</h2>
             <dl class="space-y-1 text-sm">
@@ -1124,7 +1216,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div :if={@tab == "config"} class="rounded-lg border border-slate-800 bg-slate-900 p-4">
             <h2 class="mb-3 text-sm font-medium text-slate-400">Config revision</h2>
             <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
               <.kv label="Last change" value={@config_rev["revision_time"] || "—"} />
@@ -1137,7 +1229,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
-        <div :if={@checks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div
+          :if={@tab == "checks" and @checks != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
           <h2 class="mb-3 text-sm font-medium text-slate-400">
             Checks <span class="text-slate-500">({length(@checks)})</span>
           </h2>
@@ -1180,7 +1275,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              series over the shared metrics table, range-switchable. Series
              the box never reported (pf on a linux node, collect on a
              direct-poll box) render the empty state, same as recharts did. --%>
-        <section class="mt-8">
+        <section :if={@tab == "overview"} class="mt-8">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold text-slate-400">Metrics</h2>
             <div class="flex gap-1">
@@ -1215,7 +1310,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </section>
 
         <div
-          :if={Instance.agent_mode?(@instance)}
+          :if={@tab == "agent" and Instance.agent_mode?(@instance)}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Agent</h2>
@@ -1369,7 +1464,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              enable_agent parity). Securepoint is pull-only by design. --%>
         <div
           :if={
-            not Instance.agent_mode?(@instance) and @writable and
+            @tab == "agent" and not Instance.agent_mode?(@instance) and @writable and
               @instance.device_type != "securepoint"
           }
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
@@ -1398,7 +1493,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={Instance.agent_mode?(@instance)}
+          :if={@tab == "firmware" and Instance.agent_mode?(@instance)}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-slate-400">
@@ -1540,7 +1635,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
-        <div :if={@disks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div
+          :if={@tab == "overview" and @disks != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Disks</h2>
           <ul class="space-y-1 text-sm">
             <li :for={d <- @disks} class="flex justify-between text-slate-300">
@@ -1554,7 +1652,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              live ping results from the agent's last push, plus CRUD. The
              agent echoes each monitor's id, so results join by id. --%>
         <div
-          :if={Instance.agent_mode?(@instance)}
+          :if={@tab == "connectivity" and Instance.agent_mode?(@instance)}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Connectivity monitors</h2>
@@ -1676,7 +1774,10 @@ defmodule OrbitWeb.InstanceDetailLive do
              tunnel actions over the agent relay. Reconnect = terminate + re-
              initiate; the service restart goes through the agent's safe
              reload path (never `service strongswan restart`). --%>
-        <div :if={@ipsec != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div
+          :if={@tab == "security" and @ipsec != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-medium text-slate-400">
               IPsec tunnels
@@ -1868,7 +1969,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
         </div>
 
-        <div :if={@gateways != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div
+          :if={@tab == "network" and @gateways != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Gateways</h2>
           <table class="w-full text-left text-sm">
             <thead class="text-slate-500">
@@ -1894,7 +1998,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
         </div>
 
-        <div :if={@interfaces != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div
+          :if={@tab == "network" and @interfaces != []}
+          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+        >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Interfaces</h2>
           <table class="w-full text-left text-sm">
             <thead class="text-slate-500">
@@ -1926,8 +2033,11 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
         </div>
 
-        <div class="mt-6 grid gap-6 md:grid-cols-2">
-          <div :if={@services != []} class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div :if={@tab in ["overview", "network"]} class="mt-6 grid gap-6 md:grid-cols-2">
+          <div
+            :if={@tab == "overview" and @services != []}
+            class="rounded-lg border border-slate-800 bg-slate-900 p-4"
+          >
             <h2 class="mb-3 text-sm font-medium text-slate-400">Services</h2>
             <ul class="space-y-1 text-sm">
               <li :for={s <- @services} class="flex justify-between text-slate-300">
@@ -1940,7 +2050,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
 
           <div
-            :if={@external_ip != %{}}
+            :if={@tab == "network" and @external_ip != %{}}
             class="rounded-lg border border-slate-800 bg-slate-900 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-slate-400">External IP</h2>
@@ -1957,7 +2067,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               protocol state counts, and the biggest flows. Agent push only
               (direct/Securepoint instances never have pf_top). --%>
         <div
-          :if={(@pf_top["total_states"] || 0) > 0}
+          :if={@tab == "network" and (@pf_top["total_states"] || 0) > 0}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">
@@ -2023,7 +2133,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               (direct-poll / Securepoint). days_remaining recomputed from
               not_after at render so the countdown never freezes on stale pushes. --%>
         <div
-          :if={@certificates != []}
+          :if={@tab == "overview" and @certificates != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Certificates</h2>
@@ -2071,7 +2181,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={@check_history != []}
+          :if={@tab == "checks" and @check_history != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Check history</h2>
@@ -2097,7 +2207,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={@firewall_log != []}
+          :if={@tab == "log" and @firewall_log != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Firewall log (latest)</h2>
@@ -2121,7 +2231,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={@logfiles != [] or @log_events != []}
+          :if={@tab == "log" and (@logfiles != [] or @log_events != [])}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">Logs</h2>
@@ -2193,7 +2303,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={@config_backups != []}
+          :if={@tab == "config" and @config_backups != []}
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-slate-400">
@@ -2231,9 +2341,85 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tr>
             </tbody>
           </table>
+
+          <%!-- Inline two-version diff (ConfigBackupsSection parity):
+              +/- coloured, bounded by the store's diff caps. Admin-only,
+              same gate as the raw download links. --%>
+          <form
+            :if={@admin and length(@config_backups) > 1}
+            phx-submit="cb_diff"
+            class="mt-3 flex flex-wrap items-end gap-2 text-xs"
+          >
+            <label class="block">
+              <span class="mb-0.5 block text-slate-500">From</span>
+              <select
+                name="from"
+                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              >
+                <option
+                  :for={cb <- @config_backups}
+                  value={cb.id}
+                  selected={cb.id == (Enum.at(@config_backups, 1) || %{id: nil}).id}
+                >
+                  {cb_ts(cb.collected_at)}
+                </option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-0.5 block text-slate-500">To</span>
+              <select
+                name="to"
+                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+              >
+                <option
+                  :for={cb <- @config_backups}
+                  value={cb.id}
+                  selected={cb.id == hd(@config_backups).id}
+                >
+                  {cb_ts(cb.collected_at)}
+                </option>
+              </select>
+            </label>
+            <button
+              type="submit"
+              class="rounded border border-slate-700 px-3 py-1 text-slate-300 hover:bg-slate-800"
+            >
+              Show diff
+            </button>
+            <button
+              :if={@cb_diff != nil}
+              type="button"
+              phx-click="cb_diff_clear"
+              class="rounded border border-slate-700 px-3 py-1 text-slate-400 hover:bg-slate-800"
+            >
+              Hide
+            </button>
+          </form>
+
+          <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-slate-500">
+            No differences between the selected versions.
+          </div>
+          <div
+            :if={is_tuple(@cb_diff) and elem(@cb_diff, 0) == :lines}
+            class="mt-2 max-h-96 overflow-y-auto rounded bg-slate-950 p-2 font-mono text-xs"
+          >
+            <div
+              :for={line <- elem(@cb_diff, 1)}
+              class={[
+                "whitespace-pre-wrap",
+                String.starts_with?(line, "+") && "text-emerald-400",
+                String.starts_with?(line, "-") && "text-red-400"
+              ]}
+            >
+              {line}
+            </div>
+            <div :if={elem(@cb_diff, 2)} class="mt-1 text-amber-400">
+              (diff truncated)
+            </div>
+          </div>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div :if={@tab == "overview"} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
           <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
 
           <form :if={@writable} phx-submit="comment_save" class="mb-4 space-y-2">
