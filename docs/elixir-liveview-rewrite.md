@@ -9,9 +9,28 @@ CSV-Export; Restlücken explizit in `docs/agent-architecture.md` §14-Nachtrag
 `orbit`, nginx-Cutover-Vhost `docker/nginx.orbit.conf` — Schaltung hin/zurück
 gegen den Dev-Stack GEPROBT, Release-CI baut `dashboard-orbit`, notices+SBOM
 inkl. Hex; Rest: Frisch-Kisten-Probe auf leerer Maschine) ·
-**Vor M8**: §14-Paritätslücken schließen (Capture-Viewer, GUI-Proxy-Fläche,
-Instanz-CRUD, Users/Groups-Mutationen, 2FA-Enrollment, Notifications,
-Direct-Poll-Arme, …) — M8-Cutover selbst ist User-Entscheid (Maintenance-Fenster).
+**Vor M8 — §14-Paritätslücken:** GESCHLOSSEN (2026-07-18, je live gegen den
+Dev-Stack bewiesen): Instanz-CRUD (Create/Edit/Delete + Secret-Keep),
+Detail-Paritäts-Sektionen (Gateways/Interfaces/Services/Network/Check-History/
+Firewall-Log), Agent-Karte (Enroll + Canary-Self-Update), Users/Groups-Mutationen
+(mit Lockout-/Bootstrap-Guards), API-Keys (Mint/Reveal/Revoke/Purge, Binding-
+Scoping), Passwort-Selfservice, TOTP-Enrollment im Login, Notifier
+(Mattermost/Telegram/**E-Mail via gen_smtp**), Availability- + Check-Transition-
+Alerts, Selection-Editor, GeoIP-Konfig-UI, AI-Log-Analyse, Access-Suche/
+Zeitfenster/Grouped, Capture-Viewer, **Prometheus-Denial-Serien**.
+
+**OFFEN (die zwei großen Subsysteme — brauchen Lab-Live-Verifikation):**
+- ⬜ **GUI-Proxy-Fläche** (§18) — ~600 Zeilen über 5 Module (gui_auth HMAC,
+  gui_session One-Time-Handoff, gui_tunnel per-Instanz-TCP-Forwarder über die
+  Agent-WS, gui_caddy Vhost-Reconcile via Caddy-Admin-API) + Open-Buttons.
+  Tunnel-Multiplex im orbit-Hub existiert bereits; Rest ist Neubau + Caddy-
+  Sidecar-Integration, nur mit echtem Firewall-GUI verifizierbar.
+- ⬜ **Direct-Poll-Arme** — Securepoint (spcgi + SSH-Enrichment), pfSense-/
+  OPNsense-Direct-API-Clients für firmware/reboot/ipsec. Nur die
+  OPNsense-`fetch_status`-Grundierung ist portiert (M4). Betrifft die
+  Minderheit der Nicht-Agent-Instanzen; verifizierbar nur gegen die Lab-Boxen.
+
+M8-Cutover selbst ist User-Entscheid (Maintenance-Fenster).
 
 ## 0. Vorgeschichte / warum Anlauf 2
 
