@@ -247,11 +247,42 @@ const Passkey = {
   },
 }
 
+
+// Position a comment-editor <details> popover as a fixed panel so it escapes
+// the list table's overflow-x-auto clip. Placed just below the pencil, clamped
+// into the viewport; the server re-render (after save) resets it to closed.
+const CommentPop = {
+  mounted() {
+    this._reposition = () => this.position()
+    this.el.addEventListener("toggle", this._reposition)
+    window.addEventListener("resize", this._reposition)
+    window.addEventListener("scroll", this._reposition, true)
+  },
+  updated() { this.position() },
+  destroyed() {
+    window.removeEventListener("resize", this._reposition)
+    window.removeEventListener("scroll", this._reposition, true)
+  },
+  position() {
+    const panel = this.el.querySelector("[data-cmt-panel]")
+    const summary = this.el.querySelector("summary")
+    if (!panel || !summary) return
+    if (!this.el.open) { panel.classList.add("hidden"); return }
+    panel.classList.remove("hidden")
+    const r = summary.getBoundingClientRect()
+    const w = panel.offsetWidth || 256
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8))
+    panel.style.left = left + "px"
+    panel.style.top = (r.bottom + 4) + "px"
+    panel.querySelector("textarea")?.focus()
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture, Passkey},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it

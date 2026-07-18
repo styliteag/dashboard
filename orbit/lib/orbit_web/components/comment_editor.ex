@@ -35,7 +35,12 @@ defmodule OrbitWeb.Components.CommentEditor do
     >
       <.pencil filled={true} />
     </span>
-    <details :if={@writable} class="relative ml-1 inline-block align-text-bottom">
+    <details
+      :if={@writable}
+      id={dom_id(@instance_id, @kind, @entity_key)}
+      phx-hook="CommentPop"
+      class="ml-1 inline-block align-text-bottom [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden"
+    >
       <summary
         class={[
           "inline-flex cursor-pointer items-center rounded p-0.5 hover:bg-base-300",
@@ -45,7 +50,12 @@ defmodule OrbitWeb.Components.CommentEditor do
       >
         <.pencil filled={present?(@text)} />
       </summary>
-      <div class="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl">
+      <%!-- position:fixed (set by the CommentPop hook) so the panel escapes
+           the list table's overflow-x-auto clip; starts hidden until placed. --%>
+      <div
+        data-cmt-panel
+        class="fixed z-50 hidden w-64 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl"
+      >
         <form phx-submit="comment_save">
           <input type="hidden" name="instance_id" value={@instance_id} />
           <input type="hidden" name="kind" value={@kind} />
@@ -100,6 +110,11 @@ defmodule OrbitWeb.Components.CommentEditor do
   end
 
   defp present?(t), do: is_binary(t) and String.trim(t) != ""
+
+  # id-safe key: entity_key may hold slashes/dots/colons.
+  defp dom_id(instance_id, kind, entity_key) do
+    "cmt-#{instance_id}-#{kind}-#{Base.encode16(entity_key, case: :lower)}"
+  end
 
   # ---- shared handlers (called from the host LiveView) ---------------------
 
