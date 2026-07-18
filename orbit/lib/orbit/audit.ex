@@ -77,26 +77,35 @@ defmodule Orbit.Audit do
   end
 
   defp log_line(fields) do
-    detail = fields[:detail] || %{}
-    safe = for k <- @detail_keys, v = detail[k], into: %{}, do: {k, v}
-
-    meta =
-      [
-        result: fields[:result],
-        user_id: fields[:user_id],
-        target: target(fields),
-        ip: fields[:source_ip]
-      ]
-      |> Enum.reject(fn {_, v} -> is_nil(v) end)
-      |> Keyword.merge(Map.to_list(safe))
-
-    msg = "audit #{fields[:action]} #{inspect(meta)}"
+    msg = "audit #{fields[:action]} #{inspect(log_meta(fields))}"
 
     if fields[:result] in ["ok", "pending"], do: Logger.info(msg), else: Logger.warning(msg)
+
+    detail = fields[:detail] || %{}
 
     if detail["lock_triggered"] do
       Logger.warning("auth.ip_blocked ip=#{fields[:source_ip]} username=#{detail["username"]}")
     end
+  end
+
+  @doc false
+  # Structured log fields as a keyword list. @detail_keys are strings (the JSON
+  # keys callers pass); the keyword needs ATOM keys, so each allowlisted key is
+  # mapped to its atom. Without this, Keyword.merge/2 raised on every audit
+  # carrying an allowlisted detail field — the DB row is written first, so the
+  # crash surfaced only as a logging failure in the caller process.
+  def log_meta(fields) do
+    detail = fields[:detail] || %{}
+    safe = for k <- @detail_keys, v = detail[k], do: {String.to_atom(k), v}
+
+    [
+      result: fields[:result],
+      user_id: fields[:user_id],
+      target: target(fields),
+      ip: fields[:source_ip]
+    ]
+    |> Enum.reject(fn {_, v} -> is_nil(v) end)
+    |> Keyword.merge(safe)
   end
 
   defp target(fields) do

@@ -22,6 +22,9 @@ defmodule OrbitWeb.InstancesLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit, only: [webui_link: 1, shell_link: 1, gui_open_row: 3]
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+
+  alias OrbitWeb.Components.CommentEditor
 
   alias Orbit.Audit
   alias Orbit.Bulk
@@ -227,6 +230,12 @@ defmodule OrbitWeb.InstancesLive do
     {:noreply, gui_open_row(socket, id, p["path"])}
   end
 
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
   @impl true
   def handle_async(:bulk, {:ok, {:ok, results}}, socket) do
     {:noreply, assign(socket, bulk_busy: false, bulk_results: results)}
@@ -310,7 +319,11 @@ defmodule OrbitWeb.InstancesLive do
         }
       end)
 
-    assign(socket, instances: rows, served_version: served)
+    assign(socket,
+      instances: rows,
+      served_version: served,
+      comments: CommentEditor.lookup(Enum.map(rows, & &1.inst))
+    )
   end
 
   # ---- filtering + sorting --------------------------------------------------
@@ -611,6 +624,12 @@ defmodule OrbitWeb.InstancesLive do
               </a>
               <.webui_link instance_id={i.id} openable={i.gui_openable} />
               <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
+              <.comment_editor
+                text={CommentEditor.text(@comments, i.id, "notes", "")}
+                writable={@writable}
+                instance_id={i.id}
+                kind="notes"
+              />
               <.status_badge row={i} />
             </div>
             <div class="mt-2 space-y-1 text-xs text-base-content/70">
@@ -701,6 +720,12 @@ defmodule OrbitWeb.InstancesLive do
                   </a>
                   <.webui_link instance_id={i.id} openable={i.gui_openable} />
                   <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
+                  <.comment_editor
+                    text={CommentEditor.text(@comments, i.id, "notes", "")}
+                    writable={@writable}
+                    instance_id={i.id}
+                    kind="notes"
+                  />
                   <div class="flex items-center gap-2 text-xs text-base-content/40">
                     <span>{i.device_type}</span>
                     <a

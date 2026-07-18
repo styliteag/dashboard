@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Orbit: writing an audit entry that carried an allowlisted detail field
+  (comment.set, instance.delete, geoip.config.update, …) crashed the
+  calling process on the log line (string detail keys vs. the atom-keyed
+  log meta); the DB row was written first so it surfaced only as noise —
+  now fixed, with a regression test.
+
 - Orbit GUI proxy: the very first request after opening a firewall WebUI no
   longer fails with "firewall gui unavailable" — the proxy now retries the
   initial connection while the on-demand tunnel (agent stream + TLS/HTTP-2
@@ -18,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through chunked instead of buffering to a timeout.
 
 ### Added
+
+- Orbit: inline editable comments in the list views — a pencil per row on
+  Instances (the box's notes), VPN tunnels and Connectivity monitors opens
+  a small popover to add/edit/clear a comment, matching the old UI's
+  EntityCommentBadge.
 - Orbit: the VPN page's WebGUI icon now deep-links to the firewall's own
   IPsec status page (/ui/ipsec/sessions on OPNsense, /status_ipsec.php on
   pfSense) instead of the GUI root, matching the old UI.

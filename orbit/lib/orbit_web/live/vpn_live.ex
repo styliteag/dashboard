@@ -16,6 +16,9 @@ defmodule OrbitWeb.VpnLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+
+  alias OrbitWeb.Components.CommentEditor
 
   alias Orbit.Audit
   alias Orbit.Auth.Scope
@@ -280,6 +283,12 @@ defmodule OrbitWeb.VpnLive do
     end
   end
 
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
   # Fleet-row reconnect: same relay pair as the detail page. The instance id
   # from the DOM re-resolves through scope (invariant 1).
   def handle_event("reconnect", %{"iid" => iid, "id" => id, "uid" => uid}, socket) do
@@ -393,7 +402,11 @@ defmodule OrbitWeb.VpnLive do
         end
       end)
 
-    assign(socket, tunnels: tunnels, monitors: monitors)
+    assign(socket,
+      tunnels: tunnels,
+      monitors: monitors,
+      comments: CommentEditor.lookup(agent_instances)
+    )
   end
 
   defp p2_monitor(monitors, instance_id, child_name) do
@@ -568,7 +581,16 @@ defmodule OrbitWeb.VpnLive do
                     />
                     <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
                   </td>
-                  <td class="px-3 py-2 text-base-content/80">{t.label}</td>
+                  <td class="px-3 py-2 text-base-content/80">
+                    {t.label}
+                    <.comment_editor
+                      text={CommentEditor.text(@comments, t.instance_id, "ipsec", t.id)}
+                      writable={@writable}
+                      instance_id={t.instance_id}
+                      kind="ipsec"
+                      entity_key={t.id}
+                    />
+                  </td>
                   <td class="px-3 py-2 text-base-content/60">{t.remote}</td>
                   <td class="px-3 py-2 text-base-content/70">
                     <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>

@@ -11,6 +11,9 @@ defmodule OrbitWeb.ConnectivityLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+
+  alias OrbitWeb.Components.CommentEditor
 
   alias Orbit.Checks.Evaluate
   alias Orbit.Checks.ServiceCheck
@@ -26,7 +29,14 @@ defmodule OrbitWeb.ConnectivityLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    {:ok, socket |> assign(search: "", state_filter: "all") |> load()}
+    {:ok,
+     socket
+     |> assign(
+       search: "",
+       state_filter: "all",
+       writable: socket.assigns.current_user.role in ~w(admin user)
+     )
+     |> load()}
   end
 
   @impl true
@@ -41,6 +51,12 @@ defmodule OrbitWeb.ConnectivityLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
   @impl true
   def handle_info(:roster_changed, socket), do: {:noreply, load(socket)}
 
@@ -50,10 +66,13 @@ defmodule OrbitWeb.ConnectivityLive do
   end
 
   defp load(socket) do
-    rows =
+    agent_instances =
       socket.assigns.current_user
       |> Instances.list_visible()
       |> Enum.filter(&Instances.Instance.agent_mode?/1)
+
+    rows =
+      agent_instances
       |> Enum.flat_map(fn inst ->
         monitors = Hub.cache_entry(inst.id)["connectivity"] || []
 
@@ -66,6 +85,7 @@ defmodule OrbitWeb.ConnectivityLive do
             shell_enabled: inst.shell_enabled,
             gui_openable: gui_openable,
             check: check,
+            monitor_id: check.key |> to_string() |> String.replace_prefix("connectivity:", ""),
             rtt: metric_val(check, "ping_rtt_ms"),
             loss: metric_val(check, "ping_loss_pct")
           }
@@ -75,7 +95,7 @@ defmodule OrbitWeb.ConnectivityLive do
         {-ServiceCheck.severity(c.state), n, c.key}
       end)
 
-    assign(socket, rows: rows)
+    assign(socket, rows: rows, comments: CommentEditor.lookup(agent_instances))
   end
 
   defp visible(a) do
@@ -203,7 +223,16 @@ defmodule OrbitWeb.ConnectivityLive do
                 <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
                 <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
               </td>
-              <td class="py-2 pr-4 text-base-content/80">{r.check.summary}</td>
+              <td class="py-2 pr-4 text-base-content/80">
+                {r.check.summary}
+                <.comment_editor
+                  text={CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)}
+                  writable={@writable}
+                  instance_id={r.instance_id}
+                  kind="connectivity"
+                  entity_key={r.monitor_id}
+                />
+              </td>
               <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
               <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
             </tr>
