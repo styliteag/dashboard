@@ -15,7 +15,7 @@ defmodule Orbit.Accounts do
 
   import Ecto.Query
 
-  alias Orbit.Accounts.{Group, User}
+  alias Orbit.Accounts.{Group, User, WebauthnCredential}
   alias Orbit.Auth.{LoginLimiter, Password, TOTP}
   alias Orbit.Instances.Instance
   alias Orbit.Repo
@@ -228,4 +228,94 @@ defmodule Orbit.Accounts do
   defp passkey_count(%User{id: id}) do
     Repo.one(from(c in "webauthn_credentials", where: c.user_id == ^id, select: count()))
   end
+
+  # -- Passkey (WebAuthn) self-service management (mfa_routes.py port) --------
+
+  @doc "The user's passkeys, oldest first (stable list order for the UI)."
+  @spec list_credentials(User.t()) :: [WebauthnCredential.t()]
+  def list_credentials(%User{id: id}) do
+    Repo.all(from(c in WebauthnCredential, where: c.user_id == ^id, order_by: [asc: c.id]))
+  end
+
+  @doc "MfaMethods payload: raw totp_enabled flag + the passkey list."
+  @spec mfa_methods(User.t()) :: %{totp_enabled: boolean(), passkeys: [WebauthnCredential.t()]}
+  def mfa_methods(%User{} = user) do
+    %{totp_enabled: user.totp_enabled == true, passkeys: list_credentials(user)}
+  end
+
+  @doc """
+  Persist a verified passkey (output of `Orbit.Auth.Webauthn.verify_registration/2`).
+  `created_at` is set explicitly — the column is Alembic-owned with a server
+  default, but we set it so the returned struct is complete without a re-read.
+  """
+  @spec add_credential(User.t(), map(), String.t() | nil) ::
+          {:ok, WebauthnCredential.t()} | {:error, Ecto.Changeset.t()}
+  def add_credential(%User{id: id}, verified, name) do
+    %WebauthnCredential{}
+    |> Ecto.Changeset.change(%{
+      user_id: id,
+      credential_id: verified.credential_id,
+      public_key: verified.public_key,
+      sign_count: verified.sign_count,
+      name: normalize_name(name),
+      transports: normalize_transports(verified.transports),
+      created_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    # The unique index is the alembic-created `credential_id`, not Ecto's
+    # default name — without this the duplicate-insert path raises instead of
+    # returning a changeset error (excludeCredentials usually prevents dupes).
+    |> Ecto.Changeset.unique_constraint(:credential_id, name: "credential_id")
+    |> Repo.insert()
+  end
+
+  @doc """
+  Remove a passkey — never the account's last remaining second factor.
+
+  Mirrors `delete_passkey`: a user's own credential only; blocked when it is the
+  last factor (`not totp_enabled and count <= 1`, count INCLUDING the target).
+  Returns the deleted credential (for the audit target) or an error.
+  """
+  @spec delete_credential(User.t(), integer()) ::
+          {:ok, WebauthnCredential.t()} | {:error, :not_found | :last_factor}
+  def delete_credential(%User{} = user, cred_id) do
+    cred = Repo.get(WebauthnCredential, cred_id)
+
+    cond do
+      is_nil(cred) or cred.user_id != user.id ->
+        {:error, :not_found}
+
+      last_factor?(user.totp_enabled == true, length(list_credentials(user))) ->
+        {:error, :last_factor}
+
+      true ->
+        {:ok, _} = Repo.delete(cred)
+        {:ok, cred}
+    end
+  end
+
+  @doc """
+  Pure last-factor guard (mfa_routes delete_passkey): with no TOTP and one (or
+  fewer) passkeys, that passkey is the only 2FA and must not be removed.
+  `count` INCLUDES the credential being removed.
+  """
+  @spec last_factor?(boolean(), non_neg_integer()) :: boolean()
+  def last_factor?(totp_enabled?, count), do: not totp_enabled? and count <= 1
+
+  defp normalize_name(name) when is_binary(name) do
+    case String.trim(name) do
+      "" -> nil
+      trimmed -> String.slice(trimmed, 0, 128)
+    end
+  end
+
+  defp normalize_name(_), do: nil
+
+  defp normalize_transports(list) when is_list(list) do
+    case list |> Enum.filter(&is_binary/1) |> Enum.join(",") |> String.slice(0, 255) do
+      "" -> nil
+      joined -> joined
+    end
+  end
+
+  defp normalize_transports(_), do: nil
 end

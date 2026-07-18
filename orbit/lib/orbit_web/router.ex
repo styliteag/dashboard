@@ -61,6 +61,7 @@ defmodule OrbitWeb.Router do
       live "/logs", LogEventsLive
       live "/vpn", VpnLive
       live "/hub", HubStatusLive
+      live "/security", SecurityLive
     end
 
     live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do

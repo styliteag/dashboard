@@ -43,6 +43,25 @@ config :orbit,
 
 config :orbit, :mfa_issuer, System.get_env("DASH_MFA_ISSUER", "Orbit Dashboard")
 
+# WebAuthn / passkeys (webauthn_svc.py + mfa_routes.py port). `rp_id` is the
+# port-independent host, so it is shared-safe with the still-running python
+# stack. The origin, though, must match the browser's address bar EXACTLY — and
+# orbit (dev :8000) is a different origin than the python/React UI (:5173) that
+# owns the shared DASH_WEBAUTHN_ORIGIN. ORBIT_WEBAUTHN_ORIGIN overrides so the
+# two stacks don't fight; a comma-separated value accepts several origins (wax
+# checks list membership). In prod, orbit is one origin — DASH_WEBAUTHN_ORIGIN
+# (https://dash.example.com) is correct and the fallback picks it up.
+config :orbit, :webauthn_rp_id, System.get_env("DASH_WEBAUTHN_RP_ID", "localhost")
+config :orbit, :webauthn_rp_name, System.get_env("DASH_WEBAUTHN_RP_NAME", "Orbit Dashboard")
+
+config :orbit,
+       :webauthn_origins,
+       (System.get_env("ORBIT_WEBAUTHN_ORIGIN") ||
+          System.get_env("DASH_WEBAUTHN_ORIGIN", "http://localhost:8000"))
+       |> String.split(",", trim: true)
+       |> Enum.map(&String.trim/1)
+       |> Enum.reject(&(&1 == ""))
+
 # GUI proxy (§18): Caddy sidecar fronts a per-instance TCP forwarder. Off
 # unless the admin URL is set; the domain shapes the gui-<slug> vhosts.
 config :orbit, :gui_proxy_enabled, System.get_env("DASH_GUI_PROXY_ENABLED") in ~w(1 true yes on)

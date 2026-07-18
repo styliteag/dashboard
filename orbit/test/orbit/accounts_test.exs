@@ -84,4 +84,19 @@ defmodule Orbit.AccountsTest do
       refute Accounts.verify_totp(u, "123456", at: 0)
     end
   end
+
+  describe "last_factor?/2 — passkey removal guard (delete_passkey parity)" do
+    test "blocks removing the only passkey when TOTP is off" do
+      assert Accounts.last_factor?(false, 1)
+      assert Accounts.last_factor?(false, 0)
+    end
+
+    test "allows removal when TOTP still covers 2FA" do
+      refute Accounts.last_factor?(true, 1)
+    end
+
+    test "allows removal when another passkey remains" do
+      refute Accounts.last_factor?(false, 2)
+    end
+  end
 end

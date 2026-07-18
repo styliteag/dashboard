@@ -172,11 +172,86 @@ const Capture = {
   destroyed() { this.ws && this.ws.close() },
 }
 
+// --- Passkeys (WebAuthn) --------------------------------------------------
+// Minimal WebAuthn registration client (no @simplewebauthn dep): the WebAuthn
+// JSON wire format is base64url without padding; navigator.credentials.create
+// wants ArrayBuffers. Convert in, run the ceremony, convert the response out.
+function b64urlToBuf(s) {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4)
+  const bin = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"))
+  const buf = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
+  return buf.buffer
+}
+function bufToB64url(buf) {
+  const bytes = new Uint8Array(buf)
+  let bin = ""
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+async function createCredential(options) {
+  const publicKey = {
+    ...options,
+    challenge: b64urlToBuf(options.challenge),
+    user: {...options.user, id: b64urlToBuf(options.user.id)},
+    excludeCredentials: (options.excludeCredentials || []).map(c => ({...c, id: b64urlToBuf(c.id)})),
+  }
+  const cred = await navigator.credentials.create({publicKey})
+  const resp = cred.response
+  return {
+    id: cred.id,
+    rawId: bufToB64url(cred.rawId),
+    type: cred.type,
+    authenticatorAttachment: cred.authenticatorAttachment || null,
+    clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+    response: {
+      clientDataJSON: bufToB64url(resp.clientDataJSON),
+      attestationObject: bufToB64url(resp.attestationObject),
+      transports: resp.getTransports ? resp.getTransports() : [],
+    },
+  }
+}
+
+// Passkey hook: the "Add passkey" button. Click → ask the LiveView for options
+// (the challenge stays server-side), run the browser ceremony, hand the result
+// back. Failures (dismissed prompt, no authenticator) report a readable note.
+const Passkey = {
+  mounted() {
+    this.el.addEventListener("click", e => {
+      e.preventDefault()
+      this.register()
+    })
+  },
+  register() {
+    if (!window.PublicKeyCredential) {
+      this.pushEvent("passkey_error", {message: "This browser has no passkey support."})
+      return
+    }
+    const nameEl = document.getElementById("passkey-name")
+    const name = nameEl ? nameEl.value.trim() : ""
+    this.el.disabled = true
+    this.pushEvent("passkey_register_begin", {}, reply => {
+      createCredential(reply.options)
+        .then(credential => {
+          if (nameEl) nameEl.value = ""
+          this.pushEvent("passkey_register_finish", {credential, name})
+        })
+        .catch(err => {
+          const dismissed = err && (err.name === "NotAllowedError" || err.name === "AbortError")
+          this.pushEvent("passkey_error", {
+            message: dismissed ? "Passkey prompt was dismissed." : "Could not create passkey.",
+          })
+        })
+        .finally(() => { this.el.disabled = false })
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it

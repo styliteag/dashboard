@@ -140,7 +140,14 @@ services:
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
       # Interactive shell gate + WS origin allowlist (mirror the backend service).
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # Passkeys: rp_id is the shared host; the origin is orbit's OWN (dev :8000),
+      # not the python UI's :5173 — ORBIT_WEBAUTHN_ORIGIN keeps them from
+      # clobbering each other. Comma-separated accepts both (lab boxes reach :8000,
+      # a local browser may still hit :5173).
+      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
+      DASH_WEBAUTHN_RP_NAME: ${DASH_WEBAUTHN_RP_NAME:-Orbit Dashboard}
       DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
+      ORBIT_WEBAUTHN_ORIGIN: ${ORBIT_WEBAUTHN_ORIGIN:-http://localhost:8000,http://localhost:5173}
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
       # GeoIP gate (same vars + shared mmdb volume as the backend service;
       # the python updater keeps the db fresh until cutover).

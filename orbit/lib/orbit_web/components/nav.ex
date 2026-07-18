@@ -74,6 +74,7 @@ defmodule OrbitWeb.Components.Nav do
         </nav>
       </div>
       <div class="flex items-center gap-3 text-sm">
+        <.nav_link active={@active} key={:security} href={~p"/security"} label="Security" />
         <a href={~p"/password"} class="text-slate-400 hover:text-slate-200" title="Change password">
           {@current_user.username}
         </a>

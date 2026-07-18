@@ -79,6 +79,8 @@ defmodule Orbit.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:argon2_elixir, "~> 4.1"},
+      # WebAuthn / passkeys (py_webauthn port): FIDO2 registration + assertion.
+      {:wax_, "~> 0.7.0"},
       {:req, "~> 0.5"},
       # GeoIP access restriction: local mmdb lookups (plan §5, DR-G1).
       {:locus, "~> 2.3"},
