@@ -19,16 +19,23 @@ Scoping), Passwort-Selfservice, TOTP-Enrollment im Login, Notifier
 Alerts, Selection-Editor, GeoIP-Konfig-UI, AI-Log-Analyse, Access-Suche/
 Zeitfenster/Grouped, Capture-Viewer, **Prometheus-Denial-Serien**.
 
-**OFFEN (die zwei großen Subsysteme — brauchen Lab-Live-Verifikation):**
-- ⬜ **GUI-Proxy-Fläche** (§18) — ~600 Zeilen über 5 Module (gui_auth HMAC,
-  gui_session One-Time-Handoff, gui_tunnel per-Instanz-TCP-Forwarder über die
-  Agent-WS, gui_caddy Vhost-Reconcile via Caddy-Admin-API) + Open-Buttons.
-  Tunnel-Multiplex im orbit-Hub existiert bereits; Rest ist Neubau + Caddy-
-  Sidecar-Integration, nur mit echtem Firewall-GUI verifizierbar.
-- ⬜ **Direct-Poll-Arme** — Securepoint (spcgi + SSH-Enrichment), pfSense-/
-  OPNsense-Direct-API-Clients für firmware/reboot/ipsec. Nur die
-  OPNsense-`fetch_status`-Grundierung ist portiert (M4). Betrifft die
-  Minderheit der Nicht-Agent-Instanzen; verifizierbar nur gegen die Lab-Boxen.
+**GESCHLOSSEN (2026-07-18, Fortsetzung):**
+- ✅ **GUI-Proxy** (§18) — HMAC-Handoff/Cookie-Tokens (wire-kompatibel gegen
+  Python, Cross-Language-Vektor), per-Instanz-TCP-Forwarder über die Agent-WS
+  (funktionaler Bridge-Test: echter TCP-Client ↔ Hub-Tunnel, beide Richtungen),
+  Session-Cookie-Stash (single-use/TTL), open/handoff/authcheck-Routes,
+  Open-GUI-Button. **Kein Caddy-Sidecar nötig** (User-Vorschlag): der Forwarder
+  ist transparenter TCP-Tunnel (Firewall terminiert eigenes TLS), das bestehende
+  prod-nginx macht Vhost + `auth_request` → `/api/gui/authcheck`; `Caddy.reconcile`
+  bleibt optionaler No-op.
+- ✅ **Direct-Poll-Arme** — OPNsense-Direct-API (firmware check/update/
+  upgrade_status, ipsec_restart, reboot) in Firmware+Bulk; Securepoint-spcgi-
+  Client (Login-Envelope, Command, `ipsec get`-Verbot, fetch_status) + Poller-
+  Vendor-Dispatch nach device_type. Req.Test-verifiziert (Hausstil).
+
+**Vollständig portiert.** Dünne Enrichment-Reste (keine User-Feature-Lücken):
+Securepoint swanctl-IPsec-Tunneldetail-Parse + SSH-Enrichment. Alles andere
+läuft; Lab-E2E gegen echte Firewalls (`/lab-verify`) ist Bonus-Härtung vor M8.
 
 M8-Cutover selbst ist User-Entscheid (Maintenance-Fenster).
 
