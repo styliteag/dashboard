@@ -76,11 +76,32 @@ defmodule Orbit.Application do
     if Application.get_env(:orbit, :start_gui, true) do
       [
         {Orbit.GUI.SessionStash, []},
-        {Orbit.GUI.TunnelManager, [reap_ms: :timer.minutes(1)]}
+        {Orbit.GUI.TunnelManager, [reap_ms: :timer.minutes(1)]},
+        gui_finch()
       ]
     else
       []
     end
+  end
+
+  # Dedicated Finch for the GUI reverse proxy. HTTP/2 is mandatory (OPNsense
+  # lighttpd corrupts large *uncompressed* static bodies over HTTP/1.1 — see
+  # OrbitWeb.GuiProxy.forward/3), and `count` opens several h2 connections so a
+  # page load's burst of concurrent asset requests spreads across connections
+  # instead of exhausting one connection's MAX_CONCURRENT_STREAMS (lighttpd's
+  # default is small → :too_many_concurrent_requests). Each connection is one
+  # loopback TCP conn into the per-instance forwarder tunnel; verify_none since
+  # the firewall's cert is validated end-to-end by the browser, not here.
+  defp gui_finch do
+    {Finch,
+     name: Orbit.GUI.Finch,
+     pools: %{
+       default: [
+         protocols: [:http2],
+         count: 10,
+         conn_opts: [transport_opts: [verify: :verify_none]]
+       ]
+     }}
   end
 
   # Tell Phoenix to update the endpoint configuration

@@ -17,6 +17,15 @@ defmodule OrbitWeb.Endpoint do
     websocket: [connect_info: [:peer_data, :x_headers, session: @session_options]],
     longpoll: [connect_info: [:peer_data, :x_headers, session: @session_options]]
 
+  # GUI reverse proxy (§18): a GUI-host request (<slug>.localhost /
+  # gui-<slug>.<domain>) is handled here and halted; any other host passes
+  # through untouched. It MUST run first — ahead of Plug.Static and, in dev,
+  # Phoenix.LiveReloader (which registers a before_send that would inject its
+  # live-reload iframe into the proxied firewall HTML) — so a proxied response
+  # leaves the pipeline exactly as the firewall sent it. Body-raw (before the
+  # parsers) so uploads reach the firewall untouched.
+  plug OrbitWeb.GuiProxy
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),
@@ -44,11 +53,6 @@ defmodule OrbitWeb.Endpoint do
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
-
-  # GUI reverse proxy (§18): a GUI-host request (<slug>.localhost /
-  # gui-<slug>.<domain>) is handled here and halted; any other host passes
-  # through. BEFORE the parsers so the request body reaches the firewall raw.
-  plug OrbitWeb.GuiProxy
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],

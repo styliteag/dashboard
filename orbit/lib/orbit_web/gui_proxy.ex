@@ -20,6 +20,7 @@ defmodule OrbitWeb.GuiProxy do
   @behaviour Plug
 
   import Plug.Conn
+  require Logger
 
   alias Orbit.GUI.Auth
   alias Orbit.GUI.SessionStash
@@ -109,30 +110,65 @@ defmodule OrbitWeb.GuiProxy do
          {:ok, resp} <- forward(conn, port, body) do
       send_upstream(conn, resp)
     else
-      _ ->
+      other ->
+        Logger.warning("gui_proxy.forward_failed path=#{conn.request_path} err=#{inspect(other)}")
         conn |> send_resp(502, "firewall gui unavailable") |> halt()
     end
   end
 
+  # Speak HTTP/2 to the firewall — the same protocol the browser and every other
+  # client negotiate with OPNsense/pfSense. This is NOT cosmetic: OPNsense's
+  # lighttpd serves large *uncompressed* static files (e.g. tabulator.min.js,
+  # main.css) with a deterministic body-corruption bug over HTTP/1.1 — clean over
+  # HTTP/2. Proven live: h1.1+identity corrupts every time, h2 is byte-perfect
+  # (the transparent TLS tunnel is provably intact — TLS integrity would break
+  # otherwise). HTTP/2 also multiplexes the whole page load onto one connection,
+  # sidestepping the HTTP/1 keep-alive pool reuse that produced :invalid_status_
+  # line 502s under concurrent asset fetches. No Connection header (forbidden in
+  # h2); Req passes the body through raw (decode_body: false) so content-encoding
+  # from the firewall reaches the browser untouched.
   defp forward(conn, port, body) do
     url = "https://127.0.0.1:#{port}#{conn.request_path}"
     url = if conn.query_string == "", do: url, else: url <> "?" <> conn.query_string
+    method = conn.method |> String.downcase() |> String.to_atom()
 
     headers =
       conn.req_headers
       |> Enum.reject(fn {k, _} -> k in ["host", "connection", "content-length"] end)
 
-    Req.request(
-      method: conn.method |> String.downcase() |> String.to_atom(),
-      url: url,
-      headers: headers,
-      body: body,
-      redirect: false,
-      retry: false,
-      receive_timeout: 30_000,
-      connect_options: [transport_opts: [verify: :verify_none]],
-      decode_body: false
-    )
+    do_forward(method, url, headers, body, retries_left(method))
+  end
+
+  # GET/HEAD are safe to replay; a mutating method must never be retried.
+  defp retries_left(m) when m in [:get, :head], do: 3
+  defp retries_left(_), do: 0
+
+  defp do_forward(method, url, headers, body, retries) do
+    result =
+      Req.request(
+        finch: Orbit.GUI.Finch,
+        method: method,
+        url: url,
+        headers: headers,
+        # nil (not "") for bodyless methods: an empty DATA frame makes lighttpd's
+        # h2 parser 400 a GET.
+        body: if(body == "", do: nil, else: body),
+        redirect: false,
+        retry: false,
+        receive_timeout: 30_000,
+        decode_body: false
+      )
+
+    # All h2 streams on a connection are busy — transient, a stream frees within
+    # a few ms; retry idempotent methods instead of surfacing a 502 mid-page.
+    case result do
+      {:error, %Req.HTTPError{reason: :too_many_concurrent_requests}} when retries > 0 ->
+        Process.sleep(15)
+        do_forward(method, url, headers, body, retries - 1)
+
+      other ->
+        other
+    end
   end
 
   defp send_upstream(conn, resp) do
