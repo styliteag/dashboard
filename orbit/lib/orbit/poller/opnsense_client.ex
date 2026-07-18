@@ -127,6 +127,33 @@ defmodule Orbit.Poller.OpnsenseClient do
 
   defp action_result(_other, label), do: {:error, "#{label} failed"}
 
+  @doc "Generic JSON GET/POST for the firewall-rules relay (direct path)."
+  def api_json(%__MODULE__{} = c, "GET", path, _body) do
+    case get(c, path) do
+      nil -> {:error, :api_error}
+      data -> {:ok, data}
+    end
+  end
+
+  def api_json(%__MODULE__{} = c, "POST", path, body) do
+    opts =
+      [
+        auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
+        json: body || %{},
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        receive_timeout: @recv_timeout,
+        retry: false
+      ]
+      |> maybe_test_plug()
+
+    case Req.post(c.base_url <> path, opts) do
+      {:ok, %{status: 200, body: b}} when is_map(b) or is_list(b) -> {:ok, b}
+      _ -> {:error, :api_error}
+    end
+  rescue
+    _ -> {:error, :api_error}
+  end
+
   defp post(%__MODULE__{} = c, path) do
     opts =
       [
