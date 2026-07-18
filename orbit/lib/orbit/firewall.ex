@@ -23,13 +23,48 @@ defmodule Orbit.Firewall do
   @doc "Supported only for OPNsense device types (firewall_rules capability)."
   def supported?(%Instance{device_type: dt}), do: dt in ["opnsense"]
 
+  @all_rules %{value: "__any", label: "All rules"}
+
+  @doc "Interface list for the rules filter → [%{value, label}], 'All rules' first."
+  def interfaces(inst, opts \\ []) do
+    case relay(inst, "GET", "/api/firewall/filter/get_interface_list", nil, opts) do
+      {:ok, data} when is_map(data) -> [@all_rules | interface_items(data)]
+      _ -> [@all_rules]
+    end
+  end
+
+  # get_interface_list → %{"<section>" => %{"items" => [%{value,label,type}]}}.
+  # Flatten every section's items, drop OPNsense's own __any (type=="any", we
+  # pin "All rules" ourselves) and empty values; shorten the verbose enc0 label
+  # (FirewallRulesSection.interfaceOptions parity).
+  defp interface_items(data) do
+    for {_section, section} when is_map(section) <- data,
+        is_list(section["items"]),
+        item <- section["items"],
+        is_map(item),
+        value = field_text(item["value"]),
+        value != "",
+        field_text(item["type"]) != "any" do
+      label = field_text(item["label"])
+      label = if label == "", do: value, else: label
+      %{value: value, label: if(label == "IPsec encapsulation", do: "IPsec", else: label)}
+    end
+  end
+
   @doc "Search rules on an interface → {:ok, %{rows, total}} | {:error, msg}."
   def search_rules(inst, opts \\ []) do
     interface = Keyword.get(opts, :interface)
     search = Keyword.get(opts, :search, "")
 
+    # "__any" = every interface (no filter); "__floating" = the floating tab
+    # (interface=""); a real interface filters to it (routes.py search_rules parity).
     params =
-      if interface, do: "?interface=#{URI.encode(interface)}&show_all=1", else: "?show_all=1"
+      case interface do
+        nil -> "?show_all=1"
+        "__any" -> "?show_all=1"
+        "__floating" -> "?interface=&show_all=1"
+        iface -> "?interface=#{URI.encode(iface)}&show_all=1"
+      end
 
     body = %{"current" => 1, "rowCount" => 500, "sort" => %{}, "searchPhrase" => search}
 

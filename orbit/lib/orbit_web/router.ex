@@ -53,6 +53,7 @@ defmodule OrbitWeb.Router do
       live "/instances/:id/edit", InstanceEditLive
       live "/instances/:id/terminal", TerminalLive
       live "/instances/:id/capture", CaptureLive
+      live "/instances/:id/firewall", FirewallRulesLive
       live "/alerts", AlertsLive
       live "/connectivity", ConnectivityLive
       live "/certificates", CertificatesLive

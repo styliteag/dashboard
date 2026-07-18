@@ -499,6 +499,13 @@ defmodule OrbitWeb.InstanceDetailLive do
             Capture
           </a>
           <a
+            :if={@writable and @instance.device_type == "opnsense"}
+            href={~p"/instances/#{@instance.id}/firewall"}
+            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Firewall
+          </a>
+          <a
             :if={@writable}
             href={~p"/instances/#{@instance.id}/edit"}
             class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
