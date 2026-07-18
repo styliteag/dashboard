@@ -29,7 +29,28 @@ defmodule OrbitWeb.GroupsLive do
      |> reload()}
   end
 
-  defp reload(socket), do: assign(socket, groups: Accounts.list_groups())
+  defp reload(socket) do
+    assign(socket,
+      groups: Accounts.list_groups(),
+      assignments: list_assignments()
+    )
+  end
+
+  # Superadmin-only surface: the assignment table deliberately reads ALL
+  # live instances without scope — moving instances between groups is
+  # rights management (python move_group passes a None principal for
+  # superadmins for exactly this reason). The page is on_mount
+  # :require_superadmin, so no other role can reach this query.
+  defp list_assignments do
+    Orbit.Repo.query!(
+      "SELECT id, name, slug, group_id FROM instances WHERE deleted_at IS NULL ORDER BY name"
+    ).rows
+    |> Enum.map(fn [id, name, slug, group_id] ->
+      %{id: id, name: name, slug: slug, group_id: group_id}
+    end)
+  rescue
+    _ -> []
+  end
 
   @impl true
   def handle_event("create_group", %{"group" => %{"name" => name}}, socket) do
@@ -101,6 +122,27 @@ defmodule OrbitWeb.GroupsLive do
     else
       nil -> {:noreply, socket}
       {:error, msg} -> {:noreply, assign(socket, channel_error: "#{channel}: #{msg}")}
+    end
+  end
+
+  def handle_event("move_instance", %{"instance_id" => raw_iid, "group_id" => raw_gid}, socket) do
+    with {iid, ""} <- Integer.parse(raw_iid),
+         {gid, ""} <- Integer.parse(raw_gid),
+         %Accounts.Group{} <- Orbit.Repo.get(Accounts.Group, gid),
+         %Orbit.Instances.Instance{} = inst <- Orbit.Repo.get(Orbit.Instances.Instance, iid),
+         {:ok, moved} <- Orbit.Instances.move_group(inst, gid) do
+      Audit.write(
+        action: "instance.move_group",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: moved.id,
+        detail: %{"from_group_id" => inst.group_id, "to_group_id" => gid}
+      )
+
+      {:noreply, socket |> assign(error: nil) |> reload()}
+    else
+      _ -> {:noreply, assign(socket, error: "move failed — unknown instance or group")}
     end
   end
 
@@ -259,6 +301,46 @@ defmodule OrbitWeb.GroupsLive do
             <% end %>
           </tbody>
         </table>
+
+        <%!-- Instance assignment (GroupsPage parity) — the one place to move
+             instances between groups; the move applies immediately. --%>
+        <div class="mt-8 max-w-2xl rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 class="text-sm font-medium text-slate-300">Instance assignment</h2>
+          <p class="mt-1 text-xs text-slate-500">
+            Pick a group per instance — the move applies immediately.
+          </p>
+          <p :if={@assignments == []} class="mt-3 text-sm text-slate-500">No instances yet.</p>
+          <table :if={@assignments != []} class="mt-3 w-full text-left text-sm">
+            <thead class="text-xs text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-1 pr-4 font-medium">Instance</th>
+                <th class="py-1 font-medium">Group</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={a <- @assignments} class="border-b border-slate-800/50 last:border-0">
+                <td class="py-2 pr-4 text-slate-200">
+                  {a.name} <span class="ml-1 text-xs text-slate-500">{a.slug}</span>
+                </td>
+                <td class="py-2">
+                  <form phx-change="move_instance">
+                    <input type="hidden" name="instance_id" value={a.id} />
+                    <select
+                      name="group_id"
+                      disabled={length(@groups) < 2}
+                      title={if length(@groups) < 2, do: "Create a second group first"}
+                      class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300 disabled:opacity-50"
+                    >
+                      <option :for={g <- @groups} value={g.id} selected={g.id == a.group_id}>
+                        {g.name}
+                      </option>
+                    </select>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

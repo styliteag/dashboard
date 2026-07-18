@@ -81,6 +81,17 @@ defmodule Orbit.Instances do
     end
   end
 
+  @doc """
+  Move an instance to another group (instances/routes.py move_group — a
+  RIGHTS operation, not instance config; the groups page's superadmin
+  assignment table is the only caller). Returns {:ok, inst} | {:error, _}.
+  """
+  def move_group(%Instance{} = inst, group_id) when is_integer(group_id) do
+    inst
+    |> Ecto.Changeset.change(group_id: group_id)
+    |> Repo.update()
+  end
+
   @doc "Drop agent mode: revoke the token, fall back to direct transport."
   def disable_agent(%Instance{} = inst) do
     inst
