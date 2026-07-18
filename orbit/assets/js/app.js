@@ -24,39 +24,107 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/orbit"
 import topbar from "../vendor/topbar"
+import {Terminal as Xterm} from "../vendor/xterm.js"
+import {FitAddon} from "../vendor/addon-fit.js"
+// xterm.css is inlined into the app stylesheet via assets/css/app.css (@import).
 
-// Terminal hook: bridges a root PTY on the box to the browser over the
-// session-authed shell WS (/api/ws/shell/:id). Raw byte stream — no ANSI
-// emulator (vendoring xterm is a later polish); output lands in a <pre>,
-// keystrokes go back as bytes. The full auth order runs server-side in the
-// WS route (write role, scope, shell_enabled, slot cap → close codes).
+// Close-code → readable note (parity with the old React ShellTerminal).
+const SHELL_CLOSE = {
+  4401: "Session expired — please log in again.",
+  4403: "Shell is disabled on this server (DASH_SHELL_ENABLED is off).",
+  4404: "Agent is not connected — no box to attach to.",
+  4008: "Too many terminal sessions — close one and retry.",
+}
+
+// Terminal hook: a real xterm.js terminal wired to a root PTY on the box over
+// the session-authed shell WS (/api/ws/shell/:id). Keystrokes go out as binary,
+// output comes back as binary, window-size changes as a JSON `resize` control
+// frame; the server keepalive `ping` is answered with `pong`. The full auth
+// order runs server-side in the WS route (write role, scope, shell_enabled,
+// slot cap → close codes). Status is pushed to the LiveView via a hidden input.
 const Terminal = {
   mounted() {
     const id = this.el.dataset.instanceId
-    const out = this.el.querySelector("[data-term-out]")
+    const mount = this.el.querySelector("[data-term-mount]")
+    const status = this.el.querySelector("[data-term-status]")
+    const setStatus = (text, cls) => {
+      if (!status) return
+      status.textContent = text
+      status.className = cls
+    }
+
+    const term = new Xterm({
+      cursorBlink: true,
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      fontSize: 13,
+      theme: {background: "#000000", foreground: "#e2e8f0", cursor: "#34d399"},
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.open(mount)
+    fit.fit()
+    this.term = term
+
     const proto = location.protocol === "https:" ? "wss" : "ws"
     const ws = new WebSocket(`${proto}://${location.host}/api/ws/shell/${id}`)
     ws.binaryType = "arraybuffer"
     this.ws = ws
-    ws.onmessage = e => {
-      if (typeof e.data === "string") return // json control frames (ping)
-      out.textContent += new TextDecoder().decode(e.data)
-      out.scrollTop = out.scrollHeight
+
+    const sendResize = () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({type: "resize", cols: term.cols, rows: term.rows}))
+      }
     }
-    ws.onclose = e => { out.textContent += `\n[connection closed: ${e.code}]\n` }
-    this.el.querySelector("[data-term-input]").addEventListener("keydown", e => {
-      let data
-      if (e.key === "Enter") data = "\r"
-      else if (e.key === "Backspace") data = "\x7f"
-      else if (e.key === "Tab") data = "\t"
-      else if (e.ctrlKey && e.key === "c") data = "\x03"
-      else if (e.key.length === 1) data = e.key
-      else return
-      e.preventDefault()
-      if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data))
+
+    ws.onopen = () => {
+      setStatus("connected", "text-xs text-emerald-400")
+      fit.fit()
+      sendResize()
+      term.focus()
+    }
+    ws.onmessage = e => {
+      if (e.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(e.data))
+        return
+      }
+      // Text frame = control channel; answer the server keepalive ping so the
+      // socket stays warm in both directions. Never fed to the terminal.
+      if (typeof e.data === "string") {
+        try {
+          const m = JSON.parse(e.data)
+          if (m.type === "ping" && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({type: "pong"}))
+          }
+        } catch (_) {}
+      }
+    }
+    ws.onclose = e => {
+      setStatus(SHELL_CLOSE[e.code] || "connection closed", "text-xs text-red-400")
+      term.write("\r\n\x1b[90m[session closed]\x1b[0m\r\n")
+    }
+
+    const enc = new TextEncoder()
+    this.onData = term.onData(d => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d))
     })
+
+    this.ro = new ResizeObserver(() => {
+      fit.fit()
+      sendResize()
+    })
+    this.ro.observe(mount)
   },
-  destroyed() { this.ws && this.ws.close() },
+  destroyed() {
+    this.ro && this.ro.disconnect()
+    this.onData && this.onData.dispose()
+    // Detach handlers before closing so a late onclose can't touch a torn-down
+    // terminal (LiveView navigation reuses the DOM under a fresh hook).
+    if (this.ws) {
+      this.ws.onopen = this.ws.onmessage = this.ws.onclose = null
+      this.ws.close()
+    }
+    this.term && this.term.dispose()
+  },
 }
 
 // Capture hook: streams a live tcpdump on the box over the session-authed

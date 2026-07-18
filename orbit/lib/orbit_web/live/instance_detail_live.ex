@@ -480,6 +480,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           <a
             :if={@instance.shell_enabled}
             href={~p"/instances/#{@instance.id}/terminal"}
+            target="_blank"
+            rel="noopener"
             class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
           >
             Terminal

@@ -43,26 +43,20 @@ defmodule OrbitWeb.TerminalLive do
           The terminal is not enabled for this instance (Edit instance → Terminal).
         </div>
 
-        <div
-          :if={@shell_enabled}
-          id="terminal"
-          phx-hook="Terminal"
-          data-instance-id={@instance.id}
-          class="rounded-lg border border-slate-800 bg-black p-3"
-        >
-          <pre
-            data-term-out
-            class="h-96 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-emerald-300"
-          ></pre>
-          <input
-            data-term-input
-            type="text"
-            autofocus
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="type here — keystrokes stream to the box"
-            class="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
-          />
+        <div :if={@shell_enabled} class="max-w-5xl">
+          <div
+            id="terminal"
+            phx-hook="Terminal"
+            phx-update="ignore"
+            data-instance-id={@instance.id}
+            class="rounded-lg border border-slate-800 bg-black p-3"
+          >
+            <div class="mb-2 flex items-center gap-2 text-xs">
+              <span data-term-status class="text-xs text-amber-400">connecting…</span>
+              <span class="text-slate-600">— click to focus; keystrokes stream live to the box.</span>
+            </div>
+            <div data-term-mount class="h-[32rem] w-full"></div>
+          </div>
         </div>
       </section>
     </main>

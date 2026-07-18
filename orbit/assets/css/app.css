@@ -2,6 +2,7 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
+@import "../vendor/xterm.css";
 @import "phoenix-colocated/orbit/colocated.css";
 @source "../css";
 @source "../js";
