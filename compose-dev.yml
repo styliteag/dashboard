@@ -159,6 +159,10 @@ services:
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"
+      # GUI-proxy forwarders (14400 + instance id) — published so the browser
+      # can reach them directly in dev (transparent TCP tunnel to the firewall
+      # GUI; no Caddy). Covers instance ids 1..30.
+      - "14401-14430:14401-14430"
     volumes:
       - ./orbit:/app
       - ./VERSION:/app/VERSION:ro

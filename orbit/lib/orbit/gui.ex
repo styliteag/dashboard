@@ -91,10 +91,27 @@ defmodule Orbit.GUI do
     end
   end
 
-  @doc "Build the handoff URL for a minted token + optional deep-link path."
+  @doc """
+  The URL the browser opens for the GUI.
+
+  With a reverse proxy in front (gui_base_template set: prod), it is the
+  handoff URL — /__orbit/auth?t=<token> — so the proxy sets the orbit_gui
+  cookie and gates every asset. Without one (dev, no proxy), the browser
+  reaches the transparent TCP forwarder DIRECTLY on its published port
+  (14400 + id): the firewall terminates its own TLS end to end and serves
+  its own login, so no handoff/cookie layer is possible — nor needed, the
+  forwarder is localhost-only in dev.
+  """
   def handoff_url(inst, token, path) do
-    url = "#{base_url(inst)}/__orbit/auth?t=#{token}"
-    nxt = safe_next(path)
-    if nxt == "/", do: url, else: url <> "&next=" <> URI.encode(nxt, &URI.char_unreserved?/1)
+    case Application.get_env(:orbit, :gui_base_template, "") do
+      "" ->
+        # Direct-to-forwarder (dev): the firewall's own login page.
+        "https://localhost:#{Orbit.GUI.TunnelManager.port_for(inst.id)}#{safe_next(path)}"
+
+      _template ->
+        url = "#{base_url(inst)}/__orbit/auth?t=#{token}"
+        nxt = safe_next(path)
+        if nxt == "/", do: url, else: url <> "&next=" <> URI.encode(nxt, &URI.char_unreserved?/1)
+    end
   end
 end
