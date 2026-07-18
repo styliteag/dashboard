@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: the firewall rules page grows the full editor — create, edit,
+  clone, move up/down (reorder), search — on top of toggle/delete/apply.
+- Orbit: packet capture gains snapshot mode — bounded tcpdump via the
+  agent, pcap download, and an in-browser packet viewer (proto/src/dst/
+  flags, hex preview, client-side filter) next to the live stream.
+- Orbit: Phase-2 ping monitors can be added/removed inline in the IPsec
+  phase-2 expander (source pre-filled from the agent's suggestion; one
+  monitor per child SA).
+- Orbit: the Groups page gains the instance-assignment table (move any
+  instance between groups, applies immediately) and the firmware card shows
+  pending-package list, update counters, needs-reboot and the last check
+  output.
+- Orbit: inline note badges (📝 with the note as tooltip) on IPsec tunnels,
+  certificates, connectivity monitors and the firmware card.
 - Orbit: connectivity monitors on the instance detail page — live ping
   results (state/RTT/loss) joined per monitor, create/enable/disable/delete,
   and the agent now receives both monitor sets (standalone + IPsec phase-2)

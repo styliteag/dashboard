@@ -132,6 +132,59 @@ defmodule Orbit.Monitors do
     _ -> []
   end
 
+  @doc """
+  Create a Phase-2 ping monitor (one per child SA — the unique key mirrors
+  the python 409). {:ok | {:error, msg}}; pushes the set on success.
+  """
+  def create_ipsec(instance_id, attrs) do
+    destination = String.trim(attrs["destination"] || "")
+
+    cond do
+      String.trim(attrs["child_name"] || "") == "" ->
+        {:error, "child name is required"}
+
+      destination == "" ->
+        {:error, "destination is required"}
+
+      true ->
+        Orbit.Repo.query!(
+          "INSERT INTO ipsec_ping_monitors " <>
+            "(instance_id, tunnel_id, child_name, local_ts, remote_ts, source, destination, " <>
+            "enabled, ping_count, created_at, updated_at) " <>
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+          [
+            instance_id,
+            String.trim(attrs["tunnel_id"] || ""),
+            String.trim(attrs["child_name"] || ""),
+            attrs["local_ts"] || "",
+            attrs["remote_ts"] || "",
+            String.trim(attrs["source"] || ""),
+            destination,
+            true,
+            ping_count(attrs)
+          ]
+        )
+
+        push_to_agent(instance_id)
+        :ok
+    end
+  rescue
+    e in MyXQL.Error ->
+      if e.mysql && e.mysql.code == 1062,
+        do: {:error, "a ping monitor for this Phase 2 already exists"},
+        else: {:error, "save failed"}
+  end
+
+  def delete_ipsec(instance_id, monitor_id) do
+    Orbit.Repo.query!(
+      "DELETE FROM ipsec_ping_monitors WHERE id = ? AND instance_id = ?",
+      [monitor_id, instance_id]
+    )
+
+    push_to_agent(instance_id)
+    :ok
+  end
+
   # ---- agent config push -----------------------------------------------------
 
   @doc """

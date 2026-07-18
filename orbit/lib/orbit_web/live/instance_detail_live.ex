@@ -345,6 +345,27 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("conn_" <> _kind, _params, socket), do: {:noreply, socket}
 
+  # Phase-2 ping monitors (PingMonitorDialog parity, condensed inline).
+  def handle_event("p2mon_create", %{"mon" => attrs}, %{assigns: %{writable: true}} = socket) do
+    case Orbit.Monitors.create_ipsec(socket.assigns.instance.id, attrs) do
+      :ok ->
+        audit_agent(socket, "ipsec.ping_monitor.create", "ok")
+        {:noreply, load_monitors(socket)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, ipsec_msg: {:error, msg})}
+    end
+  end
+
+  def handle_event("p2mon_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
+    {id, ""} = Integer.parse(raw)
+    :ok = Orbit.Monitors.delete_ipsec(socket.assigns.instance.id, id)
+    audit_agent(socket, "ipsec.ping_monitor.delete", "ok")
+    {:noreply, load_monitors(socket)}
+  end
+
+  def handle_event("p2mon_" <> _kind, _params, socket), do: {:noreply, socket}
+
   # Open GUI (GUI proxy §18) — write-gated; re-checks openable (agent may
   # have dropped since render), mints the handoff URL and pushes it to the
   # browser to open. Audits agent.gui_open (source_ip is the LiveView seam).
@@ -910,6 +931,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp load_monitors(socket) do
     assign(socket,
       conn_monitors: Orbit.Monitors.list_connectivity(socket.assigns.instance.id),
+      ipsec_monitors: Orbit.Monitors.list_ipsec(socket.assigns.instance.id),
       conn_error: nil
     )
   end
@@ -1380,7 +1402,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
         >
           <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-slate-400">
-            Firmware
+            Firmware <.comment_badge comments={@comments} kind="firmware" entity_key="" />
             <span
               :if={@instance.firmware_locked}
               class="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-amber-300"
@@ -1407,13 +1429,63 @@ defmodule OrbitWeb.InstanceDetailLive do
               value={@firmware["product_latest"] || "?"}
             />
             <.kv :if={truthy_str(@firmware["branch"])} label="Branch" value={@firmware["branch"]} />
+            <.kv
+              :if={(@firmware["known_branches"] || []) != []}
+              label="Known branches"
+              value={Enum.join(@firmware["known_branches"] || [], ", ")}
+            />
             <.kv :if={@fw_verdict} label="Status" value={@fw_verdict.summary} />
+            <.kv
+              :if={num0(@firmware["updates_available"]) > 0}
+              label="Pending updates"
+              value={"#{num0(@firmware["updates_available"])}#{if num0(@firmware["security_updates"]) > 0, do: " (#{num0(@firmware["security_updates"])} security)", else: " (none security-relevant)"}"}
+            />
             <.kv
               :if={truthy_str(@firmware["last_check"])}
               label="Last check"
               value={@firmware["last_check"]}
             />
           </dl>
+
+          <div
+            :if={@firmware && @firmware["needs_reboot"] == true}
+            class="mt-2 rounded border border-amber-800/50 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-300"
+          >
+            Reboot required to finish applying updates.
+          </div>
+          <div
+            :if={@firmware && @firmware["check_failed"] == true}
+            class="mt-2 rounded border border-amber-800/50 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-300"
+          >
+            The box could not check for updates (repo unreachable or pkg broken) — status unknown.
+          </div>
+
+          <%!-- Pending package list (linux nodes; FreeBSD reports only the
+               product verdict). Capped at 50 by the agent. --%>
+          <details :if={@firmware && (@firmware["packages"] || []) != []} class="mt-2 text-xs">
+            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+              {length(@firmware["packages"] || [])} pending package(s)
+            </summary>
+            <table class="mt-1 w-full text-left font-mono text-xs">
+              <tbody>
+                <tr :for={p <- @firmware["packages"] || []} class="border-t border-slate-800/50">
+                  <td class="py-0.5 pr-3 text-slate-300">{p["name"]}</td>
+                  <td class="py-0.5 pr-3 text-slate-500">{p["current"]}</td>
+                  <td class="py-0.5 text-slate-400">→ {p["new"]}</td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+
+          <details
+            :if={@firmware && truthy_str(@firmware["update_check_output"])}
+            class="mt-2 text-xs"
+          >
+            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+              Last check output
+            </summary>
+            <pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-slate-950 p-2 font-mono text-slate-400">{@firmware["update_check_output"]}</pre>
+          </details>
 
           <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -1508,6 +1580,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <td class="py-1.5 pr-3 text-slate-300">
                     {m.name}
                     <span :if={not m.enabled} class="ml-1 text-xs text-slate-600">(disabled)</span>
+                    <.comment_badge
+                      comments={@comments}
+                      kind="connectivity"
+                      entity_key={to_string(m.id)}
+                    />
                   </td>
                   <td class="py-1.5 pr-3 text-slate-400">
                     {if m.source == "", do: "default", else: m.source} → {m.destination}
@@ -1678,6 +1755,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
                     </button>
                     <span class="text-slate-300">{t["description"] || id}</span>
+                    <.comment_badge comments={@comments} kind="ipsec" entity_key={id} />
                   </td>
                   <td class="py-1.5 pr-3 text-slate-400">{t["remote"] || "—"}</td>
                   <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
@@ -1739,9 +1817,50 @@ defmodule OrbitWeb.InstanceDetailLive do
                   </td>
                   <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
                   <td class="py-1 pr-3 text-slate-500" colspan="3">
-                    <span :if={ch["ping_state"] not in [nil, "none"]}>
+                    <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
+                    <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
                     </span>
+                    <span :if={mon && @writable}>
+                      <span class="text-slate-600">
+                        monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
+                      </span>
+                      <button
+                        phx-click="p2mon_delete"
+                        phx-value-id={mon.id}
+                        data-confirm="Remove this Phase-2 ping monitor?"
+                        class="ml-1 text-red-400/70 hover:text-red-300"
+                      >
+                        remove
+                      </button>
+                    </span>
+                    <form
+                      :if={is_nil(mon) and @writable}
+                      phx-submit="p2mon_create"
+                      class="inline-flex items-center gap-1"
+                    >
+                      <input type="hidden" name="mon[tunnel_id]" value={id} />
+                      <input type="hidden" name="mon[child_name]" value={ch["name"] || ""} />
+                      <input type="hidden" name="mon[local_ts]" value={ch["local_ts"] || ""} />
+                      <input type="hidden" name="mon[remote_ts]" value={ch["remote_ts"] || ""} />
+                      <input
+                        name="mon[source]"
+                        value={ch["suggested_source"] || ""}
+                        placeholder="source"
+                        class="w-28 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                      />
+                      <input
+                        name="mon[destination]"
+                        placeholder="ping destination"
+                        class="w-28 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                      />
+                      <button
+                        type="submit"
+                        class="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 hover:bg-slate-800"
+                      >
+                        add monitor
+                      </button>
+                    </form>
                   </td>
                 </tr>
               <% end %>
@@ -1929,6 +2048,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                       >
                         GUI
                       </span>
+                      <.comment_badge
+                        comments={@comments}
+                        kind="cert"
+                        entity_key={to_string(c["refid"] || c["name"] || "")}
+                      />
                     </span>
                   </td>
                   <td class="px-3 py-2 text-slate-400">
@@ -2320,6 +2444,35 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp tunnel_up?(status) do
     status |> to_string() |> String.downcase() |> Kernel.in(@tunnel_up)
+  end
+
+  # Inline note badge (EntityCommentBadge parity): shows the operator note
+  # for one entity as a tooltip; editing stays in the central Notes form.
+  attr :comments, :list, required: true
+  attr :kind, :string, required: true
+  attr :entity_key, :string, required: true
+
+  defp comment_badge(assigns) do
+    note =
+      Enum.find(assigns.comments, fn c ->
+        c.kind == assigns.kind and c.entity_key == assigns.entity_key
+      end)
+
+    assigns = assign(assigns, note: note)
+
+    ~H"""
+    <span
+      :if={@note}
+      title={"#{@note.comment} — #{@note.updated_by}"}
+      class="ml-1 cursor-help text-amber-400/80"
+    >
+      📝
+    </span>
+    """
+  end
+
+  defp p2_monitor(monitors, child_name) do
+    Enum.find(monitors, &(&1.child_name == to_string(child_name || "")))
   end
 
   defp ping_state_color("ok"), do: "text-emerald-400"
