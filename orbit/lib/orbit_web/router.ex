@@ -21,6 +21,20 @@ defmodule OrbitWeb.Router do
     plug :put_secure_browser_headers
     plug :fetch_current_user
     plug :track_access
+    plug :fetch_design
+  end
+
+  # Design/mode cookies → assigns; the root layout renders the combined
+  # daisyUI theme as data-theme on <html> (OrbitWeb.Design, link-shortener
+  # pattern).
+  defp fetch_design(conn, _opts) do
+    design = OrbitWeb.Design.validate(conn.cookies["orbit_design"])
+    mode = OrbitWeb.Design.validate_mode(conn.cookies["orbit_mode"])
+
+    conn
+    |> Plug.Conn.assign(:design, design)
+    |> Plug.Conn.assign(:mode, mode)
+    |> Plug.Conn.assign(:theme, OrbitWeb.Design.theme(design, mode))
   end
 
   pipeline :api do
@@ -38,6 +52,14 @@ defmodule OrbitWeb.Router do
     post "/login/passkey/verify", SessionController, :passkey_verify
     get "/login/enroll", SessionController, :enroll_form
     post "/login/enroll", SessionController, :enroll_verify
+  end
+
+  scope "/", OrbitWeb do
+    pipe_through :browser
+
+    # Theme choice works pre-login too (the login page is themed).
+    post "/design", DesignController, :update
+    post "/design/mode", DesignController, :update_mode
   end
 
   scope "/", OrbitWeb do
