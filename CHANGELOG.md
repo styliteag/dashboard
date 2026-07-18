@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: the fleet overview pages regain the old UI's interaction — Alerts
+  (severity tiles, search with deep link from the instance badges, Checkmk
+  exported/excluded filter), VPN (up/down tiles, search, sortable columns,
+  phase-2/uptime/traffic, reconnect per row), Firmware (verdict tiles,
+  search, type chips, latest/security/needs-reboot/lock columns) and
+  Certificates (expiry tiles, search, issuer/expiry columns with runway
+  bars, GUI/CA badges); all with WebUI/Terminal quick links per row.
 - Orbit: IPsec tunnels on the instance detail page are interactive again —
   connect/disconnect/reconnect per tunnel, service restart with confirmation,
   instant recheck, phase-2 expand with traffic selectors and ping state, plus

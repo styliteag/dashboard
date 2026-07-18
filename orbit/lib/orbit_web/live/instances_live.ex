@@ -780,7 +780,7 @@ defmodule OrbitWeb.InstancesLive do
       </span>
       <a
         :if={@row.alerts.crit > 0 or @row.alerts.warn > 0}
-        href={~p"/alerts"}
+        href={~p"/alerts?q=#{@row.name}"}
         class={[
           "rounded px-1.5 py-0.5 text-xs",
           if(@row.alerts.crit > 0,
