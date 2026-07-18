@@ -136,6 +136,7 @@ defmodule OrbitWeb.VpnLive do
       {:noreply,
        assign(socket,
          history: %{
+           mode: if(params["mode"] == "graph", do: :graph, else: :history),
            instance_name: inst.name,
            tunnel_id: tunnel_id,
            label: params["label"] || tunnel_id,
@@ -547,6 +548,18 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-tunnel={t.id}
                       phx-value-label={t.label}
                       phx-value-up={to_string(t.up)}
+                      phx-value-mode="graph"
+                      class="mr-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                    >
+                      Graph
+                    </button>
+                    <button
+                      phx-click="history_open"
+                      phx-value-iid={t.instance_id}
+                      phx-value-tunnel={t.id}
+                      phx-value-label={t.label}
+                      phx-value-up={to_string(t.up)}
+                      phx-value-mode="history"
                       class="mr-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
                     >
                       History
@@ -626,7 +639,7 @@ defmodule OrbitWeb.VpnLive do
           <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5">
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-medium text-slate-200">
-                Tunnel history — {@history.label}
+                {if @history.mode == :graph, do: "Tunnel graph", else: "Tunnel history"} — {@history.label}
                 <span class="ml-1 text-xs text-slate-500">{@history.instance_name}</span>
               </h3>
               <button
@@ -661,7 +674,10 @@ defmodule OrbitWeb.VpnLive do
                 class="flex items-center gap-2"
               >
                 <span class="w-16 text-right text-[10px] text-slate-500">{label}</span>
-                <div class="relative h-3.5 flex-1 overflow-hidden rounded bg-slate-800">
+                <div class={[
+                  "relative flex-1 overflow-hidden rounded bg-slate-800",
+                  if(@history.mode == :graph, do: "h-7", else: "h-3.5")
+                ]}>
                   <div
                     :for={seg <- segs}
                     class={["absolute h-full", lane_color(seg.state)]}
@@ -683,7 +699,10 @@ defmodule OrbitWeb.VpnLive do
               </div>
             </div>
 
-            <table :if={@history.events != []} class="mt-4 w-full text-left text-xs">
+            <table
+              :if={@history.mode == :history and @history.events != []}
+              class="mt-4 w-full text-left text-xs"
+            >
               <thead class="text-slate-500">
                 <tr class="border-b border-slate-800">
                   <th class="py-1 pr-3 font-medium">Time (UTC)</th>
@@ -701,7 +720,10 @@ defmodule OrbitWeb.VpnLive do
                 </tr>
               </tbody>
             </table>
-            <p :if={@history.events == []} class="mt-4 text-sm text-slate-500">
+            <p
+              :if={@history.mode == :history and @history.events == []}
+              class="mt-4 text-sm text-slate-500"
+            >
               No transitions recorded yet — events appear as soon as the tunnel
               changes state (orbit records them per agent push).
             </p>
