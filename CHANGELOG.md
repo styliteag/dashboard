@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: per-tunnel Diagnose on the instance detail — the agent's readable
+  diagnostic bundle (swanctl/status/log sections) inline under the IPsec
+  table, first section expanded.
 - Orbit: the tunnel History dialog renders the three-lane state graph
   (Phase 1 / Phase 2 / Ping — green up, amber partial, red down, grey no
   data), and persistent duplicate CHILD_SAs are detected again: the Elixir

@@ -73,7 +73,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           ipsec_msg: nil,
           ipsec_expanded: MapSet.new(),
           show_token: false,
-          cb_diff: nil
+          cb_diff: nil,
+          diagnosis: nil,
+          diagnosis_busy: nil
         )
         |> load_comments()
         |> load_logs()
@@ -214,6 +216,28 @@ defmodule OrbitWeb.InstanceDetailLive do
         else: MapSet.put(expanded, id)
 
     {:noreply, assign(socket, ipsec_expanded: expanded)}
+  end
+
+  # Readable diagnostic bundle for one tunnel (ipsec.diagnose relay) — raw
+  # text per section, deliberately not over-parsed (python parity).
+  def handle_event("ipsec_diagnose", %{"id" => id}, socket) do
+    inst = socket.assigns.instance
+
+    if socket.assigns.diagnosis_busy do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(diagnosis_busy: id, diagnosis: nil)
+       |> start_async(:ipsec_diagnose, fn ->
+         result = Hub.send_command(inst.id, "ipsec.diagnose", %{"tunnel_id" => id}, 30_000)
+         if is_map(result), do: {id, result}, else: {id, %{"success" => false}}
+       end)}
+    end
+  end
+
+  def handle_event("ipsec_diagnose_close", _params, socket) do
+    {:noreply, assign(socket, diagnosis: nil)}
   end
 
   def handle_event("ipsec_recheck", _params, socket) do
@@ -692,6 +716,21 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   @impl true
+  def handle_async(:ipsec_diagnose, {:ok, {id, result}}, socket) do
+    diagnosis =
+      if result["success"] do
+        %{tunnel_id: id, sections: result["sections"] || []}
+      else
+        %{tunnel_id: id, sections: [], error: to_string(result["output"] || "diagnose failed")}
+      end
+
+    {:noreply, assign(socket, diagnosis_busy: nil, diagnosis: diagnosis)}
+  end
+
+  def handle_async(:ipsec_diagnose, {:exit, _}, socket) do
+    {:noreply, assign(socket, diagnosis_busy: nil)}
+  end
+
   def handle_async(:ipsec_recheck, {:ok, _result}, socket) do
     # The agent pushed a fresh snapshot as part of status.refresh — re-read
     # the cache instead of waiting for the next 5s tick.
@@ -1877,11 +1916,19 @@ defmodule OrbitWeb.InstanceDetailLive do
                     class="py-1.5 text-right text-xs"
                   >
                     <button
+                      phx-click="ipsec_diagnose"
+                      phx-value-id={id}
+                      disabled={@diagnosis_busy != nil or not @connected}
+                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
+                    </button>
+                    <button
                       phx-click="ipsec_reconnect"
                       phx-value-id={id}
                       phx-value-uid={t["unique_id"] || ""}
                       disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
                     </button>
@@ -1974,6 +2021,31 @@ defmodule OrbitWeb.InstanceDetailLive do
               <% end %>
             </tbody>
           </table>
+
+          <div :if={@diagnosis} class="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+            <div class="mb-2 flex items-center justify-between">
+              <h3 class="text-xs font-medium text-slate-300">
+                Diagnosis — {@diagnosis.tunnel_id}
+              </h3>
+              <button
+                phx-click="ipsec_diagnose_close"
+                class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+            <div :if={@diagnosis[:error]} class="text-xs text-red-400">{@diagnosis.error}</div>
+            <details
+              :for={s <- @diagnosis.sections}
+              class="mb-1 text-xs"
+              open={hd(@diagnosis.sections) == s}
+            >
+              <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+                {s["title"] || "section"}
+              </summary>
+              <pre class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-slate-900 p-2 font-mono text-slate-300">{s["content"]}</pre>
+            </details>
+          </div>
         </div>
 
         <div
