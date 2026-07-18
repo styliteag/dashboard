@@ -187,4 +187,49 @@ defmodule Orbit.FirmwareTest do
     hub2 = start_supervised!({Hub, name: nil}, id: :hub2)
     assert %{status: "unknown", log: []} = Firmware.upgrade_status(inst(), hub: hub2)
   end
+
+  # Direct-poll (agent-less) firmware goes to the OPNsense client, not the hub.
+  test "direct-poll check runs the vendor API via the injected client", ctx do
+    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
+    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{"status" => "updates available"})
+    end)
+
+    client = %Orbit.Poller.OpnsenseClient{
+      base_url: "https://box:4444",
+      api_key: "k",
+      api_secret: "s",
+      ssl_verify: false
+    }
+
+    di = inst(%{transport: "api", device_type: "opnsense"})
+
+    assert {:ok, "updates available"} =
+             Firmware.check(di, user(), client: client, audit: ctx.audit)
+
+    assert_receive {:audit, %{action: "firmware.check", result: "ok"}}
+    # No hub command was sent (direct path).
+    refute_receive {:push_frame, _}, 10
+  end
+
+  test "direct-poll upgrade_status maps the vendor upgradestatus" do
+    Application.put_env(:orbit, :opnsense_req_plug, {Req.Test, __MODULE__})
+    on_exit(fn -> Application.delete_env(:orbit, :opnsense_req_plug) end)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{"status" => "done", "log" => "a\nb"})
+    end)
+
+    client = %Orbit.Poller.OpnsenseClient{
+      base_url: "https://box:4444",
+      api_key: "k",
+      api_secret: "s",
+      ssl_verify: false
+    }
+
+    di = inst(%{transport: "api", device_type: "opnsense"})
+    assert %{status: "done", log: ["a", "b"]} = Firmware.upgrade_status(di, client: client)
+  end
 end

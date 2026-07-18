@@ -58,6 +58,94 @@ defmodule Orbit.Poller.OpnsenseClient do
   defp put_section(map, _key, []), do: map
   defp put_section(map, key, value), do: Map.put(map, key, value)
 
+  # -- direct-poll actions (xsense/client.py action half) -------------------
+
+  @doc "Firmware status (agent-less path): current version, upgrade verdict."
+  def firmware_status(%__MODULE__{} = c) do
+    case get(c, "/api/core/firmware/status") do
+      %{} = data ->
+        %{
+          "product_version" => data["product_version"] || data["product_version_running"] || "",
+          "product_latest" => data["product_latest"] || "",
+          "upgrade_available" => data["status"] == "update" or data["upgrade_available"] == true,
+          "status_msg" => to_string(data["status_msg"] || data["status"] || "")
+        }
+
+      _ ->
+        %{}
+    end
+  end
+
+  @doc "Trigger a firmware update check (POST). {:ok, message} | {:error, msg}."
+  def firmware_check(%__MODULE__{} = c) do
+    case post(c, "/api/core/firmware/check") do
+      %{} = data -> {:ok, to_string(data["status"] || "check triggered")}
+      _ -> {:error, "firmware check failed"}
+    end
+  end
+
+  @doc "Trigger a firmware update (POST)."
+  def firmware_update(%__MODULE__{} = c) do
+    case post(c, "/api/core/firmware/update") do
+      %{} = data ->
+        ok = String.contains?(String.downcase(inspect(data)), "ok") or data["status"] == "ok"
+        {if(ok, do: :ok, else: :error), to_string(data["msg"] || data["status"] || "")}
+
+      _ ->
+        {:error, "firmware update failed"}
+    end
+  end
+
+  @doc "Poll firmware upgrade progress: %{status, log}."
+  def firmware_upgrade_status(%__MODULE__{} = c) do
+    case get(c, "/api/core/firmware/upgradestatus") do
+      %{} = data ->
+        log = if is_binary(data["log"]), do: String.split(data["log"], "\n", trim: true), else: []
+        %{status: to_string(data["status"] || "unknown"), log: log}
+
+      _ ->
+        %{status: "unknown", log: []}
+    end
+  end
+
+  @doc "Restart the IPsec service (never per-tunnel — drops all; DR note)."
+  def ipsec_restart(%__MODULE__{} = c) do
+    action_result(post(c, "/api/ipsec/service/restart"), "ipsec restart")
+  end
+
+  @doc "Reboot the box (POST)."
+  def reboot(%__MODULE__{} = c) do
+    action_result(post(c, "/api/core/system/reboot"), "reboot")
+  end
+
+  # OPNsense action endpoints answer {"status":"ok"} / {"result":"ok"}.
+  defp action_result(%{} = data, label) do
+    body = String.downcase(inspect(data))
+    ok = String.contains?(body, "\"ok\"") or data["status"] == "ok" or data["result"] == "ok"
+    {if(ok, do: :ok, else: :error), to_string(data["status"] || data["result"] || label)}
+  end
+
+  defp action_result(_other, label), do: {:error, "#{label} failed"}
+
+  defp post(%__MODULE__{} = c, path) do
+    opts =
+      [
+        auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
+        json: %{},
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        receive_timeout: @recv_timeout,
+        retry: false
+      ]
+      |> maybe_test_plug()
+
+    case Req.post(c.base_url <> path, opts) do
+      {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) -> body
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
   @doc "Raw cpu section from systemResources (cpu.used → total_pct)."
   def cpu_from_resources(%{"cpu" => %{"used" => used}}) when not is_nil(used) do
     %{"total_pct" => to_float(used)}

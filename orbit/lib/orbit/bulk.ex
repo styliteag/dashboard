@@ -82,10 +82,45 @@ defmodule Orbit.Bulk do
         result(inst, false, "series upgrade requires agent mode; use the vendor gui")
 
       not Instance.agent_mode?(inst) ->
-        result(inst, false, "direct-poll bulk actions are not ported to orbit yet")
+        run_direct(inst, action, opts)
 
       true ->
         run_agent(inst, action, opts)
+    end
+  end
+
+  # Direct-poll (agent-less) OPNsense via the vendor API. firmware_upgrade is
+  # already refused above (agent-only); the rest map to client actions.
+  defp run_direct(inst, action, opts) do
+    with {:ok, client} <- direct_client(inst, opts) do
+      {status, msg} =
+        case action do
+          "firmware_check" ->
+            case Orbit.Poller.OpnsenseClient.firmware_check(client) do
+              {:ok, m} -> {:ok, m}
+              {:error, m} -> {:error, m}
+            end
+
+          "firmware_update" ->
+            Orbit.Poller.OpnsenseClient.firmware_update(client)
+
+          "ipsec_restart" ->
+            Orbit.Poller.OpnsenseClient.ipsec_restart(client)
+
+          "reboot" ->
+            Orbit.Poller.OpnsenseClient.reboot(client)
+        end
+
+      result(inst, status == :ok, String.slice(to_string(msg), 0, 200))
+    else
+      _ -> result(inst, false, "direct-poll client unavailable")
+    end
+  end
+
+  defp direct_client(inst, opts) do
+    case Keyword.get(opts, :client) do
+      nil -> Orbit.Poller.OpnsenseClient.new(inst)
+      client -> {:ok, client}
     end
   end
 

@@ -29,6 +29,7 @@ defmodule Orbit.Firmware do
   alias Orbit.Audit
   alias Orbit.Hub
   alias Orbit.Instances.Instance
+  alias Orbit.Poller.OpnsenseClient
 
   @check_timeout_ms 90_000
   @update_timeout_ms 30_000
@@ -41,26 +42,49 @@ defmodule Orbit.Firmware do
   def check(inst, user, opts \\ []) do
     hub = Keyword.get(opts, :hub, Hub)
 
-    case Hub.send_command_on(hub, inst.id, "firmware.check", %{}, @check_timeout_ms) do
-      {:error, :not_connected} ->
-        {:error, :not_connected}
+    if Instance.agent_mode?(inst) do
+      case Hub.send_command_on(hub, inst.id, "firmware.check", %{}, @check_timeout_ms) do
+        {:error, :not_connected} ->
+          {:error, :not_connected}
 
-      result ->
-        output = to_string(result["output"] || "")
-        Hub.set_firmware(hub, inst.id, verdict_fields(result, output))
-        # The check RAN — a "no updates" or even check_failed outcome is an ok
-        # audit; the failure lands in the cached verdict (python parity).
-        audit(opts, inst, user, "firmware.check", "ok", nil)
-        {:ok, truncate(output, 200, "check complete")}
+        result ->
+          output = to_string(result["output"] || "")
+          Hub.set_firmware(hub, inst.id, verdict_fields(result, output))
+          # The check RAN — a "no updates" or even check_failed outcome is an ok
+          # audit; the failure lands in the cached verdict (python parity).
+          audit(opts, inst, user, "firmware.check", "ok", nil)
+          {:ok, truncate(output, 200, "check complete")}
+      end
+    else
+      # Direct-poll (agent-less) OPNsense: hit the vendor firmware API.
+      direct(inst, opts, fn client ->
+        case OpnsenseClient.firmware_check(client) do
+          {:ok, msg} ->
+            audit(opts, inst, user, "firmware.check", "ok", nil)
+            {:ok, truncate(msg, 200, "check complete")}
+
+          {:error, msg} ->
+            {:error, msg}
+        end
+      end)
     end
   end
 
   @spec update(Instance.t(), map() | struct(), keyword()) :: action_result()
   def update(inst, user, opts \\ []) do
-    if inst.firmware_locked do
-      {:error, :locked}
-    else
-      run_start(inst, user, "firmware.update", @update_timeout_ms, opts)
+    cond do
+      inst.firmware_locked ->
+        {:error, :locked}
+
+      Instance.agent_mode?(inst) ->
+        run_start(inst, user, "firmware.update", @update_timeout_ms, opts)
+
+      true ->
+        direct(inst, opts, fn client ->
+          {status, msg} = OpnsenseClient.firmware_update(client)
+          audit(opts, inst, user, "firmware.update", to_string(status), %{message: msg})
+          if status == :ok, do: {:ok, msg}, else: {:error, msg}
+        end)
     end
   end
 
@@ -81,16 +105,39 @@ defmodule Orbit.Firmware do
   def upgrade_status(inst, opts \\ []) do
     hub = Keyword.get(opts, :hub, Hub)
 
-    case Hub.send_command_on(hub, inst.id, "firmware.upgrade_status", %{}, @status_timeout_ms) do
-      {:error, :not_connected} ->
-        %{status: "unknown", log: []}
-
-      result ->
-        if result["success"] && result["status"] in ["running", "done"] do
-          %{status: result["status"], log: Enum.map(result["log"] || [], &to_string/1)}
-        else
+    if Instance.agent_mode?(inst) do
+      case Hub.send_command_on(hub, inst.id, "firmware.upgrade_status", %{}, @status_timeout_ms) do
+        {:error, :not_connected} ->
           %{status: "unknown", log: []}
-        end
+
+        result ->
+          if result["success"] && result["status"] in ["running", "done"] do
+            %{status: result["status"], log: Enum.map(result["log"] || [], &to_string/1)}
+          else
+            %{status: "unknown", log: []}
+          end
+      end
+    else
+      case client_for(inst, opts) do
+        {:ok, client} -> OpnsenseClient.firmware_upgrade_status(client)
+        _ -> %{status: "unknown", log: []}
+      end
+    end
+  end
+
+  # Build the direct-poll client and run `fun`, or answer a clean error when
+  # the instance has no usable API client (bad creds, unsupported type).
+  defp direct(inst, opts, fun) do
+    case client_for(inst, opts) do
+      {:ok, client} -> fun.(client)
+      _ -> {:error, "direct-poll client unavailable"}
+    end
+  end
+
+  defp client_for(inst, opts) do
+    case Keyword.get(opts, :client) do
+      nil -> OpnsenseClient.new(inst)
+      client -> {:ok, client}
     end
   end
 
