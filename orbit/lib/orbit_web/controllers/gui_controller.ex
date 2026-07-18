@@ -17,12 +17,9 @@ defmodule OrbitWeb.GuiController do
 
   use OrbitWeb, :controller
 
-  require Logger
-
   alias Orbit.Auth.Scope
   alias Orbit.GUI
   alias Orbit.GUI.Auth
-  alias Orbit.Hub
   alias Orbit.Instances.Instance
 
   @cookie_name Auth.cookie_name()
@@ -30,15 +27,10 @@ defmodule OrbitWeb.GuiController do
   def open(conn, %{"instance_id" => raw_id} = params) do
     user = conn.assigns.current_user
 
-    with true <- Application.get_env(:orbit, :gui_proxy_enabled, false) or :disabled,
-         {id, ""} <- Integer.parse(raw_id),
+    with {id, ""} <- Integer.parse(raw_id),
          %Instance{} = inst <- Scope.get_instance(id, user),
-         true <- webif?(inst) or :no_webif,
-         %Orbit.Hub.Agent{} <- Hub.get(id) do
-      Orbit.GUI.TunnelManager.ensure(id)
-      Orbit.GUI.Caddy.reconcile()
-      token = Auth.sign(id, 60)
-      maybe_stash_login(inst, token)
+         :ok <- GUI.openable(inst) do
+      url = GUI.open_flow(inst, params["path"])
 
       Orbit.Audit.write(
         action: "agent.gui_open",
@@ -49,13 +41,20 @@ defmodule OrbitWeb.GuiController do
         source_ip: client_ip(conn)
       )
 
-      json(conn, %{url: GUI.handoff_url(inst, token, params["path"])})
+      json(conn, %{url: url})
     else
-      :disabled -> conn |> put_status(404) |> json(%{detail: "gui proxy disabled"})
-      :no_webif -> conn |> put_status(400) |> json(%{detail: "this device type has no web ui"})
-      nil -> conn |> put_status(503) |> json(%{detail: "agent not connected"})
+      {:error, :disabled} ->
+        conn |> put_status(404) |> json(%{detail: "gui proxy disabled"})
+
+      {:error, :no_webif} ->
+        conn |> put_status(400) |> json(%{detail: "this device type has no web ui"})
+
+      {:error, :not_connected} ->
+        conn |> put_status(503) |> json(%{detail: "agent not connected"})
+
       # missing / out-of-scope → 404 (no oracle).
-      _ -> conn |> put_status(404) |> json(%{detail: "not found"})
+      _ ->
+        conn |> put_status(404) |> json(%{detail: "not found"})
     end
   end
 
@@ -85,21 +84,6 @@ defmodule OrbitWeb.GuiController do
   end
 
   # -- helpers ---------------------------------------------------------------
-
-  defp webif?(%Instance{device_type: dt}), do: dt not in ["linux"]
-
-  defp maybe_stash_login(%Instance{gui_login_enabled: true, id: id}, token) do
-    case Hub.send_command(id, "gui.login", %{}, 20_000) do
-      %{"success" => true, "cookies" => cookies} when is_list(cookies) ->
-        pairs = for c <- cookies, is_map(c), do: {c["name"], c["value"]}
-        Orbit.GUI.SessionStash.put(token, pairs, 60)
-
-      other ->
-        Logger.warning("agent.gui_login_failed instance=#{id} output=#{inspect(other["output"])}")
-    end
-  end
-
-  defp maybe_stash_login(_inst, _token), do: :ok
 
   defp put_gui_cookie(conn, instance_id) do
     # 8h browsing-session cookie (parity with the python set_cookie).

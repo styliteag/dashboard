@@ -111,6 +111,12 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {...colocatedHooks, Terminal, Capture},
 })
 
+// GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it
+// in a new tab (the handoff sets the origin cookie, then lands in the GUI).
+window.addEventListener("phx:gui_open_url", e => {
+  if (e.detail && e.detail.url) window.open(e.detail.url, "_blank", "noopener")
+})
+
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))

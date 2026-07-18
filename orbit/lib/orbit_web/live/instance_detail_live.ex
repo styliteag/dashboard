@@ -60,7 +60,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           agent_msg: nil,
           ai_busy: false,
           ai_result: nil,
-          ai_error: nil
+          ai_error: nil,
+          gui_openable: Orbit.GUI.openable(inst) == :ok
         )
         |> load_comments()
         |> load_logs()
@@ -140,6 +141,29 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("agent_update", _params, socket), do: {:noreply, socket}
+
+  # Open GUI (GUI proxy §18) — write-gated; re-checks openable (agent may
+  # have dropped since render), mints the handoff URL and pushes it to the
+  # browser to open. Audits agent.gui_open (source_ip is the LiveView seam).
+  def handle_event("gui_open", _params, socket) do
+    inst = socket.assigns.instance
+
+    if socket.assigns.writable and Orbit.GUI.openable(inst) == :ok do
+      url = Orbit.GUI.open_flow(inst, nil)
+
+      Audit.write(
+        action: "agent.gui_open",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: inst.id
+      )
+
+      {:noreply, push_event(socket, "gui_open_url", %{url: url})}
+    else
+      {:noreply, socket}
+    end
+  end
 
   # AI log analysis (AiLogAnalysisSection parity) — admin-only like the raw
   # logs (the LLM sees anonymized text only, invariant 4; still an admin
@@ -460,6 +484,13 @@ defmodule OrbitWeb.InstanceDetailLive do
           >
             Terminal
           </a>
+          <button
+            :if={@writable and @gui_openable}
+            phx-click="gui_open"
+            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Open GUI
+          </button>
           <a
             :if={@writable}
             href={~p"/instances/#{@instance.id}/capture"}
