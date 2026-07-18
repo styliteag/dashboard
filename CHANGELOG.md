@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Orbit (LiveView rewrite): metric history charts on the instance detail page
+  — CPU, RAM, load, pf states, agent collect time and the uptime sawtooth,
+  switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
+  persists metric rows on every agent push, so the series keeps growing when
+  Orbit (not the Python stack) is the active hub.
+
 ## [3.1.8] - 2026-07-16
 
 ### Changed

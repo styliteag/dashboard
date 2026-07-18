@@ -13,6 +13,8 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.MetricChart
+
   alias Orbit.Audit
   alias Orbit.Auth.Scope
   alias Orbit.Checks.Evaluate
@@ -28,6 +30,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   @write_roles ~w(admin user)
 
   @refresh_ms 5_000
+  # Metric history re-reads on the old UI's 60s refetch tier — the 5s live
+  # tier would hammer the metrics table with six bucketing queries per tick.
+  @charts_refresh_ms 60_000
   @fw_track_ms 4_000
   # Update tracking gives up after 15 min of "unknown" — the box may still be
   # working, but the UI stops implying live progress (FirmwareSection.tsx parity).
@@ -42,6 +47,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(Orbit.PubSub, Hub.roster_topic())
         Process.send_after(self(), :refresh, @refresh_ms)
+        Process.send_after(self(), :charts_refresh, @charts_refresh_ms)
       end
 
       socket =
@@ -61,11 +67,13 @@ defmodule OrbitWeb.InstanceDetailLive do
           ai_busy: false,
           ai_result: nil,
           ai_error: nil,
-          gui_openable: Orbit.GUI.openable(inst) == :ok
+          gui_openable: Orbit.GUI.openable(inst) == :ok,
+          chart_range: "24h"
         )
         |> load_comments()
         |> load_logs()
         |> load_metrics()
+        |> load_charts()
 
       {:ok, socket}
     else
@@ -79,6 +87,11 @@ defmodule OrbitWeb.InstanceDetailLive do
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
     {:noreply, load_metrics(socket)}
+  end
+
+  def handle_info(:charts_refresh, socket) do
+    Process.send_after(self(), :charts_refresh, @charts_refresh_ms)
+    {:noreply, load_charts(socket)}
   end
 
   def handle_info(:fw_track, %{assigns: %{upgrading: true}} = socket) do
@@ -99,6 +112,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("comment_clear", %{"kind" => kind, "entity_key" => ek}, socket) do
     {:noreply, write_comment(socket, kind, ek, "")}
+  end
+
+  # Range switch is read-only — no write gate. Unknown values fall back to
+  # 24h inside Orbit.Metrics, so a forged phx-value can't break the queries.
+  def handle_event("chart_range", %{"range" => range}, socket)
+      when range in ~w(1h 6h 24h 7d 30d) do
+    {:noreply, socket |> assign(chart_range: range) |> load_charts()}
   end
 
   # Firmware actions ride the same write gate; the handler re-checks (never
@@ -409,6 +429,82 @@ defmodule OrbitWeb.InstanceDetailLive do
     )
   end
 
+  # The six charted series (METRICS const + the two extra charts in
+  # InstanceDetailPage.tsx). agent.collect_ms plots in seconds with the 10s
+  # WARN line; uptime plots in days — the sawtooth marks reboots.
+  defp chart_series do
+    [
+      %{
+        metric: "cpu.total",
+        label: "CPU %",
+        color: "#10b981",
+        domain_max: 100,
+        scale: 1,
+        ref_y: nil,
+        unit: ""
+      },
+      %{
+        metric: "memory.used_pct",
+        label: "RAM %",
+        color: "#6366f1",
+        domain_max: 100,
+        scale: 1,
+        ref_y: nil,
+        unit: ""
+      },
+      %{
+        metric: "load.1m",
+        label: "Load (1m)",
+        color: "#f59e0b",
+        domain_max: :auto,
+        scale: 1,
+        ref_y: nil,
+        unit: ""
+      },
+      %{
+        metric: "pf.states_pct",
+        label: "pf states %",
+        color: "#0ea5e9",
+        domain_max: 100,
+        scale: 1,
+        ref_y: nil,
+        unit: ""
+      },
+      %{
+        metric: "agent.collect_ms",
+        label: "Agent collect (s)",
+        color: "#f472b6",
+        domain_max: :auto,
+        scale: 1000,
+        ref_y: 10,
+        unit: "s"
+      },
+      %{
+        metric: "system.uptime_seconds",
+        label: "Uptime (days)",
+        color: "#38bdf8",
+        domain_max: :auto,
+        scale: 86_400,
+        ref_y: nil,
+        unit: "d"
+      }
+    ]
+  end
+
+  defp load_charts(socket) do
+    id = socket.assigns.instance.id
+    range = socket.assigns.chart_range
+
+    points =
+      Map.new(chart_series(), fn s -> {s.metric, Orbit.Metrics.read(id, s.metric, range)} end)
+
+    assign(socket, chart_points: points)
+  rescue
+    # A missing/unreachable metrics table (throwaway test DB) renders the
+    # empty state instead of crashing the whole detail view.
+    _ -> assign(socket, chart_points: %{})
+  end
+
   defp load_metrics(socket) do
     entry = Hub.cache_entry(socket.assigns.instance.id)
     status = entry["status"] || %{}
@@ -561,6 +657,44 @@ defmodule OrbitWeb.InstanceDetailLive do
             </tbody>
           </table>
         </div>
+
+        <%!-- Metric history (InstanceDetailPage Metrics parity): six fixed
+             series over the shared metrics table, range-switchable. Series
+             the box never reported (pf on a linux node, collect on a
+             direct-poll box) render the empty state, same as recharts did. --%>
+        <section class="mt-8">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-slate-400">Metrics</h2>
+            <div class="flex gap-1">
+              <button
+                :for={r <- ~w(1h 6h 24h 7d 30d)}
+                phx-click="chart_range"
+                phx-value-range={r}
+                class={[
+                  "rounded-md px-2 py-1 text-xs",
+                  if(@chart_range == r,
+                    do: "bg-emerald-600 text-white",
+                    else: "text-slate-400 hover:bg-slate-800"
+                  )
+                ]}
+              >
+                {r}
+              </button>
+            </div>
+          </div>
+          <div class="mt-4 grid gap-6 lg:grid-cols-2">
+            <.metric_chart
+              :for={s <- chart_series()}
+              label={s.label}
+              points={@chart_points[s.metric] || []}
+              color={s.color}
+              domain_max={s.domain_max}
+              scale={s.scale}
+              ref_y={s.ref_y}
+              unit={s.unit}
+            />
+          </div>
+        </section>
 
         <div
           :if={Instance.agent_mode?(@instance)}

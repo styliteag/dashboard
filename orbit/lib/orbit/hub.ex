@@ -347,9 +347,11 @@ defmodule Orbit.Hub do
   end
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
-    cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, DateTime.utc_now())
+    now = DateTime.utc_now()
+    cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now)
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)
+    maybe_persist_metrics(instance_id, now, data)
     {:noreply, %{state | cache: cache}}
   end
 
@@ -460,4 +462,15 @@ defmodule Orbit.Hub do
   end
 
   defp maybe_persist_config_backup(_instance_id, _data), do: :ok
+
+  # Metric history rows ride every ingest (agent push AND poller bridge —
+  # write_poll_metrics parity; without this the charts flatline after
+  # cutover). DB I/O off the hub loop, fire-and-forget like the logfiles
+  # path. Off in test (:write_metrics) — hub unit tests have no metrics
+  # table and must not race the sandbox.
+  defp maybe_persist_metrics(instance_id, now, data) do
+    if Application.get_env(:orbit, :write_metrics, true) do
+      Task.start(fn -> Orbit.Metrics.write_push(instance_id, now, data) end)
+    end
+  end
 end

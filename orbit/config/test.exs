@@ -40,6 +40,10 @@ config :orbit, :start_access, false
 # started explicitly by the tests that exercise them.
 config :orbit, :start_gui, false
 
+# Hub ingest must not write metric rows in test — the throwaway test DB has
+# no metrics table and the fire-and-forget task would race the SQL sandbox.
+config :orbit, :write_metrics, false
+
 # One shared Req.Test plug name for the OPNsense client. Tests stub it
 # per-process (Req.Test ownership, $callers-propagated) — never via
 # Application.put_env in a setup block: that global write raced across
