@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: instance detail gains the System-health strip (load per core, swap,
+  pf state table, NTP), the last-config-revision card, per-collector runtime
+  bars on the Agent card, and per-check notify/export toggles (instance
+  override vs global, same selection rules as the exports).
 - Orbit: GeoIP database "Refresh now" button on the Access page (with last
   refresh outcome), a version tag in the navigation header, and audit
   Actions-tab filters (free text, time window, load-more) with usernames

@@ -117,6 +117,45 @@ defmodule OrbitWeb.InstanceDetailLive do
     {:noreply, write_comment(socket, kind, ek, "")}
   end
 
+  # Per-box notify/export toggle (ChecksSection parity): an existing
+  # instance rule is removed (back to the global default); otherwise a new
+  # instance rule pins the OPPOSITE of the current live resolution.
+  # Write-gated; selector/consumer re-validated (never trust the DOM).
+  def handle_event(
+        "check_toggle",
+        %{"consumer" => consumer, "key" => key},
+        %{assigns: %{writable: true}} = socket
+      ) do
+    inst = socket.assigns.instance
+
+    if Orbit.Selection.valid_consumer?(consumer) and
+         Orbit.Selection.valid_selector?(consumer, key) do
+      if MapSet.member?(socket.assigns.check_rules, {consumer, key}) do
+        Orbit.Selection.delete_rule(consumer, key, inst.id)
+      else
+        mode =
+          if Orbit.Selection.is_on_live(consumer, key, inst.id), do: "exclude", else: "include"
+
+        Orbit.Selection.set_rule(consumer, key, mode, inst.id)
+      end
+
+      Audit.write(
+        action: "selection.rule.toggle",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: inst.id,
+        detail: %{"consumer" => consumer, "selector" => key}
+      )
+
+      {:noreply, load_metrics(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("check_toggle", _params, socket), do: {:noreply, socket}
+
   # Range switch is read-only — no write gate. Unknown values fall back to
   # 24h inside Orbit.Metrics, so a forged phx-value can't break the queries.
   def handle_event("chart_range", %{"range" => range}, socket)
@@ -619,6 +658,11 @@ defmodule OrbitWeb.InstanceDetailLive do
       disks: status["disks"] || [],
       system: status["system"] || %{},
       uptime: status["uptime"],
+      loadavg: status["loadavg"] || %{},
+      pf: status["pf"] || %{},
+      ntp: status["ntp"] || %{},
+      section_ms: status["section_ms"] || %{},
+      config_rev: status["config"] || %{},
       # Raw ipsec section is a map %{"running", "tunnels" => [...]} — iterate the
       # tunnel list, not the map (else :for yields {k,v} tuples). Real OPNsense
       # data exposed this; synthetic pushes had used a bare list.
@@ -637,8 +681,19 @@ defmodule OrbitWeb.InstanceDetailLive do
       pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
       check_history: check_history(socket.assigns.instance.id),
-      checks: instance_checks(socket.assigns.instance)
+      checks: instance_checks(socket.assigns.instance),
+      check_rules: instance_rules(socket.assigns.instance.id)
     )
+  end
+
+  # {consumer, selector} pairs that have a rule pinned to THIS instance —
+  # the ChecksSection toggles show override vs global-inherited state.
+  defp instance_rules(instance_id) do
+    Orbit.Selection.list_rules()
+    |> Enum.filter(&(&1.instance_id == instance_id))
+    |> MapSet.new(&{&1.consumer, &1.selector})
+  rescue
+    _ -> MapSet.new()
   end
 
   # Recent check transitions (CheckHistorySection parity) — shared table,
@@ -743,6 +798,55 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
+        <%!-- System health strip (SystemHealthSection parity): load per core,
+             swap, pf state table, NTP — plus the last config revision
+             (ConfigSection parity). Sections the box never reported stay
+             hidden (no-data ⇒ no tile, never a fake 0). --%>
+        <div class="mt-6 grid gap-6 md:grid-cols-2">
+          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+            <h2 class="mb-3 text-sm font-medium text-slate-400">System health</h2>
+            <dl class="space-y-1 text-sm">
+              <.kv
+                :if={@loadavg["one"] != nil}
+                label="Load 1 · 5 · 15"
+                value={"#{@loadavg["one"]} · #{@loadavg["five"]} · #{@loadavg["fifteen"]}#{if num0(@loadavg["cores"]) > 0, do: "  (#{num0(@loadavg["cores"])} cores)"}"}
+              />
+              <.kv
+                :if={num0(@memory && @memory["swap_total_mb"]) > 0}
+                label="Swap"
+                value={"#{@memory["swap_used_pct"]}% of #{num0(@memory["swap_total_mb"])} MB"}
+              />
+              <.kv
+                :if={num0(@pf["states_limit"]) > 0}
+                label="pf states"
+                value={"#{num0(@pf["states_current"])} / #{num0(@pf["states_limit"])} (#{@pf["states_pct"]}%)"}
+              />
+              <.kv
+                :if={@ntp != %{}}
+                label="NTP"
+                value={ntp_text(@ntp)}
+              />
+              <.kv
+                :if={@loadavg == %{} and @pf == %{} and @ntp == %{}}
+                label="Status"
+                value="no health data yet"
+              />
+            </dl>
+          </div>
+
+          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+            <h2 class="mb-3 text-sm font-medium text-slate-400">Config revision</h2>
+            <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
+              <.kv label="Last change" value={@config_rev["revision_time"] || "—"} />
+              <.kv label="Description" value={@config_rev["revision_description"] || "—"} />
+              <.kv label="By" value={@config_rev["revision_user"] || "—"} />
+            </dl>
+            <div :if={@config_rev == %{}} class="text-sm text-slate-500">
+              No config revision reported.
+            </div>
+          </div>
+        </div>
+
         <div :if={@checks != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
           <h2 class="mb-3 text-sm font-medium text-slate-400">
             Checks <span class="text-slate-500">({length(@checks)})</span>
@@ -757,6 +861,26 @@ defmodule OrbitWeb.InstanceDetailLive do
                 </td>
                 <td class="whitespace-nowrap py-1.5 pr-4 align-top text-slate-400">{c.key}</td>
                 <td class="py-1.5 align-top text-slate-300">{c.summary}</td>
+                <td :if={@writable} class="whitespace-nowrap py-1.5 pl-2 text-right align-top">
+                  <button
+                    :for={consumer <- Orbit.Selection.consumers()}
+                    :if={Orbit.Selection.valid_selector?(consumer, c.key)}
+                    phx-click="check_toggle"
+                    phx-value-consumer={consumer}
+                    phx-value-key={c.key}
+                    title={"#{consumer}: #{if Orbit.Selection.is_on_live(consumer, c.key, @instance.id), do: "on", else: "off"}#{if MapSet.member?(@check_rules, {consumer, c.key}), do: " (instance override — click to clear)", else: " (global — click to override)"}"}
+                    class={[
+                      "ml-1 rounded px-1.5 py-0.5 text-[10px]",
+                      if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
+                        do: "bg-emerald-600/20 text-emerald-400",
+                        else: "bg-slate-800 text-slate-500"
+                      ),
+                      MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-emerald-600"
+                    ]}
+                  >
+                    {consumer_tag(consumer)}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -813,6 +937,30 @@ defmodule OrbitWeb.InstanceDetailLive do
             <.kv :if={@agent} label="Version" value={@agent.agent_version || "?"} />
             <.kv :if={@agent} label="Platform" value={@agent.platform || "?"} />
             <.kv label="Served version" value={@served_agent_version || "—"} />
+          </dl>
+
+          <%!-- Per-collector runtime of the LAST push (AgentRuntimeSection
+               parity): live snapshot only — the whole-cycle total has its
+               own history chart above. --%>
+          <div :if={@section_ms != %{}} class="mt-3">
+            <h3 class="mb-1 text-xs text-slate-500">Collector runtime (last push)</h3>
+            <div
+              :for={{name, ms} <- top_sections(@section_ms)}
+              class="flex items-center gap-2 text-xs"
+            >
+              <span class="w-28 truncate text-slate-500">{name}</span>
+              <div class="h-1.5 flex-1 overflow-hidden rounded bg-slate-800">
+                <div
+                  class={["h-full", if(ms >= 10_000, do: "bg-amber-500", else: "bg-emerald-600")]}
+                  style={"width: #{section_pct(ms, @section_ms)}%"}
+                >
+                </div>
+              </div>
+              <span class="w-16 text-right text-slate-400">{Float.round(ms / 1000, 2)}s</span>
+            </div>
+          </div>
+
+          <dl class="space-y-1 text-sm">
             <.kv
               :if={@agent && @agent.last_update_error}
               label="Last update error"
@@ -1692,6 +1840,41 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp num0(v) when is_number(v), do: trunc(v)
   defp num0(_), do: 0
+
+  defp ntp_text(ntp) do
+    synced = if ntp["synced"], do: "synced", else: "NOT synced"
+    stratum = ntp["stratum"]
+    offset = ntp["offset_ms"]
+
+    stratum_part =
+      if is_number(stratum) and stratum >= 0, do: ["stratum #{stratum}"], else: []
+
+    offset_part =
+      if is_number(offset), do: ["offset #{Float.round(offset / 1, 1)} ms"], else: []
+
+    Enum.join([synced] ++ stratum_part ++ offset_part, " · ")
+  end
+
+  defp consumer_tag("checkmk"), do: "cmk"
+  defp consumer_tag("mattermost"), do: "mm"
+  defp consumer_tag("telegram"), do: "tg"
+  defp consumer_tag("email"), do: "@"
+  defp consumer_tag(other), do: other
+
+  # Slowest collectors of the last push, longest first.
+  defp top_sections(section_ms) do
+    section_ms
+    |> Enum.filter(fn {_k, v} -> is_number(v) end)
+    |> Enum.sort_by(fn {_k, v} -> -v end)
+    |> Enum.take(8)
+  end
+
+  defp section_pct(ms, section_ms) do
+    max_ms =
+      section_ms |> Enum.map(fn {_k, v} -> if(is_number(v), do: v, else: 0) end) |> Enum.max()
+
+    if max_ms > 0, do: trunc(ms / max_ms * 100), else: 0
+  end
 
   defp fmt_duration(seconds) when is_number(seconds) and seconds > 0 do
     s = trunc(seconds)
