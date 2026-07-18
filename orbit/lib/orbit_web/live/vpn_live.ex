@@ -44,6 +44,9 @@ defmodule OrbitWeb.VpnLive do
        busy: MapSet.new(),
        msg: nil,
        expanded: MapSet.new(),
+       ping_editor: nil,
+       ping_test: nil,
+       ping_test_busy: false,
        writable: socket.assigns.current_user.role in @write_roles
      )
      |> load()}
@@ -89,23 +92,122 @@ defmodule OrbitWeb.VpnLive do
     {:noreply, assign(socket, expanded: expanded)}
   end
 
-  # Phase-2 ping monitors from the fleet view — the instance id comes from
-  # the DOM, so it re-resolves through the caller's scope (invariant 1).
-  def handle_event("p2mon_create", %{"mon" => attrs}, socket) do
+  # Phase-2 ping-monitor dialog (PingMonitorDialog parity) — the instance id
+  # comes from the DOM, so every step re-resolves it through the caller's
+  # scope (invariant 1). "Test" runs the agent's one-off ipsec.ping_test on
+  # the CURRENT form values, before anything is saved.
+  def handle_event("p2mon_open", params, socket) do
     with true <- socket.assigns.writable,
-         {iid, ""} <- Integer.parse(to_string(attrs["instance_id"] || "")),
+         {iid, ""} <- Integer.parse(to_string(params["iid"] || "")),
          inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user) do
-      case Orbit.Monitors.create_ipsec(inst.id, attrs) do
+      mon = p2_monitor(socket.assigns.monitors, inst.id, params["child"])
+
+      editor = %{
+        instance_id: inst.id,
+        instance_name: inst.name,
+        tunnel_id: params["tunnel"] || "",
+        child_name: params["child"] || "",
+        local_ts: params["lts"] || "",
+        remote_ts: params["rts"] || "",
+        monitor_id: mon && mon.id,
+        source: (mon && mon.source) || params["suggested"] || "",
+        destination: (mon && mon.destination) || "",
+        ping_count: (mon && mon.ping_count) || 3,
+        enabled: is_nil(mon) or mon.enabled
+      }
+
+      {:noreply, assign(socket, ping_editor: editor, ping_test: nil)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("p2mon_cancel", _params, socket) do
+    {:noreply, assign(socket, ping_editor: nil, ping_test: nil)}
+  end
+
+  # phx-change keeps the editor assign in sync so Test always probes the
+  # CURRENT form values without submitting.
+  def handle_event("p2mon_change", %{"mon" => attrs}, socket) do
+    case socket.assigns.ping_editor do
+      nil ->
+        {:noreply, socket}
+
+      editor ->
+        {:noreply,
+         assign(socket,
+           ping_editor: %{
+             editor
+             | source: attrs["source"] || "",
+               destination: attrs["destination"] || "",
+               ping_count: attrs["ping_count"] || editor.ping_count,
+               enabled: attrs["enabled"] in ["true", "on"]
+           }
+         )}
+    end
+  end
+
+  def handle_event("p2mon_test", _params, socket) do
+    editor = socket.assigns.ping_editor
+
+    with false <- socket.assigns.ping_test_busy,
+         %{} <- editor,
+         inst when not is_nil(inst) <-
+           Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
+      payload = %{
+        "source" => String.trim(to_string(editor.source)),
+        "destination" => String.trim(to_string(editor.destination)),
+        "ping_count" => to_string(editor.ping_count)
+      }
+
+      {:noreply,
+       socket
+       |> assign(ping_test_busy: true, ping_test: nil)
+       |> start_async(:ping_test, fn ->
+         result = Hub.send_command(inst.id, "ipsec.ping_test", payload, 20_000)
+         if is_map(result), do: result, else: %{"success" => false, "output" => "no agent"}
+       end)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("p2mon_save", %{"mon" => attrs}, socket) do
+    editor = socket.assigns.ping_editor
+
+    with %{} <- editor,
+         true <- socket.assigns.writable,
+         inst when not is_nil(inst) <-
+           Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
+      attrs =
+        Map.merge(attrs, %{
+          "tunnel_id" => editor.tunnel_id,
+          "child_name" => editor.child_name,
+          "local_ts" => editor.local_ts,
+          "remote_ts" => editor.remote_ts
+        })
+
+      result =
+        case editor.monitor_id do
+          nil -> Orbit.Monitors.create_ipsec(inst.id, attrs)
+          mid -> Orbit.Monitors.update_ipsec(inst.id, mid, attrs)
+        end
+
+      case result do
         :ok ->
           Audit.write(
-            action: "ipsec.ping_monitor.create",
+            action:
+              if(editor.monitor_id,
+                do: "ipsec.ping_monitor.update",
+                else: "ipsec.ping_monitor.create"
+              ),
             result: "ok",
             user_id: socket.assigns.current_user.id,
             target_type: "instance",
             target_id: inst.id
           )
 
-          {:noreply, socket |> assign(msg: nil) |> load()}
+          {:noreply, socket |> assign(ping_editor: nil, ping_test: nil, msg: nil) |> load()}
 
         {:error, msg} ->
           {:noreply, assign(socket, msg: {:error, msg})}
@@ -130,7 +232,7 @@ defmodule OrbitWeb.VpnLive do
         target_id: inst.id
       )
 
-      {:noreply, socket |> assign(msg: nil) |> load()}
+      {:noreply, socket |> assign(msg: nil, ping_editor: nil, ping_test: nil) |> load()}
     else
       _ -> {:noreply, socket}
     end
@@ -174,6 +276,27 @@ defmodule OrbitWeb.VpnLive do
   end
 
   @impl true
+  def handle_async(:ping_test, {:ok, result}, socket) do
+    outcome =
+      if result["success"] do
+        rtt = result["ping_rtt_ms"]
+        loss = result["ping_loss_pct"]
+
+        {:ok,
+         "#{result["ping_state"] || "ok"}" <>
+           if(is_number(rtt), do: " — #{rtt} ms", else: "") <>
+           if(is_number(loss), do: ", #{loss}% loss", else: "")}
+      else
+        {:error, String.slice(to_string(result["output"] || "test failed"), 0, 200)}
+      end
+
+    {:noreply, assign(socket, ping_test_busy: false, ping_test: outcome)}
+  end
+
+  def handle_async(:ping_test, {:exit, _}, socket) do
+    {:noreply, assign(socket, ping_test_busy: false, ping_test: {:error, "test crashed"})}
+  end
+
   def handle_async({:reconnect, key}, {:ok, outcome}, socket) do
     {:noreply,
      socket
@@ -352,7 +475,16 @@ defmodule OrbitWeb.VpnLive do
               <%= for t <- @rows do %>
                 <% key = "#{t.instance_id}:#{t.id}" %>
                 <tr class="border-b border-slate-800/50 last:border-0">
-                  <td class="px-3 py-2">
+                  <td class="whitespace-nowrap px-3 py-2">
+                    <button
+                      :if={t.children != []}
+                      phx-click="toggle_expand"
+                      phx-value-key={key}
+                      title="Show phase-2 child SAs"
+                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-slate-700 text-base text-slate-300 hover:bg-slate-800"
+                    >
+                      {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
+                    </button>
                     <span class={[
                       "inline-block h-2.5 w-2.5 rounded-full",
                       if(t.up, do: "bg-emerald-500", else: "bg-red-500")
@@ -368,17 +500,7 @@ defmodule OrbitWeb.VpnLive do
                     <.webui_link instance_id={t.instance_id} openable={t.gui_openable} />
                     <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
                   </td>
-                  <td class="px-3 py-2 text-slate-300">
-                    <button
-                      :if={t.children != []}
-                      phx-click="toggle_expand"
-                      phx-value-key={key}
-                      class="mr-1 text-slate-500 hover:text-slate-300"
-                    >
-                      {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
-                    </button>
-                    {t.label}
-                  </td>
+                  <td class="px-3 py-2 text-slate-300">{t.label}</td>
                   <td class="px-3 py-2 text-slate-500">{t.remote}</td>
                   <td class="px-3 py-2 text-slate-400">
                     <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>
@@ -423,53 +545,139 @@ defmodule OrbitWeb.VpnLive do
                     <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
                     </span>
-                    <span :if={mon && @writable}>
-                      <span class="text-slate-600">
-                        monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
-                      </span>
-                      <button
-                        phx-click="p2mon_delete"
-                        phx-value-id={mon.id}
-                        phx-value-iid={t.instance_id}
-                        data-confirm="Remove this Phase-2 ping monitor?"
-                        class="ml-1 text-red-400/70 hover:text-red-300"
-                      >
-                        remove
-                      </button>
+                    <span :if={mon} class="mr-2 text-slate-600">
+                      monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
+                      <span :if={not mon.enabled}>(disabled)</span>
                     </span>
-                    <form
-                      :if={is_nil(mon) and @writable}
-                      phx-submit="p2mon_create"
-                      class="inline-flex items-center gap-1"
+                    <button
+                      :if={@writable}
+                      phx-click="p2mon_open"
+                      phx-value-iid={t.instance_id}
+                      phx-value-tunnel={t.id}
+                      phx-value-child={ch["name"] || ""}
+                      phx-value-lts={ch["local_ts"] || ""}
+                      phx-value-rts={ch["remote_ts"] || ""}
+                      phx-value-suggested={ch["suggested_source"] || ""}
+                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
                     >
-                      <input type="hidden" name="mon[instance_id]" value={t.instance_id} />
-                      <input type="hidden" name="mon[tunnel_id]" value={t.id} />
-                      <input type="hidden" name="mon[child_name]" value={ch["name"] || ""} />
-                      <input type="hidden" name="mon[local_ts]" value={ch["local_ts"] || ""} />
-                      <input type="hidden" name="mon[remote_ts]" value={ch["remote_ts"] || ""} />
-                      <input
-                        name="mon[source]"
-                        value={ch["suggested_source"] || ""}
-                        placeholder="source"
-                        class="w-24 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
-                      />
-                      <input
-                        name="mon[destination]"
-                        placeholder="destination"
-                        class="w-24 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
-                      />
-                      <button
-                        type="submit"
-                        class="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 hover:bg-slate-800"
-                      >
-                        add monitor
-                      </button>
-                    </form>
+                      {if mon, do: "Edit ping", else: "Add ping"}
+                    </button>
                   </td>
                 </tr>
               <% end %>
             </tbody>
           </table>
+        </div>
+
+        <%!-- Edit-ping dialog (PingMonitorDialog parity): Test runs the
+             agent's one-off ipsec.ping_test on the CURRENT form values. --%>
+        <div
+          :if={@ping_editor}
+          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+        >
+          <div class="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5">
+            <h3 class="text-sm font-medium text-slate-200">
+              {if @ping_editor.monitor_id, do: "Edit ping monitor", else: "Add ping monitor"}
+            </h3>
+            <p class="mt-1 text-xs text-slate-500">
+              {@ping_editor.instance_name} · {@ping_editor.child_name}
+              <span :if={@ping_editor.local_ts != ""}>
+                · {@ping_editor.local_ts} ⇄ {@ping_editor.remote_ts}
+              </span>
+            </p>
+
+            <form phx-change="p2mon_change" phx-submit="p2mon_save" class="mt-4 space-y-3 text-sm">
+              <label class="block text-xs text-slate-500">
+                Source IP (must be box-owned; blank = default route)
+                <input
+                  name="mon[source]"
+                  value={@ping_editor.source}
+                  class="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-sm text-slate-200"
+                />
+              </label>
+              <label class="block text-xs text-slate-500">
+                Destination *
+                <input
+                  name="mon[destination]"
+                  value={@ping_editor.destination}
+                  required
+                  placeholder="host on the far side of the tunnel"
+                  class="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-sm text-slate-200"
+                />
+              </label>
+              <div class="flex items-end gap-4">
+                <label class="block text-xs text-slate-500">
+                  Pings per cycle
+                  <input
+                    name="mon[ping_count]"
+                    value={@ping_editor.ping_count}
+                    class="mt-1 w-20 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-slate-200"
+                  />
+                </label>
+                <label class="flex items-center gap-1.5 pb-1.5 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    name="mon[enabled]"
+                    value="true"
+                    checked={@ping_editor.enabled}
+                    class="accent-emerald-600"
+                  /> Enabled
+                </label>
+              </div>
+
+              <div
+                :if={@ping_test}
+                class={[
+                  "rounded px-3 py-2 text-xs",
+                  case @ping_test do
+                    {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
+                    _ -> "bg-red-900/40 text-red-300"
+                  end
+                ]}
+              >
+                Test: {elem(@ping_test, 1)}
+              </div>
+
+              <div class="flex items-center justify-between pt-2">
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    phx-click="p2mon_cancel"
+                    class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    :if={@ping_editor.monitor_id}
+                    type="button"
+                    phx-click="p2mon_delete"
+                    phx-value-id={@ping_editor.monitor_id}
+                    phx-value-iid={@ping_editor.instance_id}
+                    data-confirm="Remove this Phase-2 ping monitor?"
+                    class="rounded border border-red-900 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    phx-click="p2mon_test"
+                    disabled={@ping_test_busy}
+                    class="rounded border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950 disabled:opacity-50"
+                  >
+                    {if @ping_test_busy, do: "Testing…", else: "Test"}
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-600"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
     </main>

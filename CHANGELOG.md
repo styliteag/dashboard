@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: phase-2 ping monitors get a proper edit dialog on the VPN page —
+  source/destination/count/enabled plus a Test button that live-pings the
+  current form values through the agent before saving; the expand arrow
+  moved to the first column and is properly clickable now.
+- Orbit: the root URL goes straight to the Hub page — the interim landing
+  page from the first milestone is gone.
 - Orbit: the fleet VPN page gains the phase-2 expander (traffic selectors,
   child status, ping state) and inline phase-2 ping-monitor add/remove per
   child SA — same controls as the instance detail, one query for the whole

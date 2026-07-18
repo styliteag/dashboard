@@ -175,6 +175,31 @@ defmodule Orbit.Monitors do
         else: {:error, "save failed"}
   end
 
+  @doc "Update an existing Phase-2 monitor (source/destination/count/enabled)."
+  def update_ipsec(instance_id, monitor_id, attrs) do
+    destination = String.trim(attrs["destination"] || "")
+
+    if destination == "" do
+      {:error, "destination is required"}
+    else
+      Orbit.Repo.query!(
+        "UPDATE ipsec_ping_monitors SET source = ?, destination = ?, ping_count = ?, " <>
+          "enabled = ?, updated_at = NOW() WHERE id = ? AND instance_id = ?",
+        [
+          String.trim(attrs["source"] || ""),
+          destination,
+          ping_count(attrs),
+          attrs["enabled"] in ["true", "on", "1", true],
+          monitor_id,
+          instance_id
+        ]
+      )
+
+      push_to_agent(instance_id)
+      :ok
+    end
+  end
+
   def delete_ipsec(instance_id, monitor_id) do
     Orbit.Repo.query!(
       "DELETE FROM ipsec_ping_monitors WHERE id = ? AND instance_id = ?",
