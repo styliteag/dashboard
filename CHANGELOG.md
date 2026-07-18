@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Orbit GUI proxy: the very first request after opening a firewall WebUI no
+  longer fails with "firewall gui unavailable" — the proxy now retries the
+  initial connection while the on-demand tunnel (agent stream + TLS/HTTP-2
+  handshake) comes up.
+
 ### Added
 
 - Orbit (LiveView rewrite): metric history charts on the instance detail page

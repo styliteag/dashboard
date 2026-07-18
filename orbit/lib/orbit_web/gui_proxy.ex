@@ -107,12 +107,42 @@ defmodule OrbitWeb.GuiProxy do
   defp proxy(conn, id) do
     with {:ok, port} <- TunnelManager.ensure(id),
          {:ok, body, conn} <- read_body(conn, length: 25_000_000),
-         {:ok, resp} <- forward(conn, port, body) do
+         {:ok, resp} <- forward_with_retry(conn, port, body, 4) do
       send_upstream(conn, resp)
     else
       other ->
         Logger.warning("gui_proxy.forward_failed path=#{conn.request_path} err=#{inspect(other)}")
         conn |> send_resp(502, "firewall gui unavailable") |> halt()
+    end
+  end
+
+  # The FIRST request after a fresh forwarder races the tunnel bring-up:
+  # tcp accept → agent open_tunnel → on-box connect → TLS/h2 handshake all
+  # happen on demand, and Finch's h2 pool answers :pool_not_available until
+  # the connection stands (user report: first tab load 502s, reload works).
+  # Connection-establishment failures never reached the firewall, so the
+  # retry is safe for any method.
+  @retryable_reasons [:pool_not_available, :closed, :econnrefused]
+
+  defp forward_with_retry(conn, port, body, attempts_left) do
+    case forward(conn, port, body) do
+      {:error, %Req.HTTPError{reason: reason}} = err when reason in @retryable_reasons ->
+        retry_or_give_up(err, conn, port, body, attempts_left)
+
+      {:error, %Req.TransportError{reason: reason}} = err when reason in @retryable_reasons ->
+        retry_or_give_up(err, conn, port, body, attempts_left)
+
+      other ->
+        other
+    end
+  end
+
+  defp retry_or_give_up(err, conn, port, body, attempts_left) do
+    if attempts_left > 1 do
+      Process.sleep(250)
+      forward_with_retry(conn, port, body, attempts_left - 1)
+    else
+      err
     end
   end
 
