@@ -82,6 +82,7 @@ defmodule OrbitWeb.Components.Nav do
         >
           {@current_user.username}
         </a>
+        <.theme_switcher />
         <form action={~p"/logout"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
@@ -100,6 +101,60 @@ defmodule OrbitWeb.Components.Nav do
   end
 
   defp app_version, do: Application.spec(:orbit, :vsn) |> to_string()
+
+  @doc """
+  Design/mode switcher (OrbitWeb.Design): plain POST forms, server-side
+  cookies. The active choice is marked CLIENT-side from the html element's
+  data-theme (see markThemeChoices in app.js) — LiveViews don't carry the
+  design conn assigns, and the DOM attribute is the single truth anyway.
+  """
+  def theme_switcher(assigns) do
+    ~H"""
+    <details class="relative text-xs">
+      <summary
+        class="cursor-pointer rounded-md border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
+        title="Theme"
+      >
+        Theme
+      </summary>
+      <div class="absolute right-0 top-8 z-50 w-44 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl">
+        <p class="mb-1 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Design</p>
+        <form :for={d <- OrbitWeb.Design.all()} action="/design" method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <input type="hidden" name="design" value={d} />
+          <button data-theme-design={d} class="w-full rounded px-2 py-1 text-left hover:bg-base-300">
+            {OrbitWeb.Design.name(d)}
+          </button>
+        </form>
+        <p class="mb-1 mt-2 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Mode</p>
+        <div class="flex gap-1">
+          <form
+            :for={m <- OrbitWeb.Design.modes()}
+            action="/design/mode"
+            method="post"
+            class="flex-1"
+          >
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <input type="hidden" name="mode" value={m} />
+            <button data-theme-mode={m} class="w-full rounded px-2 py-1 hover:bg-base-300">
+              {OrbitWeb.Design.mode_name(m)}
+            </button>
+          </form>
+          <form action="/design/mode" method="post" class="flex-1">
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <input type="hidden" name="mode" value="" />
+            <button
+              class="w-full rounded px-2 py-1 hover:bg-base-300"
+              title="Use the design's native mode"
+            >
+              Auto
+            </button>
+          </form>
+        </div>
+      </div>
+    </details>
+    """
+  end
 
   attr :active, :atom, required: true
   attr :key, :atom, required: true

@@ -11,65 +11,10 @@
   </head>
   <body>
     {@inner_content}
-    <%!-- Design/mode switcher (OrbitWeb.Design): server-side cookies, works
-         on every page incl. login. Lives in the root layout because LiveViews
-         don't carry the conn assigns. --%>
-    <details class="fixed bottom-3 right-3 z-50 text-xs">
-      <summary
-        class="cursor-pointer rounded-full border border-base-300 bg-base-200 px-3 py-1.5 text-base-content/70 shadow hover:text-base-content"
-        title="Theme"
-      >
-        {OrbitWeb.Design.name(assigns[:design] || OrbitWeb.Design.default())} · {OrbitWeb.Design.mode_name(
-          assigns[:mode] ||
-            OrbitWeb.Design.default_mode(assigns[:design] || OrbitWeb.Design.default())
-        )}
-      </summary>
-      <div class="absolute bottom-9 right-0 w-44 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl">
-        <p class="mb-1 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Design</p>
-        <form :for={d <- OrbitWeb.Design.all()} action="/design" method="post">
-          <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-          <input type="hidden" name="design" value={d} />
-          <button class={[
-            "w-full rounded px-2 py-1 text-left hover:bg-base-300",
-            (assigns[:design] || OrbitWeb.Design.default()) == d && "text-primary"
-          ]}>
-            {OrbitWeb.Design.name(d)}
-          </button>
-        </form>
-        <p class="mb-1 mt-2 px-1 text-[10px] uppercase tracking-wide text-base-content/50">
-          Mode
-        </p>
-        <div class="flex gap-1">
-          <form
-            :for={m <- OrbitWeb.Design.modes()}
-            action="/design/mode"
-            method="post"
-            class="flex-1"
-          >
-            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-            <input type="hidden" name="mode" value={m} />
-            <button class={[
-              "w-full rounded px-2 py-1 hover:bg-base-300",
-              assigns[:mode] == m && "text-primary"
-            ]}>
-              {OrbitWeb.Design.mode_name(m)}
-            </button>
-          </form>
-          <form action="/design/mode" method="post" class="flex-1">
-            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-            <input type="hidden" name="mode" value="" />
-            <button
-              class={[
-                "w-full rounded px-2 py-1 hover:bg-base-300",
-                assigns[:mode] == nil && "text-primary"
-              ]}
-              title="Use the design's native mode"
-            >
-              Auto
-            </button>
-          </form>
-        </div>
-      </div>
-    </details>
+    <%!-- Login has no top nav — give it the switcher top-right. In-app the
+         switcher lives in the nav header (Components.Nav.theme_switcher). --%>
+    <div :if={is_nil(assigns[:current_user])} class="fixed right-4 top-3 z-50">
+      <OrbitWeb.Components.Nav.theme_switcher />
+    </div>
   </body>
 </html>

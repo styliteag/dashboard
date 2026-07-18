@@ -309,3 +309,17 @@ if (process.env.NODE_ENV === "development") {
   })
 }
 
+
+// Mark the active design/mode inside the theme switcher. The server renders
+// the buttons without state (LiveViews don't carry the design assigns); the
+// html element's data-theme ("orbit-dark", …) is the single source of truth.
+const markThemeChoices = () => {
+  const theme = document.documentElement.getAttribute("data-theme") || ""
+  const [design, mode] = theme.split("-")
+  document.querySelectorAll("[data-theme-design]").forEach(b =>
+    b.classList.toggle("text-primary", b.dataset.themeDesign === design))
+  document.querySelectorAll("[data-theme-mode]").forEach(b =>
+    b.classList.toggle("text-primary", b.dataset.themeMode === mode))
+}
+markThemeChoices()
+window.addEventListener("phx:page-loading-stop", markThemeChoices)
