@@ -149,12 +149,12 @@ defmodule OrbitWeb.FirmwareLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:firmware} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          Firmware <span class="ml-2 text-sm text-slate-500">({length(@rows)})</span>
+        <h1 class="mb-4 text-lg font-medium text-base-content">
+          Firmware <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
@@ -168,7 +168,7 @@ defmodule OrbitWeb.FirmwareLive do
           <.kpi_tile
             label="Up to date"
             value={@ok_count}
-            color="text-emerald-400"
+            color="text-primary"
             event="state_filter"
             value_name="ok"
             active={@state_filter == "ok"}
@@ -176,7 +176,7 @@ defmodule OrbitWeb.FirmwareLive do
           <.kpi_tile
             label="Update available"
             value={@update_count}
-            color="text-amber-400"
+            color="text-warning"
             event="state_filter"
             value_name="update"
             active={@state_filter == "update"}
@@ -184,7 +184,7 @@ defmodule OrbitWeb.FirmwareLive do
           <.kpi_tile
             label="Unknown"
             value={@unknown_count}
-            color="text-slate-400"
+            color="text-base-content/70"
             event="state_filter"
             value_name="unknown"
             active={@state_filter == "unknown"}
@@ -199,7 +199,7 @@ defmodule OrbitWeb.FirmwareLive do
               value={@search}
               placeholder="Search instance, version, location…"
               phx-debounce="300"
-              class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+              class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </form>
           <div :if={length(@present_types) > 1} class="flex gap-2">
@@ -214,16 +214,16 @@ defmodule OrbitWeb.FirmwareLive do
           </div>
         </div>
 
-        <div :if={@rows == []} class="text-sm text-slate-500">
+        <div :if={@rows == []} class="text-sm text-base-content/60">
           No push instances in your scope.
         </div>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-slate-500">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
-        <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-slate-800">
+        <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-base-300">
           <table class="w-full text-left text-sm">
-            <thead class="bg-slate-900 text-xs text-slate-500">
+            <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -234,7 +234,7 @@ defmodule OrbitWeb.FirmwareLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @visible_rows} class="border-b border-slate-800/50 last:border-0">
+              <tr :for={r <- @visible_rows} class="border-b border-base-300/50 last:border-0">
                 <td class="px-3 py-2">
                   <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
                     {state_label(r.state)}
@@ -242,32 +242,32 @@ defmodule OrbitWeb.FirmwareLive do
                   <span
                     :if={r.needs_reboot}
                     title="Reboot required to finish updates"
-                    class="ml-1 text-amber-400"
+                    class="ml-1 text-warning"
                   >
                     ↻
                   </span>
                 </td>
                 <td class="px-3 py-2">
-                  <a href={~p"/instances/#{r.id}"} class="text-slate-200 hover:text-emerald-300">
+                  <a href={~p"/instances/#{r.id}"} class="text-base-content hover:text-primary">
                     {r.name}
                   </a>
                   <span
                     :if={r.firmware_locked}
                     title="Firmware locked — excluded from update actions"
-                    class="ml-1 text-slate-500"
+                    class="ml-1 text-base-content/60"
                   >
                     🔒
                   </span>
                   <.webui_link instance_id={r.id} openable={r.gui_openable} />
                   <.shell_link instance_id={r.id} shell_enabled={r.shell_enabled} />
-                  <div class="text-xs text-slate-600">{r.device_type}</div>
+                  <div class="text-xs text-base-content/40">{r.device_type}</div>
                 </td>
-                <td class="px-3 py-2 font-mono text-xs text-slate-400">{r.version}</td>
-                <td class="px-3 py-2 font-mono text-xs text-slate-500">{r.latest}</td>
-                <td class="px-3 py-2 text-slate-400">{r.location}</td>
-                <td class="px-3 py-2 text-slate-300">
+                <td class="px-3 py-2 font-mono text-xs text-base-content/70">{r.version}</td>
+                <td class="px-3 py-2 font-mono text-xs text-base-content/60">{r.latest}</td>
+                <td class="px-3 py-2 text-base-content/70">{r.location}</td>
+                <td class="px-3 py-2 text-base-content/80">
                   {r.summary}
-                  <span :if={r.security_updates > 0} class="ml-1 text-red-400">
+                  <span :if={r.security_updates > 0} class="ml-1 text-error">
                     ({r.security_updates} security)
                   </span>
                 </td>
@@ -285,8 +285,8 @@ defmodule OrbitWeb.FirmwareLive do
   defp state_label(2), do: "CRIT"
   defp state_label(_), do: "UNKNOWN"
 
-  defp state_class(0), do: "bg-emerald-900/50 text-emerald-300"
-  defp state_class(1), do: "bg-amber-900/50 text-amber-300"
-  defp state_class(2), do: "bg-red-900/60 text-red-300"
-  defp state_class(_), do: "bg-slate-700 text-slate-300"
+  defp state_class(0), do: "bg-primary/20 text-primary"
+  defp state_class(1), do: "bg-warning/20 text-warning"
+  defp state_class(2), do: "bg-error/20 text-error"
+  defp state_class(_), do: "bg-neutral text-base-content/80"
 end

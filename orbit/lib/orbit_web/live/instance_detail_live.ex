@@ -1112,12 +1112,12 @@ defmodule OrbitWeb.InstanceDetailLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-6 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">{@instance.name}</h1>
+          <h1 class="text-lg font-medium text-base-content">{@instance.name}</h1>
           <span class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}>
             {if @connected, do: "agent connected", else: "no agent"}
           </span>
@@ -1126,35 +1126,35 @@ defmodule OrbitWeb.InstanceDetailLive do
             href={~p"/instances/#{@instance.id}/terminal"}
             target="_blank"
             rel="noopener"
-            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Terminal
           </a>
           <button
             :if={@writable and @gui_openable}
             phx-click="gui_open"
-            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Open GUI
           </button>
           <a
             :if={@writable}
             href={~p"/instances/#{@instance.id}/capture"}
-            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Capture
           </a>
           <a
             :if={@writable and @instance.device_type == "opnsense"}
             href={~p"/instances/#{@instance.id}/firewall"}
-            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Firewall
           </a>
           <a
             :if={@writable}
             href={~p"/instances/#{@instance.id}/edit"}
-            class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Edit
           </a>
@@ -1163,7 +1163,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <%!-- Tab bar (InstanceDetailPage TABS parity): patch links keep the
              LiveView (and its timers/state) mounted; Capture/Firewall are
              sub-pages and navigate. --%>
-        <nav class="mb-6 flex flex-wrap gap-1 border-b border-slate-800 pb-2">
+        <nav class="mb-6 flex flex-wrap gap-1 border-b border-base-300 pb-2">
           <%= for {key, label, kind} <- tabs_for(@instance) do %>
             <.link
               :if={kind == :tab}
@@ -1171,8 +1171,8 @@ defmodule OrbitWeb.InstanceDetailLive do
               class={[
                 "rounded-md px-3 py-1 text-sm",
                 if(@tab == key,
-                  do: "bg-slate-800 text-slate-100",
-                  else: "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                  do: "bg-base-300 text-base-content",
+                  else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
                 )
               ]}
             >
@@ -1186,7 +1186,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   else: ~p"/instances/#{@instance.id}/firewall"
                 )
               }
-              class="rounded-md px-3 py-1 text-sm text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+              class="rounded-md px-3 py-1 text-sm text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
             >
               {label}
             </.link>
@@ -1194,8 +1194,8 @@ defmodule OrbitWeb.InstanceDetailLive do
         </nav>
 
         <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Instance</h2>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Instance</h2>
             <dl class="space-y-1 text-sm">
               <.kv label="Type" value={@instance.device_type} />
               <.kv label="Transport" value={@instance.transport} />
@@ -1204,9 +1204,9 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Live</h2>
-            <div :if={not @connected and @system == %{}} class="text-sm text-slate-500">
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Live</h2>
+            <div :if={not @connected and @system == %{}} class="text-sm text-base-content/60">
               No live data — agent not pushing.
             </div>
             <dl :if={@connected or @system != %{}} class="space-y-1 text-sm">
@@ -1223,7 +1223,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              fleet standard is NO password on the console menu. --%>
         <div
           :if={@tab == "overview" and @system["console_password_protected"] == true}
-          class="mt-4 rounded-md border border-amber-700/60 bg-amber-900/10 px-3 py-2 text-sm text-amber-300"
+          class="mt-4 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-warning"
         >
           <span class="font-medium">Console password protection enabled.</span>
           We prefer no password on the console. Disable “Password protect the console
@@ -1235,8 +1235,8 @@ defmodule OrbitWeb.InstanceDetailLive do
              (ConfigSection parity). Sections the box never reported stay
              hidden (no-data ⇒ no tile, never a fake 0). --%>
         <div :if={@tab == "overview"} class="mt-6 grid gap-6 md:grid-cols-2">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">System health</h2>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">System health</h2>
             <dl class="space-y-1 text-sm">
               <.kv
                 :if={@loadavg["one"] != nil}
@@ -1266,14 +1266,14 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div :if={@tab == "config"} class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Config revision</h2>
+          <div :if={@tab == "config"} class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Config revision</h2>
             <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
               <.kv label="Last change" value={@config_rev["revision_time"] || "—"} />
               <.kv label="Description" value={@config_rev["revision_description"] || "—"} />
               <.kv label="By" value={@config_rev["revision_user"] || "—"} />
             </dl>
-            <div :if={@config_rev == %{}} class="text-sm text-slate-500">
+            <div :if={@config_rev == %{}} class="text-sm text-base-content/60">
               No config revision reported.
             </div>
           </div>
@@ -1281,21 +1281,21 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "checks" and @checks != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">
-            Checks <span class="text-slate-500">({length(@checks)})</span>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">
+            Checks <span class="text-base-content/60">({length(@checks)})</span>
           </h2>
           <table class="w-full text-left text-sm">
             <tbody>
-              <tr :for={c <- @checks} class="border-b border-slate-800/50 last:border-0">
+              <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
                 <td class="w-16 py-1.5 pr-4 align-top">
                   <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
                     {state_label(c.state)}
                   </span>
                 </td>
-                <td class="whitespace-nowrap py-1.5 pr-4 align-top text-slate-400">{c.key}</td>
-                <td class="py-1.5 align-top text-slate-300">{c.summary}</td>
+                <td class="whitespace-nowrap py-1.5 pr-4 align-top text-base-content/70">{c.key}</td>
+                <td class="py-1.5 align-top text-base-content/80">{c.summary}</td>
                 <td :if={@writable} class="whitespace-nowrap py-1.5 pl-2 text-right align-top">
                   <button
                     :for={consumer <- Orbit.Selection.consumers()}
@@ -1307,10 +1307,10 @@ defmodule OrbitWeb.InstanceDetailLive do
                     class={[
                       "ml-1 rounded px-1.5 py-0.5 text-[10px]",
                       if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
-                        do: "bg-emerald-600/20 text-emerald-400",
-                        else: "bg-slate-800 text-slate-500"
+                        do: "bg-primary/20 text-primary",
+                        else: "bg-base-300 text-base-content/60"
                       ),
-                      MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-emerald-600"
+                      MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-primary"
                     ]}
                   >
                     {consumer_tag(consumer)}
@@ -1327,7 +1327,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              direct-poll box) render the empty state, same as recharts did. --%>
         <section :if={@tab == "overview"} class="mt-8">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-400">Metrics</h2>
+            <h2 class="text-sm font-semibold text-base-content/70">Metrics</h2>
             <div class="flex gap-1">
               <button
                 :for={r <- ~w(1h 6h 24h 7d 30d)}
@@ -1336,8 +1336,8 @@ defmodule OrbitWeb.InstanceDetailLive do
                 class={[
                   "rounded-md px-2 py-1 text-xs",
                   if(@chart_range == r,
-                    do: "bg-emerald-600 text-white",
-                    else: "text-slate-400 hover:bg-slate-800"
+                    do: "bg-primary text-white",
+                    else: "text-base-content/70 hover:bg-base-300"
                   )
                 ]}
               >
@@ -1361,9 +1361,9 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "agent" and Instance.agent_mode?(@instance)}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Agent</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Agent</h2>
           <dl class="space-y-1 text-sm">
             <.kv
               label="Status"
@@ -1378,20 +1378,20 @@ defmodule OrbitWeb.InstanceDetailLive do
                parity): live snapshot only — the whole-cycle total has its
                own history chart above. --%>
           <div :if={@section_ms != %{}} class="mt-3">
-            <h3 class="mb-1 text-xs text-slate-500">Collector runtime (last push)</h3>
+            <h3 class="mb-1 text-xs text-base-content/60">Collector runtime (last push)</h3>
             <div
               :for={{name, ms} <- top_sections(@section_ms)}
               class="flex items-center gap-2 text-xs"
             >
-              <span class="w-28 truncate text-slate-500">{name}</span>
-              <div class="h-1.5 flex-1 overflow-hidden rounded bg-slate-800">
+              <span class="w-28 truncate text-base-content/60">{name}</span>
+              <div class="h-1.5 flex-1 overflow-hidden rounded bg-base-300">
                 <div
-                  class={["h-full", if(ms >= 10_000, do: "bg-amber-500", else: "bg-emerald-600")]}
+                  class={["h-full", if(ms >= 10_000, do: "bg-warning", else: "bg-primary")]}
                   style={"width: #{section_pct(ms, @section_ms)}%"}
                 >
                 </div>
               </div>
-              <span class="w-16 text-right text-slate-400">{Float.round(ms / 1000, 2)}s</span>
+              <span class="w-16 text-right text-base-content/70">{Float.round(ms / 1000, 2)}s</span>
             </div>
           </div>
 
@@ -1406,7 +1406,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
             <button
               phx-click="mint_enroll"
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Mint enroll code
             </button>
@@ -1415,7 +1415,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="agent_update"
               data-confirm={"Push agent #{@served_agent_version} to #{@instance.name}? The agent restarts (canary: one box at a time)."}
               disabled={@agent_busy}
-              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @agent_busy,
                 do: "Pushing…",
@@ -1424,14 +1424,14 @@ defmodule OrbitWeb.InstanceDetailLive do
             <button
               phx-click="agent_refresh"
               title="Force a full re-collect now (logfiles/firmware/backup are normally throttled)"
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Refresh now
             </button>
             <button
               :if={@agent}
               phx-click="agent_reconnect"
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Reconnect
             </button>
@@ -1439,13 +1439,13 @@ defmodule OrbitWeb.InstanceDetailLive do
               :if={@agent}
               phx-click="agent_test_api"
               title="Authenticated API call through the agent relay"
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Test local API
             </button>
             <button
               phx-click="agent_show_token"
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               {if @show_token, do: "Hide token", else: "Show token"}
             </button>
@@ -1453,47 +1453,47 @@ defmodule OrbitWeb.InstanceDetailLive do
               :if={@agent}
               phx-click="agent_uninstall"
               data-confirm={"Uninstall the agent from #{@instance.name}? The box falls back to direct transport."}
-              class="rounded border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950"
+              class="rounded border border-error/40 px-3 py-1 text-xs text-error hover:bg-error/15"
             >
               Uninstall agent
             </button>
             <button
               phx-click="agent_disable"
               data-confirm={"Disable agent mode on #{@instance.name}? The token is revoked; a running agent can no longer connect."}
-              class="rounded border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950"
+              class="rounded border border-error/40 px-3 py-1 text-xs text-error hover:bg-error/15"
             >
               Disable agent mode
             </button>
           </div>
 
           <div :if={@show_token and @instance.agent_token} class="mt-2 text-xs">
-            <span class="text-slate-500">Agent token: </span>
-            <code class="break-all font-mono text-emerald-300">{@instance.agent_token}</code>
+            <span class="text-base-content/60">Agent token: </span>
+            <code class="break-all font-mono text-primary">{@instance.agent_token}</code>
           </div>
 
           <%!-- Guided install (AgentSection walkthrough parity, condensed to
                the copy-paste essentials; the enroll code above slots into
                the config). tcsh-safe printf, no heredocs. --%>
           <details :if={@writable} class="mt-3 text-xs">
-            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+            <summary class="cursor-pointer text-base-content/70 hover:text-base-content">
               Install instructions
             </summary>
             <div class="mt-2 space-y-2">
-              <p class="text-slate-500">
+              <p class="text-base-content/60">
                 Run as root on the box. 1) download, 2) write config {if @enroll_code,
                   do: "(one-time enroll code baked in)",
                   else: "(mint an enroll code above, or paste the token)"}, 3) start.
               </p>
-              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_download_cmds(@instance)}</pre>
-              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_config_cmd(@instance, @enroll_code)}</pre>
-              <pre class="overflow-x-auto rounded bg-slate-950 p-2 font-mono text-slate-300">{install_start_cmd(@instance)}</pre>
+              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_download_cmds(@instance)}</pre>
+              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_config_cmd(@instance, @enroll_code)}</pre>
+              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_start_cmd(@instance)}</pre>
             </div>
           </details>
 
           <div :if={@enroll_code} class="mt-2 text-sm">
-            <span class="text-slate-500">Enroll code: </span>
-            <span class="font-mono text-emerald-300">{elem(@enroll_code, 0)}</span>
-            <span class="text-xs text-slate-500">
+            <span class="text-base-content/60">Enroll code: </span>
+            <span class="font-mono text-primary">{elem(@enroll_code, 0)}</span>
+            <span class="text-xs text-base-content/60">
               (valid until {cb_ts(elem(@enroll_code, 1))} — run install.sh on the box and paste it)
             </span>
           </div>
@@ -1502,8 +1502,8 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@agent_msg}
             class={[
               "mt-2 text-xs",
-              elem(@agent_msg, 0) == :ok && "text-emerald-400",
-              elem(@agent_msg, 0) == :error && "text-red-400"
+              elem(@agent_msg, 0) == :ok && "text-primary",
+              elem(@agent_msg, 0) == :error && "text-error"
             ]}
           >
             {elem(@agent_msg, 1)}
@@ -1517,16 +1517,16 @@ defmodule OrbitWeb.InstanceDetailLive do
             @tab == "agent" and not Instance.agent_mode?(@instance) and @writable and
               @instance.device_type != "securepoint"
           }
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Agent</h2>
-          <p class="mb-2 text-sm text-slate-500">
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Agent</h2>
+          <p class="mb-2 text-sm text-base-content/60">
             This box is polled directly. Switch to the push agent for live metrics,
             shell, capture and the GUI tunnel.
           </p>
           <button
             phx-click="agent_enable"
-            class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
           >
             Enable agent mode
           </button>
@@ -1534,8 +1534,8 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@agent_msg}
             class={[
               "mt-2 text-xs",
-              elem(@agent_msg, 0) == :ok && "text-emerald-400",
-              elem(@agent_msg, 0) == :error && "text-red-400"
+              elem(@agent_msg, 0) == :ok && "text-primary",
+              elem(@agent_msg, 0) == :error && "text-error"
             ]}
           >
             {elem(@agent_msg, 1)}
@@ -1544,13 +1544,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "firmware" and Instance.agent_mode?(@instance)}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-slate-400">
+          <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-base-content/70">
             Firmware <.comment_badge comments={@comments} kind="firmware" entity_key="" />
             <span
               :if={@instance.firmware_locked}
-              class="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-amber-300"
+              class="rounded bg-base-300 px-1.5 py-0.5 text-xs text-warning"
             >
               updates locked
             </span>
@@ -1562,7 +1562,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
           </h2>
 
-          <div :if={is_nil(@firmware)} class="text-sm text-slate-500">
+          <div :if={is_nil(@firmware)} class="text-sm text-base-content/60">
             No firmware data yet — run a check or wait for the next push.
           </div>
 
@@ -1594,13 +1594,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={@firmware && @firmware["needs_reboot"] == true}
-            class="mt-2 rounded border border-amber-800/50 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-300"
+            class="mt-2 rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"
           >
             Reboot required to finish applying updates.
           </div>
           <div
             :if={@firmware && @firmware["check_failed"] == true}
-            class="mt-2 rounded border border-amber-800/50 bg-amber-900/20 px-3 py-1.5 text-xs text-amber-300"
+            class="mt-2 rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"
           >
             The box could not check for updates (repo unreachable or pkg broken) — status unknown.
           </div>
@@ -1608,15 +1608,15 @@ defmodule OrbitWeb.InstanceDetailLive do
           <%!-- Pending package list (linux nodes; FreeBSD reports only the
                product verdict). Capped at 50 by the agent. --%>
           <details :if={@firmware && (@firmware["packages"] || []) != []} class="mt-2 text-xs">
-            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+            <summary class="cursor-pointer text-base-content/70 hover:text-base-content">
               {length(@firmware["packages"] || [])} pending package(s)
             </summary>
             <table class="mt-1 w-full text-left font-mono text-xs">
               <tbody>
-                <tr :for={p <- @firmware["packages"] || []} class="border-t border-slate-800/50">
-                  <td class="py-0.5 pr-3 text-slate-300">{p["name"]}</td>
-                  <td class="py-0.5 pr-3 text-slate-500">{p["current"]}</td>
-                  <td class="py-0.5 text-slate-400">→ {p["new"]}</td>
+                <tr :for={p <- @firmware["packages"] || []} class="border-t border-base-300/50">
+                  <td class="py-0.5 pr-3 text-base-content/80">{p["name"]}</td>
+                  <td class="py-0.5 pr-3 text-base-content/60">{p["current"]}</td>
+                  <td class="py-0.5 text-base-content/70">→ {p["new"]}</td>
                 </tr>
               </tbody>
             </table>
@@ -1626,17 +1626,17 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@firmware && truthy_str(@firmware["update_check_output"])}
             class="mt-2 text-xs"
           >
-            <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+            <summary class="cursor-pointer text-base-content/70 hover:text-base-content">
               Last check output
             </summary>
-            <pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-slate-950 p-2 font-mono text-slate-400">{@firmware["update_check_output"]}</pre>
+            <pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-base-100 p-2 font-mono text-base-content/70">{@firmware["update_check_output"]}</pre>
           </details>
 
           <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
             <button
               phx-click="fw_check"
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "check", do: "Checking…", else: "Check for updates"}
             </button>
@@ -1645,7 +1645,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="fw_update"
               data-confirm={"Start the firmware update on #{@instance.name}? The box may reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "update", do: "Starting…", else: "Start update"}
             </button>
@@ -1657,7 +1657,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="fw_upgrade"
               data-confirm={"Start the SERIES upgrade to #{@firmware["upgrade_major_version"]} on #{@instance.name}? This is a major version jump; the box will reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-warning px-3 py-1 text-xs text-white hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "upgrade",
                 do: "Starting…",
@@ -1669,30 +1669,30 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@fw_msg}
             class={[
               "mt-2 text-xs",
-              elem(@fw_msg, 0) == :ok && "text-emerald-400",
-              elem(@fw_msg, 0) == :error && "text-red-400"
+              elem(@fw_msg, 0) == :ok && "text-primary",
+              elem(@fw_msg, 0) == :error && "text-error"
             ]}
           >
             {elem(@fw_msg, 1)}
           </div>
 
           <div :if={@upgrading} class="mt-3">
-            <div class="mb-1 text-xs text-amber-300">Update running…</div>
+            <div class="mb-1 text-xs text-warning">Update running…</div>
             <pre
               :if={@upgrade_log != []}
-              class="max-h-48 overflow-y-auto rounded bg-slate-950 p-2 text-xs text-slate-400"
+              class="max-h-48 overflow-y-auto rounded bg-base-100 p-2 text-xs text-base-content/70"
             >{Enum.join(Enum.take(@upgrade_log, -20), "\n")}</pre>
           </div>
         </div>
 
         <div
           :if={@tab == "overview" and @disks != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Disks</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Disks</h2>
           <ul class="space-y-1 text-sm">
-            <li :for={d <- @disks} class="flex justify-between text-slate-300">
-              <span class="text-slate-400">{d["mountpoint"] || d["device"]}</span>
+            <li :for={d <- @disks} class="flex justify-between text-base-content/80">
+              <span class="text-base-content/70">{d["mountpoint"] || d["device"]}</span>
               <span>{pct(d["used_pct"])}</span>
             </li>
           </ul>
@@ -1703,17 +1703,17 @@ defmodule OrbitWeb.InstanceDetailLive do
              agent echoes each monitor's id, so results join by id. --%>
         <div
           :if={@tab == "connectivity" and Instance.agent_mode?(@instance)}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Connectivity monitors</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Connectivity monitors</h2>
 
-          <div :if={@conn_error} class="mb-2 rounded bg-red-900/40 px-2 py-1 text-xs text-red-300">
+          <div :if={@conn_error} class="mb-2 rounded bg-error/15 px-2 py-1 text-xs text-error">
             {@conn_error}
           </div>
 
           <table :if={@conn_monitors != []} class="w-full text-left text-sm">
-            <thead class="text-xs text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-xs text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-1 pr-3 font-medium">Monitor</th>
                 <th class="py-1 pr-3 font-medium">Source → Destination</th>
                 <th class="py-1 pr-3 font-medium">State</th>
@@ -1724,23 +1724,23 @@ defmodule OrbitWeb.InstanceDetailLive do
             <tbody>
               <%= for m <- @conn_monitors do %>
                 <% result = Enum.find(@connectivity, &(&1["id"] == m.id)) %>
-                <tr class="border-b border-slate-800/50 last:border-0">
-                  <td class="py-1.5 pr-3 text-slate-300">
+                <tr class="border-b border-base-300/50 last:border-0">
+                  <td class="py-1.5 pr-3 text-base-content/80">
                     {m.name}
-                    <span :if={not m.enabled} class="ml-1 text-xs text-slate-600">(disabled)</span>
+                    <span :if={not m.enabled} class="ml-1 text-xs text-base-content/40">(disabled)</span>
                     <.comment_badge
                       comments={@comments}
                       kind="connectivity"
                       entity_key={to_string(m.id)}
                     />
                   </td>
-                  <td class="py-1.5 pr-3 text-slate-400">
+                  <td class="py-1.5 pr-3 text-base-content/70">
                     {if m.source == "", do: "default", else: m.source} → {m.destination}
                   </td>
                   <td class={["py-1.5 pr-3", ping_state_color(result && result["ping_state"])]}>
                     {(result && result["ping_state"]) || "no data yet"}
                   </td>
-                  <td class="py-1.5 pr-3 text-slate-400">
+                  <td class="py-1.5 pr-3 text-base-content/70">
                     <span :if={result && is_number(result["ping_rtt_ms"])}>
                       {result["ping_rtt_ms"]} ms
                     </span>
@@ -1752,7 +1752,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     <button
                       phx-click="conn_toggle"
                       phx-value-id={m.id}
-                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
                       {if m.enabled, do: "Disable", else: "Enable"}
                     </button>
@@ -1760,7 +1760,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       phx-click="conn_delete"
                       phx-value-id={m.id}
                       data-confirm={"Delete monitor #{m.name}?"}
-                      class="ml-1 rounded border border-red-900 px-2 py-0.5 text-red-400 hover:bg-red-950"
+                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
                     >
                       Delete
                     </button>
@@ -1770,7 +1770,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </tbody>
           </table>
 
-          <p :if={@conn_monitors == []} class="text-sm text-slate-500">
+          <p :if={@conn_monitors == []} class="text-sm text-base-content/60">
             No monitors configured — the agent pings each (source, destination)
             pair every push cycle.
           </p>
@@ -1781,39 +1781,39 @@ defmodule OrbitWeb.InstanceDetailLive do
             class="mt-3 flex flex-wrap items-end gap-2 text-xs"
           >
             <div>
-              <label class="mb-0.5 block text-slate-500">Name *</label>
+              <label class="mb-0.5 block text-base-content/60">Name *</label>
               <input
                 name="monitor[name]"
                 required
-                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               />
             </div>
             <div>
-              <label class="mb-0.5 block text-slate-500">Source (blank = default)</label>
+              <label class="mb-0.5 block text-base-content/60">Source (blank = default)</label>
               <input
                 name="monitor[source]"
-                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               />
             </div>
             <div>
-              <label class="mb-0.5 block text-slate-500">Destination *</label>
+              <label class="mb-0.5 block text-base-content/60">Destination *</label>
               <input
                 name="monitor[destination]"
                 required
-                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               />
             </div>
             <div>
-              <label class="mb-0.5 block text-slate-500">Pings</label>
+              <label class="mb-0.5 block text-base-content/60">Pings</label>
               <input
                 name="monitor[ping_count]"
                 value="3"
-                class="w-14 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="w-14 rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               />
             </div>
             <button
               type="submit"
-              class="rounded bg-emerald-700 px-3 py-1 text-white hover:bg-emerald-600"
+              class="rounded bg-primary px-3 py-1 text-white hover:bg-primary/80"
             >
               Add monitor
             </button>
@@ -1826,16 +1826,16 @@ defmodule OrbitWeb.InstanceDetailLive do
              reload path (never `service strongswan restart`). --%>
         <div
           :if={@tab == "security" and @ipsec != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <div class="mb-3 flex items-center justify-between">
-            <h2 class="text-sm font-medium text-slate-400">
+            <h2 class="text-sm font-medium text-base-content/70">
               IPsec tunnels
               <span
                 :if={@ipsec_running != nil}
                 class={[
                   "ml-2 text-xs",
-                  if(@ipsec_running, do: "text-emerald-400", else: "text-red-400")
+                  if(@ipsec_running, do: "text-primary", else: "text-error")
                 ]}
               >
                 Service {if @ipsec_running, do: "running", else: "stopped"}
@@ -1845,7 +1845,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <button
                 phx-click="ipsec_recheck"
                 title="Re-check tunnel status now (no 5s wait)"
-                class="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+                class="rounded-md px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Recheck
               </button>
@@ -1853,7 +1853,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 :if={@writable}
                 phx-click="ipsec_restart"
                 data-confirm={"Restart the IPsec service on #{@instance.name}? ALL tunnels drop and re-establish."}
-                class="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+                class="rounded-md px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Restart Service
               </button>
@@ -1862,7 +1862,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={Instance.agent_mode?(@instance) and not @connected}
-            class="mb-3 rounded-lg border border-amber-800/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300"
+            class="mb-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
           >
             Agent silent — tunnel status below is the last push, not live.
           </div>
@@ -1872,8 +1872,8 @@ defmodule OrbitWeb.InstanceDetailLive do
             class={[
               "mb-3 rounded px-3 py-2 text-xs",
               case @ipsec_msg do
-                {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
-                _ -> "bg-red-900/40 text-red-300"
+                {:ok, _} -> "bg-primary/15 text-primary"
+                _ -> "bg-error/15 text-error"
               end
             ]}
           >
@@ -1881,8 +1881,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
 
           <table class="w-full text-left text-sm">
-            <thead class="text-xs text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-xs text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-1 pr-3 font-medium">Tunnel</th>
                 <th class="py-1 pr-3 font-medium">Remote</th>
                 <th class="py-1 pr-3 font-medium">Status</th>
@@ -1895,31 +1895,31 @@ defmodule OrbitWeb.InstanceDetailLive do
             <tbody>
               <%= for t <- @ipsec do %>
                 <% id = to_string(t["id"] || t["description"] || "tunnel") %>
-                <tr class="border-b border-slate-800/50 last:border-0">
+                <tr class="border-b border-base-300/50 last:border-0">
                   <td class="py-1.5 pr-3">
                     <button
                       :if={(t["children"] || []) != []}
                       phx-click="ipsec_toggle"
                       phx-value-id={id}
-                      class="mr-1 text-slate-500 hover:text-slate-300"
+                      class="mr-1 text-base-content/60 hover:text-base-content/80"
                     >
                       {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
                     </button>
-                    <span class="text-slate-300">{t["description"] || id}</span>
+                    <span class="text-base-content/80">{t["description"] || id}</span>
                     <.comment_badge comments={@comments} kind="ipsec" entity_key={id} />
                   </td>
-                  <td class="py-1.5 pr-3 text-slate-400">{t["remote"] || "—"}</td>
+                  <td class="py-1.5 pr-3 text-base-content/70">{t["remote"] || "—"}</td>
                   <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
-                  <td class="py-1.5 pr-3 text-slate-400">
+                  <td class="py-1.5 pr-3 text-base-content/70">
                     <span :if={num0(t["phase2_total"]) > 0}>
                       {num0(t["phase2_up"])}/{num0(t["phase2_total"])} up
                     </span>
                     <span :if={num0(t["phase2_total"]) == 0}>—</span>
                   </td>
-                  <td class="py-1.5 pr-3 text-slate-400">
+                  <td class="py-1.5 pr-3 text-base-content/70">
                     {fmt_duration(t["seconds_established"])}
                   </td>
-                  <td class="py-1.5 pr-3 text-slate-400">
+                  <td class="py-1.5 pr-3 text-base-content/70">
                     {fmt_bytes(t["bytes_in"])} / {fmt_bytes(t["bytes_out"])}
                   </td>
                   <td
@@ -1930,7 +1930,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       phx-click="ipsec_diagnose"
                       phx-value-id={id}
                       disabled={@diagnosis_busy != nil or not @connected}
-                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
                     </button>
@@ -1939,7 +1939,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       phx-value-id={id}
                       phx-value-uid={t["unique_id"] || ""}
                       disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
                     </button>
@@ -1949,7 +1949,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       phx-value-id={id}
                       phx-value-uid={t["unique_id"] || ""}
                       disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Disconnect
                     </button>
@@ -1959,7 +1959,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       phx-value-id={id}
                       phx-value-uid={t["unique_id"] || ""}
                       disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Connect
                     </button>
@@ -1968,14 +1968,14 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <tr
                   :for={ch <- t["children"] || []}
                   :if={MapSet.member?(@ipsec_expanded, id)}
-                  class="border-b border-slate-800/30 bg-slate-950/40 text-xs last:border-0"
+                  class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
                 >
-                  <td class="py-1 pl-6 pr-3 text-slate-500">{ch["name"] || "child"}</td>
-                  <td class="py-1 pr-3 text-slate-500" colspan="2">
+                  <td class="py-1 pl-6 pr-3 text-base-content/60">{ch["name"] || "child"}</td>
+                  <td class="py-1 pr-3 text-base-content/60" colspan="2">
                     {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
                   </td>
                   <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
-                  <td class="py-1 pr-3 text-slate-500" colspan="3">
+                  <td class="py-1 pr-3 text-base-content/60" colspan="3">
                     <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
                     <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
@@ -1983,19 +1983,19 @@ defmodule OrbitWeb.InstanceDetailLive do
                     <span
                       :if={ch["phase2_dup_persistent"] == true}
                       title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
-                      class="mr-2 text-amber-400"
+                      class="mr-2 text-warning"
                     >
                       ⚠ {ch["dup_count"] || 2}× SAs
                     </span>
                     <span :if={mon && @writable}>
-                      <span class="text-slate-600">
+                      <span class="text-base-content/40">
                         monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
                       </span>
                       <button
                         phx-click="p2mon_delete"
                         phx-value-id={mon.id}
                         data-confirm="Remove this Phase-2 ping monitor?"
-                        class="ml-1 text-red-400/70 hover:text-red-300"
+                        class="ml-1 text-error/70 hover:text-error"
                       >
                         remove
                       </button>
@@ -2013,16 +2013,16 @@ defmodule OrbitWeb.InstanceDetailLive do
                         name="mon[source]"
                         value={ch["suggested_source"] || ""}
                         placeholder="source"
-                        class="w-28 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                        class="w-28 rounded border border-base-content/20 bg-base-300 px-1 py-0.5 text-[10px] text-base-content/80"
                       />
                       <input
                         name="mon[destination]"
                         placeholder="ping destination"
-                        class="w-28 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300"
+                        class="w-28 rounded border border-base-content/20 bg-base-300 px-1 py-0.5 text-[10px] text-base-content/80"
                       />
                       <button
                         type="submit"
-                        class="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 hover:bg-slate-800"
+                        class="rounded border border-base-content/20 px-1.5 py-0.5 text-[10px] text-base-content/70 hover:bg-base-300"
                       >
                         add monitor
                       </button>
@@ -2033,40 +2033,40 @@ defmodule OrbitWeb.InstanceDetailLive do
             </tbody>
           </table>
 
-          <div :if={@diagnosis} class="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+          <div :if={@diagnosis} class="mt-3 rounded-lg border border-base-content/20 bg-base-100 p-3">
             <div class="mb-2 flex items-center justify-between">
-              <h3 class="text-xs font-medium text-slate-300">
+              <h3 class="text-xs font-medium text-base-content/80">
                 Diagnosis — {@diagnosis.tunnel_id}
               </h3>
               <button
                 phx-click="ipsec_diagnose_close"
-                class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Close
               </button>
             </div>
-            <div :if={@diagnosis[:error]} class="text-xs text-red-400">{@diagnosis.error}</div>
+            <div :if={@diagnosis[:error]} class="text-xs text-error">{@diagnosis.error}</div>
             <details
               :for={s <- @diagnosis.sections}
               class="mb-1 text-xs"
               open={hd(@diagnosis.sections) == s}
             >
-              <summary class="cursor-pointer text-slate-400 hover:text-slate-200">
+              <summary class="cursor-pointer text-base-content/70 hover:text-base-content">
                 {s["title"] || "section"}
               </summary>
-              <pre class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-slate-900 p-2 font-mono text-slate-300">{s["content"]}</pre>
+              <pre class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-base-200 p-2 font-mono text-base-content/80">{s["content"]}</pre>
             </details>
           </div>
         </div>
 
         <div
           :if={@tab == "network" and @gateways != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Gateways</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Gateways</h2>
           <table class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-1 pr-4 font-medium">Name</th>
                 <th class="py-1 pr-4 font-medium">Address</th>
                 <th class="py-1 pr-4 font-medium">Status</th>
@@ -2075,14 +2075,16 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={g <- @gateways} class="border-b border-slate-800/50 last:border-0">
-                <td class="py-1.5 pr-4 text-slate-300">{g["name"]}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-slate-400">{g["address"] || "—"}</td>
+              <tr :for={g <- @gateways} class="border-b border-base-300/50 last:border-0">
+                <td class="py-1.5 pr-4 text-base-content/80">{g["name"]}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                  {g["address"] || "—"}
+                </td>
                 <td class="py-1.5 pr-4">
                   <span class={gw_color(g["status"])}>{g["status"] || "?"}</span>
                 </td>
-                <td class="py-1.5 pr-4 text-slate-400">{g["delay"] || "—"}</td>
-                <td class="py-1.5 text-slate-400">{g["loss"] || "—"}</td>
+                <td class="py-1.5 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
+                <td class="py-1.5 text-base-content/70">{g["loss"] || "—"}</td>
               </tr>
             </tbody>
           </table>
@@ -2090,12 +2092,12 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "network" and @interfaces != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Interfaces</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Interfaces</h2>
           <table class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-1 pr-4 font-medium">Name</th>
                 <th class="py-1 pr-4 font-medium">Address</th>
                 <th class="py-1 pr-4 font-medium">Status</th>
@@ -2105,19 +2107,23 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={i <- @interfaces} class="border-b border-slate-800/50 last:border-0">
-                <td class="py-1.5 pr-4 text-slate-300">{i["name"]}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-slate-400">{i["address"] || "—"}</td>
+              <tr :for={i <- @interfaces} class="border-b border-base-300/50 last:border-0">
+                <td class="py-1.5 pr-4 text-base-content/80">{i["name"]}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                  {i["address"] || "—"}
+                </td>
                 <td class="py-1.5 pr-4">
                   <span class={
-                    if(i["status"] == "up", do: "text-emerald-400", else: "text-slate-500")
+                    if(i["status"] == "up", do: "text-primary", else: "text-base-content/60")
                   }>
                     {i["status"] || "?"}
                   </span>
                 </td>
-                <td class="py-1.5 pr-4 text-slate-400">{rate(i["rx_rate"])}</td>
-                <td class="py-1.5 pr-4 text-slate-400">{rate(i["tx_rate"])}</td>
-                <td class="py-1.5 text-slate-400">{i["in_errors"] || 0}/{i["out_errors"] || 0}</td>
+                <td class="py-1.5 pr-4 text-base-content/70">{rate(i["rx_rate"])}</td>
+                <td class="py-1.5 pr-4 text-base-content/70">{rate(i["tx_rate"])}</td>
+                <td class="py-1.5 text-base-content/70">
+                  {i["in_errors"] || 0}/{i["out_errors"] || 0}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -2126,13 +2132,13 @@ defmodule OrbitWeb.InstanceDetailLive do
         <div :if={@tab in ["overview", "network"]} class="mt-6 grid gap-6 md:grid-cols-2">
           <div
             :if={@tab == "overview" and @services != []}
-            class="rounded-lg border border-slate-800 bg-slate-900 p-4"
+            class="rounded-lg border border-base-300 bg-base-200 p-4"
           >
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Services</h2>
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Services</h2>
             <ul class="space-y-1 text-sm">
-              <li :for={s <- @services} class="flex justify-between text-slate-300">
-                <span class="text-slate-400">{s["description"] || s["name"]}</span>
-                <span class={if(s["running"], do: "text-emerald-400", else: "text-red-400")}>
+              <li :for={s <- @services} class="flex justify-between text-base-content/80">
+                <span class="text-base-content/70">{s["description"] || s["name"]}</span>
+                <span class={if(s["running"], do: "text-primary", else: "text-error")}>
                   {if s["running"], do: "running", else: "stopped"}
                 </span>
               </li>
@@ -2141,9 +2147,9 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={@tab == "network" and @external_ip != %{}}
-            class="rounded-lg border border-slate-800 bg-slate-900 p-4"
+            class="rounded-lg border border-base-300 bg-base-200 p-4"
           >
-            <h2 class="mb-3 text-sm font-medium text-slate-400">External IP</h2>
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">External IP</h2>
             <dl class="space-y-1 text-sm">
               <.kv label="IPv4" value={@external_ip["ipv4"] || "—"} />
               <.kv label="IPv6" value={@external_ip["ipv6"] || "—"} />
@@ -2158,11 +2164,11 @@ defmodule OrbitWeb.InstanceDetailLive do
               (direct/Securepoint instances never have pf_top). --%>
         <div
           :if={@tab == "network" and (@pf_top["total_states"] || 0) > 0}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Top Talkers
-            <span class="font-normal text-slate-500">· {@pf_top["total_states"]} states</span>
+            <span class="font-normal text-base-content/60">· {@pf_top["total_states"]} states</span>
           </h2>
 
           <div class="grid gap-4 lg:grid-cols-2">
@@ -2173,14 +2179,14 @@ defmodule OrbitWeb.InstanceDetailLive do
           <div class="mt-3 flex flex-wrap gap-2 text-xs">
             <span
               :for={i <- @pf_top["interfaces"] || []}
-              class="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-slate-400"
+              class="rounded-full border border-base-300 bg-base-100 px-2.5 py-1 text-base-content/70"
               title={bytes(i["bytes"])}
             >
               {i["name"]}: {i["states"]} states
             </span>
             <span
               :for={p <- @pf_top["protocols"] || []}
-              class="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-slate-500"
+              class="rounded-full border border-base-300 bg-base-100 px-2.5 py-1 text-base-content/60"
               title={bytes(p["bytes"])}
             >
               {p["proto"]}: {p["states"]}
@@ -2189,10 +2195,10 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={(@pf_top["top_flows"] || []) != []}
-            class="mt-4 overflow-x-auto rounded-lg border border-slate-800"
+            class="mt-4 overflow-x-auto rounded-lg border border-base-300"
           >
             <table class="w-full text-sm">
-              <thead class="bg-slate-950 text-left text-xs text-slate-500">
+              <thead class="bg-base-100 text-left text-xs text-base-content/60">
                 <tr>
                   <th class="px-3 py-2">Source</th>
                   <th class="px-3 py-2">Destination</th>
@@ -2204,11 +2210,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={f <- @pf_top["top_flows"] || []} class="border-t border-slate-800">
+                <tr :for={f <- @pf_top["top_flows"] || []} class="border-t border-base-300">
                   <td class="px-3 py-2 font-mono text-xs">{hostport(f["src"], f["sport"])}</td>
                   <td class="px-3 py-2 font-mono text-xs">{hostport(f["dst"], f["dport"])}</td>
-                  <td class="px-3 py-2 text-slate-400">{f["proto"]}</td>
-                  <td class="px-3 py-2 text-slate-400">{f["iface"]}</td>
+                  <td class="px-3 py-2 text-base-content/70">{f["proto"]}</td>
+                  <td class="px-3 py-2 text-base-content/70">{f["iface"]}</td>
                   <td class="px-3 py-2 text-right font-mono text-xs">{bytes(f["bytes"])}</td>
                   <td class="px-3 py-2 text-right font-mono text-xs">{f["pkts"]}</td>
                   <td class="px-3 py-2 text-right font-mono text-xs">{dur(f["age_s"])}</td>
@@ -2224,12 +2230,12 @@ defmodule OrbitWeb.InstanceDetailLive do
               not_after at render so the countdown never freezes on stale pushes. --%>
         <div
           :if={@tab == "overview" and @certificates != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Certificates</h2>
-          <div class="overflow-x-auto rounded-lg border border-slate-800">
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Certificates</h2>
+          <div class="overflow-x-auto rounded-lg border border-base-300">
             <table class="w-full text-sm">
-              <thead class="bg-slate-950 text-left text-xs text-slate-500">
+              <thead class="bg-base-100 text-left text-xs text-base-content/60">
                 <tr>
                   <th class="px-3 py-2">Name</th>
                   <th class="px-3 py-2">Type</th>
@@ -2238,13 +2244,13 @@ defmodule OrbitWeb.InstanceDetailLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={c <- cert_sorted(@certificates)} class="border-t border-slate-800">
+                <tr :for={c <- cert_sorted(@certificates)} class="border-t border-base-300">
                   <td class="px-3 py-2 font-medium">
                     <span class="inline-flex items-center gap-1.5">
                       {c["name"]}
                       <span
                         :if={c["is_gui"]}
-                        class="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] text-sky-300"
+                        class="rounded bg-info/20 px-1.5 py-0.5 text-[10px] text-info"
                       >
                         GUI
                       </span>
@@ -2255,10 +2261,10 @@ defmodule OrbitWeb.InstanceDetailLive do
                       />
                     </span>
                   </td>
-                  <td class="px-3 py-2 text-slate-400">
+                  <td class="px-3 py-2 text-base-content/70">
                     {String.upcase(to_string(c["type"] || ""))}
                   </td>
-                  <td class="px-3 py-2 font-mono text-xs text-slate-400">
+                  <td class="px-3 py-2 font-mono text-xs text-base-content/70">
                     {cert_date(c["not_after"])}
                   </td>
                   <td class={["px-3 py-2", expiry_class(cert_days(c))]}>
@@ -2272,16 +2278,16 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "checks" and @check_history != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Check history</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Check history</h2>
           <table class="w-full text-left text-sm">
             <tbody>
               <tr
                 :for={[ts, key, old, new, summary] <- @check_history}
-                class="border-b border-slate-800/50 last:border-0"
+                class="border-b border-base-300/50 last:border-0"
               >
-                <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-slate-500">
+                <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-base-content/60">
                   {cb_ts(ts)}
                 </td>
                 <td class="py-1.5 pr-3 align-top">
@@ -2289,8 +2295,8 @@ defmodule OrbitWeb.InstanceDetailLive do
                     {state_label(old)} → {state_label(new)}
                   </span>
                 </td>
-                <td class="whitespace-nowrap py-1.5 pr-3 text-slate-400">{key}</td>
-                <td class="py-1.5 text-slate-300">{summary}</td>
+                <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
+                <td class="py-1.5 text-base-content/80">{summary}</td>
               </tr>
             </tbody>
           </table>
@@ -2298,21 +2304,21 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "log" and @firewall_log != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Firewall log (latest)</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Firewall log (latest)</h2>
           <table class="w-full text-left text-sm">
             <tbody>
-              <tr :for={l <- @firewall_log} class="border-b border-slate-800/50 last:border-0">
-                <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-slate-500">
+              <tr :for={l <- @firewall_log} class="border-b border-base-300/50 last:border-0">
+                <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-base-content/60">
                   {l["__timestamp__"]}
                 </td>
                 <td class="py-1 pr-3">
                   <span class={fw_action_color(l["action"])}>{l["action"]}</span>
                 </td>
-                <td class="py-1 pr-3 text-slate-400">{l["interface"]}</td>
-                <td class="py-1 pr-3 text-slate-400">{l["protoname"] || l["proto"]}</td>
-                <td class="py-1 font-mono text-xs text-slate-300">
+                <td class="py-1 pr-3 text-base-content/70">{l["interface"]}</td>
+                <td class="py-1 pr-3 text-base-content/70">{l["protoname"] || l["proto"]}</td>
+                <td class="py-1 font-mono text-xs text-base-content/80">
                   {l["src"] || l["srcip"]} → {l["dst"] || l["dstip"]}
                 </td>
               </tr>
@@ -2322,19 +2328,19 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "log" and (@logfiles != [] or @log_events != [])}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Logs</h2>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Logs</h2>
           <div
             :if={@logfiles != []}
-            class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"
+            class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/60"
           >
             <a
               :for={lf <- @logfiles}
               :if={@admin}
               href={~p"/api/instances/#{@instance.id}/logfiles/#{lf.id}/raw"}
               target="_blank"
-              class="text-slate-400 underline decoration-slate-700 hover:text-emerald-300"
+              class="text-base-content/70 underline decoration-slate-700 hover:text-primary"
             >
               {lf.name} · {lf.bytes} chars
             </a>
@@ -2344,78 +2350,80 @@ defmodule OrbitWeb.InstanceDetailLive do
             <tbody>
               <tr
                 :for={e <- Enum.take(@log_events, 15)}
-                class="border-b border-slate-800/50 last:border-0"
+                class="border-b border-base-300/50 last:border-0"
               >
                 <td class="w-14 py-1.5 pr-3 align-top">
                   <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(e.severity)]}>
                     {sev_label(e.severity)}
                   </span>
                 </td>
-                <td class="whitespace-nowrap py-1.5 pr-3 align-top text-slate-400">{e.program}</td>
-                <td class="py-1.5 align-top text-slate-300">{e.pattern}</td>
-                <td class="w-10 py-1.5 pl-3 text-right align-top text-slate-400">{e.count}</td>
+                <td class="whitespace-nowrap py-1.5 pr-3 align-top text-base-content/70">
+                  {e.program}
+                </td>
+                <td class="py-1.5 align-top text-base-content/80">{e.pattern}</td>
+                <td class="w-10 py-1.5 pl-3 text-right align-top text-base-content/70">{e.count}</td>
               </tr>
             </tbody>
           </table>
-          <div :if={@log_events == [] and @logfiles != []} class="text-xs text-slate-500">
+          <div :if={@log_events == [] and @logfiles != []} class="text-xs text-base-content/60">
             No critical events in the latest snapshots.
           </div>
 
           <form
             :if={@admin and @logfiles != []}
             phx-submit="ai_analyze"
-            class="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3"
+            class="mt-3 flex items-center gap-2 border-t border-base-300 pt-3"
           >
             <select
               name="provider"
-              class="rounded border border-slate-700 bg-slate-950 p-1 text-xs text-slate-300"
+              class="rounded border border-base-content/20 bg-base-100 p-1 text-xs text-base-content/80"
             >
               <option :for={p <- Orbit.LLM.Analyze.providers()} value={p.id}>{p.label}</option>
             </select>
             <button
               type="submit"
               disabled={@ai_busy}
-              class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @ai_busy, do: "Analyzing…", else: "Analyze with AI"}
             </button>
-            <span class="text-xs text-slate-600">anonymized before it leaves the box</span>
+            <span class="text-xs text-base-content/40">anonymized before it leaves the box</span>
           </form>
 
-          <div :if={@ai_error} class="mt-2 text-xs text-red-400">{@ai_error}</div>
+          <div :if={@ai_error} class="mt-2 text-xs text-error">{@ai_error}</div>
 
-          <div :if={@ai_result} class="mt-3 rounded border border-slate-800 bg-slate-950 p-3">
-            <div class="mb-2 text-xs text-slate-500">
+          <div :if={@ai_result} class="mt-3 rounded border border-base-300 bg-base-100 p-3">
+            <div class="mb-2 text-xs text-base-content/60">
               {@ai_result.provider} · {@ai_result.model}
             </div>
-            <pre class="whitespace-pre-wrap text-xs text-slate-300">{@ai_result.findings}</pre>
+            <pre class="whitespace-pre-wrap text-xs text-base-content/80">{@ai_result.findings}</pre>
           </div>
         </div>
 
         <div
           :if={@tab == "config" and @config_backups != []}
-          class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-400">
-            Config backups <span class="text-slate-500">({length(@config_backups)})</span>
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">
+            Config backups <span class="text-base-content/60">({length(@config_backups)})</span>
           </h2>
           <table class="w-full text-left text-sm">
             <tbody>
               <tr
                 :for={cb <- @config_backups}
-                class="border-b border-slate-800/50 last:border-0"
+                class="border-b border-base-300/50 last:border-0"
               >
-                <td class="py-1.5 pr-4 text-slate-300">{cb_ts(cb.collected_at)}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-slate-500">
+                <td class="py-1.5 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/60">
                   {String.slice(cb.sha256, 0, 12)}
                 </td>
-                <td class="py-1.5 pr-4 text-slate-400">{cb.bytes} bytes · {cb.source}</td>
+                <td class="py-1.5 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
                 <td class="py-1.5 text-right">
                   <a
                     :if={@admin}
                     href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/diff"}
                     target="_blank"
-                    class="mr-3 text-xs text-slate-400 hover:text-emerald-300"
+                    class="mr-3 text-xs text-base-content/70 hover:text-primary"
                   >
                     diff
                   </a>
@@ -2423,7 +2431,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     :if={@admin}
                     href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/raw"}
                     target="_blank"
-                    class="text-xs text-emerald-400 hover:text-emerald-300"
+                    class="text-xs text-primary hover:text-primary"
                   >
                     download
                   </a>
@@ -2441,10 +2449,10 @@ defmodule OrbitWeb.InstanceDetailLive do
             class="mt-3 flex flex-wrap items-end gap-2 text-xs"
           >
             <label class="block">
-              <span class="mb-0.5 block text-slate-500">From</span>
+              <span class="mb-0.5 block text-base-content/60">From</span>
               <select
                 name="from"
-                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               >
                 <option
                   :for={cb <- @config_backups}
@@ -2456,10 +2464,10 @@ defmodule OrbitWeb.InstanceDetailLive do
               </select>
             </label>
             <label class="block">
-              <span class="mb-0.5 block text-slate-500">To</span>
+              <span class="mb-0.5 block text-base-content/60">To</span>
               <select
                 name="to"
-                class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
               >
                 <option
                   :for={cb <- @config_backups}
@@ -2472,7 +2480,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </label>
             <button
               type="submit"
-              class="rounded border border-slate-700 px-3 py-1 text-slate-300 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-base-content/80 hover:bg-base-300"
             >
               Show diff
             </button>
@@ -2480,43 +2488,43 @@ defmodule OrbitWeb.InstanceDetailLive do
               :if={@cb_diff != nil}
               type="button"
               phx-click="cb_diff_clear"
-              class="rounded border border-slate-700 px-3 py-1 text-slate-400 hover:bg-slate-800"
+              class="rounded border border-base-content/20 px-3 py-1 text-base-content/70 hover:bg-base-300"
             >
               Hide
             </button>
           </form>
 
-          <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-slate-500">
+          <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-base-content/60">
             No differences between the selected versions.
           </div>
           <div
             :if={is_tuple(@cb_diff) and elem(@cb_diff, 0) == :lines}
-            class="mt-2 max-h-96 overflow-y-auto rounded bg-slate-950 p-2 font-mono text-xs"
+            class="mt-2 max-h-96 overflow-y-auto rounded bg-base-100 p-2 font-mono text-xs"
           >
             <div
               :for={line <- elem(@cb_diff, 1)}
               class={[
                 "whitespace-pre-wrap",
-                String.starts_with?(line, "+") && "text-emerald-400",
-                String.starts_with?(line, "-") && "text-red-400"
+                String.starts_with?(line, "+") && "text-primary",
+                String.starts_with?(line, "-") && "text-error"
               ]}
             >
               {line}
             </div>
-            <div :if={elem(@cb_diff, 2)} class="mt-1 text-amber-400">
+            <div :if={elem(@cb_diff, 2)} class="mt-1 text-warning">
               (diff truncated)
             </div>
           </div>
         </div>
 
-        <div :if={@tab == "overview"} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
-          <h2 class="mb-3 text-sm font-medium text-slate-400">Notes</h2>
+        <div :if={@tab == "overview"} class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4">
+          <h2 class="mb-3 text-sm font-medium text-base-content/70">Notes</h2>
 
           <form :if={@writable} phx-submit="comment_save" class="mb-4 space-y-2">
             <div class="flex gap-2">
               <select
                 name="kind"
-                class="rounded border border-slate-700 bg-slate-950 p-1 text-sm text-slate-200"
+                class="rounded border border-base-content/20 bg-base-100 p-1 text-sm text-base-content"
               >
                 <option value="firmware">firmware</option>
                 <option value="ipsec">ipsec</option>
@@ -2527,33 +2535,35 @@ defmodule OrbitWeb.InstanceDetailLive do
                 name="entity_key"
                 value=""
                 placeholder="entity key — tunnel id / monitor id / cert refid (blank for firmware)"
-                class="flex-1 rounded border border-slate-700 bg-slate-950 p-1 text-sm text-slate-200"
+                class="flex-1 rounded border border-base-content/20 bg-base-100 p-1 text-sm text-base-content"
               />
             </div>
             <textarea
               name="comment"
               rows="2"
-              class="w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200"
+              class="w-full rounded border border-base-content/20 bg-base-100 p-2 text-sm text-base-content"
               placeholder="operator note…"
             ></textarea>
             <button
               type="submit"
-              class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
             >
               Add note
             </button>
           </form>
 
-          <div :if={@comments == []} class="text-sm text-slate-500">No notes on this instance.</div>
+          <div :if={@comments == []} class="text-sm text-base-content/60">
+            No notes on this instance.
+          </div>
 
           <ul :if={@comments != []} class="space-y-2 text-sm">
             <li
               :for={c <- @comments}
-              class="flex items-start justify-between gap-3 border-b border-slate-800/50 pb-2"
+              class="flex items-start justify-between gap-3 border-b border-base-300/50 pb-2"
             >
               <div>
-                <div class="text-slate-300">{c.comment}</div>
-                <div class="mt-0.5 text-xs text-slate-500">
+                <div class="text-base-content/80">{c.comment}</div>
+                <div class="mt-0.5 text-xs text-base-content/60">
                   {c.kind}<span :if={c.entity_key != ""}>:{c.entity_key}</span> · {c.updated_by}
                 </div>
               </div>
@@ -2562,7 +2572,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 phx-click="comment_clear"
                 phx-value-kind={c.kind}
                 phx-value-entity_key={c.entity_key}
-                class="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                class="shrink-0 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Clear
               </button>
@@ -2580,8 +2590,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp kv(assigns) do
     ~H"""
     <div class="flex justify-between">
-      <dt class="text-slate-500">{@label}</dt>
-      <dd class="text-slate-200">{@value}</dd>
+      <dt class="text-base-content/60">{@label}</dt>
+      <dd class="text-base-content">{@value}</dd>
     </div>
     """
   end
@@ -2592,9 +2602,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   # One Top-Talkers table (source or destination) — ip / states / bytes.
   defp talker_table(assigns) do
     ~H"""
-    <div class="overflow-x-auto rounded-lg border border-slate-800">
+    <div class="overflow-x-auto rounded-lg border border-base-300">
       <table class="w-full text-sm">
-        <thead class="bg-slate-950 text-left text-xs text-slate-500">
+        <thead class="bg-base-100 text-left text-xs text-base-content/60">
           <tr>
             <th class="px-3 py-2">{@title}</th>
             <th class="px-3 py-2 text-right">States</th>
@@ -2602,7 +2612,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </tr>
         </thead>
         <tbody>
-          <tr :for={t <- @rows} class="border-t border-slate-800">
+          <tr :for={t <- @rows} class="border-t border-base-300">
             <td class="px-3 py-2 font-mono text-xs">{t["ip"]}</td>
             <td class="px-3 py-2 text-right">{t["states"]}</td>
             <td class="px-3 py-2 text-right font-mono text-xs">{bytes(t["bytes"])}</td>
@@ -2638,9 +2648,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp expiry_label(0), do: "expires today"
   defp expiry_label(d), do: "#{d}d left"
 
-  defp expiry_class(d) when d < 7, do: "text-red-400"
-  defp expiry_class(d) when d < 30, do: "text-amber-400"
-  defp expiry_class(_), do: "text-emerald-400"
+  defp expiry_class(d) when d < 7, do: "text-error"
+  defp expiry_class(d) when d < 30, do: "text-warning"
+  defp expiry_class(_), do: "text-primary"
 
   # "ip:port" (bracketed for IPv6) — mirrors TopTalkersSection.host().
   defp hostport(ip, port) do
@@ -2662,8 +2672,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp dur(s) when is_number(s), do: "#{trunc(s)}s"
   defp dur(_), do: "—"
 
-  defp conn_badge(true), do: "bg-emerald-900/50 text-emerald-300"
-  defp conn_badge(false), do: "bg-slate-800 text-slate-500"
+  defp conn_badge(true), do: "bg-primary/20 text-primary"
+  defp conn_badge(false), do: "bg-base-300 text-base-content/60"
 
   defp truthy_str(value), do: value not in [nil, ""]
 
@@ -2682,15 +2692,15 @@ defmodule OrbitWeb.InstanceDetailLive do
   @gw_up ~w(online up none)
   defp gw_color(status) do
     case status |> to_string() |> String.downcase() do
-      s when s in @gw_up -> "text-emerald-400"
-      "" -> "text-slate-500"
-      _ -> "text-red-400"
+      s when s in @gw_up -> "text-primary"
+      "" -> "text-base-content/60"
+      _ -> "text-error"
     end
   end
 
-  defp fw_action_color("pass"), do: "text-emerald-400"
-  defp fw_action_color("block"), do: "text-red-400"
-  defp fw_action_color(_), do: "text-amber-400"
+  defp fw_action_color("pass"), do: "text-primary"
+  defp fw_action_color("block"), do: "text-error"
+  defp fw_action_color(_), do: "text-warning"
 
   defp pct(nil), do: "—"
   defp pct(v) when is_number(v), do: "#{Float.round(v / 1, 1)}%"
@@ -2712,9 +2722,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   @tunnel_up ~w(up established installed connected 1 true yes)
   defp tunnel_color(status) do
     case status |> to_string() |> String.downcase() do
-      s when s in @tunnel_up -> "text-emerald-400"
-      s when s in ["", "?"] -> "text-amber-400"
-      _ -> "text-red-400"
+      s when s in @tunnel_up -> "text-primary"
+      s when s in ["", "?"] -> "text-warning"
+      _ -> "text-error"
     end
   end
 
@@ -2740,7 +2750,7 @@ defmodule OrbitWeb.InstanceDetailLive do
     <span
       :if={@note}
       title={"#{@note.comment} — #{@note.updated_by}"}
-      class="ml-1 cursor-help text-amber-400/80"
+      class="ml-1 cursor-help text-warning/80"
     >
       📝
     </span>
@@ -2751,10 +2761,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     Enum.find(monitors, &(&1.child_name == to_string(child_name || "")))
   end
 
-  defp ping_state_color("ok"), do: "text-emerald-400"
-  defp ping_state_color("fail"), do: "text-red-400"
-  defp ping_state_color(nil), do: "text-slate-500"
-  defp ping_state_color(_), do: "text-amber-400"
+  defp ping_state_color("ok"), do: "text-primary"
+  defp ping_state_color("fail"), do: "text-error"
+  defp ping_state_color(nil), do: "text-base-content/60"
+  defp ping_state_color(_), do: "text-warning"
 
   defp num0(v) when is_number(v), do: trunc(v)
   defp num0(_), do: 0
@@ -2823,10 +2833,10 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp state_label(3), do: "UNKNOWN"
   defp state_label(_), do: "OK"
 
-  defp state_class(2), do: "bg-red-900/60 text-red-300"
-  defp state_class(1), do: "bg-amber-900/50 text-amber-300"
-  defp state_class(3), do: "bg-slate-700 text-slate-300"
-  defp state_class(_), do: "bg-emerald-900/50 text-emerald-300"
+  defp state_class(2), do: "bg-error/20 text-error"
+  defp state_class(1), do: "bg-warning/20 text-warning"
+  defp state_class(3), do: "bg-neutral text-base-content/80"
+  defp state_class(_), do: "bg-primary/20 text-primary"
 
   defp cb_ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
 
@@ -2835,7 +2845,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp sev_label(3), do: "ERR"
   defp sev_label(_), do: "WARN"
 
-  defp sev_class(s) when s <= 2, do: "bg-red-900/60 text-red-300"
+  defp sev_class(s) when s <= 2, do: "bg-error/20 text-error"
   defp sev_class(3), do: "bg-orange-900/50 text-orange-300"
-  defp sev_class(_), do: "bg-amber-900/50 text-amber-300"
+  defp sev_class(_), do: "bg-warning/20 text-warning"
 end

@@ -30,16 +30,16 @@ defmodule OrbitWeb.TerminalLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
+        <h1 class="mb-4 text-lg font-medium text-base-content">
           Terminal — {@instance.name}
-          <span class="ml-2 rounded bg-red-900/60 px-2 py-0.5 text-xs text-red-300">root</span>
+          <span class="ml-2 rounded bg-error/20 px-2 py-0.5 text-xs text-error">root</span>
         </h1>
 
-        <div :if={not @shell_enabled} class="text-sm text-amber-400">
+        <div :if={not @shell_enabled} class="text-sm text-warning">
           The terminal is not enabled for this instance (Edit instance → Terminal).
         </div>
 
@@ -49,11 +49,11 @@ defmodule OrbitWeb.TerminalLive do
             phx-hook="Terminal"
             phx-update="ignore"
             data-instance-id={@instance.id}
-            class="rounded-lg border border-slate-800 bg-black p-3"
+            class="rounded-lg border border-base-300 bg-black p-3"
           >
             <div class="mb-2 flex items-center gap-2 text-xs">
-              <span data-term-status class="text-xs text-amber-400">connecting…</span>
-              <span class="text-slate-600">— click to focus; keystrokes stream live to the box.</span>
+              <span data-term-status class="text-xs text-warning">connecting…</span>
+              <span class="text-base-content/40">— click to focus; keystrokes stream live to the box.</span>
             </div>
             <div data-term-mount class="h-[32rem] w-full"></div>
           </div>

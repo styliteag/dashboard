@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit: packet capture gains snapshot mode — bounded tcpdump via the
   agent, pcap download, and an in-browser packet viewer (proto/src/dst/
   flags, hex preview, client-side filter) next to the live stream.
+- Orbit: every page now renders through the semantic theme tokens, so all
+  three designs and both modes restyle the whole UI (status colors stay
+  semantic: warning=amber-family, error=red-family per theme).
 - Orbit: three switchable designs (Orbit, Bench, Soft), each with light and
   dark mode — same system as the link-shortener: year-long cookies, served
   as data-theme, switcher bottom-right on every page including login.

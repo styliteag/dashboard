@@ -144,12 +144,12 @@ defmodule OrbitWeb.CertificatesLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:certificates} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          Certificates <span class="ml-2 text-sm text-slate-500">({length(@rows)})</span>
+        <h1 class="mb-4 text-lg font-medium text-base-content">
+          Certificates <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
@@ -163,7 +163,7 @@ defmodule OrbitWeb.CertificatesLive do
           <.kpi_tile
             label="Expired / <7d"
             value={@crit}
-            color="text-red-400"
+            color="text-error"
             event="state_filter"
             value_name="crit"
             active={@state_filter == "crit"}
@@ -171,7 +171,7 @@ defmodule OrbitWeb.CertificatesLive do
           <.kpi_tile
             label="Expiring <30d"
             value={@warn}
-            color="text-amber-400"
+            color="text-warning"
             event="state_filter"
             value_name="warn"
             active={@state_filter == "warn"}
@@ -179,7 +179,7 @@ defmodule OrbitWeb.CertificatesLive do
           <.kpi_tile
             label="Healthy"
             value={@ok}
-            color="text-emerald-400"
+            color="text-primary"
             event="state_filter"
             value_name="ok"
             active={@state_filter == "ok"}
@@ -193,20 +193,20 @@ defmodule OrbitWeb.CertificatesLive do
             value={@search}
             placeholder="Search instance, certificate, issuer…"
             phx-debounce="300"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </form>
 
-        <div :if={@rows == []} class="text-sm text-slate-500">
+        <div :if={@rows == []} class="text-sm text-base-content/60">
           No certificates reported in your scope.
         </div>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-slate-500">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
-        <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-slate-800">
+        <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-base-300">
           <table class="w-full text-left text-sm">
-            <thead class="bg-slate-900 text-xs text-slate-500">
+            <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -217,7 +217,7 @@ defmodule OrbitWeb.CertificatesLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @visible_rows} class="border-b border-slate-800/50 last:border-0">
+              <tr :for={r <- @visible_rows} class="border-b border-base-300/50 last:border-0">
                 <td class="px-3 py-2">
                   <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
                     {state_label(r.state)}
@@ -226,35 +226,35 @@ defmodule OrbitWeb.CertificatesLive do
                 <td class="px-3 py-2">
                   <a
                     href={~p"/instances/#{r.instance_id}"}
-                    class="text-slate-200 hover:text-emerald-300"
+                    class="text-base-content hover:text-primary"
                   >
                     {r.instance_name}
                   </a>
                   <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
                   <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
                 </td>
-                <td class="px-3 py-2 text-slate-300">
+                <td class="px-3 py-2 text-base-content/80">
                   {r.name}
                   <span
                     :if={r.is_gui}
-                    class="ml-1 rounded bg-sky-600/20 px-1 py-0.5 text-[10px] text-sky-400"
+                    class="ml-1 rounded bg-info/20 px-1 py-0.5 text-[10px] text-info"
                   >
                     GUI
                   </span>
                   <span
                     :if={r.is_ca}
-                    class="ml-1 rounded bg-slate-700 px-1 py-0.5 text-[10px] text-slate-400"
+                    class="ml-1 rounded bg-neutral px-1 py-0.5 text-[10px] text-base-content/70"
                   >
                     CA
                   </span>
                 </td>
-                <td class="px-3 py-2 text-xs text-slate-500">{r.issuer}</td>
-                <td class="px-3 py-2 text-slate-400" title={r.not_after}>
-                  <span :if={r.days < 0} class="text-red-400">expired {-r.days}d ago</span>
+                <td class="px-3 py-2 text-xs text-base-content/60">{r.issuer}</td>
+                <td class="px-3 py-2 text-base-content/70" title={r.not_after}>
+                  <span :if={r.days < 0} class="text-error">expired {-r.days}d ago</span>
                   <span :if={r.days >= 0}>{r.days}d</span>
                 </td>
                 <td class="px-3 py-2">
-                  <div class="h-1.5 w-24 overflow-hidden rounded bg-slate-800">
+                  <div class="h-1.5 w-24 overflow-hidden rounded bg-base-300">
                     <div
                       class={["h-full", runway_color(r.state)]}
                       style={"width: #{runway_pct(r.days)}%"}
@@ -275,17 +275,17 @@ defmodule OrbitWeb.CertificatesLive do
     days |> max(0) |> min(@runway_days) |> Kernel.*(100) |> div(@runway_days)
   end
 
-  defp runway_color(2), do: "bg-red-500"
-  defp runway_color(1), do: "bg-amber-500"
-  defp runway_color(_), do: "bg-emerald-500"
+  defp runway_color(2), do: "bg-error"
+  defp runway_color(1), do: "bg-warning"
+  defp runway_color(_), do: "bg-primary"
 
   defp state_label(0), do: "OK"
   defp state_label(1), do: "EXPIRING"
   defp state_label(2), do: "CRIT"
   defp state_label(_), do: "UNKNOWN"
 
-  defp state_class(0), do: "bg-emerald-900/50 text-emerald-300"
-  defp state_class(1), do: "bg-amber-900/50 text-amber-300"
-  defp state_class(2), do: "bg-red-900/60 text-red-300"
-  defp state_class(_), do: "bg-slate-700 text-slate-300"
+  defp state_class(0), do: "bg-primary/20 text-primary"
+  defp state_class(1), do: "bg-warning/20 text-warning"
+  defp state_class(2), do: "bg-error/20 text-error"
+  defp state_class(_), do: "bg-neutral text-base-content/80"
 end

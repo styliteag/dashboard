@@ -108,54 +108,60 @@ defmodule OrbitWeb.ApiKeysLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">
-            API keys <span class="ml-2 text-sm text-slate-500">({length(@keys)})</span>
+          <h1 class="text-lg font-medium text-base-content">
+            API keys <span class="ml-2 text-sm text-base-content/60">({length(@keys)})</span>
           </h1>
           <button
             phx-click="toggle_create"
-            class="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
           >
             {if @show_create, do: "Cancel", else: "New key"}
           </button>
         </div>
 
-        <p class="mb-4 max-w-3xl text-xs text-slate-500">
+        <p class="mb-4 max-w-3xl text-xs text-base-content/60">
           Read-only machine keys (Checkmk/Prometheus scrapes). A key without group bindings is
           GLOBAL — minting one is superadmin-only; group admins must bind to their own groups.
         </p>
 
         <div
           :if={@error}
-          class="mb-4 max-w-3xl rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 max-w-3xl rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
 
         <div
           :if={@minted}
-          class="mb-4 max-w-3xl rounded border border-emerald-800 bg-emerald-950/40 p-3 text-sm"
+          class="mb-4 max-w-3xl rounded border border-primary/40 bg-primary/10 p-3 text-sm"
         >
-          <div class="mb-1 text-emerald-300">
+          <div class="mb-1 text-primary">
             Key created — copy it NOW, it is shown only once:
           </div>
-          <code class="break-all font-mono text-xs text-emerald-200">{@minted.token}</code>
-          <button phx-click="hide_secrets" class="ml-3 text-xs text-slate-400 hover:text-slate-200">
+          <code class="break-all font-mono text-xs text-primary">{@minted.token}</code>
+          <button
+            phx-click="hide_secrets"
+            class="ml-3 text-xs text-base-content/70 hover:text-base-content"
+          >
             dismiss
           </button>
         </div>
 
         <div
           :if={@revealed}
-          class="mb-4 max-w-3xl rounded border border-amber-800 bg-amber-950/40 p-3 text-sm"
+          class="mb-4 max-w-3xl rounded border border-warning/40 bg-warning/10 p-3 text-sm"
         >
-          <div class="mb-1 text-amber-300">Revealed key #{elem(@revealed, 0)}:</div>
-          <code class="break-all font-mono text-xs text-amber-200">{elem(@revealed, 1)}</code>
-          <button phx-click="hide_secrets" class="ml-3 text-xs text-slate-400 hover:text-slate-200">
+          <div class="mb-1 text-warning">Revealed key #{elem(@revealed, 0)}:</div>
+          <code class="break-all font-mono text-xs text-warning">{elem(@revealed, 1)}</code>
+          <button
+            phx-click="hide_secrets"
+            class="ml-3 text-xs text-base-content/70 hover:text-base-content"
+          >
             dismiss
           </button>
         </div>
@@ -163,52 +169,52 @@ defmodule OrbitWeb.ApiKeysLive do
         <form
           :if={@show_create}
           phx-submit="create_key"
-          class="mb-6 max-w-3xl rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm"
+          class="mb-6 max-w-3xl rounded-lg border border-base-300 bg-base-200 p-4 text-sm"
         >
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">
-              <span class="mb-1 block text-xs text-slate-500">Name</span>
+              <span class="mb-1 block text-xs text-base-content/60">Name</span>
               <input name="key[name]" required class={input_cls()} />
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs text-slate-500">Purpose (optional)</span>
+              <span class="mb-1 block text-xs text-base-content/60">Purpose (optional)</span>
               <input name="key[purpose]" class={input_cls()} />
             </label>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-4 text-slate-300">
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-base-content/80">
             <label class="flex items-center gap-2">
               <input type="hidden" name="key[revealable]" value="false" />
               <input
                 type="checkbox"
                 name="key[revealable]"
                 value="true"
-                class="accent-emerald-600"
+                class="accent-primary"
               /> revealable (stores an encrypted copy until revoke)
             </label>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-4 text-slate-300">
-            <span class="text-xs text-slate-500">Bind to groups:</span>
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-base-content/80">
+            <span class="text-xs text-base-content/60">Bind to groups:</span>
             <label :for={g <- @groups} class="flex items-center gap-1.5">
               <input
                 type="checkbox"
                 name={"key[group_#{g.id}]"}
                 value="true"
-                class="accent-emerald-600"
+                class="accent-primary"
               />
               {g.name}
             </label>
           </div>
           <button
             type="submit"
-            class="mt-3 rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+            class="mt-3 rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
           >
             Mint key
           </button>
         </form>
 
         <table class="w-full max-w-4xl text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">Key</th>
               <th class="py-2 pr-4 font-medium">Groups</th>
               <th class="py-2 pr-4 font-medium">Last used</th>
@@ -217,33 +223,33 @@ defmodule OrbitWeb.ApiKeysLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={k <- @keys} class="border-b border-slate-800/50">
+            <tr :for={k <- @keys} class="border-b border-base-300/50">
               <td class="py-2 pr-4">
-                <span class="font-mono text-xs text-slate-300">{k.prefix}…</span>
-                <span class="ml-2 text-slate-200">{k.name}</span>
-                <span :if={k.purpose} class="ml-2 text-xs text-slate-500">({k.purpose})</span>
+                <span class="font-mono text-xs text-base-content/80">{k.prefix}…</span>
+                <span class="ml-2 text-base-content">{k.name}</span>
+                <span :if={k.purpose} class="ml-2 text-xs text-base-content/60">({k.purpose})</span>
               </td>
-              <td class="py-2 pr-4 text-slate-400">
+              <td class="py-2 pr-4 text-base-content/70">
                 {if k.groups == [],
                   do: "GLOBAL",
                   else: k.groups |> Enum.map(& &1.name) |> Enum.join(", ")}
               </td>
-              <td class="py-2 pr-4 text-slate-400">{ts(k.last_used_at)}</td>
+              <td class="py-2 pr-4 text-base-content/70">{ts(k.last_used_at)}</td>
               <td class="py-2 pr-4">
                 <span
                   :if={k.revoked_at}
-                  class="rounded bg-red-900/60 px-1.5 py-0.5 text-xs text-red-300"
+                  class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
                 >
                   revoked
                 </span>
-                <span :if={is_nil(k.revoked_at)} class="text-emerald-400">active</span>
+                <span :if={is_nil(k.revoked_at)} class="text-primary">active</span>
               </td>
               <td class="py-2 text-right">
                 <button
                   :if={is_nil(k.revoked_at) and k.revealable}
                   phx-click="reveal"
                   phx-value-id={k.id}
-                  class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
                 >
                   reveal
                 </button>
@@ -252,7 +258,7 @@ defmodule OrbitWeb.ApiKeysLive do
                   phx-click="revoke"
                   phx-value-id={k.id}
                   data-confirm={"Revoke key #{k.name}? Scrapes using it stop working."}
-                  class="ml-1 rounded border border-amber-800 px-2 py-0.5 text-xs text-amber-400 hover:bg-amber-950"
+                  class="ml-1 rounded border border-warning/40 px-2 py-0.5 text-xs text-warning hover:bg-warning/10"
                 >
                   revoke
                 </button>
@@ -261,7 +267,7 @@ defmodule OrbitWeb.ApiKeysLive do
                   phx-click="purge"
                   phx-value-id={k.id}
                   data-confirm={"Purge key #{k.name} permanently?"}
-                  class="ml-1 rounded border border-red-900 px-2 py-0.5 text-xs text-red-400 hover:bg-red-950"
+                  class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
                 >
                   purge
                 </button>
@@ -278,6 +284,6 @@ defmodule OrbitWeb.ApiKeysLive do
   defp ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
 
   defp input_cls do
-    "w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 end

@@ -163,37 +163,37 @@ defmodule OrbitWeb.SettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">Settings</h1>
+          <h1 class="text-lg font-medium text-base-content">Settings</h1>
           <button
             phx-click="notify_test"
             disabled={@test_busy}
-            class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {if @test_busy, do: "Sending…", else: "Send test notification"}
           </button>
-          <a href={~p"/selection"} class="text-xs text-slate-500 hover:text-slate-300">
+          <a href={~p"/selection"} class="text-xs text-base-content/60 hover:text-base-content/80">
             selection rules
           </a>
-          <a href={~p"/apikeys"} class="text-xs text-slate-500 hover:text-slate-300">
+          <a href={~p"/apikeys"} class="text-xs text-base-content/60 hover:text-base-content/80">
             api keys
           </a>
         </div>
 
         <div
           :if={@test_results}
-          class="mb-4 rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm"
+          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-3 text-sm"
         >
           <div :for={r <- @test_results} class="flex items-center gap-2">
-            <span class="w-24 text-slate-400">{r.channel}</span>
+            <span class="w-24 text-base-content/70">{r.channel}</span>
             <span class={[
-              r.status == "sent" && "text-emerald-400",
-              r.status == "failed" && "text-red-400",
-              r.status == "skipped" && "text-slate-500"
+              r.status == "sent" && "text-primary",
+              r.status == "failed" && "text-error",
+              r.status == "skipped" && "text-base-content/60"
             ]}>
               {r.status}{if r.detail != "", do: " — #{r.detail}"}
             </span>
@@ -202,13 +202,13 @@ defmodule OrbitWeb.SettingsLive do
 
         <p
           :if={@flash[:info]}
-          class="mb-3 rounded-md border border-emerald-800 bg-emerald-950 px-3 py-2 text-sm text-emerald-300"
+          class="mb-3 rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-primary"
         >
           {@flash[:info]}
         </p>
         <p
           :if={@flash[:error]}
-          class="mb-3 rounded-md border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-300"
+          class="mb-3 rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm text-error"
         >
           {@flash[:error]}
         </p>
@@ -218,8 +218,8 @@ defmodule OrbitWeb.SettingsLive do
           class={[
             "mb-4 rounded px-3 py-2 text-sm",
             case @llm_result do
-              {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
-              _ -> "bg-red-900/40 text-red-300"
+              {:ok, _} -> "bg-primary/15 text-primary"
+              _ -> "bg-error/15 text-error"
             end
           ]}
         >
@@ -232,22 +232,22 @@ defmodule OrbitWeb.SettingsLive do
           class="mb-8"
         >
           <div class="mb-2 flex items-center gap-3">
-            <h2 class="text-sm font-semibold text-slate-400">{group}</h2>
+            <h2 class="text-sm font-semibold text-base-content/70">{group}</h2>
             <div :if={group == "AI providers"} class="flex gap-1">
               <button
                 :for={p <- Orbit.LLM.Analyze.providers()}
                 phx-click="llm_test"
                 phx-value-provider={p.id}
                 disabled={@llm_busy != nil}
-                class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800 disabled:opacity-50"
+                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300 disabled:opacity-50"
               >
                 {if @llm_busy == p.id, do: "Testing…", else: "Test #{p.label}"}
               </button>
             </div>
           </div>
           <table class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Key</th>
                 <th class="py-2 pr-4 font-medium">Effective</th>
                 <th class="py-2 pr-4 font-medium">Default</th>
@@ -255,10 +255,10 @@ defmodule OrbitWeb.SettingsLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @rows} :if={r.group == group} class="border-b border-slate-800/50">
-                <td class="py-2 pr-4 text-slate-200">{r.key}</td>
-                <td class="py-2 pr-4 text-emerald-300">{r.effective}</td>
-                <td class="py-2 pr-4 text-slate-500">{r.default}</td>
+              <tr :for={r <- @rows} :if={r.group == group} class="border-b border-base-300/50">
+                <td class="py-2 pr-4 text-base-content">{r.key}</td>
+                <td class="py-2 pr-4 text-primary">{r.effective}</td>
+                <td class="py-2 pr-4 text-base-content/60">{r.default}</td>
                 <td class="py-2 pr-4">
                   <%!-- Bool settings (the notify mutes) save on click. --%>
                   <form :if={r.type == :bool} phx-submit="save" class="flex items-center gap-2">
@@ -273,8 +273,8 @@ defmodule OrbitWeb.SettingsLive do
                       class={[
                         "rounded px-2 py-1 text-xs",
                         if(r.effective in ["true", "1"],
-                          do: "bg-amber-700 text-white hover:bg-amber-600",
-                          else: "border border-slate-700 text-slate-300 hover:bg-slate-800"
+                          do: "bg-warning text-white hover:bg-warning/80",
+                          else: "border border-base-content/20 text-base-content/80 hover:bg-base-300"
                         )
                       ]}
                     >
@@ -284,7 +284,7 @@ defmodule OrbitWeb.SettingsLive do
                       type="button"
                       phx-click="clear"
                       phx-value-key={r.key}
-                      class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
                     >
                       Reset
                     </button>
@@ -297,11 +297,11 @@ defmodule OrbitWeb.SettingsLive do
                       value={r.input}
                       placeholder={if r.secret, do: "blank = keep", else: nil}
                       autocomplete="off"
-                      class="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      class="w-24 rounded border border-base-content/20 bg-base-100 px-2 py-1 text-base-content focus:border-primary focus:outline-none"
                     />
                     <button
                       type="submit"
-                      class="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+                      class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
                     >
                       Save
                     </button>
@@ -309,7 +309,7 @@ defmodule OrbitWeb.SettingsLive do
                       type="button"
                       phx-click="clear"
                       phx-value-key={r.key}
-                      class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
                     >
                       Reset
                     </button>

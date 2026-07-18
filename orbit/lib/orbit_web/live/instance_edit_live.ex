@@ -102,27 +102,30 @@ defmodule OrbitWeb.InstanceEditLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="mx-auto max-w-2xl p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">Edit {@instance.name}</h1>
-          <a href={~p"/instances/#{@instance.id}"} class="text-xs text-slate-500 hover:text-slate-300">
+          <h1 class="text-lg font-medium text-base-content">Edit {@instance.name}</h1>
+          <a
+            href={~p"/instances/#{@instance.id}"}
+            class="text-xs text-base-content/60 hover:text-base-content/80"
+          >
             back to detail
           </a>
         </div>
 
         <div
           :if={@error}
-          class="mb-4 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
 
         <form phx-submit="save" class="space-y-4">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">General</h2>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">General</h2>
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="Name">
                 <input name="instance[name]" value={@instance.name} required class={input_cls()} />
@@ -145,8 +148,8 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">
               Intervals (blank = global default)
             </h2>
             <div class="grid gap-3 md:grid-cols-2">
@@ -169,9 +172,9 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">
-              Credentials <span class="text-slate-500">(blank = keep existing)</span>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">
+              Credentials <span class="text-base-content/60">(blank = keep existing)</span>
             </h2>
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="API key">
@@ -189,8 +192,8 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-            <h2 class="mb-3 text-sm font-medium text-slate-400">Flags</h2>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Flags</h2>
             <div class="grid gap-2 md:grid-cols-2">
               <.flag name="instance[ssl_verify]" checked={@instance.ssl_verify} label="Verify TLS" />
               <.flag
@@ -220,7 +223,7 @@ defmodule OrbitWeb.InstanceEditLive do
           <div class="flex items-center gap-3">
             <button
               type="submit"
-              class="rounded bg-emerald-700 px-4 py-1.5 text-sm text-white hover:bg-emerald-600"
+              class="rounded bg-primary px-4 py-1.5 text-sm text-white hover:bg-primary/80"
             >
               Save
             </button>
@@ -228,7 +231,7 @@ defmodule OrbitWeb.InstanceEditLive do
               type="button"
               phx-click="delete"
               data-confirm={"Delete instance #{@instance.name}? The agent will be orphaned; the record is soft-deleted."}
-              class="rounded border border-red-900 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950"
+              class="rounded border border-error/40 px-3 py-1.5 text-sm text-error hover:bg-error/15"
             >
               Delete instance
             </button>
@@ -245,7 +248,7 @@ defmodule OrbitWeb.InstanceEditLive do
   defp field(assigns) do
     ~H"""
     <label class="block text-sm">
-      <span class="mb-1 block text-xs text-slate-500">{@label}</span>
+      <span class="mb-1 block text-xs text-base-content/60">{@label}</span>
       {render_slot(@inner_block)}
     </label>
     """
@@ -257,15 +260,15 @@ defmodule OrbitWeb.InstanceEditLive do
 
   defp flag(assigns) do
     ~H"""
-    <label class="flex items-center gap-2 text-sm text-slate-300">
+    <label class="flex items-center gap-2 text-sm text-base-content/80">
       <input type="hidden" name={@name} value="false" />
-      <input type="checkbox" name={@name} value="true" checked={@checked} class="accent-emerald-600" />
+      <input type="checkbox" name={@name} value="true" checked={@checked} class="accent-primary" />
       {@label}
     </label>
     """
   end
 
   defp input_cls do
-    "w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 end

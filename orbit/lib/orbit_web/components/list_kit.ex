@@ -17,7 +17,7 @@ defmodule OrbitWeb.Components.ListKit do
 
   attr :label, :string, required: true
   attr :value, :any, required: true
-  attr :color, :string, default: "text-slate-100"
+  attr :color, :string, default: "text-base-content"
   attr :active, :boolean, default: false
   attr :event, :string, required: true
   attr :value_name, :string, required: true, doc: "phx-value-* payload for the click"
@@ -30,12 +30,12 @@ defmodule OrbitWeb.Components.ListKit do
       class={[
         "rounded-lg border p-3 text-left",
         if(@active,
-          do: "border-emerald-600 bg-slate-900",
-          else: "border-slate-800 bg-slate-900 hover:border-slate-700"
+          do: "border-primary bg-base-200",
+          else: "border-base-300 bg-base-200 hover:border-base-content/20"
         )
       ]}
     >
-      <div class="text-xs text-slate-500">{@label}</div>
+      <div class="text-xs text-base-content/60">{@label}</div>
       <div class={["text-2xl font-semibold", @color]}>{@value}</div>
     </button>
     """
@@ -49,7 +49,7 @@ defmodule OrbitWeb.Components.ListKit do
   def sort_th(assigns) do
     ~H"""
     <th class="px-3 py-2 font-medium">
-      <button phx-click="sort" phx-value-col={@col} class="hover:text-slate-300">
+      <button phx-click="sort" phx-value-col={@col} class="hover:text-base-content/80">
         {@label}
         <span :if={@sort_col == @col}>{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>
@@ -58,10 +58,10 @@ defmodule OrbitWeb.Components.ListKit do
   end
 
   @doc "Filter chip class (active/emerald vs idle/slate)."
-  def chip(true), do: "rounded-full bg-emerald-600 px-3 py-1 text-xs text-white"
+  def chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-white"
 
   def chip(false),
-    do: "rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400 hover:bg-slate-700"
+    do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"
 
   attr :instance_id, :integer, required: true
   attr :openable, :boolean, required: true, doc: "Orbit.GUI.openable(inst) == :ok, precomputed"
@@ -74,7 +74,7 @@ defmodule OrbitWeb.Components.ListKit do
       phx-value-id={@instance_id}
       title="Open WebGUI (tunneled)"
       aria-label="Open WebGUI (tunneled)"
-      class="inline-flex items-center rounded p-0.5 align-text-bottom text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+      class="inline-flex items-center rounded p-0.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
     >
       <%!-- heroicon: arrow-top-right-on-square (outline) --%>
       <svg
@@ -106,7 +106,7 @@ defmodule OrbitWeb.Components.ListKit do
       rel="noopener"
       title="Open root terminal"
       aria-label="Open root terminal"
-      class="inline-flex items-center rounded p-0.5 align-text-bottom text-amber-400/80 hover:bg-slate-800 hover:text-amber-300"
+      class="inline-flex items-center rounded p-0.5 align-text-bottom text-warning/80 hover:bg-base-300 hover:text-warning"
     >
       <%!-- heroicon: command-line (outline) --%>
       <svg

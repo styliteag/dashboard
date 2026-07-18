@@ -223,19 +223,22 @@ defmodule OrbitWeb.FirewallRulesLive do
     assigns = assign(assigns, visible: visible_rules(assigns.rules, assigns.search))
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">Firewall rules — {@instance.name}</h1>
-          <a href={~p"/instances/#{@instance.id}"} class="text-xs text-slate-500 hover:text-slate-300">
+          <h1 class="text-lg font-medium text-base-content">Firewall rules — {@instance.name}</h1>
+          <a
+            href={~p"/instances/#{@instance.id}"}
+            class="text-xs text-base-content/60 hover:text-base-content/80"
+          >
             back to detail
           </a>
           <form phx-change="select_interface">
             <select
               name="interface"
-              class="rounded border border-slate-700 bg-slate-950 p-1 text-sm text-slate-200"
+              class="rounded border border-base-content/20 bg-base-100 p-1 text-sm text-base-content"
             >
               <option :for={i <- @interfaces} value={i.value} selected={i.value == @interface}>
                 {i.label}
@@ -244,14 +247,14 @@ defmodule OrbitWeb.FirewallRulesLive do
           </form>
           <button
             phx-click="new_rule"
-            class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
           >
             New rule
           </button>
           <button
             phx-click="apply"
             data-confirm="Apply staged firewall changes on the box?"
-            class="rounded bg-amber-700 px-3 py-1 text-xs text-white hover:bg-amber-600"
+            class="rounded bg-warning px-3 py-1 text-xs text-white hover:bg-warning/80"
           >
             Apply changes
           </button>
@@ -262,20 +265,20 @@ defmodule OrbitWeb.FirewallRulesLive do
               value={@search}
               placeholder="Search rules…"
               phx-debounce="300"
-              class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none"
+              class="rounded-lg border border-base-content/20 bg-base-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
             />
           </form>
         </div>
 
         <div
           :if={@flash_msg}
-          class="mb-3 rounded border border-emerald-800 bg-emerald-950/40 p-2 text-sm text-emerald-300"
+          class="mb-3 rounded border border-primary/40 bg-primary/10 p-2 text-sm text-primary"
         >
           {@flash_msg}
         </div>
         <div
           :if={@error}
-          class="mb-3 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-3 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
@@ -285,28 +288,28 @@ defmodule OrbitWeb.FirewallRulesLive do
         <form
           :if={@editor}
           phx-submit="save_rule"
-          class="mb-4 rounded-lg border border-slate-700 bg-slate-900 p-4 text-sm"
+          class="mb-4 rounded-lg border border-base-content/20 bg-base-200 p-4 text-sm"
         >
-          <h2 class="mb-3 text-sm font-medium text-slate-300">
+          <h2 class="mb-3 text-sm font-medium text-base-content/80">
             {if @editor_uuid, do: "Edit rule", else: "New rule"}
           </h2>
           <div class="grid gap-3 md:grid-cols-3">
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Action
               <select
                 name="rule[action]"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               >
                 <option :for={a <- ~w(pass block reject)} value={a} selected={@editor["action"] == a}>
                   {a}
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Interface
               <select
                 name="rule[interface]"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               >
                 <option
                   :for={i <- @interfaces}
@@ -318,32 +321,32 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Direction
               <select
                 name="rule[direction]"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               >
                 <option :for={d <- ~w(in out)} value={d} selected={@editor["direction"] == d}>
                   {d}
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               TCP/IP version
               <select
                 name="rule[ipprotocol]"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               >
                 <option value="inet" selected={@editor["ipprotocol"] == "inet"}>IPv4</option>
                 <option value="inet6" selected={@editor["ipprotocol"] == "inet6"}>IPv6</option>
               </select>
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Protocol
               <select
                 name="rule[protocol]"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               >
                 <option
                   :for={p <- ~w(any TCP UDP TCP/UDP ICMP ESP GRE)}
@@ -354,56 +357,56 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Description
               <input
                 name="rule[description]"
                 value={@editor["description"]}
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Source
               <input
                 name="rule[source_net]"
                 value={@editor["source_net"]}
                 placeholder="any | net/CIDR | alias"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Source port
               <input
                 name="rule[source_port]"
                 value={@editor["source_port"]}
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Destination
               <input
                 name="rule[destination_net]"
                 value={@editor["destination_net"]}
                 placeholder="any | net/CIDR | alias"
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-slate-500">
+            <label class="block text-xs text-base-content/60">
               Destination port
               <input
                 name="rule[destination_port]"
                 value={@editor["destination_port"]}
-                class="mt-0.5 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-sm text-slate-200"
+                class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
           </div>
-          <div class="mt-3 flex items-center gap-4 text-xs text-slate-400">
+          <div class="mt-3 flex items-center gap-4 text-xs text-base-content/70">
             <label class="flex items-center gap-1.5">
               <input
                 type="checkbox"
                 name="rule[enabled]"
                 checked={@editor["enabled"] == "1"}
-                class="accent-emerald-600"
+                class="accent-primary"
               /> Enabled
             </label>
             <label class="flex items-center gap-1.5">
@@ -411,7 +414,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 type="checkbox"
                 name="rule[log]"
                 checked={@editor["log"] == "1"}
-                class="accent-emerald-600"
+                class="accent-primary"
               /> Log matching packets
             </label>
             <label class="flex items-center gap-1.5">
@@ -419,20 +422,20 @@ defmodule OrbitWeb.FirewallRulesLive do
                 type="checkbox"
                 name="rule[quick]"
                 checked={@editor["quick"] == "1"}
-                class="accent-emerald-600"
+                class="accent-primary"
               /> Quick (first match)
             </label>
             <span class="ml-auto flex gap-2">
               <button
                 type="button"
                 phx-click="cancel_editor"
-                class="rounded border border-slate-700 px-3 py-1 text-slate-300 hover:bg-slate-800"
+                class="rounded border border-base-content/20 px-3 py-1 text-base-content/80 hover:bg-base-300"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                class="rounded bg-emerald-700 px-3 py-1 text-white hover:bg-emerald-600"
+                class="rounded bg-primary px-3 py-1 text-white hover:bg-primary/80"
               >
                 Save rule
               </button>
@@ -441,8 +444,8 @@ defmodule OrbitWeb.FirewallRulesLive do
         </form>
 
         <table class="w-full text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-3 font-medium">On</th>
               <th class="py-2 pr-3 font-medium">Action</th>
               <th class="py-2 pr-3 font-medium">Proto</th>
@@ -456,7 +459,7 @@ defmodule OrbitWeb.FirewallRulesLive do
             <%= for {r, idx} <- Enum.with_index(@visible) do %>
               <% prev = if idx > 0, do: Enum.at(@visible, idx - 1) %>
               <% next = Enum.at(@visible, idx + 1) %>
-              <tr class="border-b border-slate-800/50">
+              <tr class="border-b border-base-300/50">
                 <td class="py-1.5 pr-3">
                   <button
                     :if={r.editable}
@@ -466,26 +469,26 @@ defmodule OrbitWeb.FirewallRulesLive do
                     class={[
                       "rounded px-1.5 py-0.5 text-xs",
                       if(r.enabled,
-                        do: "bg-emerald-900/50 text-emerald-300",
-                        else: "bg-slate-700 text-slate-400"
+                        do: "bg-primary/20 text-primary",
+                        else: "bg-neutral text-base-content/70"
                       )
                     ]}
                   >
                     {if r.enabled, do: "on", else: "off"}
                   </button>
-                  <span :if={not r.editable} class="text-xs text-slate-600">
+                  <span :if={not r.editable} class="text-xs text-base-content/40">
                     {if r.enabled, do: "on", else: "off"}
                   </span>
                 </td>
-                <td class="py-1.5 pr-3 text-slate-300">{r.action}</td>
-                <td class="py-1.5 pr-3 text-slate-400">{r.protocol}</td>
-                <td class="py-1.5 pr-3 font-mono text-xs text-slate-400">
+                <td class="py-1.5 pr-3 text-base-content/80">{r.action}</td>
+                <td class="py-1.5 pr-3 text-base-content/70">{r.protocol}</td>
+                <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
                   {r.source}{if r.source_port != "", do: ":#{r.source_port}"}
                 </td>
-                <td class="py-1.5 pr-3 font-mono text-xs text-slate-400">
+                <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
                   {r.destination}{if r.destination_port != "", do: ":#{r.destination_port}"}
                 </td>
-                <td class="py-1.5 pr-3 text-slate-300">{r.description}</td>
+                <td class="py-1.5 pr-3 text-base-content/80">{r.description}</td>
                 <td class="py-1.5 text-right text-xs">
                   <button
                     :if={r.editable and prev != nil and prev.editable}
@@ -493,7 +496,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                     phx-value-uuid={r.uuid}
                     phx-value-target={prev.uuid}
                     title="Move up"
-                    class="rounded border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:bg-slate-800"
+                    class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
                   >
                     ↑
                   </button>
@@ -503,7 +506,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                     phx-value-uuid={next.uuid}
                     phx-value-target={r.uuid}
                     title="Move down"
-                    class="rounded border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:bg-slate-800"
+                    class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
                   >
                     ↓
                   </button>
@@ -511,7 +514,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                     :if={r.editable}
                     phx-click="edit_rule"
                     phx-value-uuid={r.uuid}
-                    class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                   >
                     edit
                   </button>
@@ -520,7 +523,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                     phx-click="clone_rule"
                     phx-value-uuid={r.uuid}
                     title="Clone into a new rule"
-                    class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                   >
                     clone
                   </button>
@@ -529,17 +532,17 @@ defmodule OrbitWeb.FirewallRulesLive do
                     phx-click="delete"
                     phx-value-uuid={r.uuid}
                     data-confirm="Delete this rule? (apply to activate)"
-                    class="ml-1 rounded border border-red-900 px-2 py-0.5 text-red-400 hover:bg-red-950"
+                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
                   >
                     delete
                   </button>
-                  <span :if={not r.editable} class="text-xs text-slate-600">legacy</span>
+                  <span :if={not r.editable} class="text-xs text-base-content/40">legacy</span>
                 </td>
               </tr>
             <% end %>
           </tbody>
         </table>
-        <div :if={@visible == [] and is_nil(@error)} class="py-4 text-sm text-slate-500">
+        <div :if={@visible == [] and is_nil(@error)} class="py-4 text-sm text-base-content/60">
           {if @rules == [], do: "No rules on this interface.", else: "No matches."}
         </div>
       </section>

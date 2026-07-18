@@ -362,24 +362,24 @@ defmodule OrbitWeb.InstancesLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">
-            Instances <span class="ml-2 text-sm text-slate-500">({length(@instances)})</span>
+          <h1 class="text-lg font-medium text-base-content">
+            Instances <span class="ml-2 text-sm text-base-content/60">({length(@instances)})</span>
           </h1>
           <a
             :if={@writable}
             href={~p"/instances/new"}
-            class="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
           >
             New instance
           </a>
           <a
             href={~p"/api/export/instances.csv"}
-            class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
           >
             Export CSV
           </a>
@@ -391,28 +391,28 @@ defmodule OrbitWeb.InstancesLive do
           <.kpi_tile
             label="Total"
             value={length(@instances)}
-            color="text-slate-100"
+            color="text-base-content"
             active={@status_filter == "all"}
             bucket="all"
           />
           <.kpi_tile
             label="Online"
             value={@counts["online"] || 0}
-            color="text-emerald-400"
+            color="text-primary"
             active={@status_filter == "online"}
             bucket="online"
           />
           <.kpi_tile
             label="Degraded"
             value={@counts["degraded"] || 0}
-            color="text-amber-400"
+            color="text-warning"
             active={@status_filter == "degraded"}
             bucket="degraded"
           />
           <.kpi_tile
             label="Offline"
             value={@counts["offline"] || 0}
-            color="text-red-400"
+            color="text-error"
             active={@status_filter == "offline"}
             bucket="offline"
           />
@@ -424,8 +424,8 @@ defmodule OrbitWeb.InstancesLive do
           class={[
             "mb-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs",
             if(@maintenance_only,
-              do: "border-amber-600 bg-amber-600/20 text-amber-300",
-              else: "border-amber-800/50 bg-amber-900/20 text-amber-400 hover:bg-amber-900/30"
+              do: "border-warning bg-warning/20 text-warning",
+              else: "border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
             )
           ]}
         >
@@ -435,9 +435,9 @@ defmodule OrbitWeb.InstancesLive do
         <%!-- Update-all banner (agents behind the served package). --%>
         <div
           :if={@outdated_count > 0}
-          class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-800/50 bg-amber-900/20 px-4 py-2.5"
+          class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5"
         >
-          <span class="text-sm text-amber-300">
+          <span class="text-sm text-warning">
             {@outdated_count} agent{if @outdated_count > 1, do: "s"} can be updated{if @served_version,
               do: " → #{@served_version}"}
           </span>
@@ -446,7 +446,7 @@ defmodule OrbitWeb.InstancesLive do
             phx-click="update_all"
             data-confirm={"Push agent #{@served_version} to #{@outdated_count} box(es)? Agents restart."}
             disabled={@update_busy}
-            class="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            class="ml-auto rounded-lg bg-warning px-3 py-1.5 text-sm font-medium text-white hover:bg-warning/80 disabled:opacity-50"
           >
             {if @update_busy, do: "Updating…", else: "Update all agents"}
           </button>
@@ -456,15 +456,15 @@ defmodule OrbitWeb.InstancesLive do
           class={[
             "mb-3 rounded-lg px-3 py-2 text-sm",
             case @update_msg do
-              {:ok, _} -> "bg-amber-900/40 text-amber-300"
-              _ -> "bg-red-900/40 text-red-300"
+              {:ok, _} -> "bg-warning/15 text-warning"
+              _ -> "bg-error/15 text-error"
             end
           ]}
         >
           {elem(@update_msg, 1)}
           <button
             phx-click="clear_update_msg"
-            class="ml-2 text-xs text-slate-500 hover:text-slate-300"
+            class="ml-2 text-xs text-base-content/60 hover:text-base-content/80"
           >
             dismiss
           </button>
@@ -478,7 +478,7 @@ defmodule OrbitWeb.InstancesLive do
             value={@search}
             placeholder="Search by name, location, tag…"
             phx-debounce="300"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </form>
 
@@ -515,7 +515,7 @@ defmodule OrbitWeb.InstancesLive do
         </div>
 
         <div class="mb-4 flex items-center justify-between">
-          <div class="inline-flex rounded-lg border border-slate-700 bg-slate-800/50 p-0.5 text-xs">
+          <div class="inline-flex rounded-lg border border-base-content/20 bg-base-300/50 p-0.5 text-xs">
             <button
               :for={v <- ~w(list grid)}
               phx-click="set_view"
@@ -523,8 +523,8 @@ defmodule OrbitWeb.InstancesLive do
               class={[
                 "rounded-md px-3 py-1.5 capitalize",
                 if(@view == v,
-                  do: "bg-slate-700 text-slate-100",
-                  else: "text-slate-400 hover:text-slate-200"
+                  do: "bg-neutral text-base-content",
+                  else: "text-base-content/70 hover:text-base-content"
                 )
               ]}
             >
@@ -532,14 +532,14 @@ defmodule OrbitWeb.InstancesLive do
             </button>
           </div>
           <div :if={@writable and MapSet.size(@selected) > 0} class="flex items-center gap-2">
-            <span class="text-xs text-slate-500">{MapSet.size(@selected)} selected:</span>
+            <span class="text-xs text-base-content/60">{MapSet.size(@selected)} selected:</span>
             <button
               :for={{action, label} <- @bulk_actions}
               phx-click="bulk"
               phx-value-action={action}
               data-confirm={"#{label} on #{MapSet.size(@selected)} instance(s)?"}
               disabled={@bulk_busy}
-              class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @bulk_busy, do: "Running…", else: label}
             </button>
@@ -548,31 +548,34 @@ defmodule OrbitWeb.InstancesLive do
 
         <div
           :if={@bulk_results}
-          class="mb-4 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm"
+          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4 text-sm"
         >
           <div class="mb-2 flex items-center gap-3">
-            <span class="text-slate-300">
+            <span class="text-base-content/80">
               Bulk result: {Enum.count(@bulk_results, & &1.success)} ok, {Enum.count(
                 @bulk_results,
                 &(not &1.success)
               )} failed
             </span>
-            <button phx-click="clear_results" class="text-xs text-slate-500 hover:text-slate-300">
+            <button
+              phx-click="clear_results"
+              class="text-xs text-base-content/60 hover:text-base-content/80"
+            >
               dismiss
             </button>
           </div>
           <div :for={r <- @bulk_results} class="text-xs">
-            <span class={if r.success, do: "text-emerald-400", else: "text-red-400"}>
+            <span class={if r.success, do: "text-primary", else: "text-error"}>
               {r.instance_name}
             </span>
-            <span class="text-slate-500"> — {r.message}</span>
+            <span class="text-base-content/60"> — {r.message}</span>
           </div>
         </div>
 
-        <div :if={@instances == []} class="text-sm text-slate-500">
+        <div :if={@instances == []} class="text-sm text-base-content/60">
           No instances in your scope.
         </div>
-        <div :if={@instances != [] and @rows == []} class="text-sm text-slate-500">
+        <div :if={@instances != [] and @rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
@@ -580,7 +583,7 @@ defmodule OrbitWeb.InstancesLive do
         <div :if={@view == "grid" and @rows != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div
             :for={i <- @rows}
-            class="rounded-lg border border-slate-800 bg-slate-900 p-4"
+            class="rounded-lg border border-base-300 bg-base-200 p-4"
           >
             <div class="flex items-center gap-2">
               <input
@@ -589,37 +592,43 @@ defmodule OrbitWeb.InstancesLive do
                 phx-click="toggle_select"
                 phx-value-id={i.id}
                 checked={MapSet.member?(@selected, i.id)}
-                class="accent-emerald-600"
+                class="accent-primary"
               />
               <a
                 href={~p"/instances/#{i.id}"}
-                class="font-medium text-slate-200 hover:text-emerald-300"
+                class="font-medium text-base-content hover:text-primary"
               >
                 {i.name}
               </a>
               <.status_badge row={i} />
             </div>
-            <div class="mt-2 space-y-1 text-xs text-slate-400">
+            <div class="mt-2 space-y-1 text-xs text-base-content/70">
               <div>{i.device_type} · {if i.agent_mode, do: "agent", else: "api"}</div>
               <div :if={i.location}>{i.location}</div>
               <div :if={i.tags != []} class="flex flex-wrap gap-1">
-                <span :for={t <- i.tags} class="rounded bg-slate-800 px-1.5 py-0.5 text-slate-400">
+                <span
+                  :for={t <- i.tags}
+                  class="rounded bg-base-300 px-1.5 py-0.5 text-base-content/70"
+                >
                   {t}
                 </span>
               </div>
-              <div class="text-slate-500" title={ts_abs(i.last_success_at)}>
+              <div class="text-base-content/60" title={ts_abs(i.last_success_at)}>
                 {ts_rel(i.last_success_at)}
               </div>
             </div>
             <div :if={@writable} class="mt-3 flex gap-2 text-xs">
-              <a href={~p"/instances/#{i.id}/edit"} class="text-slate-400 hover:text-slate-200">
+              <a
+                href={~p"/instances/#{i.id}/edit"}
+                class="text-base-content/70 hover:text-base-content"
+              >
                 Edit
               </a>
               <button
                 phx-click="delete"
                 phx-value-id={i.id}
                 data-confirm={"Delete #{i.name}? The instance is soft-deleted and disappears from all views."}
-                class="text-red-400/70 hover:text-red-300"
+                class="text-error/70 hover:text-error"
               >
                 Delete
               </button>
@@ -630,10 +639,10 @@ defmodule OrbitWeb.InstancesLive do
         <%!-- List view --%>
         <div
           :if={@view == "list" and @rows != []}
-          class="overflow-x-auto rounded-lg border border-slate-800"
+          class="overflow-x-auto rounded-lg border border-base-300"
         >
           <table class="w-full text-left text-sm">
-            <thead class="bg-slate-900 text-xs text-slate-500">
+            <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <th :if={@writable} class="px-3 py-2">
                   <input
@@ -642,7 +651,7 @@ defmodule OrbitWeb.InstancesLive do
                     checked={
                       MapSet.size(@selected) > 0 and MapSet.size(@selected) == @selectable_count
                     }
-                    class="accent-emerald-600"
+                    class="accent-primary"
                   />
                 </th>
                 <.sort_th col="status" label="Status" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -655,7 +664,7 @@ defmodule OrbitWeb.InstancesLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={i <- @rows} class="border-b border-slate-800/50 last:border-0">
+              <tr :for={i <- @rows} class="border-b border-base-300/50 last:border-0">
                 <td :if={@writable} class="px-3 py-2">
                   <input
                     :if={not i.firmware_locked}
@@ -663,23 +672,24 @@ defmodule OrbitWeb.InstancesLive do
                     phx-click="toggle_select"
                     phx-value-id={i.id}
                     checked={MapSet.member?(@selected, i.id)}
-                    class="accent-emerald-600"
+                    class="accent-primary"
                   />
                 </td>
                 <td class="px-3 py-2"><.status_badge row={i} /></td>
                 <td class="px-3 py-2">
-                  <a href={~p"/instances/#{i.id}"} class="text-slate-200 hover:text-emerald-300">
+                  <a href={~p"/instances/#{i.id}"} class="text-base-content hover:text-primary">
                     {i.name}
                   </a>
-                  <div class="text-xs text-slate-600">{i.device_type}</div>
+                  <div class="text-xs text-base-content/40">{i.device_type}</div>
                 </td>
-                <td class="px-3 py-2 text-slate-400">{i.location || "—"}</td>
-                <td class="px-3 py-2 text-slate-400">
+                <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>
+                <td class="px-3 py-2 text-base-content/70">
                   <span :if={i.agent_mode}>
-                    agent <span :if={i.agent_version} class="text-slate-600">v{i.agent_version}</span>
+                    agent
+                    <span :if={i.agent_version} class="text-base-content/40">v{i.agent_version}</span>
                     <span
                       :if={i.update_available}
-                      class="text-amber-400"
+                      class="text-warning"
                       title={"update available → #{@served_version}"}
                     >
                       ↑
@@ -691,24 +701,27 @@ defmodule OrbitWeb.InstancesLive do
                   <div class="flex flex-wrap gap-1">
                     <span
                       :for={t <- i.tags}
-                      class="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400"
+                      class="rounded bg-base-300 px-1.5 py-0.5 text-xs text-base-content/70"
                     >
                       {t}
                     </span>
                   </div>
                 </td>
-                <td class="px-3 py-2 text-xs text-slate-500" title={ts_abs(i.last_success_at)}>
+                <td class="px-3 py-2 text-xs text-base-content/60" title={ts_abs(i.last_success_at)}>
                   {ts_rel(i.last_success_at)}
                 </td>
                 <td :if={@writable} class="px-3 py-2 text-xs">
-                  <a href={~p"/instances/#{i.id}/edit"} class="text-slate-400 hover:text-slate-200">
+                  <a
+                    href={~p"/instances/#{i.id}/edit"}
+                    class="text-base-content/70 hover:text-base-content"
+                  >
                     Edit
                   </a>
                   <button
                     phx-click="delete"
                     phx-value-id={i.id}
                     data-confirm={"Delete #{i.name}? The instance is soft-deleted and disappears from all views."}
-                    class="ml-2 text-red-400/70 hover:text-red-300"
+                    class="ml-2 text-error/70 hover:text-error"
                   >
                     Delete
                   </button>
@@ -738,12 +751,12 @@ defmodule OrbitWeb.InstancesLive do
       class={[
         "rounded-lg border p-3 text-left",
         if(@active and @bucket != "all",
-          do: "border-emerald-600 bg-slate-900",
-          else: "border-slate-800 bg-slate-900 hover:border-slate-700"
+          do: "border-primary bg-base-200",
+          else: "border-base-300 bg-base-200 hover:border-base-content/20"
         )
       ]}
     >
-      <div class="text-xs text-slate-500">{@label}</div>
+      <div class="text-xs text-base-content/60">{@label}</div>
       <div class={["text-2xl font-semibold", @color]}>{@value}</div>
     </button>
     """
@@ -757,7 +770,7 @@ defmodule OrbitWeb.InstancesLive do
   defp sort_th(assigns) do
     ~H"""
     <th class="px-3 py-2 font-medium">
-      <button phx-click="sort" phx-value-col={@col} class="hover:text-slate-300">
+      <button phx-click="sort" phx-value-col={@col} class="hover:text-base-content/80">
         {@label}
         <span :if={@sort_col == @col}>{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>
@@ -784,8 +797,8 @@ defmodule OrbitWeb.InstancesLive do
         class={[
           "rounded px-1.5 py-0.5 text-xs",
           if(@row.alerts.crit > 0,
-            do: "bg-red-600/20 text-red-400",
-            else: "bg-amber-600/20 text-amber-400"
+            do: "bg-error/20 text-error",
+            else: "bg-warning/20 text-warning"
           )
         ]}
         title={"#{@row.alerts.crit} CRIT, #{@row.alerts.warn} WARN service check(s) — view in Alerts"}
@@ -798,18 +811,18 @@ defmodule OrbitWeb.InstancesLive do
     """
   end
 
-  defp badge_class("online"), do: "bg-emerald-600/15 text-emerald-400"
-  defp badge_class("degraded"), do: "bg-amber-600/15 text-amber-400"
-  defp badge_class(_), do: "bg-red-600/15 text-red-400"
+  defp badge_class("online"), do: "bg-primary/15 text-primary"
+  defp badge_class("degraded"), do: "bg-warning/15 text-warning"
+  defp badge_class(_), do: "bg-error/15 text-error"
 
-  defp dot_class("online"), do: "bg-emerald-500"
-  defp dot_class("degraded"), do: "bg-amber-500"
-  defp dot_class(_), do: "bg-red-500"
+  defp dot_class("online"), do: "bg-primary"
+  defp dot_class("degraded"), do: "bg-warning"
+  defp dot_class(_), do: "bg-error"
 
-  defp chip(true), do: "rounded-full bg-emerald-600 px-3 py-1 text-xs text-white"
+  defp chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-white"
 
   defp chip(false),
-    do: "rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400 hover:bg-slate-700"
+    do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"
 
   # Relative timestamp, deliberately German (fmtRelative parity — the one
   # sanctioned non-English surface, ported per plan §M5).

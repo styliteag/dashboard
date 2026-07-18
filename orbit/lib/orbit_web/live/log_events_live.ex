@@ -87,12 +87,12 @@ defmodule OrbitWeb.LogEventsLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:logs} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          Log events <span class="ml-2 text-sm text-slate-500">({length(@rows)})</span>
+        <h1 class="mb-4 text-lg font-medium text-base-content">
+          Log events <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
@@ -106,7 +106,7 @@ defmodule OrbitWeb.LogEventsLive do
           <.kpi_tile
             label="CRIT"
             value={@crit}
-            color="text-red-400"
+            color="text-error"
             event="sev_filter"
             value_name="crit"
             active={@sev_filter == "crit"}
@@ -122,7 +122,7 @@ defmodule OrbitWeb.LogEventsLive do
           <.kpi_tile
             label="WARN"
             value={@warn}
-            color="text-amber-400"
+            color="text-warning"
             event="sev_filter"
             value_name="warn"
             active={@sev_filter == "warn"}
@@ -137,7 +137,7 @@ defmodule OrbitWeb.LogEventsLive do
               value={@search}
               placeholder="Search instance, program, pattern…"
               phx-debounce="300"
-              class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+              class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </form>
           <div :if={length(@instance_names) > 1} class="flex flex-wrap gap-2">
@@ -152,16 +152,16 @@ defmodule OrbitWeb.LogEventsLive do
           </div>
         </div>
 
-        <div :if={@rows == []} class="text-sm text-slate-500">
+        <div :if={@rows == []} class="text-sm text-base-content/60">
           No critical log events in your scope.
         </div>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-slate-500">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
         <table :if={@visible_rows != []} class="w-full text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">Sev</th>
               <th class="py-2 pr-4 font-medium">Instance</th>
               <th class="py-2 pr-4 font-medium">Program</th>
@@ -171,7 +171,7 @@ defmodule OrbitWeb.LogEventsLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={r <- @visible_rows} class="border-b border-slate-800/50">
+            <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
               <td class="py-2 pr-4">
                 <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
                   {sev_label(r.event.severity)}
@@ -180,15 +180,15 @@ defmodule OrbitWeb.LogEventsLive do
               <td class="py-2 pr-4">
                 <a
                   href={~p"/instances/#{r.instance.id}"}
-                  class="text-slate-200 hover:text-emerald-300"
+                  class="text-base-content hover:text-primary"
                 >
                   {r.instance.name}
                 </a>
               </td>
-              <td class="py-2 pr-4 text-slate-400">{r.event.program}</td>
-              <td class="py-2 pr-4 text-slate-300">{r.event.pattern}</td>
-              <td class="py-2 pr-4 text-right text-slate-300">{r.event.count}</td>
-              <td class="py-2 pr-4 text-slate-500">{r.event.last_ts}</td>
+              <td class="py-2 pr-4 text-base-content/70">{r.event.program}</td>
+              <td class="py-2 pr-4 text-base-content/80">{r.event.pattern}</td>
+              <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
+              <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
             </tr>
           </tbody>
         </table>
@@ -202,7 +202,7 @@ defmodule OrbitWeb.LogEventsLive do
   defp sev_label(3), do: "ERR"
   defp sev_label(_), do: "WARN"
 
-  defp sev_class(s) when s <= 2, do: "bg-red-900/60 text-red-300"
+  defp sev_class(s) when s <= 2, do: "bg-error/20 text-error"
   defp sev_class(3), do: "bg-orange-900/50 text-orange-300"
-  defp sev_class(_), do: "bg-amber-900/50 text-amber-300"
+  defp sev_class(_), do: "bg-warning/20 text-warning"
 end

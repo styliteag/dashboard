@@ -139,17 +139,17 @@ defmodule OrbitWeb.AlertsLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:alerts} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">
-            Alerts <span class="ml-2 text-sm text-slate-500">({length(@alerts)})</span>
+          <h1 class="text-lg font-medium text-base-content">
+            Alerts <span class="ml-2 text-sm text-base-content/60">({length(@alerts)})</span>
           </h1>
           <button
             phx-click="refresh_now"
-            class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
           >
             Refresh
           </button>
@@ -166,7 +166,7 @@ defmodule OrbitWeb.AlertsLive do
           <.kpi_tile
             label="CRIT"
             value={@crit}
-            color="text-red-400"
+            color="text-error"
             event="severity_filter"
             value_name="crit"
             active={@severity_filter == "crit"}
@@ -174,7 +174,7 @@ defmodule OrbitWeb.AlertsLive do
           <.kpi_tile
             label="WARN"
             value={@warn}
-            color="text-amber-400"
+            color="text-warning"
             event="severity_filter"
             value_name="warn"
             active={@severity_filter == "warn"}
@@ -182,7 +182,7 @@ defmodule OrbitWeb.AlertsLive do
           <.kpi_tile
             label="UNKNOWN"
             value={@unknown}
-            color="text-slate-400"
+            color="text-base-content/70"
             event="severity_filter"
             value_name="unknown"
             active={@severity_filter == "unknown"}
@@ -197,7 +197,7 @@ defmodule OrbitWeb.AlertsLive do
               value={@search}
               placeholder="Search instance, check, summary…"
               phx-debounce="300"
-              class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+              class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </form>
           <div class="flex gap-2">
@@ -212,16 +212,16 @@ defmodule OrbitWeb.AlertsLive do
           </div>
         </div>
 
-        <div :if={@alerts == []} class="text-sm text-emerald-400">
+        <div :if={@alerts == []} class="text-sm text-primary">
           All clear — no non-OK checks in your scope.
         </div>
-        <div :if={@alerts != [] and @rows == []} class="text-sm text-slate-500">
+        <div :if={@alerts != [] and @rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
         <table :if={@rows != []} class="w-full text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">State</th>
               <th class="py-2 pr-4 font-medium">Instance</th>
               <th class="py-2 pr-4 font-medium">Check</th>
@@ -230,24 +230,24 @@ defmodule OrbitWeb.AlertsLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={a <- @rows} class="border-b border-slate-800/50">
+            <tr :for={a <- @rows} class="border-b border-base-300/50">
               <td class="py-2 pr-4">
                 <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(a.check.state)]}>
                   {state_label(a.check.state)}
                 </span>
               </td>
               <td class="py-2 pr-4">
-                <a href={~p"/instances/#{a.inst.id}"} class="text-slate-200 hover:text-emerald-300">
+                <a href={~p"/instances/#{a.inst.id}"} class="text-base-content hover:text-primary">
                   {a.inst.name}
                 </a>
                 <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
                 <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
               </td>
-              <td class="py-2 pr-4 text-slate-400">{a.check.key}</td>
-              <td class="py-2 pr-4 text-slate-300">{a.check.summary}</td>
+              <td class="py-2 pr-4 text-base-content/70">{a.check.key}</td>
+              <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
               <td class="py-2 pr-4 text-xs">
-                <span :if={a.exported} class="text-emerald-500">exported</span>
-                <span :if={not a.exported} class="text-slate-600">excluded</span>
+                <span :if={a.exported} class="text-primary">exported</span>
+                <span :if={not a.exported} class="text-base-content/40">excluded</span>
               </td>
             </tr>
           </tbody>
@@ -262,8 +262,8 @@ defmodule OrbitWeb.AlertsLive do
   defp state_label(3), do: "UNKNOWN"
   defp state_label(_), do: "OK"
 
-  defp state_class(2), do: "bg-red-900/60 text-red-300"
-  defp state_class(1), do: "bg-amber-900/50 text-amber-300"
-  defp state_class(3), do: "bg-slate-700 text-slate-300"
-  defp state_class(_), do: "bg-emerald-900/50 text-emerald-300"
+  defp state_class(2), do: "bg-error/20 text-error"
+  defp state_class(1), do: "bg-warning/20 text-warning"
+  defp state_class(3), do: "bg-neutral text-base-content/80"
+  defp state_class(_), do: "bg-primary/20 text-primary"
 end

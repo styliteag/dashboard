@@ -19,8 +19,7 @@
         class="cursor-pointer rounded-full border border-base-300 bg-base-200 px-3 py-1.5 text-base-content/70 shadow hover:text-base-content"
         title="Theme"
       >
-        {OrbitWeb.Design.name(assigns[:design] || OrbitWeb.Design.default())}
-        · {OrbitWeb.Design.mode_name(
+        {OrbitWeb.Design.name(assigns[:design] || OrbitWeb.Design.default())} · {OrbitWeb.Design.mode_name(
           assigns[:mode] ||
             OrbitWeb.Design.default_mode(assigns[:design] || OrbitWeb.Design.default())
         )}
@@ -37,9 +36,16 @@
             {OrbitWeb.Design.name(d)}
           </button>
         </form>
-        <p class="mb-1 mt-2 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Mode</p>
+        <p class="mb-1 mt-2 px-1 text-[10px] uppercase tracking-wide text-base-content/50">
+          Mode
+        </p>
         <div class="flex gap-1">
-          <form :for={m <- OrbitWeb.Design.modes()} action="/design/mode" method="post" class="flex-1">
+          <form
+            :for={m <- OrbitWeb.Design.modes()}
+            action="/design/mode"
+            method="post"
+            class="flex-1"
+          >
             <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
             <input type="hidden" name="mode" value={m} />
             <button class={[
@@ -53,7 +59,10 @@
             <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
             <input type="hidden" name="mode" value="" />
             <button
-              class={["w-full rounded px-2 py-1 hover:bg-base-300", assigns[:mode] == nil && "text-primary"]}
+              class={[
+                "w-full rounded px-2 py-1 hover:bg-base-300",
+                assigns[:mode] == nil && "text-primary"
+              ]}
               title="Use the design's native mode"
             >
               Auto

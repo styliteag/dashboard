@@ -110,33 +110,33 @@ defmodule OrbitWeb.SecurityLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:security} current_user={@current_user} />
 
       <section class="mx-auto max-w-2xl p-6">
-        <h1 class="text-lg font-medium text-slate-200">Security</h1>
-        <p class="mt-1 text-sm text-slate-400">
+        <h1 class="text-lg font-medium text-base-content">Security</h1>
+        <p class="mt-1 text-sm text-base-content/70">
           Two-factor authentication is mandatory. Manage your authenticator and passkeys here.
         </p>
 
         <div
           :if={@error}
-          class="mt-4 rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-300"
+          class="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error"
         >
           {@error}
         </div>
 
-        <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-          <h3 class="text-sm font-semibold text-slate-200">Authenticator app (TOTP)</h3>
-          <p class="mt-1 text-sm text-slate-400">
+        <div class="mt-5 rounded-xl border border-base-300 bg-base-200/60 p-5">
+          <h3 class="text-sm font-semibold text-base-content">Authenticator app (TOTP)</h3>
+          <p class="mt-1 text-sm text-base-content/70">
             {if @totp_enabled,
               do: "Enabled. To re-enroll, ask an admin to reset your 2FA.",
               else: "Not enabled — you signed in with a passkey."}
           </p>
         </div>
 
-        <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-          <h3 class="text-sm font-semibold text-slate-200">Passkeys</h3>
+        <div class="mt-5 rounded-xl border border-base-300 bg-base-200/60 p-5">
+          <h3 class="text-sm font-semibold text-base-content">Passkeys</h3>
 
           <div class="mt-3 flex items-center gap-2">
             <input
@@ -144,13 +144,13 @@ defmodule OrbitWeb.SecurityLive do
               type="text"
               placeholder="Passkey name (optional)"
               maxlength="128"
-              class="w-56 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-600 focus:outline-none"
+              class="w-56 rounded-lg border border-base-content/20 bg-base-300 px-3 py-1.5 text-sm text-base-content focus:border-primary focus:outline-none"
             />
             <button
               id="passkey-add"
               type="button"
               phx-hook="Passkey"
-              class="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              class="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary disabled:opacity-50"
             >
               Add passkey
             </button>
@@ -159,17 +159,17 @@ defmodule OrbitWeb.SecurityLive do
           <table class="mt-4 w-full text-sm">
             <tbody>
               <tr :if={@passkeys == []}>
-                <td class="py-2 text-xs text-slate-500">No passkeys registered.</td>
+                <td class="py-2 text-xs text-base-content/60">No passkeys registered.</td>
               </tr>
-              <tr :for={p <- @passkeys} class="border-t border-slate-800">
-                <td class="py-2 text-slate-200">{p.name || "Passkey ##{p.id}"}</td>
-                <td class="py-2 text-xs text-slate-400">{used_text(p)}</td>
+              <tr :for={p <- @passkeys} class="border-t border-base-300">
+                <td class="py-2 text-base-content">{p.name || "Passkey ##{p.id}"}</td>
+                <td class="py-2 text-xs text-base-content/70">{used_text(p)}</td>
                 <td class="py-2 text-right">
                   <button
                     type="button"
                     phx-click="remove_passkey"
                     phx-value-id={p.id}
-                    class="rounded px-2 py-1 text-xs text-red-400 hover:bg-slate-800"
+                    class="rounded px-2 py-1 text-xs text-error hover:bg-base-300"
                   >
                     Remove
                   </button>

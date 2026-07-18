@@ -427,12 +427,12 @@ defmodule OrbitWeb.VpnLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:vpn} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          IPsec tunnels <span class="ml-2 text-sm text-slate-500">({length(@tunnels)})</span>
+        <h1 class="mb-4 text-lg font-medium text-base-content">
+          IPsec tunnels <span class="ml-2 text-sm text-base-content/60">({length(@tunnels)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
@@ -446,7 +446,7 @@ defmodule OrbitWeb.VpnLive do
           <.kpi_tile
             label="Up"
             value={@up_count}
-            color="text-emerald-400"
+            color="text-primary"
             event="state_filter"
             value_name="up"
             active={@state_filter == "up"}
@@ -454,7 +454,7 @@ defmodule OrbitWeb.VpnLive do
           <.kpi_tile
             label="Down"
             value={@down_count}
-            color="text-red-400"
+            color="text-error"
             event="state_filter"
             value_name="down"
             active={@state_filter == "down"}
@@ -468,7 +468,7 @@ defmodule OrbitWeb.VpnLive do
             value={@search}
             placeholder="Search instance, tunnel, remote…"
             phx-debounce="300"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </form>
 
@@ -477,22 +477,24 @@ defmodule OrbitWeb.VpnLive do
           class={[
             "mb-3 rounded px-3 py-2 text-xs",
             case @msg do
-              {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
-              _ -> "bg-red-900/40 text-red-300"
+              {:ok, _} -> "bg-primary/15 text-primary"
+              _ -> "bg-error/15 text-error"
             end
           ]}
         >
           {elem(@msg, 1)}
         </div>
 
-        <div :if={@tunnels == []} class="text-sm text-slate-500">
+        <div :if={@tunnels == []} class="text-sm text-base-content/60">
           No IPsec tunnels reported in your scope.
         </div>
-        <div :if={@tunnels != [] and @rows == []} class="text-sm text-slate-500">No matches.</div>
+        <div :if={@tunnels != [] and @rows == []} class="text-sm text-base-content/60">
+          No matches.
+        </div>
 
-        <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-slate-800">
+        <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-base-300">
           <table class="w-full text-left text-sm">
-            <thead class="bg-slate-900 text-xs text-slate-500">
+            <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -507,40 +509,42 @@ defmodule OrbitWeb.VpnLive do
             <tbody>
               <%= for t <- @rows do %>
                 <% key = "#{t.instance_id}:#{t.id}" %>
-                <tr class="border-b border-slate-800/50 last:border-0">
+                <tr class="border-b border-base-300/50 last:border-0">
                   <td class="whitespace-nowrap px-3 py-2">
                     <button
                       :if={t.children != []}
                       phx-click="toggle_expand"
                       phx-value-key={key}
                       title="Show phase-2 child SAs"
-                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-slate-700 text-base text-slate-300 hover:bg-slate-800"
+                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-base-content/20 text-base text-base-content/80 hover:bg-base-300"
                     >
                       {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
                     </button>
                     <span class={[
                       "inline-block h-2.5 w-2.5 rounded-full",
-                      if(t.up, do: "bg-emerald-500", else: "bg-red-500")
+                      if(t.up, do: "bg-primary", else: "bg-error")
                     ]}></span>
                   </td>
                   <td class="px-3 py-2">
                     <a
                       href={~p"/instances/#{t.instance_id}"}
-                      class="text-slate-200 hover:text-emerald-300"
+                      class="text-base-content hover:text-primary"
                     >
                       {t.instance_name}
                     </a>
                     <.webui_link instance_id={t.instance_id} openable={t.gui_openable} />
                     <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
                   </td>
-                  <td class="px-3 py-2 text-slate-300">{t.label}</td>
-                  <td class="px-3 py-2 text-slate-500">{t.remote}</td>
-                  <td class="px-3 py-2 text-slate-400">
+                  <td class="px-3 py-2 text-base-content/80">{t.label}</td>
+                  <td class="px-3 py-2 text-base-content/60">{t.remote}</td>
+                  <td class="px-3 py-2 text-base-content/70">
                     <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>
                     <span :if={t.phase2_total == 0}>—</span>
                   </td>
-                  <td class="px-3 py-2 text-slate-400">{duration(t.uptime_s)}</td>
-                  <td class="px-3 py-2 text-slate-400">{bytes(t.bytes_in)} / {bytes(t.bytes_out)}</td>
+                  <td class="px-3 py-2 text-base-content/70">{duration(t.uptime_s)}</td>
+                  <td class="px-3 py-2 text-base-content/70">
+                    {bytes(t.bytes_in)} / {bytes(t.bytes_out)}
+                  </td>
                   <td :if={@writable} class="px-3 py-2 text-right text-xs">
                     <button
                       phx-click="history_open"
@@ -549,7 +553,7 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-label={t.label}
                       phx-value-up={to_string(t.up)}
                       phx-value-mode="graph"
-                      class="mr-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                      class="mr-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
                       Graph
                     </button>
@@ -560,7 +564,7 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-label={t.label}
                       phx-value-up={to_string(t.up)}
                       phx-value-mode="history"
-                      class="mr-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                      class="mr-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
                       History
                     </button>
@@ -570,7 +574,7 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-id={t.id}
                       phx-value-uid={t.unique_id}
                       disabled={MapSet.member?(@busy, "#{t.instance_id}:#{t.id}")}
-                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {if MapSet.member?(@busy, "#{t.instance_id}:#{t.id}"),
                         do: "…",
@@ -581,21 +585,21 @@ defmodule OrbitWeb.VpnLive do
                 <tr
                   :for={ch <- t.children}
                   :if={MapSet.member?(@expanded, key)}
-                  class="border-b border-slate-800/30 bg-slate-950/40 text-xs last:border-0"
+                  class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
                 >
                   <td class="px-3 py-1"></td>
-                  <td class="px-3 py-1 text-slate-600">{t.instance_name}</td>
-                  <td class="px-3 py-1 pl-8 text-slate-500">{ch["name"] || "child"}</td>
-                  <td class="px-3 py-1 text-slate-500" colspan="2">
+                  <td class="px-3 py-1 text-base-content/40">{t.instance_name}</td>
+                  <td class="px-3 py-1 pl-8 text-base-content/60">{ch["name"] || "child"}</td>
+                  <td class="px-3 py-1 text-base-content/60" colspan="2">
                     {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
                   </td>
                   <td class={[
                     "px-3 py-1",
-                    if(child_up?(ch), do: "text-emerald-400", else: "text-red-400")
+                    if(child_up?(ch), do: "text-primary", else: "text-error")
                   ]}>
                     {ch["status"] || "?"}
                   </td>
-                  <td class="px-3 py-1 text-slate-500" colspan={if @writable, do: 2, else: 1}>
+                  <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
                     <% mon = p2_monitor(@monitors, t.instance_id, ch["name"]) %>
                     <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                       ping {ch["ping_state"]}
@@ -603,11 +607,11 @@ defmodule OrbitWeb.VpnLive do
                     <span
                       :if={ch["phase2_dup_persistent"] == true}
                       title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
-                      class="mr-2 text-amber-400"
+                      class="mr-2 text-warning"
                     >
                       ⚠ {ch["dup_count"] || 2}× SAs
                     </span>
-                    <span :if={mon} class="mr-2 text-slate-600">
+                    <span :if={mon} class="mr-2 text-base-content/40">
                       monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
                       <span :if={not mon.enabled}>(disabled)</span>
                     </span>
@@ -620,7 +624,7 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-lts={ch["local_ts"] || ""}
                       phx-value-rts={ch["remote_ts"] || ""}
                       phx-value-suggested={ch["suggested_source"] || ""}
-                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
                       {if mon, do: "Edit ping", else: "Add ping"}
                     </button>
@@ -634,17 +638,17 @@ defmodule OrbitWeb.VpnLive do
         <%!-- Tunnel history dialog: up/down timeline + recorded transitions. --%>
         <div
           :if={@history}
-          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
         >
-          <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5">
+          <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-base-content/20 bg-base-200 p-5">
             <div class="flex items-center justify-between">
-              <h3 class="text-sm font-medium text-slate-200">
+              <h3 class="text-sm font-medium text-base-content">
                 {if @history.mode == :graph, do: "Tunnel graph", else: "Tunnel history"} — {@history.label}
-                <span class="ml-1 text-xs text-slate-500">{@history.instance_name}</span>
+                <span class="ml-1 text-xs text-base-content/60">{@history.instance_name}</span>
               </h3>
               <button
                 phx-click="history_close"
-                class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Close
               </button>
@@ -673,9 +677,9 @@ defmodule OrbitWeb.VpnLive do
                 }
                 class="flex items-center gap-2"
               >
-                <span class="w-16 text-right text-[10px] text-slate-500">{label}</span>
+                <span class="w-16 text-right text-[10px] text-base-content/60">{label}</span>
                 <div class={[
-                  "relative flex-1 overflow-hidden rounded bg-slate-800",
+                  "relative flex-1 overflow-hidden rounded bg-base-300",
                   if(@history.mode == :graph, do: "h-7", else: "h-3.5")
                 ]}>
                   <div
@@ -686,16 +690,16 @@ defmodule OrbitWeb.VpnLive do
                   </div>
                 </div>
               </div>
-              <div class="flex justify-between pl-[4.5rem] text-[10px] text-slate-600">
+              <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/40">
                 <span :if={@history.events != []}>{fmt_event_ts(lanes.window_start)}</span>
                 <span :if={@history.events == []}>no recorded transitions yet</span>
                 <span>now</span>
               </div>
-              <div class="flex gap-3 pl-[4.5rem] text-[10px] text-slate-500">
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-600"></span>up</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-500"></span>partial</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-red-600"></span>down</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-700"></span>no data</span>
+              <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/60">
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-primary"></span>up</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-warning"></span>partial</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-error"></span>down</span>
+                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-neutral"></span>no data</span>
               </div>
             </div>
 
@@ -703,8 +707,8 @@ defmodule OrbitWeb.VpnLive do
               :if={@history.mode == :history and @history.events != []}
               class="mt-4 w-full text-left text-xs"
             >
-              <thead class="text-slate-500">
-                <tr class="border-b border-slate-800">
+              <thead class="text-base-content/60">
+                <tr class="border-b border-base-300">
                   <th class="py-1 pr-3 font-medium">Time (UTC)</th>
                   <th class="py-1 pr-3 font-medium">Event</th>
                   <th class="py-1 pr-3 font-medium">Phase 2</th>
@@ -712,17 +716,17 @@ defmodule OrbitWeb.VpnLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={e <- @history.events} class="border-b border-slate-800/50 last:border-0">
-                  <td class="py-1 pr-3 font-mono text-slate-500">{fmt_event_ts(e.ts)}</td>
+                <tr :for={e <- @history.events} class="border-b border-base-300/50 last:border-0">
+                  <td class="py-1 pr-3 font-mono text-base-content/60">{fmt_event_ts(e.ts)}</td>
                   <td class={["py-1 pr-3", event_color(e.event_type)]}>{e.event_type}</td>
-                  <td class="py-1 pr-3 text-slate-500">{e.child_name}</td>
-                  <td class="py-1 text-slate-400">{e.old_value} → {e.new_value}</td>
+                  <td class="py-1 pr-3 text-base-content/60">{e.child_name}</td>
+                  <td class="py-1 text-base-content/70">{e.old_value} → {e.new_value}</td>
                 </tr>
               </tbody>
             </table>
             <p
               :if={@history.mode == :history and @history.events == []}
-              class="mt-4 text-sm text-slate-500"
+              class="mt-4 text-sm text-base-content/60"
             >
               No transitions recorded yet — events appear as soon as the tunnel
               changes state (orbit records them per agent push).
@@ -734,13 +738,13 @@ defmodule OrbitWeb.VpnLive do
              agent's one-off ipsec.ping_test on the CURRENT form values. --%>
         <div
           :if={@ping_editor}
-          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
         >
-          <div class="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5">
-            <h3 class="text-sm font-medium text-slate-200">
+          <div class="w-full max-w-md rounded-lg border border-base-content/20 bg-base-200 p-5">
+            <h3 class="text-sm font-medium text-base-content">
               {if @ping_editor.monitor_id, do: "Edit ping monitor", else: "Add ping monitor"}
             </h3>
-            <p class="mt-1 text-xs text-slate-500">
+            <p class="mt-1 text-xs text-base-content/60">
               {@ping_editor.instance_name} · {@ping_editor.child_name}
               <span :if={@ping_editor.local_ts != ""}>
                 · {@ping_editor.local_ts} ⇄ {@ping_editor.remote_ts}
@@ -748,40 +752,40 @@ defmodule OrbitWeb.VpnLive do
             </p>
 
             <form phx-change="p2mon_change" phx-submit="p2mon_save" class="mt-4 space-y-3 text-sm">
-              <label class="block text-xs text-slate-500">
+              <label class="block text-xs text-base-content/60">
                 Source IP (must be box-owned; blank = default route)
                 <input
                   name="mon[source]"
                   value={@ping_editor.source}
-                  class="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-sm text-slate-200"
+                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
                 />
               </label>
-              <label class="block text-xs text-slate-500">
+              <label class="block text-xs text-base-content/60">
                 Destination *
                 <input
                   name="mon[destination]"
                   value={@ping_editor.destination}
                   required
                   placeholder="host on the far side of the tunnel"
-                  class="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-sm text-slate-200"
+                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
                 />
               </label>
               <div class="flex items-end gap-4">
-                <label class="block text-xs text-slate-500">
+                <label class="block text-xs text-base-content/60">
                   Pings per cycle
                   <input
                     name="mon[ping_count]"
                     value={@ping_editor.ping_count}
-                    class="mt-1 w-20 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-slate-200"
+                    class="mt-1 w-20 rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
                   />
                 </label>
-                <label class="flex items-center gap-1.5 pb-1.5 text-xs text-slate-400">
+                <label class="flex items-center gap-1.5 pb-1.5 text-xs text-base-content/70">
                   <input
                     type="checkbox"
                     name="mon[enabled]"
                     value="true"
                     checked={@ping_editor.enabled}
-                    class="accent-emerald-600"
+                    class="accent-primary"
                   /> Enabled
                 </label>
               </div>
@@ -791,8 +795,8 @@ defmodule OrbitWeb.VpnLive do
                 class={[
                   "rounded px-3 py-2 text-xs",
                   case @ping_test do
-                    {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
-                    _ -> "bg-red-900/40 text-red-300"
+                    {:ok, _} -> "bg-primary/15 text-primary"
+                    _ -> "bg-error/15 text-error"
                   end
                 ]}
               >
@@ -804,7 +808,7 @@ defmodule OrbitWeb.VpnLive do
                   <button
                     type="button"
                     phx-click="p2mon_cancel"
-                    class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                    class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     Cancel
                   </button>
@@ -815,7 +819,7 @@ defmodule OrbitWeb.VpnLive do
                     phx-value-id={@ping_editor.monitor_id}
                     phx-value-iid={@ping_editor.instance_id}
                     data-confirm="Remove this Phase-2 ping monitor?"
-                    class="rounded border border-red-900 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+                    class="rounded border border-error/40 px-3 py-1.5 text-xs text-error hover:bg-error/15"
                   >
                     Delete
                   </button>
@@ -825,13 +829,13 @@ defmodule OrbitWeb.VpnLive do
                     type="button"
                     phx-click="p2mon_test"
                     disabled={@ping_test_busy}
-                    class="rounded border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950 disabled:opacity-50"
+                    class="rounded border border-info/40 px-3 py-1.5 text-xs text-info hover:bg-info/15 disabled:opacity-50"
                   >
                     {if @ping_test_busy, do: "Testing…", else: "Test"}
                   </button>
                   <button
                     type="submit"
-                    class="rounded bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-600"
+                    class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
                   >
                     Save
                   </button>
@@ -845,16 +849,16 @@ defmodule OrbitWeb.VpnLive do
     """
   end
 
-  defp lane_color(:up), do: "bg-emerald-600"
-  defp lane_color(:partial), do: "bg-amber-500"
-  defp lane_color(:down), do: "bg-red-600"
-  defp lane_color(:unknown), do: "bg-slate-700"
+  defp lane_color(:up), do: "bg-primary"
+  defp lane_color(:partial), do: "bg-warning"
+  defp lane_color(:down), do: "bg-error"
+  defp lane_color(:unknown), do: "bg-neutral"
 
-  defp event_color("phase1_up"), do: "text-emerald-400"
-  defp event_color("ping_ok"), do: "text-emerald-400"
-  defp event_color("phase1_down"), do: "text-red-400"
-  defp event_color("ping_fail"), do: "text-red-400"
-  defp event_color(_), do: "text-amber-400"
+  defp event_color("phase1_up"), do: "text-primary"
+  defp event_color("ping_ok"), do: "text-primary"
+  defp event_color("phase1_down"), do: "text-error"
+  defp event_color("ping_fail"), do: "text-error"
+  defp event_color(_), do: "text-warning"
 
   defp fmt_event_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S UTC")
 

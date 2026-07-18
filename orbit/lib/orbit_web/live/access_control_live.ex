@@ -164,99 +164,99 @@ defmodule OrbitWeb.AccessControlLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:users} current_user={@current_user} />
 
       <section class="mx-auto max-w-3xl p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">Access control (GeoIP)</h1>
+        <h1 class="mb-4 text-lg font-medium text-base-content">Access control (GeoIP)</h1>
 
         <div class="mb-4 grid gap-3 text-sm md:grid-cols-3">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">GeoIP database</div>
-            <div class={if @db_available, do: "text-emerald-400", else: "text-red-400"}>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">GeoIP database</div>
+            <div class={if @db_available, do: "text-primary", else: "text-error"}>
               {if @db_available, do: "loaded", else: "NOT available (gate fails open)"}
             </div>
-            <div class="mt-1 text-xs text-slate-500">
+            <div class="mt-1 text-xs text-base-content/60">
               last refresh: {refresh_text(@last_refresh)}
             </div>
             <button
               phx-click="refresh_db"
               disabled={@refresh_busy}
-              class="mt-2 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              class="mt-2 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-50"
             >
               {if @refresh_busy, do: "Downloading…", else: "Refresh now"}
             </button>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">CrowdSec blocklist</div>
-            <div class={if @crowdsec.configured, do: "text-emerald-400", else: "text-slate-500"}>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">CrowdSec blocklist</div>
+            <div class={if @crowdsec.configured, do: "text-primary", else: "text-base-content/60"}>
               {if @crowdsec.configured,
                 do: "#{@crowdsec.banned_count} bans · #{@crowdsec.detail}",
                 else: "not configured"}
             </div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Denials (all time)</div>
-            <div :for={{reason, n} <- @blocks} class="text-xs text-slate-300">
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Denials (all time)</div>
+            <div :for={{reason, n} <- @blocks} class="text-xs text-base-content/80">
               {reason}: {n}
             </div>
-            <div :if={@blocks == []} class="text-slate-500">none</div>
+            <div :if={@blocks == []} class="text-base-content/60">none</div>
           </div>
         </div>
 
         <div
           :if={@error}
-          class="mb-4 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
         <div
           :if={@warning}
-          class="mb-4 rounded border border-amber-800 bg-amber-950/50 p-2 text-sm text-amber-300"
+          class="mb-4 rounded border border-warning/40 bg-warning/10 p-2 text-sm text-warning"
         >
           {@warning}
         </div>
 
-        <form phx-submit="save" class="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm">
-          <label class="mb-3 flex items-center gap-2 text-slate-300">
+        <form phx-submit="save" class="rounded-lg border border-base-300 bg-base-200 p-4 text-sm">
+          <label class="mb-3 flex items-center gap-2 text-base-content/80">
             <input type="hidden" name="cfg[enabled]" value="false" />
             <input
               type="checkbox"
               name="cfg[enabled]"
               value="true"
               checked={@enabled}
-              class="accent-emerald-600"
+              class="accent-primary"
             /> Enforce country restriction
           </label>
 
           <label class="mb-3 block">
-            <span class="mb-1 block text-xs text-slate-500">
+            <span class="mb-1 block text-xs text-base-content/60">
               Allowed countries (ISO codes, comma-separated; empty + empty whitelist = allow all)
             </span>
             <input name="cfg[countries]" value={@countries_text} class={input_cls()} />
           </label>
 
           <label class="mb-3 block">
-            <span class="mb-1 block text-xs text-slate-500">
+            <span class="mb-1 block text-xs text-base-content/60">
               Whitelist — one CIDR/IP or DynDNS hostname per line (always allowed; beats the blocklist)
             </span>
             <textarea name="cfg[whitelist]" rows="5" class={input_cls()}>{@whitelist_text}</textarea>
           </label>
 
-          <label :if={@warning} class="mb-3 flex items-center gap-2 text-amber-300">
-            <input type="checkbox" name="cfg[confirm_lockout]" value="true" class="accent-amber-600" />
+          <label :if={@warning} class="mb-3 flex items-center gap-2 text-warning">
+            <input type="checkbox" name="cfg[confirm_lockout]" value="true" class="accent-warning" />
             save anyway (I know this blocks my current IP)
           </label>
 
           <button
             type="submit"
-            class="rounded bg-emerald-700 px-4 py-1.5 text-sm text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-4 py-1.5 text-sm text-white hover:bg-primary/80"
           >
             Save
           </button>
         </form>
 
-        <div :if={@resolved != []} class="mt-4 text-xs text-slate-500">
+        <div :if={@resolved != []} class="mt-4 text-xs text-base-content/60">
           DynDNS whitelist currently resolves to: {Enum.join(@resolved, ", ")}
         </div>
       </section>
@@ -265,7 +265,7 @@ defmodule OrbitWeb.AccessControlLive do
   end
 
   defp input_cls do
-    "w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 
   # Manual GeoLite2 refresh (AccessControlPage refreshDb parity) — the same

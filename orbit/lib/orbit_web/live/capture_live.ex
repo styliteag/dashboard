@@ -153,24 +153,27 @@ defmodule OrbitWeb.CaptureLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">Packet capture — {@instance.name}</h1>
-          <a href={~p"/instances/#{@instance.id}"} class="text-xs text-slate-500 hover:text-slate-300">
+          <h1 class="text-lg font-medium text-base-content">Packet capture — {@instance.name}</h1>
+          <a
+            href={~p"/instances/#{@instance.id}"}
+            class="text-xs text-base-content/60 hover:text-base-content/80"
+          >
             back to detail
           </a>
         </div>
 
         <form phx-submit="start" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
           <label class="block">
-            <span class="mb-1 block text-xs text-slate-500">Interface (blank = default)</span>
+            <span class="mb-1 block text-xs text-base-content/60">Interface (blank = default)</span>
             <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-slate-500">BPF filter (blank = all)</span>
+            <span class="mb-1 block text-xs text-base-content/60">BPF filter (blank = all)</span>
             <input
               name="cap[filter]"
               value={@filter}
@@ -180,7 +183,7 @@ defmodule OrbitWeb.CaptureLive do
           </label>
           <button
             type="submit"
-            class="rounded bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
           >
             {if @capturing, do: "Restart", else: "Start capture"}
           </button>
@@ -188,7 +191,7 @@ defmodule OrbitWeb.CaptureLive do
             :if={@capturing}
             type="button"
             phx-click="stop"
-            class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Stop
           </button>
@@ -197,44 +200,44 @@ defmodule OrbitWeb.CaptureLive do
         <%!-- Snapshot mode: bounded capture, downloadable pcap + parsed view. --%>
         <form phx-submit="snapshot" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
           <label class="block">
-            <span class="mb-1 block text-xs text-slate-500">Interface</span>
+            <span class="mb-1 block text-xs text-base-content/60">Interface</span>
             <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-slate-500">BPF filter</span>
+            <span class="mb-1 block text-xs text-base-content/60">BPF filter</span>
             <input name="cap[filter]" value={@filter} class={input_cls()} />
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-slate-500">Seconds (≤120)</span>
+            <span class="mb-1 block text-xs text-base-content/60">Seconds (≤120)</span>
             <input
               name="cap[max_seconds]"
               value="15"
-              class="w-20 rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+              class="w-20 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
             />
           </label>
           <button
             type="submit"
             disabled={@snap_busy}
-            class="rounded bg-sky-700 px-3 py-1.5 text-xs text-white hover:bg-sky-600 disabled:opacity-50"
+            class="rounded bg-info px-3 py-1.5 text-xs text-white hover:bg-info/80 disabled:opacity-50"
           >
             {if @snap_busy, do: "Capturing…", else: "Snapshot capture"}
           </button>
           <a
             :if={@snap_id}
             href={~p"/api/captures/#{@snap_id}/pcap"}
-            class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Download pcap ({@snap_meta["bytes"]} B{if @snap_meta["truncated"], do: ", truncated"})
           </a>
         </form>
 
-        <div :if={@snap_error} class="mb-3 rounded bg-red-900/40 px-3 py-2 text-xs text-red-300">
+        <div :if={@snap_error} class="mb-3 rounded bg-error/15 px-3 py-2 text-xs text-error">
           {@snap_error}
         </div>
 
         <div
           :if={@snap_packets != []}
-          class="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-3"
+          class="mb-4 rounded-lg border border-base-300 bg-base-100 p-3"
         >
           <form phx-change="snap_filter" onsubmit="return false" class="mb-2">
             <input
@@ -243,12 +246,12 @@ defmodule OrbitWeb.CaptureLive do
               value={@snap_filter}
               placeholder="Filter packets (src/dst/proto/info)…"
               phx-debounce="200"
-              class="w-full max-w-sm rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+              class="w-full max-w-sm rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content"
             />
           </form>
           <div class="max-h-96 overflow-y-auto">
             <table class="w-full text-left font-mono text-xs">
-              <thead class="sticky top-0 bg-slate-950 text-slate-500">
+              <thead class="sticky top-0 bg-base-100 text-base-content/60">
                 <tr>
                   <th class="py-1 pr-3 font-medium">#</th>
                   <th class="py-1 pr-3 font-medium">Proto</th>
@@ -260,16 +263,16 @@ defmodule OrbitWeb.CaptureLive do
               </thead>
               <tbody>
                 <%= for p <- visible_packets(@snap_packets, @snap_filter) do %>
-                  <tr class="border-t border-slate-800/50 align-top">
-                    <td class="py-0.5 pr-3 text-slate-600">{p.idx}</td>
-                    <td class="py-0.5 pr-3 text-slate-300">{p.proto}</td>
-                    <td class="py-0.5 pr-3 text-slate-400">{p.src}</td>
-                    <td class="py-0.5 pr-3 text-slate-400">{p.dst}</td>
-                    <td class="py-0.5 pr-3 text-slate-500">{p.len}</td>
-                    <td class="py-0.5 text-slate-400">
+                  <tr class="border-t border-base-300/50 align-top">
+                    <td class="py-0.5 pr-3 text-base-content/40">{p.idx}</td>
+                    <td class="py-0.5 pr-3 text-base-content/80">{p.proto}</td>
+                    <td class="py-0.5 pr-3 text-base-content/70">{p.src}</td>
+                    <td class="py-0.5 pr-3 text-base-content/70">{p.dst}</td>
+                    <td class="py-0.5 pr-3 text-base-content/60">{p.len}</td>
+                    <td class="py-0.5 text-base-content/70">
                       <details :if={p.hex != ""}>
                         <summary class="cursor-pointer">{p.info}</summary>
-                        <div class="mt-1 break-all text-[10px] text-slate-600">{p.hex}</div>
+                        <div class="mt-1 break-all text-[10px] text-base-content/40">{p.hex}</div>
                       </details>
                       <span :if={p.hex == ""}>{p.info}</span>
                     </td>
@@ -287,18 +290,18 @@ defmodule OrbitWeb.CaptureLive do
           data-instance-id={@instance.id}
           data-interface={@interface}
           data-filter={@filter}
-          class="rounded-lg border border-slate-800 bg-slate-950 p-3"
+          class="rounded-lg border border-base-300 bg-base-100 p-3"
         >
-          <div class="mb-2 text-xs text-slate-500">
-            Status: <span data-cap-status class="text-slate-300">connecting…</span>
+          <div class="mb-2 text-xs text-base-content/60">
+            Status: <span data-cap-status class="text-base-content/80">connecting…</span>
           </div>
           <pre
             data-cap-out
-            class="h-96 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-slate-300"
+            class="h-96 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-base-content/80"
           ></pre>
         </div>
 
-        <p :if={not @capturing} class="text-sm text-slate-500">
+        <p :if={not @capturing} class="text-sm text-base-content/60">
           Start a capture to stream live traffic from the box. Requires a connected agent.
         </p>
       </section>
@@ -307,6 +310,6 @@ defmodule OrbitWeb.CaptureLive do
   end
 
   defp input_cls do
-    "rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 end

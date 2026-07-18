@@ -72,57 +72,57 @@ defmodule OrbitWeb.InstanceCreateLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="mx-auto max-w-2xl p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">New instance</h1>
+        <h1 class="mb-4 text-lg font-medium text-base-content">New instance</h1>
 
         <div
           :if={@error}
-          class="mb-4 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
 
         <form phx-submit="create" class="space-y-4">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
             <div class="grid gap-3 md:grid-cols-2">
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Name</span>
+                <span class="mb-1 block text-xs text-base-content/60">Name</span>
                 <input name="instance[name]" required class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Group</span>
+                <span class="mb-1 block text-xs text-base-content/60">Group</span>
                 <select name="instance[group_id]" class={input_cls()}>
                   <option :for={g <- @groups} value={g.id}>{g.name}</option>
                 </select>
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Device type</span>
+                <span class="mb-1 block text-xs text-base-content/60">Device type</span>
                 <select name="instance[device_type]" class={input_cls()}>
                   <option :for={t <- Orbit.Instances.device_types()} value={t}>{t}</option>
                 </select>
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Transport</span>
+                <span class="mb-1 block text-xs text-base-content/60">Transport</span>
                 <select name="instance[transport]" class={input_cls()}>
                   <option value="push">push (agent)</option>
                   <option value="direct">direct (API poll)</option>
                 </select>
               </label>
               <label class="block text-sm md:col-span-2">
-                <span class="mb-1 block text-xs text-slate-500">
+                <span class="mb-1 block text-xs text-base-content/60">
                   Base URL (direct API; leave empty for push-only)
                 </span>
                 <input name="instance[base_url]" class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">API key (direct only)</span>
+                <span class="mb-1 block text-xs text-base-content/60">API key (direct only)</span>
                 <input name="instance[api_key]" autocomplete="off" class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">API secret</span>
+                <span class="mb-1 block text-xs text-base-content/60">API secret</span>
                 <input
                   name="instance[api_secret]"
                   type="password"
@@ -131,28 +131,28 @@ defmodule OrbitWeb.InstanceCreateLive do
                 />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Location</span>
+                <span class="mb-1 block text-xs text-base-content/60">Location</span>
                 <input name="instance[location]" class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-slate-500">Slug (optional)</span>
+                <span class="mb-1 block text-xs text-base-content/60">Slug (optional)</span>
                 <input name="instance[slug]" class={input_cls()} />
               </label>
             </div>
-            <label class="mt-3 flex items-center gap-2 text-sm text-slate-300">
+            <label class="mt-3 flex items-center gap-2 text-sm text-base-content/80">
               <input type="hidden" name="instance[ssl_verify]" value="false" />
               <input
                 type="checkbox"
                 name="instance[ssl_verify]"
                 value="true"
-                class="accent-emerald-600"
+                class="accent-primary"
               /> Verify TLS
             </label>
           </div>
 
           <button
             type="submit"
-            class="rounded bg-emerald-700 px-4 py-1.5 text-sm text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-4 py-1.5 text-sm text-white hover:bg-primary/80"
           >
             Create instance
           </button>
@@ -163,6 +163,6 @@ defmodule OrbitWeb.InstanceCreateLive do
   end
 
   defp input_cls do
-    "w-full rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 end

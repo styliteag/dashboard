@@ -128,17 +128,17 @@ defmodule OrbitWeb.UsersLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:users} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">
-            Users <span class="ml-2 text-sm text-slate-500">({length(@users)})</span>
+          <h1 class="text-lg font-medium text-base-content">
+            Users <span class="ml-2 text-sm text-base-content/60">({length(@users)})</span>
           </h1>
           <button
             phx-click="toggle_create"
-            class="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
           >
             {if @show_create, do: "Cancel", else: "New user"}
           </button>
@@ -146,7 +146,7 @@ defmodule OrbitWeb.UsersLive do
 
         <div
           :if={@error}
-          class="mb-4 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
@@ -154,15 +154,15 @@ defmodule OrbitWeb.UsersLive do
         <form
           :if={@show_create}
           phx-submit="create_user"
-          class="mb-6 rounded-lg border border-slate-800 bg-slate-900 p-4"
+          class="mb-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <div class="grid gap-3 md:grid-cols-3">
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-slate-500">Username</span>
+              <span class="mb-1 block text-xs text-base-content/60">Username</span>
               <input name="user[username]" required class={input_cls()} />
             </label>
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-slate-500">Password (min 8)</span>
+              <span class="mb-1 block text-xs text-base-content/60">Password (min 8)</span>
               <input
                 name="user[password]"
                 type="password"
@@ -172,13 +172,13 @@ defmodule OrbitWeb.UsersLive do
               />
             </label>
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-slate-500">Role</span>
+              <span class="mb-1 block text-xs text-base-content/60">Role</span>
               <select name="user[role]" class={input_cls()}>
                 <option :for={r <- Admin.roles()} value={r}>{r}</option>
               </select>
             </label>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-slate-300">
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-base-content/80">
             <label class="flex items-center gap-2">
               <input type="hidden" name="user[is_superadmin]" value="false" />
               <input
@@ -192,15 +192,15 @@ defmodule OrbitWeb.UsersLive do
           </div>
           <button
             type="submit"
-            class="mt-3 rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+            class="mt-3 rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
           >
             Create user
           </button>
         </form>
 
         <table class="w-full text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">User</th>
               <th class="py-2 pr-4 font-medium">Role</th>
               <th class="py-2 pr-4 font-medium">2FA</th>
@@ -212,9 +212,9 @@ defmodule OrbitWeb.UsersLive do
           </thead>
           <tbody>
             <%= for u <- @users do %>
-              <tr class="border-b border-slate-800/50">
+              <tr class="border-b border-base-300/50">
                 <td class="py-2 pr-4">
-                  <span class="text-slate-200">{u.username}</span>
+                  <span class="text-base-content">{u.username}</span>
                   <span
                     :if={u.is_superadmin}
                     class="ml-2 rounded bg-indigo-900/50 px-1.5 py-0.5 text-xs text-indigo-300"
@@ -223,52 +223,52 @@ defmodule OrbitWeb.UsersLive do
                   </span>
                   <span
                     :if={u.is_bootstrap}
-                    class="ml-2 rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400"
+                    class="ml-2 rounded bg-base-300 px-1.5 py-0.5 text-xs text-base-content/70"
                   >
                     bootstrap
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-slate-300">{u.role}</td>
+                <td class="py-2 pr-4 text-base-content/80">{u.role}</td>
                 <td class="py-2 pr-4">
                   <span class={twofa_class(u.totp_enabled)}>
                     {if u.totp_enabled, do: "on", else: "off"}
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-slate-400">{groups_text(u.groups)}</td>
+                <td class="py-2 pr-4 text-base-content/70">{groups_text(u.groups)}</td>
                 <td class="py-2 pr-4">
                   <span
                     :if={u.disabled}
-                    class="rounded bg-red-900/60 px-1.5 py-0.5 text-xs text-red-300"
+                    class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
                   >
                     disabled
                   </span>
-                  <span :if={not u.disabled} class="text-slate-500">active</span>
+                  <span :if={not u.disabled} class="text-base-content/60">active</span>
                 </td>
-                <td class="py-2 pr-4 text-slate-400">{last_login_text(u)}</td>
+                <td class="py-2 pr-4 text-base-content/70">{last_login_text(u)}</td>
                 <td class="py-2 text-right">
                   <button
                     phx-click="edit"
                     phx-value-id={u.id}
-                    class="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
                   >
                     {if @editing == u.id, do: "close", else: "edit"}
                   </button>
                 </td>
               </tr>
-              <tr :if={@editing == u.id} class="border-b border-slate-800/50 bg-slate-900/60">
+              <tr :if={@editing == u.id} class="border-b border-base-300/50 bg-base-200/60">
                 <td colspan="7" class="p-4">
                   <form phx-submit="update_user" class="space-y-3">
                     <input type="hidden" name="user_id" value={u.id} />
                     <div class="flex flex-wrap items-end gap-4 text-sm">
                       <label class="block">
-                        <span class="mb-1 block text-xs text-slate-500">Role</span>
+                        <span class="mb-1 block text-xs text-base-content/60">Role</span>
                         <select name="user[role]" class={input_cls()}>
                           <option :for={r <- Admin.roles()} value={r} selected={u.role == r}>
                             {r}
                           </option>
                         </select>
                       </label>
-                      <label class="flex items-center gap-2 pb-1 text-slate-300">
+                      <label class="flex items-center gap-2 pb-1 text-base-content/80">
                         <input type="hidden" name="user[is_superadmin]" value="false" />
                         <input
                           type="checkbox"
@@ -279,7 +279,7 @@ defmodule OrbitWeb.UsersLive do
                         /> superadmin
                       </label>
                       <label class="block">
-                        <span class="mb-1 block text-xs text-slate-500">
+                        <span class="mb-1 block text-xs text-base-content/60">
                           New password (blank = keep)
                         </span>
                         <input
@@ -290,13 +290,13 @@ defmodule OrbitWeb.UsersLive do
                         />
                       </label>
                     </div>
-                    <div class="flex flex-wrap items-center gap-4 text-sm text-slate-300">
+                    <div class="flex flex-wrap items-center gap-4 text-sm text-base-content/80">
                       <.group_checks groups={@groups} member_ids={MapSet.new(u.groups, & &1.id)} />
                     </div>
                     <div class="flex items-center gap-2">
                       <button
                         type="submit"
-                        class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+                        class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
                       >
                         Save
                       </button>
@@ -305,7 +305,7 @@ defmodule OrbitWeb.UsersLive do
                         phx-click="reset_2fa"
                         phx-value-id={u.id}
                         data-confirm={"Reset 2FA for #{u.username}? TOTP and passkeys are wiped; their sessions die."}
-                        class="rounded border border-amber-800 px-2 py-1 text-xs text-amber-400 hover:bg-amber-950"
+                        class="rounded border border-warning/40 px-2 py-1 text-xs text-warning hover:bg-warning/10"
                       >
                         Reset 2FA
                       </button>
@@ -314,7 +314,7 @@ defmodule OrbitWeb.UsersLive do
                         phx-click="delete_user"
                         phx-value-id={u.id}
                         data-confirm={"Delete user #{u.username}?"}
-                        class="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                        class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
                       >
                         Delete
                       </button>
@@ -341,7 +341,7 @@ defmodule OrbitWeb.UsersLive do
         name={"user[group_#{g.id}]"}
         value="true"
         checked={MapSet.member?(@member_ids, g.id)}
-        class="accent-emerald-600"
+        class="accent-primary"
       />
       {g.name}
     </label>
@@ -349,11 +349,11 @@ defmodule OrbitWeb.UsersLive do
   end
 
   defp input_cls do
-    "rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+    "rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
   end
 
-  defp twofa_class(true), do: "rounded bg-emerald-900/50 px-1.5 py-0.5 text-xs text-emerald-300"
-  defp twofa_class(_), do: "rounded bg-amber-900/50 px-1.5 py-0.5 text-xs text-amber-300"
+  defp twofa_class(true), do: "rounded bg-primary/20 px-1.5 py-0.5 text-xs text-primary"
+  defp twofa_class(_), do: "rounded bg-warning/20 px-1.5 py-0.5 text-xs text-warning"
 
   defp groups_text([]), do: "—"
   defp groups_text(groups), do: groups |> Enum.map(& &1.name) |> Enum.sort() |> Enum.join(", ")

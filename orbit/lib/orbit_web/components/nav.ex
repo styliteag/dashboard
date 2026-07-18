@@ -19,10 +19,10 @@ defmodule OrbitWeb.Components.Nav do
 
   def top_nav(assigns) do
     ~H"""
-    <header class="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-3">
+    <header class="flex items-center justify-between border-b border-base-300 bg-base-200 px-6 py-3">
       <div class="flex items-center gap-4">
-        <a href={~p"/"} class="font-semibold text-slate-100">STYLiTE Orbit</a>
-        <nav class="flex flex-wrap gap-3 text-sm text-slate-400">
+        <a href={~p"/"} class="font-semibold text-base-content">STYLiTE Orbit</a>
+        <nav class="flex flex-wrap gap-3 text-sm text-base-content/70">
           <.nav_link active={@active} key={:instances} href={~p"/instances"} label="Instances" />
           <.nav_link active={@active} key={:hub} href={~p"/hub"} label="Hub" />
           <.nav_link active={@active} key={:alerts} href={~p"/alerts"} label="Alerts" />
@@ -75,21 +75,25 @@ defmodule OrbitWeb.Components.Nav do
       </div>
       <div class="flex items-center gap-3 text-sm">
         <.nav_link active={@active} key={:security} href={~p"/security"} label="Security" />
-        <a href={~p"/password"} class="text-slate-400 hover:text-slate-200" title="Change password">
+        <a
+          href={~p"/password"}
+          class="text-base-content/70 hover:text-base-content"
+          title="Change password"
+        >
           {@current_user.username}
         </a>
         <form action={~p"/logout"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
             type="submit"
-            class="rounded-md border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            class="rounded-md border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
             Sign out
           </button>
         </form>
         <%!-- Version tag (VersionFooter parity, compacted into the nav —
              every page shares this header, no separate footer needed). --%>
-        <span class="text-xs text-slate-600" title="Orbit version">v{app_version()}</span>
+        <span class="text-xs text-base-content/40" title="Orbit version">v{app_version()}</span>
       </div>
     </header>
     """
@@ -109,8 +113,8 @@ defmodule OrbitWeb.Components.Nav do
       class={[
         "rounded-md px-2 py-1",
         if(@active == @key,
-          do: "bg-slate-800 font-medium text-emerald-300",
-          else: "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+          do: "bg-base-300 font-medium text-primary",
+          else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
         )
       ]}
     >

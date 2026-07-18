@@ -193,21 +193,21 @@ defmodule OrbitWeb.AuditLive do
     assigns = Phoenix.Component.assign(assigns, :timeline_types, @timeline_types)
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:audit} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-slate-200">Audit</h1>
-          <div class="flex rounded border border-slate-800 text-xs">
+          <h1 class="text-lg font-medium text-base-content">Audit</h1>
+          <div class="flex rounded border border-base-300 text-xs">
             <button
               :for={{tab, label} <- [{:actions, "Actions"}, {:access, "Access"}]}
               phx-click="tab"
               phx-value-tab={tab}
               class={[
                 "px-3 py-1",
-                @tab == tab && "bg-slate-800 text-slate-100",
-                @tab != tab && "text-slate-400 hover:text-slate-200"
+                @tab == tab && "bg-base-300 text-base-content",
+                @tab != tab && "text-base-content/70 hover:text-base-content"
               ]}
             >
               {label}
@@ -215,7 +215,7 @@ defmodule OrbitWeb.AuditLive do
           </div>
           <button
             phx-click="refresh"
-            class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
           >
             Refresh
           </button>
@@ -233,11 +233,11 @@ defmodule OrbitWeb.AuditLive do
               value={@action_q}
               placeholder="Filter action or target…"
               phx-debounce="300"
-              class="max-w-xs flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-emerald-600 focus:outline-none"
+              class="max-w-xs flex-1 rounded-lg border border-base-content/20 bg-base-300 px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
             />
             <select
               name="hours"
-              class="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-slate-300"
+              class="rounded-lg border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content/80"
             >
               <option value="" selected={@action_hours == nil}>All time</option>
               <option :for={h <- [1, 6, 24, 168]} value={h} selected={@action_hours == h}>
@@ -246,8 +246,8 @@ defmodule OrbitWeb.AuditLive do
             </select>
           </form>
           <table class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Time (UTC)</th>
                 <th class="py-2 pr-4 font-medium">Action</th>
                 <th class="py-2 pr-4 font-medium">Result</th>
@@ -257,24 +257,24 @@ defmodule OrbitWeb.AuditLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @rows} class="border-b border-slate-800/50">
-                <td class="py-2 pr-4 font-mono text-xs text-slate-500">{fmt_ts(r.ts)}</td>
-                <td class="py-2 pr-4 text-slate-300">{r.action}</td>
+              <tr :for={r <- @rows} class="border-b border-base-300/50">
+                <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(r.ts)}</td>
+                <td class="py-2 pr-4 text-base-content/80">{r.action}</td>
                 <td class="py-2 pr-4">
                   <span class={["rounded px-1.5 py-0.5 text-xs", result_class(r.result)]}>
                     {r.result}
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-slate-400">{r.user}</td>
-                <td class="py-2 pr-4 text-slate-400">{r.target}</td>
-                <td class="py-2 pr-4 text-slate-500">{r.ip || "—"}</td>
+                <td class="py-2 pr-4 text-base-content/70">{r.user}</td>
+                <td class="py-2 pr-4 text-base-content/70">{r.target}</td>
+                <td class="py-2 pr-4 text-base-content/60">{r.ip || "—"}</td>
               </tr>
             </tbody>
           </table>
           <button
             :if={length(@rows) >= @action_limit}
             phx-click="action_more"
-            class="mt-3 rounded border border-slate-700 px-3 py-1 text-xs text-slate-400 hover:bg-slate-800"
+            class="mt-3 rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
           >
             Load more
           </button>
@@ -282,50 +282,50 @@ defmodule OrbitWeb.AuditLive do
 
         <div :if={@tab == :access}>
           <div class="mb-6 grid gap-4 md:grid-cols-4">
-            <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-              <div class="text-xs text-slate-500">Online now</div>
-              <div class="mt-1 text-2xl text-emerald-300">{length(@summary.online)}</div>
-              <div :for={s <- Enum.take(@summary.online, 5)} class="mt-1 text-xs text-slate-400">
+            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+              <div class="text-xs text-base-content/60">Online now</div>
+              <div class="mt-1 text-2xl text-primary">{length(@summary.online)}</div>
+              <div :for={s <- Enum.take(@summary.online, 5)} class="mt-1 text-xs text-base-content/70">
                 {s.username || "user ##{s.user_id}"} · {s.ip}
               </div>
             </div>
-            <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-              <div class="text-xs text-slate-500">Logins (24h)</div>
-              <div class="mt-1 text-2xl text-slate-200">
+            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+              <div class="text-xs text-base-content/60">Logins (24h)</div>
+              <div class="mt-1 text-2xl text-base-content">
                 {@summary.logins_24h.ok}
-                <span :if={@summary.logins_24h.failed > 0} class="text-base text-red-400">
+                <span :if={@summary.logins_24h.failed > 0} class="text-base text-error">
                   / {@summary.logins_24h.failed} failed
                 </span>
               </div>
             </div>
-            <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-              <div class="text-xs text-slate-500">Blocked (all time)</div>
-              <div class="mt-1 text-2xl text-red-300">
+            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+              <div class="text-xs text-base-content/60">Blocked (all time)</div>
+              <div class="mt-1 text-2xl text-error">
                 {@summary.blocks |> Enum.map(& &1.count) |> Enum.sum()}
               </div>
-              <div :for={b <- Enum.take(@summary.blocks, 4)} class="mt-1 text-xs text-slate-400">
+              <div :for={b <- Enum.take(@summary.blocks, 4)} class="mt-1 text-xs text-base-content/70">
                 {b.reason} · {b.count}
               </div>
             </div>
-            <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-              <div class="text-xs text-slate-500">Requests (24h)</div>
+            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+              <div class="text-xs text-base-content/60">Requests (24h)</div>
               <div :for={p <- Enum.take(@summary.principals_24h, 5)} class="mt-1 text-xs">
-                <span class="text-slate-300">{p.principal}</span>
-                <span class="text-slate-500"> · {p.count}</span>
+                <span class="text-base-content/80">{p.principal}</span>
+                <span class="text-base-content/60"> · {p.count}</span>
               </div>
             </div>
           </div>
 
           <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
-            <span class="text-slate-500">Show:</span>
+            <span class="text-base-content/60">Show:</span>
             <button
               :for={{type, label} <- @timeline_types}
               phx-click="toggle_type"
               phx-value-type={type}
               class={[
                 "rounded border px-2 py-0.5",
-                MapSet.member?(@types, type) && "border-emerald-700 text-emerald-300",
-                !MapSet.member?(@types, type) && "border-slate-700 text-slate-500"
+                MapSet.member?(@types, type) && "border-primary/60 text-primary",
+                !MapSet.member?(@types, type) && "border-base-content/20 text-base-content/60"
               ]}
             >
               {label}
@@ -337,33 +337,33 @@ defmodule OrbitWeb.AuditLive do
                 value={@q}
                 placeholder="search user / ip / text…"
                 phx-debounce="400"
-                class="w-48 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-xs text-slate-200"
+                class="w-48 rounded border border-base-content/20 bg-base-100 px-2 py-0.5 text-xs text-base-content"
               />
               <select
                 name="hours"
-                class="rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-xs text-slate-300"
+                class="rounded border border-base-content/20 bg-base-100 px-1 py-0.5 text-xs text-base-content/80"
               >
                 <option value="" selected={@hours == nil}>all time</option>
                 <option value="24" selected={@hours == 24}>24h</option>
                 <option value="168" selected={@hours == 168}>7d</option>
                 <option value="720" selected={@hours == 720}>30d</option>
               </select>
-              <label class="flex items-center gap-1 text-slate-400">
+              <label class="flex items-center gap-1 text-base-content/70">
                 <input type="hidden" name="grouped" value="false" />
                 <input
                   type="checkbox"
                   name="grouped"
                   value="true"
                   checked={@grouped}
-                  class="accent-emerald-600"
+                  class="accent-primary"
                 /> grouped
               </label>
             </form>
           </div>
 
           <table :if={@grouped} class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Count</th>
                 <th class="py-2 pr-4 font-medium">Type</th>
                 <th class="py-2 pr-4 font-medium">Who</th>
@@ -372,26 +372,26 @@ defmodule OrbitWeb.AuditLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={g <- @grouped_rows} class="border-b border-slate-800/50">
-                <td class="py-1.5 pr-4 text-right text-slate-300">{g.count}</td>
+              <tr :for={g <- @grouped_rows} class="border-b border-base-300/50">
+                <td class="py-1.5 pr-4 text-right text-base-content/80">{g.count}</td>
                 <td class="py-1.5 pr-4">
                   <span class={["rounded px-1.5 py-0.5 text-xs", type_class(g.type)]}>
                     {type_label(g.type)}
                   </span>
                 </td>
-                <td class="py-1.5 pr-4 text-slate-300">{g.who}</td>
-                <td class="py-1.5 pr-4 text-slate-400">{g.text}</td>
-                <td class="py-1.5 font-mono text-xs text-slate-500">{fmt_ts(g.last_ts)}</td>
+                <td class="py-1.5 pr-4 text-base-content/80">{g.who}</td>
+                <td class="py-1.5 pr-4 text-base-content/70">{g.text}</td>
+                <td class="py-1.5 font-mono text-xs text-base-content/60">{fmt_ts(g.last_ts)}</td>
               </tr>
             </tbody>
           </table>
-          <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-slate-500">
+          <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-base-content/60">
             No events for the selected filters.
           </div>
 
           <table :if={not @grouped} class="w-full text-left text-sm">
-            <thead class="text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Time (UTC)</th>
                 <th class="py-2 pr-4 font-medium">Type</th>
                 <th class="py-2 pr-4 font-medium">Who</th>
@@ -400,20 +400,20 @@ defmodule OrbitWeb.AuditLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={e <- @timeline} class="border-b border-slate-800/50">
-                <td class="py-2 pr-4 font-mono text-xs text-slate-500">{fmt_ts(e.ts)}</td>
+              <tr :for={e <- @timeline} class="border-b border-base-300/50">
+                <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(e.ts)}</td>
                 <td class="py-2 pr-4">
                   <span class={["rounded px-1.5 py-0.5 text-xs", type_class(e.type)]}>
                     {type_label(e.type)}
                   </span>
                 </td>
-                <td class="py-2 pr-4 text-slate-300">{e.who}</td>
-                <td class="py-2 pr-4 text-slate-500">{e.ip || "—"}</td>
-                <td class="py-2 pr-4 text-slate-400">{e.text}</td>
+                <td class="py-2 pr-4 text-base-content/80">{e.who}</td>
+                <td class="py-2 pr-4 text-base-content/60">{e.ip || "—"}</td>
+                <td class="py-2 pr-4 text-base-content/70">{e.text}</td>
               </tr>
             </tbody>
           </table>
-          <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-slate-500">
+          <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-base-content/60">
             No events for the selected types.
           </div>
         </div>
@@ -426,10 +426,10 @@ defmodule OrbitWeb.AuditLive do
   defp fmt_ts(%DateTime{} = ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S")
   defp fmt_ts(other), do: to_string(other)
 
-  defp result_class("ok"), do: "bg-emerald-900/50 text-emerald-300"
-  defp result_class("pending"), do: "bg-slate-700 text-slate-300"
-  defp result_class("denied"), do: "bg-red-900/60 text-red-300"
-  defp result_class(_), do: "bg-amber-900/50 text-amber-300"
+  defp result_class("ok"), do: "bg-primary/20 text-primary"
+  defp result_class("pending"), do: "bg-neutral text-base-content/80"
+  defp result_class("denied"), do: "bg-error/20 text-error"
+  defp result_class(_), do: "bg-warning/20 text-warning"
 
   defp type_label(:login_ok), do: "LOGIN"
   defp type_label(:login_fail), do: "LOGIN FAIL"
@@ -439,10 +439,10 @@ defmodule OrbitWeb.AuditLive do
   defp type_label(:access), do: "ACCESS"
   defp type_label(:request), do: "REQ"
 
-  defp type_class(:login_ok), do: "bg-emerald-900/50 text-emerald-300"
-  defp type_class(:login_fail), do: "bg-red-900/60 text-red-300"
-  defp type_class(:denial), do: "bg-red-900/60 text-red-300"
-  defp type_class(:access), do: "bg-sky-900/50 text-sky-300"
-  defp type_class(:request), do: "bg-slate-700 text-slate-400"
-  defp type_class(_), do: "bg-amber-900/50 text-amber-300"
+  defp type_class(:login_ok), do: "bg-primary/20 text-primary"
+  defp type_class(:login_fail), do: "bg-error/20 text-error"
+  defp type_class(:denial), do: "bg-error/20 text-error"
+  defp type_class(:access), do: "bg-info/20 text-info"
+  defp type_class(:request), do: "bg-neutral text-base-content/70"
+  defp type_class(_), do: "bg-warning/20 text-warning"
 end

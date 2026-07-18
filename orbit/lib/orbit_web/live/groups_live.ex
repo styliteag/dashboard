@@ -183,17 +183,17 @@ defmodule OrbitWeb.GroupsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:groups} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-slate-200">
-          Groups <span class="ml-2 text-sm text-slate-500">({length(@groups)})</span>
+        <h1 class="mb-4 text-lg font-medium text-base-content">
+          Groups <span class="ml-2 text-sm text-base-content/60">({length(@groups)})</span>
         </h1>
 
         <div
           :if={@error}
-          class="mb-4 max-w-2xl rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-300"
+          class="mb-4 max-w-2xl rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
@@ -203,19 +203,19 @@ defmodule OrbitWeb.GroupsLive do
             name="group[name]"
             placeholder="new group name"
             required
-            class="flex-1 rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+            class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
           />
           <button
             type="submit"
-            class="rounded bg-emerald-700 px-3 py-1.5 text-xs text-white hover:bg-emerald-600"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
           >
             Create group
           </button>
         </form>
 
         <table class="w-full max-w-2xl text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">Group</th>
               <th class="py-2 pr-4 text-right font-medium">Members</th>
               <th class="py-2 pr-4 text-right font-medium">Instances</th>
@@ -224,18 +224,18 @@ defmodule OrbitWeb.GroupsLive do
           </thead>
           <tbody>
             <%= for g <- @groups do %>
-              <tr class="border-b border-slate-800/50">
-                <td class="py-2 pr-4 text-slate-200">{g.name}</td>
-                <td class="py-2 pr-4 text-right text-slate-300">{g.user_count}</td>
-                <td class="py-2 pr-4 text-right text-slate-300">{g.instance_count}</td>
+              <tr class="border-b border-base-300/50">
+                <td class="py-2 pr-4 text-base-content">{g.name}</td>
+                <td class="py-2 pr-4 text-right text-base-content/80">{g.user_count}</td>
+                <td class="py-2 pr-4 text-right text-base-content/80">{g.instance_count}</td>
                 <td class="py-2 text-right">
                   <button
                     phx-click="channels_toggle"
                     phx-value-group_id={g.id}
                     title="Per-group notification channels"
                     class={[
-                      "rounded border border-slate-700 px-2 py-0.5 text-xs hover:bg-slate-800",
-                      if(@channels_for == g.id, do: "text-emerald-400", else: "text-slate-400")
+                      "rounded border border-base-content/20 px-2 py-0.5 text-xs hover:bg-base-300",
+                      if(@channels_for == g.id, do: "text-primary", else: "text-base-content/70")
                     ]}
                   >
                     channels
@@ -243,7 +243,7 @@ defmodule OrbitWeb.GroupsLive do
                   <button
                     phx-click="rename_toggle"
                     phx-value-group_id={g.id}
-                    class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
+                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
                   >
                     rename
                   </button>
@@ -251,13 +251,13 @@ defmodule OrbitWeb.GroupsLive do
                     phx-click="delete_group"
                     phx-value-group_id={g.id}
                     data-confirm={"Delete group #{g.name}?"}
-                    class="ml-1 rounded border border-red-900 px-2 py-0.5 text-xs text-red-400 hover:bg-red-950"
+                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
                   >
                     delete
                   </button>
                 </td>
               </tr>
-              <tr :if={@renaming == g.id} class="border-b border-slate-800/50 bg-slate-900/60">
+              <tr :if={@renaming == g.id} class="border-b border-base-300/50 bg-base-200/60">
                 <td colspan="4" class="p-3">
                   <form phx-submit="rename_group" class="flex items-center gap-2">
                     <input type="hidden" name="group_id" value={g.id} />
@@ -265,26 +265,26 @@ defmodule OrbitWeb.GroupsLive do
                       name="group[name]"
                       value={g.name}
                       required
-                      class="flex-1 rounded border border-slate-700 bg-slate-950 p-1.5 text-sm text-slate-200"
+                      class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
                     />
                     <button
                       type="submit"
-                      class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+                      class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
                     >
                       Save
                     </button>
                   </form>
                 </td>
               </tr>
-              <tr :if={@channels_for == g.id} class="border-b border-slate-800/50 bg-slate-900/60">
+              <tr :if={@channels_for == g.id} class="border-b border-base-300/50 bg-base-200/60">
                 <td colspan="4" class="p-3">
-                  <p class="mb-2 text-xs text-slate-500">
+                  <p class="mb-2 text-xs text-base-content/60">
                     A configured channel replaces the global target for this group's
                     instances; removing it falls back to the global channel.
                   </p>
                   <div
                     :if={@channel_error}
-                    class="mb-2 rounded border border-red-800 bg-red-950/50 p-2 text-xs text-red-300"
+                    class="mb-2 rounded border border-error/40 bg-error/10 p-2 text-xs text-error"
                   >
                     {@channel_error}
                   </div>
@@ -304,23 +304,23 @@ defmodule OrbitWeb.GroupsLive do
 
         <%!-- Instance assignment (GroupsPage parity) — the one place to move
              instances between groups; the move applies immediately. --%>
-        <div class="mt-8 max-w-2xl rounded-lg border border-slate-800 bg-slate-900 p-4">
-          <h2 class="text-sm font-medium text-slate-300">Instance assignment</h2>
-          <p class="mt-1 text-xs text-slate-500">
+        <div class="mt-8 max-w-2xl rounded-lg border border-base-300 bg-base-200 p-4">
+          <h2 class="text-sm font-medium text-base-content/80">Instance assignment</h2>
+          <p class="mt-1 text-xs text-base-content/60">
             Pick a group per instance — the move applies immediately.
           </p>
-          <p :if={@assignments == []} class="mt-3 text-sm text-slate-500">No instances yet.</p>
+          <p :if={@assignments == []} class="mt-3 text-sm text-base-content/60">No instances yet.</p>
           <table :if={@assignments != []} class="mt-3 w-full text-left text-sm">
-            <thead class="text-xs text-slate-500">
-              <tr class="border-b border-slate-800">
+            <thead class="text-xs text-base-content/60">
+              <tr class="border-b border-base-300">
                 <th class="py-1 pr-4 font-medium">Instance</th>
                 <th class="py-1 font-medium">Group</th>
               </tr>
             </thead>
             <tbody>
-              <tr :for={a <- @assignments} class="border-b border-slate-800/50 last:border-0">
-                <td class="py-2 pr-4 text-slate-200">
-                  {a.name} <span class="ml-1 text-xs text-slate-500">{a.slug}</span>
+              <tr :for={a <- @assignments} class="border-b border-base-300/50 last:border-0">
+                <td class="py-2 pr-4 text-base-content">
+                  {a.name} <span class="ml-1 text-xs text-base-content/60">{a.slug}</span>
                 </td>
                 <td class="py-2">
                   <form phx-change="move_instance">
@@ -329,7 +329,7 @@ defmodule OrbitWeb.GroupsLive do
                       name="group_id"
                       disabled={length(@groups) < 2}
                       title={if length(@groups) < 2, do: "Create a second group first"}
-                      class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300 disabled:opacity-50"
+                      class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content/80 disabled:opacity-50"
                     >
                       <option :for={g <- @groups} value={g.id} selected={g.id == a.group_id}>
                         {g.name}
@@ -354,35 +354,35 @@ defmodule OrbitWeb.GroupsLive do
     ~H"""
     <form
       phx-submit="channel_save"
-      class="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+      class="rounded-lg border border-base-300 bg-base-100/40 p-3"
     >
       <input type="hidden" name="group_id" value={@group_id} />
       <input type="hidden" name="channel" value={@channel} />
       <div class="flex items-center justify-between">
-        <h5 class="text-xs font-semibold capitalize text-slate-200">{@channel}</h5>
+        <h5 class="text-xs font-semibold capitalize text-base-content">{@channel}</h5>
         <span
           :if={@configured}
-          class="rounded bg-emerald-600/20 px-1.5 py-0.5 text-[10px] text-emerald-400"
+          class="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary"
         >
           configured — replaces global
         </span>
         <span
           :if={is_nil(@configured)}
-          class="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500"
+          class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
         >
           using global
         </span>
       </div>
       <div class="mt-2 space-y-2">
         <div :for={f <- Channels.fields(@channel)} class="space-y-0.5">
-          <label class="text-[10px] text-slate-500">
+          <label class="text-[10px] text-base-content/60">
             {f.name}{if f.required, do: " *"}
           </label>
           <input
             type={if f.secret, do: "password", else: "text"}
             name={"config[#{f.name}]"}
             value={(@configured || %{})[f.name] || ""}
-            class="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 focus:border-emerald-600 focus:outline-none"
+            class="w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content focus:border-primary focus:outline-none"
           />
         </div>
       </div>
@@ -394,13 +394,13 @@ defmodule OrbitWeb.GroupsLive do
           phx-value-group_id={@group_id}
           phx-value-channel={@channel}
           data-confirm={"Remove the #{@channel} override? Alerts fall back to the global channel."}
-          class="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+          class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
         >
           Remove
         </button>
         <button
           type="submit"
-          class="rounded bg-emerald-700 px-3 py-1 text-xs text-white hover:bg-emerald-600"
+          class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
         >
           Save
         </button>

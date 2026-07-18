@@ -156,52 +156,53 @@ defmodule OrbitWeb.HubStatusLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:hub} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-1 text-lg font-medium text-slate-200">
-          Hub status <span class="ml-2 text-sm text-slate-500">({length(@agents)} connected)</span>
+        <h1 class="mb-1 text-lg font-medium text-base-content">
+          Hub status
+          <span class="ml-2 text-sm text-base-content/60">({length(@agents)} connected)</span>
         </h1>
-        <p class="mb-4 text-xs text-slate-500">
+        <p class="mb-4 text-xs text-base-content/60">
           In-memory since {Calendar.strftime(@started_at, "%Y-%m-%d %H:%M UTC")} — a restart
           resets these numbers.
         </p>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Connected</div>
-            <div class="text-2xl font-semibold text-emerald-400">{length(@agents)}</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Connected</div>
+            <div class="text-2xl font-semibold text-primary">{length(@agents)}</div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Pushes / min</div>
-            <div class="text-2xl font-semibold text-sky-400">{@per_minute}</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Pushes / min</div>
+            <div class="text-2xl font-semibold text-info">{@per_minute}</div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Total pushes</div>
-            <div class="text-2xl font-semibold text-slate-100">{@total_pushes}</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Total pushes</div>
+            <div class="text-2xl font-semibold text-base-content">{@total_pushes}</div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Errors total</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Errors total</div>
             <div class={[
               "text-2xl font-semibold",
-              if(@errors_total > 0, do: "text-red-400", else: "text-slate-100")
+              if(@errors_total > 0, do: "text-error", else: "text-base-content")
             ]}>
               {@errors_total}
             </div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Update errors</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Update errors</div>
             <div class={[
               "text-2xl font-semibold",
-              if(@update_errors > 0, do: "text-amber-400", else: "text-slate-100")
+              if(@update_errors > 0, do: "text-warning", else: "text-base-content")
             ]}>
               {@update_errors}
             </div>
           </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div class="text-xs text-slate-500">Served agent</div>
-            <div class="text-2xl font-semibold text-slate-100">{@served_version || "—"}</div>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+            <div class="text-xs text-base-content/60">Served agent</div>
+            <div class="text-2xl font-semibold text-base-content">{@served_version || "—"}</div>
           </div>
         </div>
 
@@ -219,52 +220,52 @@ defmodule OrbitWeb.HubStatusLive do
 
         <%!-- Red/CRIT alerts by owning tab — chips link where you fix it. --%>
         <div :if={@crit_tabs != []} class="mb-4">
-          <h2 class="mb-2 text-sm font-semibold text-slate-300">Red / CRIT alerts by tab</h2>
+          <h2 class="mb-2 text-sm font-semibold text-base-content/80">Red / CRIT alerts by tab</h2>
           <div class="flex flex-wrap gap-2">
             <a
               :for={t <- @crit_tabs}
               href={t.to}
-              class="rounded-lg border border-red-900/60 bg-red-900/20 px-3 py-1.5 text-xs text-red-300 hover:bg-red-900/30"
+              class="rounded-lg border border-error/40 bg-error/15 px-3 py-1.5 text-xs text-error hover:bg-error/25"
             >
               {t.label}: {t.count}
             </a>
           </div>
         </div>
 
-        <h2 class="mb-2 mt-6 text-sm font-semibold text-slate-300">Error counters</h2>
+        <h2 class="mb-2 mt-6 text-sm font-semibold text-base-content/80">Error counters</h2>
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
           <div
             :for={{key, label} <- error_counters()}
-            class="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
+            class="rounded-xl border border-base-300 bg-base-200/60 px-4 py-3"
           >
-            <p class="text-xs text-slate-500">{label}</p>
+            <p class="text-xs text-base-content/60">{label}</p>
             <p class={[
               "text-lg font-semibold",
-              if(Map.get(@counters, key, 0) > 0, do: "text-red-400", else: "text-slate-200")
+              if(Map.get(@counters, key, 0) > 0, do: "text-error", else: "text-base-content")
             ]}>
               {Map.get(@counters, key, 0)}
             </p>
           </div>
         </div>
 
-        <h2 class="mb-2 mt-6 text-sm font-semibold text-slate-300">Message counters</h2>
+        <h2 class="mb-2 mt-6 text-sm font-semibold text-base-content/80">Message counters</h2>
         <div class="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div
             :for={{key, label} <- traffic_counters()}
-            class="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3"
+            class="rounded-xl border border-base-300 bg-base-200/60 px-4 py-3"
           >
-            <p class="text-xs text-slate-500">{label}</p>
-            <p class="text-lg font-semibold text-slate-200">{Map.get(@counters, key, 0)}</p>
+            <p class="text-xs text-base-content/60">{label}</p>
+            <p class="text-lg font-semibold text-base-content">{Map.get(@counters, key, 0)}</p>
           </div>
         </div>
 
-        <div :if={@agents == []} class="text-sm text-slate-500">
+        <div :if={@agents == []} class="text-sm text-base-content/60">
           No agents connected in your scope.
         </div>
 
         <table :if={@agents != []} class="w-full text-left text-sm">
-          <thead class="text-slate-500">
-            <tr class="border-b border-slate-800">
+          <thead class="text-base-content/60">
+            <tr class="border-b border-base-300">
               <th class="py-2 pr-4 font-medium">Instance</th>
               <th class="py-2 pr-4 font-medium">Platform</th>
               <th class="py-2 pr-4 font-medium">Version</th>
@@ -275,28 +276,28 @@ defmodule OrbitWeb.HubStatusLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={a <- @agents} class="border-b border-slate-800/50">
+            <tr :for={a <- @agents} class="border-b border-base-300/50">
               <td class="py-2 pr-4">
                 <a
                   href={~p"/instances/#{a.instance_id}"}
-                  class="text-slate-200 hover:text-emerald-300"
+                  class="text-base-content hover:text-primary"
                 >
                   {a.instance_name}
                 </a>
                 <.webui_link instance_id={a.instance_id} openable={a.gui_openable} />
                 <.shell_link instance_id={a.instance_id} shell_enabled={a.shell_enabled} />
               </td>
-              <td class="py-2 pr-4 text-slate-400">{a.platform}</td>
-              <td class="py-2 pr-4 text-slate-400">
+              <td class="py-2 pr-4 text-base-content/70">{a.platform}</td>
+              <td class="py-2 pr-4 text-base-content/70">
                 {a.version}
-                <span :if={a.update_error} class="ml-1 text-amber-400" title={a.update_error}>
+                <span :if={a.update_error} class="ml-1 text-warning" title={a.update_error}>
                   ⚠
                 </span>
               </td>
-              <td class="py-2 pr-4 text-slate-300">{cpu_text(a.cpu)}</td>
-              <td class="py-2 pr-4 text-slate-400">{a.pushes}</td>
-              <td class="py-2 pr-4 text-slate-500">{push_text(a.connected_at)}</td>
-              <td class="py-2 pr-4 text-slate-500">{push_text(a.last_push_at)}</td>
+              <td class="py-2 pr-4 text-base-content/80">{cpu_text(a.cpu)}</td>
+              <td class="py-2 pr-4 text-base-content/70">{a.pushes}</td>
+              <td class="py-2 pr-4 text-base-content/60">{push_text(a.connected_at)}</td>
+              <td class="py-2 pr-4 text-base-content/60">{push_text(a.last_push_at)}</td>
             </tr>
           </tbody>
         </table>
