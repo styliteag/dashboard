@@ -70,16 +70,26 @@ defmodule OrbitWeb.AlertsLive do
   end
 
   defp load(socket) do
+    # Export.evaluated yields a slim inst MAP (id/name/mode/device_type),
+    # not the Instance struct — join the full records for the quick links.
+    full =
+      socket.assigns.current_user
+      |> Orbit.Instances.list_visible()
+      |> Map.new(&{&1.id, &1})
+
     alerts =
       socket.assigns.current_user
       |> Export.evaluated(DateTime.utc_now())
       |> Enum.flat_map(fn {inst, checks} ->
+        record = full[inst.id]
+
         for c <- checks, c.state != 0 do
           %{
             inst: inst,
+            shell_enabled: (record && record.shell_enabled) || false,
             check: c,
             exported: Orbit.Selection.is_on_live("checkmk", c.key, inst.id),
-            gui_openable: Orbit.GUI.openable(inst) == :ok
+            gui_openable: record != nil and Orbit.GUI.openable(record) == :ok
           }
         end
       end)
@@ -231,7 +241,7 @@ defmodule OrbitWeb.AlertsLive do
                   {a.inst.name}
                 </a>
                 <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
-                <.shell_link instance_id={a.inst.id} shell_enabled={a.inst.shell_enabled} />
+                <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
               </td>
               <td class="py-2 pr-4 text-slate-400">{a.check.key}</td>
               <td class="py-2 pr-4 text-slate-300">{a.check.summary}</td>

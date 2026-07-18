@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phase-2/uptime/traffic, reconnect per row), Firmware (verdict tiles,
   search, type chips, latest/security/needs-reboot/lock columns) and
   Certificates (expiry tiles, search, issuer/expiry columns with runway
-  bars, GUI/CA badges); all with WebUI/Terminal quick links per row.
+  bars, GUI/CA badges); Connectivity (state tiles, search), Log events
+  (severity tiles, search, per-instance chips) and Hub status (KPI cards,
+  instance names + links instead of bare ids, connected-since column); all
+  with WebUI/Terminal quick links per row.
 - Orbit: IPsec tunnels on the instance detail page are interactive again —
   connect/disconnect/reconnect per tunnel, service restart with confirmation,
   instant recheck, phase-2 expand with traffic selectors and ping state, plus

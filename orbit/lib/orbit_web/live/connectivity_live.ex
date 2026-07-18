@@ -10,6 +10,8 @@ defmodule OrbitWeb.ConnectivityLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit
+
   alias Orbit.Checks.Evaluate
   alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
@@ -24,7 +26,19 @@ defmodule OrbitWeb.ConnectivityLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    {:ok, load(socket)}
+    {:ok, socket |> assign(search: "", state_filter: "all") |> load()}
+  end
+
+  @impl true
+  def handle_event("search", %{"q" => q}, socket), do: {:noreply, assign(socket, search: q)}
+
+  def handle_event("state_filter", %{"bucket" => b}, socket) when b in ~w(all ok warn crit) do
+    b = if socket.assigns.state_filter == b, do: "all", else: b
+    {:noreply, assign(socket, state_filter: b)}
+  end
+
+  def handle_event("row_gui_open", %{"id" => id}, socket) do
+    {:noreply, gui_open_row(socket, id)}
   end
 
   @impl true
@@ -43,10 +57,14 @@ defmodule OrbitWeb.ConnectivityLive do
       |> Enum.flat_map(fn inst ->
         monitors = Hub.cache_entry(inst.id)["connectivity"] || []
 
+        gui_openable = Orbit.GUI.openable(inst) == :ok
+
         for check <- Evaluate.connectivity_checks(monitors) do
           %{
             instance_id: inst.id,
             instance_name: inst.name,
+            shell_enabled: inst.shell_enabled,
+            gui_openable: gui_openable,
             check: check,
             rtt: metric_val(check, "ping_rtt_ms"),
             loss: metric_val(check, "ping_loss_pct")
@@ -60,6 +78,25 @@ defmodule OrbitWeb.ConnectivityLive do
     assign(socket, rows: rows)
   end
 
+  defp visible(a) do
+    q = String.downcase(a.search)
+
+    a.rows
+    |> Enum.filter(fn r ->
+      q == "" or
+        String.contains?(String.downcase(r.instance_name), q) or
+        String.contains?(String.downcase(r.check.summary || ""), q)
+    end)
+    |> Enum.filter(fn r ->
+      case a.state_filter do
+        "all" -> true
+        "ok" -> r.check.state == 0
+        "warn" -> r.check.state in [1, 3]
+        "crit" -> r.check.state == 2
+      end
+    end)
+  end
+
   defp metric_val(%ServiceCheck{metrics: metrics}, name) do
     case Enum.find(metrics, &(&1.name == name)) do
       %{value: v} when is_number(v) -> v
@@ -69,6 +106,14 @@ defmodule OrbitWeb.ConnectivityLive do
 
   @impl true
   def render(assigns) do
+    assigns =
+      assign(assigns,
+        visible_rows: visible(assigns),
+        ok: Enum.count(assigns.rows, &(&1.check.state == 0)),
+        warn: Enum.count(assigns.rows, &(&1.check.state in [1, 3])),
+        crit: Enum.count(assigns.rows, &(&1.check.state == 2))
+      )
+
     ~H"""
     <main class="min-h-screen bg-slate-950 text-slate-100">
       <.top_nav active={:connectivity} current_user={@current_user} />
@@ -78,11 +123,59 @@ defmodule OrbitWeb.ConnectivityLive do
           Connectivity monitors <span class="ml-2 text-sm text-slate-500">({length(@rows)})</span>
         </h1>
 
+        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+          <.kpi_tile
+            label="Total"
+            value={length(@rows)}
+            event="state_filter"
+            value_name="all"
+            active={@state_filter == "all"}
+          />
+          <.kpi_tile
+            label="OK"
+            value={@ok}
+            color="text-emerald-400"
+            event="state_filter"
+            value_name="ok"
+            active={@state_filter == "ok"}
+          />
+          <.kpi_tile
+            label="WARN"
+            value={@warn}
+            color="text-amber-400"
+            event="state_filter"
+            value_name="warn"
+            active={@state_filter == "warn"}
+          />
+          <.kpi_tile
+            label="CRIT"
+            value={@crit}
+            color="text-red-400"
+            event="state_filter"
+            value_name="crit"
+            active={@state_filter == "crit"}
+          />
+        </div>
+
+        <form phx-change="search" onsubmit="return false" class="mb-3 max-w-md">
+          <input
+            type="text"
+            name="q"
+            value={@search}
+            placeholder="Search instance, monitor…"
+            phx-debounce="300"
+            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+          />
+        </form>
+
         <div :if={@rows == []} class="text-sm text-slate-500">
           No connectivity monitors reported in your scope.
         </div>
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-slate-500">
+          No matches.
+        </div>
 
-        <table :if={@rows != []} class="w-full text-left text-sm">
+        <table :if={@visible_rows != []} class="w-full text-left text-sm">
           <thead class="text-slate-500">
             <tr class="border-b border-slate-800">
               <th class="py-2 pr-4 font-medium">State</th>
@@ -93,7 +186,7 @@ defmodule OrbitWeb.ConnectivityLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={r <- @rows} class="border-b border-slate-800/50">
+            <tr :for={r <- @visible_rows} class="border-b border-slate-800/50">
               <td class="py-2 pr-4">
                 <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
                   {state_label(r.check.state)}
@@ -106,6 +199,8 @@ defmodule OrbitWeb.ConnectivityLive do
                 >
                   {r.instance_name}
                 </a>
+                <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
+                <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
               </td>
               <td class="py-2 pr-4 text-slate-300">{r.check.summary}</td>
               <td class="py-2 pr-4 text-right text-slate-400">{rtt_text(r.rtt)}</td>

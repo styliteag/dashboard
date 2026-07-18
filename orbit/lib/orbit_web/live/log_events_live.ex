@@ -9,6 +9,8 @@ defmodule OrbitWeb.LogEventsLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit
+
   alias Orbit.Instances
   alias Orbit.Logs.Store
 
@@ -17,7 +19,20 @@ defmodule OrbitWeb.LogEventsLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_ms)
-    {:ok, load(socket)}
+    {:ok, socket |> assign(search: "", sev_filter: "all", instance_filter: "all") |> load()}
+  end
+
+  @impl true
+  def handle_event("search", %{"q" => q}, socket), do: {:noreply, assign(socket, search: q)}
+
+  def handle_event("sev_filter", %{"bucket" => b}, socket) when b in ~w(all crit err warn) do
+    b = if socket.assigns.sev_filter == b, do: "all", else: b
+    {:noreply, assign(socket, sev_filter: b)}
+  end
+
+  def handle_event("instance_filter", %{"name" => name}, socket) do
+    name = if socket.assigns.instance_filter == name, do: "all", else: name
+    {:noreply, assign(socket, instance_filter: name)}
   end
 
   @impl true
@@ -39,8 +54,38 @@ defmodule OrbitWeb.LogEventsLive do
     assign(socket, rows: rows)
   end
 
+  defp visible(a) do
+    q = String.downcase(a.search)
+
+    a.rows
+    |> Enum.filter(fn r ->
+      q == "" or
+        String.contains?(String.downcase(r.instance.name), q) or
+        String.contains?(String.downcase(r.event.program || ""), q) or
+        String.contains?(String.downcase(r.event.pattern || ""), q)
+    end)
+    |> Enum.filter(fn r ->
+      case a.sev_filter do
+        "all" -> true
+        "crit" -> r.event.severity <= 2
+        "err" -> r.event.severity == 3
+        "warn" -> r.event.severity >= 4
+      end
+    end)
+    |> Enum.filter(&(a.instance_filter == "all" or &1.instance.name == a.instance_filter))
+  end
+
   @impl true
   def render(assigns) do
+    assigns =
+      assign(assigns,
+        visible_rows: visible(assigns),
+        crit: Enum.count(assigns.rows, &(&1.event.severity <= 2)),
+        err: Enum.count(assigns.rows, &(&1.event.severity == 3)),
+        warn: Enum.count(assigns.rows, &(&1.event.severity >= 4)),
+        instance_names: assigns.rows |> Enum.map(& &1.instance.name) |> Enum.uniq() |> Enum.sort()
+      )
+
     ~H"""
     <main class="min-h-screen bg-slate-950 text-slate-100">
       <.top_nav active={:logs} current_user={@current_user} />
@@ -50,11 +95,71 @@ defmodule OrbitWeb.LogEventsLive do
           Log events <span class="ml-2 text-sm text-slate-500">({length(@rows)})</span>
         </h1>
 
+        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+          <.kpi_tile
+            label="Total"
+            value={length(@rows)}
+            event="sev_filter"
+            value_name="all"
+            active={@sev_filter == "all"}
+          />
+          <.kpi_tile
+            label="CRIT"
+            value={@crit}
+            color="text-red-400"
+            event="sev_filter"
+            value_name="crit"
+            active={@sev_filter == "crit"}
+          />
+          <.kpi_tile
+            label="ERR"
+            value={@err}
+            color="text-orange-400"
+            event="sev_filter"
+            value_name="err"
+            active={@sev_filter == "err"}
+          />
+          <.kpi_tile
+            label="WARN"
+            value={@warn}
+            color="text-amber-400"
+            event="sev_filter"
+            value_name="warn"
+            active={@sev_filter == "warn"}
+          />
+        </div>
+
+        <div class="mb-3 flex flex-wrap items-center gap-3">
+          <form phx-change="search" onsubmit="return false" class="max-w-md flex-1">
+            <input
+              type="text"
+              name="q"
+              value={@search}
+              placeholder="Search instance, program, pattern…"
+              phx-debounce="300"
+              class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            />
+          </form>
+          <div :if={length(@instance_names) > 1} class="flex flex-wrap gap-2">
+            <button
+              :for={name <- @instance_names}
+              phx-click="instance_filter"
+              phx-value-name={name}
+              class={chip(@instance_filter == name)}
+            >
+              {name}
+            </button>
+          </div>
+        </div>
+
         <div :if={@rows == []} class="text-sm text-slate-500">
           No critical log events in your scope.
         </div>
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-slate-500">
+          No matches.
+        </div>
 
-        <table :if={@rows != []} class="w-full text-left text-sm">
+        <table :if={@visible_rows != []} class="w-full text-left text-sm">
           <thead class="text-slate-500">
             <tr class="border-b border-slate-800">
               <th class="py-2 pr-4 font-medium">Sev</th>
@@ -66,7 +171,7 @@ defmodule OrbitWeb.LogEventsLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={r <- @rows} class="border-b border-slate-800/50">
+            <tr :for={r <- @visible_rows} class="border-b border-slate-800/50">
               <td class="py-2 pr-4">
                 <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
                   {sev_label(r.event.severity)}
