@@ -16,7 +16,6 @@ defmodule OrbitWeb.CertificatesLive do
 
   import OrbitWeb.Components.ListKit
 
-  alias Orbit.Checks.Evaluate
   alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
   alias Orbit.Instances
