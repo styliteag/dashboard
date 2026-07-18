@@ -68,7 +68,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           ai_result: nil,
           ai_error: nil,
           gui_openable: Orbit.GUI.openable(inst) == :ok,
-          chart_range: "24h"
+          chart_range: "24h",
+          ipsec_busy: MapSet.new(),
+          ipsec_msg: nil,
+          ipsec_expanded: MapSet.new()
         )
         |> load_comments()
         |> load_logs()
@@ -120,6 +123,68 @@ defmodule OrbitWeb.InstanceDetailLive do
       when range in ~w(1h 6h 24h 7d 30d) do
     {:noreply, socket |> assign(chart_range: range) |> load_charts()}
   end
+
+  # IPsec tunnel actions (IPsecSection parity) — write-gated, agent-relayed
+  # (ipsec.connect/disconnect/restart in the agent's _COMMANDS; restart goes
+  # through the agent's safe reload path, never `service strongswan restart`).
+  # Reconnect = best-effort disconnect of the live SA, then re-initiate.
+  def handle_event("ipsec_toggle", %{"id" => id}, socket) do
+    expanded = socket.assigns.ipsec_expanded
+
+    expanded =
+      if MapSet.member?(expanded, id),
+        do: MapSet.delete(expanded, id),
+        else: MapSet.put(expanded, id)
+
+    {:noreply, assign(socket, ipsec_expanded: expanded)}
+  end
+
+  def handle_event("ipsec_recheck", _params, socket) do
+    inst = socket.assigns.instance
+
+    {:noreply,
+     start_async(socket, :ipsec_recheck, fn ->
+       Hub.send_command(inst.id, "status.refresh", %{}, 20_000)
+     end)}
+  end
+
+  def handle_event("ipsec_" <> kind, %{"id" => id} = params, socket)
+      when kind in ["connect", "disconnect", "reconnect"] do
+    cond do
+      not socket.assigns.writable or MapSet.member?(socket.assigns.ipsec_busy, id) ->
+        {:noreply, socket}
+
+      true ->
+        inst = socket.assigns.instance
+        user = socket.assigns.current_user
+        uid = params["uid"] || ""
+
+        {:noreply,
+         socket
+         |> assign(ipsec_busy: MapSet.put(socket.assigns.ipsec_busy, id))
+         |> start_async({:ipsec_action, id}, fn ->
+           ipsec_action(kind, inst, user, id, uid)
+         end)}
+    end
+  end
+
+  def handle_event("ipsec_restart", _params, %{assigns: %{writable: true}} = socket) do
+    inst = socket.assigns.instance
+    user = socket.assigns.current_user
+
+    {:noreply,
+     start_async(socket, {:ipsec_action, "__restart__"}, fn ->
+       result = Hub.send_command(inst.id, "ipsec.restart", %{}, 60_000)
+       result = if is_map(result), do: result, else: %{"success" => false}
+       audit_ipsec(user, inst, "ipsec.restart", result)
+
+       if result["success"],
+         do: {:ok, "IPsec service restarted"},
+         else: {:error, to_string(result["output"] || "restart failed")}
+     end)}
+  end
+
+  def handle_event("ipsec_restart", _params, socket), do: {:noreply, socket}
 
   # Firmware actions ride the same write gate; the handler re-checks (never
   # trust the hidden UI). Commands block up to 90s, so they run in start_async
@@ -209,6 +274,44 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Orbit.Agent.Update (also drives the list page's "Update all agents").
   defp push_agent_update(inst, user), do: Orbit.Agent.Update.push(inst, user)
 
+  # One tunnel action over the agent relay. Reconnect terminates the live SA
+  # first (best-effort — a half-down tunnel must not block the re-initiate).
+  defp ipsec_action("reconnect", inst, user, id, uid) do
+    if uid != "", do: Hub.send_command(inst.id, "ipsec.disconnect", %{"tunnel_id" => uid}, 30_000)
+    ipsec_action("connect", inst, user, id, uid)
+  end
+
+  defp ipsec_action("connect", inst, user, id, _uid) do
+    result = Hub.send_command(inst.id, "ipsec.connect", %{"tunnel_id" => id}, 30_000)
+    result = if is_map(result), do: result, else: %{"success" => false}
+    audit_ipsec(user, inst, "ipsec.connect", result)
+
+    if result["success"],
+      do: {:ok, "tunnel #{id} initiated"},
+      else: {:error, to_string(result["output"] || "connect failed")}
+  end
+
+  defp ipsec_action("disconnect", inst, user, id, uid) do
+    tunnel_id = if uid != "", do: uid, else: id
+    result = Hub.send_command(inst.id, "ipsec.disconnect", %{"tunnel_id" => tunnel_id}, 30_000)
+    result = if is_map(result), do: result, else: %{"success" => false}
+    audit_ipsec(user, inst, "ipsec.disconnect", result)
+
+    if result["success"],
+      do: {:ok, "tunnel #{id} disconnected"},
+      else: {:error, to_string(result["output"] || "disconnect failed")}
+  end
+
+  defp audit_ipsec(user, inst, action, result) do
+    Audit.write(
+      action: action,
+      result: if(result["success"], do: "ok", else: "error"),
+      user_id: user.id,
+      target_type: "instance",
+      target_id: inst.id
+    )
+  end
+
   defp fw_start(%{assigns: %{writable: false}} = socket, _kind), do: socket
   defp fw_start(%{assigns: %{fw_busy: busy}} = socket, _kind) when not is_nil(busy), do: socket
 
@@ -230,6 +333,38 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   @impl true
+  def handle_async(:ipsec_recheck, {:ok, _result}, socket) do
+    # The agent pushed a fresh snapshot as part of status.refresh — re-read
+    # the cache instead of waiting for the next 5s tick.
+    {:noreply, load_metrics(socket)}
+  end
+
+  def handle_async(:ipsec_recheck, {:exit, _}, socket), do: {:noreply, socket}
+
+  def handle_async({:ipsec_action, id}, {:ok, outcome}, socket) do
+    msg =
+      case outcome do
+        {:ok, text} -> {:ok, text}
+        {:error, text} -> {:error, String.slice(text, 0, 200)}
+      end
+
+    {:noreply,
+     socket
+     |> assign(
+       ipsec_busy: MapSet.delete(socket.assigns.ipsec_busy, id),
+       ipsec_msg: msg
+     )
+     |> load_metrics()}
+  end
+
+  def handle_async({:ipsec_action, id}, {:exit, _}, socket) do
+    {:noreply,
+     assign(socket,
+       ipsec_busy: MapSet.delete(socket.assigns.ipsec_busy, id),
+       ipsec_msg: {:error, "action crashed"}
+     )}
+  end
+
   def handle_async(:fw_action, {:ok, {kind, result}}, socket) do
     socket = assign(socket, fw_busy: nil)
 
@@ -488,6 +623,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       # tunnel list, not the map (else :for yields {k,v} tuples). Real OPNsense
       # data exposed this; synthetic pushes had used a bare list.
       ipsec: (entry["ipsec"] || %{})["tunnels"] || [],
+      ipsec_running: (entry["ipsec"] || %{})["running"],
       last_seen: entry["last_metrics_ts"],
       firmware: entry["firmware"],
       fw_verdict: Evaluate.firmware_check(entry["firmware"]),
@@ -827,14 +963,158 @@ defmodule OrbitWeb.InstanceDetailLive do
           </ul>
         </div>
 
+        <%!-- IPsec (IPsecSection parity): live SA table with phase-2 expand and
+             tunnel actions over the agent relay. Reconnect = terminate + re-
+             initiate; the service restart goes through the agent's safe
+             reload path (never `service strongswan restart`). --%>
         <div :if={@ipsec != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
-          <h2 class="mb-3 text-sm font-medium text-slate-400">IPsec tunnels</h2>
-          <ul class="space-y-1 text-sm">
-            <li :for={t <- @ipsec} class="flex justify-between text-slate-300">
-              <span class="text-slate-400">{t["description"] || t["id"] || "tunnel"}</span>
-              <span class={tunnel_color(t["status"])}>{t["status"] || "?"}</span>
-            </li>
-          </ul>
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-sm font-medium text-slate-400">
+              IPsec tunnels
+              <span
+                :if={@ipsec_running != nil}
+                class={[
+                  "ml-2 text-xs",
+                  if(@ipsec_running, do: "text-emerald-400", else: "text-red-400")
+                ]}
+              >
+                Service {if @ipsec_running, do: "running", else: "stopped"}
+              </span>
+            </h2>
+            <div :if={Instance.agent_mode?(@instance)} class="flex items-center gap-1">
+              <button
+                phx-click="ipsec_recheck"
+                title="Re-check tunnel status now (no 5s wait)"
+                class="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+              >
+                Recheck
+              </button>
+              <button
+                :if={@writable}
+                phx-click="ipsec_restart"
+                data-confirm={"Restart the IPsec service on #{@instance.name}? ALL tunnels drop and re-establish."}
+                class="rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-800"
+              >
+                Restart Service
+              </button>
+            </div>
+          </div>
+
+          <div
+            :if={Instance.agent_mode?(@instance) and not @connected}
+            class="mb-3 rounded-lg border border-amber-800/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300"
+          >
+            Agent silent — tunnel status below is the last push, not live.
+          </div>
+
+          <div
+            :if={@ipsec_msg}
+            class={[
+              "mb-3 rounded px-3 py-2 text-xs",
+              case @ipsec_msg do
+                {:ok, _} -> "bg-emerald-900/40 text-emerald-300"
+                _ -> "bg-red-900/40 text-red-300"
+              end
+            ]}
+          >
+            {elem(@ipsec_msg, 1)}
+          </div>
+
+          <table class="w-full text-left text-sm">
+            <thead class="text-xs text-slate-500">
+              <tr class="border-b border-slate-800">
+                <th class="py-1 pr-3 font-medium">Tunnel</th>
+                <th class="py-1 pr-3 font-medium">Remote</th>
+                <th class="py-1 pr-3 font-medium">Status</th>
+                <th class="py-1 pr-3 font-medium">Phase 2</th>
+                <th class="py-1 pr-3 font-medium">Uptime</th>
+                <th class="py-1 pr-3 font-medium">In / Out</th>
+                <th :if={@writable and Instance.agent_mode?(@instance)} class="py-1 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for t <- @ipsec do %>
+                <% id = to_string(t["id"] || t["description"] || "tunnel") %>
+                <tr class="border-b border-slate-800/50 last:border-0">
+                  <td class="py-1.5 pr-3">
+                    <button
+                      :if={(t["children"] || []) != []}
+                      phx-click="ipsec_toggle"
+                      phx-value-id={id}
+                      class="mr-1 text-slate-500 hover:text-slate-300"
+                    >
+                      {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
+                    </button>
+                    <span class="text-slate-300">{t["description"] || id}</span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-slate-400">{t["remote"] || "—"}</td>
+                  <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
+                  <td class="py-1.5 pr-3 text-slate-400">
+                    <span :if={num0(t["phase2_total"]) > 0}>
+                      {num0(t["phase2_up"])}/{num0(t["phase2_total"])} up
+                    </span>
+                    <span :if={num0(t["phase2_total"]) == 0}>—</span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-slate-400">
+                    {fmt_duration(t["seconds_established"])}
+                  </td>
+                  <td class="py-1.5 pr-3 text-slate-400">
+                    {fmt_bytes(t["bytes_in"])} / {fmt_bytes(t["bytes_out"])}
+                  </td>
+                  <td
+                    :if={@writable and Instance.agent_mode?(@instance)}
+                    class="py-1.5 text-right text-xs"
+                  >
+                    <button
+                      phx-click="ipsec_reconnect"
+                      phx-value-id={id}
+                      phx-value-uid={t["unique_id"] || ""}
+                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                      class="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
+                    </button>
+                    <button
+                      :if={tunnel_up?(t["status"])}
+                      phx-click="ipsec_disconnect"
+                      phx-value-id={id}
+                      phx-value-uid={t["unique_id"] || ""}
+                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Disconnect
+                    </button>
+                    <button
+                      :if={not tunnel_up?(t["status"])}
+                      phx-click="ipsec_connect"
+                      phx-value-id={id}
+                      phx-value-uid={t["unique_id"] || ""}
+                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                      class="ml-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Connect
+                    </button>
+                  </td>
+                </tr>
+                <tr
+                  :for={ch <- t["children"] || []}
+                  :if={MapSet.member?(@ipsec_expanded, id)}
+                  class="border-b border-slate-800/30 bg-slate-950/40 text-xs last:border-0"
+                >
+                  <td class="py-1 pl-6 pr-3 text-slate-500">{ch["name"] || "child"}</td>
+                  <td class="py-1 pr-3 text-slate-500" colspan="2">
+                    {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
+                  </td>
+                  <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
+                  <td class="py-1 pr-3 text-slate-500" colspan="3">
+                    <span :if={ch["ping_state"] not in [nil, "none"]}>
+                      ping {ch["ping_state"]}
+                    </span>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
         </div>
 
         <div :if={@gateways != []} class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4">
@@ -1405,6 +1685,37 @@ defmodule OrbitWeb.InstanceDetailLive do
       _ -> "text-red-400"
     end
   end
+
+  defp tunnel_up?(status) do
+    status |> to_string() |> String.downcase() |> Kernel.in(@tunnel_up)
+  end
+
+  defp num0(v) when is_number(v), do: trunc(v)
+  defp num0(_), do: 0
+
+  defp fmt_duration(seconds) when is_number(seconds) and seconds > 0 do
+    s = trunc(seconds)
+
+    cond do
+      s >= 86_400 -> "#{div(s, 86_400)}d #{div(rem(s, 86_400), 3_600)}h"
+      s >= 3_600 -> "#{div(s, 3_600)}h #{div(rem(s, 3_600), 60)}m"
+      s >= 60 -> "#{div(s, 60)}m"
+      true -> "#{s}s"
+    end
+  end
+
+  defp fmt_duration(_), do: "—"
+
+  defp fmt_bytes(n) when is_number(n) and n > 0 do
+    cond do
+      n >= 1_073_741_824 -> "#{Float.round(n / 1_073_741_824, 1)} GB"
+      n >= 1_048_576 -> "#{Float.round(n / 1_048_576, 1)} MB"
+      n >= 1_024 -> "#{Float.round(n / 1_024, 1)} KB"
+      true -> "#{trunc(n)} B"
+    end
+  end
+
+  defp fmt_bytes(_), do: "0 B"
 
   defp state_label(1), do: "WARN"
   defp state_label(2), do: "CRIT"

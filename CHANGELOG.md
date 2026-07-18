@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
   persists metric rows on every agent push, so the series keeps growing when
   Orbit (not the Python stack) is the active hub.
+- Orbit: IPsec tunnels on the instance detail page are interactive again —
+  connect/disconnect/reconnect per tunnel, service restart with confirmation,
+  instant recheck, phase-2 expand with traffic selectors and ping state, plus
+  remote/uptime/traffic columns and a stale-push banner when the agent is
+  silent.
 - Orbit: per-group notification channels — alerts for a group's instances go
   to the group's own Mattermost/Telegram/Email target instead of the global
   one, and the Groups page gains the channel editor (masked secrets,
