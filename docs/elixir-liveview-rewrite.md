@@ -259,5 +259,7 @@ Live-Nachweisen in `docs/agent-architecture.md`.
 - [ ] Re-Login beim Cutover akzeptiert? (Annahme: ja, internes Tool)
 - [ ] Bus-Faktor: wer außer dem Initiator lernt Elixir?
 - [ ] arm64-Prod-Image nötig? (native Runner kosten; QEMU zu langsam)
-- [ ] Chart-Lib für LiveView-Hooks (uPlot vendored vs. SVG-Eigenbau)
+- [x] Chart-Lib für LiveView-Hooks: **SVG-Eigenbau** (entschieden 2026-07-18,
+      `OrbitWeb.Components.MetricChart` — server-gerendert, kein vendored JS;
+      Hover über native `<title>`-Tooltips, ≤60 Sample-Punkte)
 - [ ] Feature-Freeze-Toleranz auf main während M3–M5
