@@ -22,6 +22,14 @@ defmodule OrbitWeb.Router do
     plug :fetch_current_user
     plug :track_access
     plug :fetch_design
+    plug :put_geo_label
+  end
+
+  # Viewer's city+country for the all-pages footer (display-only, City edition).
+  # Set on the initial request so it rides into the root layout for LiveView
+  # routes too; private/unknown IPs resolve to nil and the footer stays hidden.
+  defp put_geo_label(conn, _opts) do
+    Plug.Conn.assign(conn, :geo_label, OrbitWeb.Geo.viewer_label(conn))
   end
 
   # Design/mode cookies → assigns; the root layout renders the combined

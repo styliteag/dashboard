@@ -1,9 +1,10 @@
 defmodule Orbit.GeoIP.Updater do
   @moduledoc """
-  Weekly GeoLite2-Country download (DR-G1). Orbit is the sole updater
-  post-cutover; the gate only ever reads country iso_code, so the Country
-  edition (~9 MB) is the right DB and matches DASH_GEOIP_DB_PATH's default
-  filename. (Diverges from geoip/updater.py, which fetched City — deliberate.)
+  Weekly GeoLite2-City download (DR-G1). The gate decides on country, but the
+  City edition carries both country AND city, so the UI can surface the city
+  of a viewer / external IP (the gate logic is unchanged — city is display
+  only). The DASH_GEOIP_DB_PATH filename (…Country.mmdb) is historic; the
+  City .mmdb is installed in place under it.
 
   Pulls the official tarball from download.maxmind.com (HTTP basic auth:
   account id + license key), extracts the single `.mmdb` member in memory
@@ -15,8 +16,8 @@ defmodule Orbit.GeoIP.Updater do
 
   require Logger
 
-  @download_url "https://download.maxmind.com/geoip/databases/GeoLite2-Country/download"
-  # GeoLite2-Country is ~9 MB; 100 MB = clearly broken.
+  @download_url "https://download.maxmind.com/geoip/databases/GeoLite2-City/download"
+  # GeoLite2-City is ~35 MB; 100 MB = clearly broken.
   @max_tarball 100 * 1024 * 1024
 
   @last_key {__MODULE__, :last}
@@ -26,7 +27,7 @@ defmodule Orbit.GeoIP.Updater do
     :persistent_term.get(@last_key, %{at: nil, ok: nil, detail: "never ran"})
   end
 
-  @doc "Download + atomically install the current GeoLite2-Country mmdb."
+  @doc "Download + atomically install the current GeoLite2-City mmdb."
   def refresh do
     account = Application.get_env(:orbit, :maxmind_account_id, "")
     key = Application.get_env(:orbit, :maxmind_license_key, "")

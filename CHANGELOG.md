@@ -30,12 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Orbit GeoIP: the weekly auto-updater now downloads the GeoLite2-**Country**
-  edition instead of City. Orbit is the sole updater post-cutover; the gate
-  only reads country codes, so Country is the correct (and ~9 MB vs ~35 MB)
-  database and its filename matches `DASH_GEOIP_DB_PATH`. Previously it wrote
-  City data to a Country-named path — functional but misleading.
-
 - Orbit: writing an audit entry that carried an allowlisted detail field
   (comment.set, instance.delete, geoip.config.update, …) crashed the
   calling process on the log line (string detail keys vs. the atom-keyed
@@ -62,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   users with groups on Instances, a group-less superadmin on Users.
 
 ### Added
+
+- Orbit GeoIP: the dashboard now shows the **city** (not just the country) an
+  IP resolves from, using the GeoLite2-City edition the weekly updater already
+  pulls. A small footer on every page shows where you are connecting from; the
+  Access-control page shows the admin's own "City, CC" (and evaluates the
+  self-lockout dry-run against the real proxy-forwarded IP, not the nginx
+  container); and a firewall's External IP panel shows the location of its WAN
+  address. Display-only — the access gate still decides on country, so nothing
+  about who is blocked changes. Persisted city in the denial history/stats
+  waits until orbit owns the shared schema (those tables stay country-only for
+  now).
 
 - Orbit: the Settings page is rebuilt to match the old UI — real tabs
   (General, Mattermost, Telegram, Email, AI, Checkmk, Prometheus) with rich

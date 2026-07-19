@@ -40,8 +40,17 @@ defmodule OrbitWeb.AccessControlLive do
       resolved: Dyndns.resolved_ips() |> Enum.sort(),
       blocks: blocks_by_reason(),
       refresh_busy: Map.get(socket.assigns, :refresh_busy, false),
-      last_refresh: Orbit.GeoIP.Updater.last_download()
+      last_refresh: Orbit.GeoIP.Updater.last_download(),
+      viewer_geo: viewer_geo(socket)
     )
+  end
+
+  # City+country the admin appears from (City edition; nil until the socket is
+  # connected, or for a private/unknown IP). Display-only.
+  defp viewer_geo(socket) do
+    if Phoenix.LiveView.connected?(socket) do
+      OrbitWeb.Geo.label(socket_ip(socket))
+    end
   end
 
   # The raw whitelist entries come from the row (the parsed ruleset only
@@ -154,11 +163,26 @@ defmodule OrbitWeb.AccessControlLive do
     ip != nil and not decision.allowed
   end
 
+  # Proxy-aware viewer IP (honours DASH_TRUSTED_PROXY_HOPS) so both the
+  # self-lockout dry-run and the "seen from" display evaluate the admin's real
+  # IP, not the nginx container behind it.
   defp socket_ip(socket) do
-    case get_connect_info(socket, :peer_data) do
-      %{address: address} -> address |> :inet.ntoa() |> to_string()
-      _ -> nil
-    end
+    xff =
+      case get_connect_info(socket, :x_headers) do
+        headers when is_list(headers) ->
+          Enum.find_value(headers, fn {name, value} -> name == "x-forwarded-for" && value end)
+
+        _ ->
+          nil
+      end
+
+    peer =
+      case get_connect_info(socket, :peer_data) do
+        %{address: address} -> address |> :inet.ntoa() |> to_string()
+        _ -> nil
+      end
+
+    Orbit.Net.pick_client_ip(xff, peer)
   end
 
   @impl true
@@ -181,6 +205,9 @@ defmodule OrbitWeb.AccessControlLive do
             </div>
             <div class="mt-1 text-xs text-base-content/60">
               last refresh: {refresh_text(@last_refresh)}
+            </div>
+            <div :if={@viewer_geo} class="mt-1 text-xs text-base-content/60">
+              you are connecting from: <span class="text-base-content/80">{@viewer_geo}</span>
             </div>
             <button
               phx-click="refresh_db"

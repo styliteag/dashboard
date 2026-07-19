@@ -1065,6 +1065,9 @@ defmodule OrbitWeb.InstanceDetailLive do
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
       external_ip: entry["external_ip"] || %{},
+      # Geo of the box's WAN address (City edition; display-only, nil when
+      # unknown/private or the mmdb is unloaded).
+      external_geo: OrbitWeb.Geo.label(get_in(entry, ["external_ip", "ipv4"])),
       certificates: entry["certificates"] || [],
       pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
@@ -2156,6 +2159,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <.kv label="IPv4" value={@external_ip["ipv4"] || "—"} />
               <.kv label="IPv6" value={@external_ip["ipv6"] || "—"} />
               <.kv :if={@external_ip["source_ip"]} label="Seen as" value={@external_ip["source_ip"]} />
+              <.kv :if={@external_geo} label="Location" value={@external_geo} />
             </dl>
           </div>
         </div>

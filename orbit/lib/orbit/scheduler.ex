@@ -25,7 +25,7 @@ defmodule Orbit.Scheduler do
     {:check_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_check_events/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
     {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
-    # Weekly GeoLite2-Country refresh (DR-G1); idle no-op without credentials.
+    # Weekly GeoLite2-City refresh (DR-G1); idle no-op without credentials.
     {:geoip_db_refresh, :timer.hours(24 * 7), &Orbit.GeoIP.Updater.refresh/0}
   ]
 

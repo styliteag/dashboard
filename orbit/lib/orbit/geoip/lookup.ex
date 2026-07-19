@@ -46,4 +46,40 @@ defmodule Orbit.GeoIP.Lookup do
   catch
     _, _ -> nil
   end
+
+  @doc """
+  City name (English) for an IP, or nil. Only the GeoLite2-City edition
+  carries this key — on the Country edition it is always nil, so callers must
+  treat the city as optional (display-only, DR-G separate from the gate).
+  """
+  def city_for(ip) when is_binary(ip) do
+    case :locus.lookup(@db_id, ip) do
+      {:ok, entry} -> get_in(entry, ["city", "names", "en"])
+      _ -> nil
+    end
+  catch
+    _, _ -> nil
+  end
+
+  @doc """
+  Combined `%{country: code | nil, city: name | nil}` from a single lookup —
+  cheaper than calling country_for/1 + city_for/1 (one mmdb read). Both keys
+  nil when the IP is unknown or the DB is unloaded.
+  """
+  def geo(ip) when is_binary(ip) do
+    case :locus.lookup(@db_id, ip) do
+      {:ok, entry} ->
+        %{
+          country: get_in(entry, ["country", "iso_code"]),
+          city: get_in(entry, ["city", "names", "en"])
+        }
+
+      _ ->
+        %{country: nil, city: nil}
+    end
+  catch
+    _, _ -> %{country: nil, city: nil}
+  end
+
+  def geo(_), do: %{country: nil, city: nil}
 end
