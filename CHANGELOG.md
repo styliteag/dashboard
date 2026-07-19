@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Orbit: the fleet Log events page was reachable by every signed-in account,
+  while the python original gates `/logs/events` — like every logfile route —
+  on admin. The rows carry the program name and the log line itself, and raw
+  log content is admin-only by policy, so a `user` or `view_only` member of a
+  group could read the log lines of that group's firewalls. `/logs` is now in
+  the admin-only route group and its nav link needs admin **and** group
+  membership. Orbit-only regression from the LiveView rewrite; the python
+  dashboard was never affected.
+
 - Orbit: the Hub status page was reachable by **every** signed-in account,
   while the python original gates `/hub/stats` on admin. Only the agent roster
   is scoped per instance — the message/error counters, the fleet pushes-per-

@@ -3,10 +3,11 @@ defmodule OrbitWeb.Components.NavTest do
   Top-nav link visibility (DB-free component render).
 
   Regression: the group-less seed superadmin was offered Instances, Alerts,
-  Connectivity, VPN, Certs, Firmware and Logs — seven pages that render "(0)"
-  for an account with no group memberships (Scope: zero groups = zero
-  instances) — plus Hub, whose counters are fleet-wide and unscoped (now
-  admin-only, see the router's :admin live_session).
+  Connectivity, VPN, Certs and Firmware — pages that render "(0)" for an
+  account with no group memberships (Scope: zero groups = zero instances) —
+  plus Hub, whose counters are fleet-wide and unscoped, and Logs, which shows
+  log-line content. The latter two are admin-only now (router :admin
+  live_session, python parity).
   """
   use ExUnit.Case, async: true
 
@@ -16,8 +17,9 @@ defmodule OrbitWeb.Components.NavTest do
   alias OrbitWeb.Components.Nav
 
   # The instance-data pages: every one of them lists instances the caller may
-  # see, so all seven are empty without group membership.
-  @instance_paths ~w(/instances /alerts /connectivity /vpn /certificates /firmware /logs)
+  # see, so all of them are empty without group membership. /logs belongs to
+  # the family too but carries an extra admin gate — see its own test.
+  @instance_paths ~w(/instances /alerts /connectivity /vpn /certificates /firmware)
 
   defp user(attrs) do
     struct!(
@@ -45,6 +47,7 @@ defmodule OrbitWeb.Components.NavTest do
     html = nav(user(role: "view_only", is_superadmin: true, groups: []))
 
     for path <- @instance_paths, do: refute(html =~ ~s|href="#{path}"|)
+    refute html =~ ~s|href="/logs"|
 
     # …but the rights-management surface stays reachable.
     assert html =~ ~s|href="/users"|
@@ -60,6 +63,19 @@ defmodule OrbitWeb.Components.NavTest do
     assert html =~ ~s|href="/instances"|
     assert html =~ ~s|href="/vpn"|
     assert html =~ ~s|href="/users"|
+    # …but Logs is admin content, and superadmin's role is view_only.
+    refute html =~ ~s|href="/logs"|
+  end
+
+  test "Logs needs admin AND groups — log lines are admin-only content" do
+    groups = [%Group{id: 1, name: "A"}]
+
+    assert nav(user(role: "admin", groups: groups)) =~ ~s|href="/logs"|
+    # a plain member of the same group must not read the log lines
+    refute nav(user(role: "user", groups: groups)) =~ ~s|href="/logs"|
+    refute nav(user(role: "view_only", groups: groups)) =~ ~s|href="/logs"|
+    # an admin without groups would only get an empty list
+    refute nav(user(role: "admin", groups: [])) =~ ~s|href="/logs"|
   end
 
   test "Hub is admin-only — a group-less user and a superadmin never see it" do

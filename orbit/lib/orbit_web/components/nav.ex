@@ -80,8 +80,11 @@ defmodule OrbitWeb.Components.Nav do
             href={~p"/firmware"}
             label="Firmware"
           />
+          <%!-- Logs needs BOTH gates: admin-only content (invariant 4), and
+                the list is per visible instance, so a group-less admin still
+                gets an empty page. --%>
           <.nav_link
-            :if={instance_data?(@current_user)}
+            :if={admin?(@current_user) and instance_data?(@current_user)}
             active={@active}
             key={:logs}
             href={~p"/logs"}

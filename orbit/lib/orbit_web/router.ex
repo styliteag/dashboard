@@ -90,7 +90,6 @@ defmodule OrbitWeb.Router do
       live "/connectivity", ConnectivityLive
       live "/certificates", CertificatesLive
       live "/firmware", FirmwareLive
-      live "/logs", LogEventsLive
       live "/vpn", VpnLive
       live "/security", SecurityLive
     end
@@ -105,6 +104,12 @@ defmodule OrbitWeb.Router do
       # group-less superadmin) got cross-tenant fleet activity out of an
       # otherwise empty page. Do not move this back to :authenticated.
       live "/hub", HubStatusLive
+      # Log events are admin-only (python parity: logs/overview.py's
+      # GET /logs/events is Depends(require_admin), as is every per-instance
+      # logfile route). The rows carry `program` + the normalised log line
+      # itself — invariant 4, raw log content is admin-only. Scoping alone is
+      # not enough here: a view_only member of the same group would read it.
+      live "/logs", LogEventsLive
     end
 
     # Audit/Access oversight: admin OR superadmin (DR-AL1 — the superadmin's
