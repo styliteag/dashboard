@@ -150,7 +150,10 @@ defmodule Orbit.Poller do
   # Securepoint spcgi pull. Both return raw sections the checks engine reads.
   defp fetch(%Instance{device_type: "securepoint"} = inst) do
     with {:ok, client} <- SecurepointClient.new(inst) do
-      non_empty(SecurepointClient.fetch_status(client))
+      client
+      |> SecurepointClient.fetch_status()
+      |> enrich_ipsec_over_ssh(inst)
+      |> non_empty()
     end
   end
 
@@ -159,6 +162,73 @@ defmodule Orbit.Poller do
       non_empty(OpnsenseClient.fetch_status(client))
     end
   end
+
+  # SSH enrichment (docs/securepoint-ssh.md): the spcgi `ipsec status` carries no
+  # IKE cookies, ESP SPIs or byte counters — swanctl over SSH does, and those are
+  # what pair tunnel ends across NAT. Opt-in per instance and FAIL-OPEN on the
+  # enrichment itself: any SSH problem (no key pinned yet, box unreachable on 22,
+  # swanctl missing) leaves the spcgi section in place rather than failing the
+  # whole poll. Fail-CLOSED still governs the connection itself — an unpinned or
+  # mismatched host key refuses to connect, it does not fall back to trusting it.
+  defp enrich_ipsec_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
+    case ssh_config(inst) do
+      {:ok, cfg} ->
+        running = ipsec_running?(status)
+
+        case Orbit.Securepoint.SSH.fetch_ipsec_status(cfg, running) do
+          {:ok, section} ->
+            Map.put(status, "ipsec", section)
+
+          {:error, reason} ->
+            Logger.debug("securepoint.ssh_enrich_skipped instance_id=#{inst.id} reason=#{reason}")
+            status
+        end
+
+      :error ->
+        status
+    end
+  end
+
+  defp enrich_ipsec_over_ssh(status, _inst), do: status
+
+  defp ssh_config(%Instance{} = inst) do
+    with key when is_binary(key) and key != "" <- decrypted_ssh_key(inst),
+         host when is_binary(host) and host != "" <- ssh_host(inst) do
+      {:ok,
+       %Orbit.Securepoint.SSH.Config{
+         host: host,
+         port: inst.ssh_port || 22,
+         user: inst.ssh_user || "root",
+         private_key: key,
+         host_key: inst.ssh_host_key
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  defp decrypted_ssh_key(%Instance{ssh_key_enc: nil}), do: nil
+
+  defp decrypted_ssh_key(%Instance{ssh_key_enc: enc}) do
+    case Orbit.Crypto.decrypt(enc) do
+      {:ok, key} -> key
+      _ -> nil
+    end
+  end
+
+  # SSH targets the box itself, not its API URL — take the host out of base_url.
+  defp ssh_host(%Instance{} = inst) do
+    case inst |> Instance.primary_base_url() |> URI.parse() do
+      %URI{host: h} when is_binary(h) and h != "" -> h
+      _ -> nil
+    end
+  end
+
+  # The spcgi section is a bare list of connections; a non-empty one means the
+  # daemon answered. Keep that verdict — swanctl cannot tell us more.
+  defp ipsec_running?(%{"ipsec" => list}) when is_list(list), do: list != []
+  defp ipsec_running?(%{"ipsec" => %{"running" => r}}), do: !!r
+  defp ipsec_running?(_), do: false
 
   # DELIBERATE DIVERGENCE from the python original. Both vendor clients swallow
   # per-endpoint failures so one broken endpoint still yields a partial status —
