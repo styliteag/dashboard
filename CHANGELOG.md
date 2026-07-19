@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Securepoint boxes reported a load average of 0 that was never measured.**
+  The box does report load averages and its core count; the port never read
+  them, so the metric writer stored zeros — a graph pinned at 0 reads as an idle
+  box rather than as "not measured". Real values now, and no section at all when
+  the box does not report them. Swap is likewise derived instead of hardcoded to
+  the no-data sentinel: a box without a swap device stays unmonitored as before,
+  but one that has swap is now actually watched.
+
+- **The Securepoint SSH enrichment could not connect to a box whose pinned host
+  key was RSA.** Such a box typically offers several host keys, and the
+  negotiated one was not necessarily the pinned one, so verification failed and
+  the connection was refused. The key exchange is now restricted to the pinned
+  key's algorithm.
+
 ### Added
 
 - **Rich IPsec data for Securepoint boxes, over SSH.** The spcgi JSON API

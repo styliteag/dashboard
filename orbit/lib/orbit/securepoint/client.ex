@@ -105,6 +105,7 @@ defmodule Orbit.Securepoint.Client do
       %{}
       |> maybe_put("cpu", cpu_from_info(info))
       |> maybe_put("memory", memory_from_info(info))
+      |> maybe_put("loadavg", loadavg_from_info(info))
       |> maybe_put("disks", disks_from_info(info))
       |> maybe_put("uptime", info["Uptime"])
       |> maybe_put("system", system_from_info(info))
@@ -172,16 +173,75 @@ defmodule Orbit.Securepoint.Client do
       %{
         "total_mb" => Float.round(total_kb / 1024, 1),
         "used_mb" => Float.round(used_kb / 1024, 1),
-        "used_pct" => Float.round(used_kb / total_kb * 100, 1),
-        # No swap data from this endpoint — the no-data sentinel keeps
-        # swap_check/1 silent instead of alarming on an absent feature.
-        "swap_total_mb" => 0.0,
-        "swap_used_pct" => 0.0
+        "used_pct" => Float.round(used_kb / total_kb * 100, 1)
       }
+      |> Map.merge(swap_from_info(info))
     end
   end
 
   def memory_from_info(_), do: nil
+
+  @doc """
+  Swap from `Swap Total` / `Swap Free` (KiB, same unit as the Mem fields).
+
+  A box without a swap device reports 0, and 0 is the documented no-data
+  sentinel — `swap_check/1` returns nil on `swap_total_mb <= 0` rather than
+  alarming on an absent feature (incident c37de13). So the sentinel is DERIVED
+  here, not assumed: a box that does have swap gets monitored.
+  """
+  def swap_from_info(info) when is_map(info) do
+    total_kb = num(Map.get(info, "Swap Total", "0"))
+    free_kb = num(Map.get(info, "Swap Free", "0"))
+
+    if total_kb <= 0 do
+      %{"swap_total_mb" => 0.0, "swap_used_pct" => 0.0}
+    else
+      used_kb = max(total_kb - free_kb, 0.0)
+
+      %{
+        "swap_total_mb" => Float.round(total_kb / 1024, 1),
+        "swap_used_pct" => Float.round(used_kb / total_kb * 100, 1)
+      }
+    end
+  end
+
+  def swap_from_info(_), do: %{"swap_total_mb" => 0.0, "swap_used_pct" => 0.0}
+
+  @doc """
+  Load averages from the `loadavg` attribute (`"0.42, 0.31, 0.28"`), with the
+  core count so the UI can show "load (N cores)".
+
+  Without this the metric writer stored load.1m/5m/15m as a flat 0 for every
+  Securepoint box — fabricated data, which reads as a healthy idle box rather
+  than as "not measured".
+  """
+  def loadavg_from_info(info) when is_map(info) do
+    case Map.get(info, "loadavg") do
+      raw when is_binary(raw) ->
+        case raw |> String.split(~r/[,\s]+/, trim: true) |> Enum.map(&num/1) do
+          [one, five, fifteen | _] ->
+            %{"one" => one, "five" => five, "fifteen" => fifteen}
+            |> maybe_cores(Map.get(info, "CPU Cores"))
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  def loadavg_from_info(_), do: nil
+
+  defp maybe_cores(load, nil), do: load
+
+  defp maybe_cores(load, raw) do
+    case trunc(num(raw)) do
+      n when n > 0 -> Map.put(load, "cores", n)
+      _ -> load
+    end
+  end
 
   @doc "The persistent /data volume from `storage` / `storage free` (bytes)."
   def disks_from_info(info) when is_map(info) do

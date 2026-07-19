@@ -73,6 +73,47 @@ defmodule Orbit.Securepoint.MetricsTest do
     assert mem["swap_total_mb"] == 0.0
   end
 
+  describe "swap (derived, not assumed)" do
+    test "a box without a swap device keeps the no-data sentinel" do
+      assert C.swap_from_info(%{"Swap Total" => "0", "Swap Free" => "0"}) ==
+               %{"swap_total_mb" => 0.0, "swap_used_pct" => 0.0}
+    end
+
+    test "a box WITH swap is measured — the sentinel must not be hardcoded" do
+      s = C.swap_from_info(%{"Swap Total" => "2097152", "Swap Free" => "1048576"})
+
+      assert s["swap_total_mb"] == 2048.0
+      assert s["swap_used_pct"] == 50.0
+    end
+
+    test "an absent swap attribute is no data, not zero usage of something" do
+      assert C.swap_from_info(%{})["swap_total_mb"] == 0.0
+    end
+  end
+
+  describe "loadavg" do
+    test "parses the comma-separated triple and the core count" do
+      load = C.loadavg_from_info(%{"loadavg" => "0.42, 0.31, 0.28", "CPU Cores" => "4"})
+
+      assert load == %{"one" => 0.42, "five" => 0.31, "fifteen" => 0.28, "cores" => 4}
+    end
+
+    test "an idle box still reports real zeros" do
+      assert C.loadavg_from_info(%{"loadavg" => "0.00, 0.00, 0.00"})["one"] == 0.0
+    end
+
+    test "no loadavg attribute means NO section — not a fabricated zero" do
+      refute C.loadavg_from_info(%{"hostname" => "x"})
+      refute C.loadavg_from_info(%{"loadavg" => "garbage"})
+    end
+
+    test "the core count is omitted when the box does not report it" do
+      load = C.loadavg_from_info(%{"loadavg" => "1.0, 2.0, 3.0"})
+
+      refute Map.has_key?(load, "cores")
+    end
+  end
+
   test "no memory section when the box reports no total" do
     refute C.memory_from_info(%{"Mem Total" => "0"})
   end

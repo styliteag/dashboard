@@ -127,6 +127,39 @@ defmodule Orbit.Securepoint.SSH do
     end
   end
 
+  # The stored line names its algorithm; RESTRICT the KEX to that family so the
+  # server presents the key we can actually verify. `preferred_algorithms
+  # [public_key:]` is the host-key list — NOT `pref_public_key_algs`, which is
+  # the USER-auth key list and setting it to RSA breaks publickey auth with an
+  # ed25519 client key (both mistakes made and measured against a live box).
+  # RSA additionally accepts the SHA-2 signature algorithms: same key material,
+  # newer signing.
+  defp host_key_algs(nil), do: []
+
+  defp host_key_algs(line) when is_binary(line) do
+    case line |> String.trim() |> String.split(~r/\s+/) |> List.first() do
+      "ssh-rsa" ->
+        [preferred_algorithms: [public_key: [:"rsa-sha2-512", :"rsa-sha2-256", :"ssh-rsa"]]]
+
+      "ssh-ed25519" ->
+        [preferred_algorithms: [public_key: [:"ssh-ed25519"]]]
+
+      "ecdsa-sha2-nistp256" ->
+        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp256"]]]
+
+      "ecdsa-sha2-nistp384" ->
+        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp384"]]]
+
+      "ecdsa-sha2-nistp521" ->
+        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp521"]]]
+
+      _ ->
+        []
+    end
+  end
+
+  defp host_key_algs(_), do: []
+
   defp blank?(nil), do: true
   defp blank?(""), do: true
   defp blank?(v) when is_binary(v), do: String.trim(v) == ""
@@ -138,16 +171,26 @@ defmodule Orbit.Securepoint.SSH do
         [priv_key: priv_key, reply_to: self()] ++
           if(cfg.host_key, do: [pinned: cfg.host_key], else: [])
 
-      opts = [
-        user: String.to_charlist(cfg.user || "root"),
-        auth_methods: ~c"publickey",
-        key_cb: {KeyCb, key_cb_private},
-        silently_accept_hosts: false,
-        user_interaction: false,
-        save_accepted_host: false,
-        quiet_mode: true,
-        connect_timeout: @connect_timeout
-      ]
+      opts =
+        [
+          user: String.to_charlist(cfg.user || "root"),
+          auth_methods: ~c"publickey",
+          key_cb: {KeyCb, key_cb_private}
+          # Pin the HOST-KEY ALGORITHM to the one we stored, or the comparison is
+          # a coin toss: a box commonly offers several host keys (RSA + ECDSA +
+          # ed25519) and Erlang would negotiate by its own preference. Pinning an
+          # RSA key while Erlang picks ECDSA yields a guaranteed blob mismatch and
+          # a fail-closed refusal — the enrichment then never runs, silently.
+          # Observed on a live box: pinned ssh-rsa, negotiated ecdsa-sha2-nistp256.
+        ] ++
+          host_key_algs(cfg.host_key) ++
+          [
+            silently_accept_hosts: false,
+            user_interaction: false,
+            save_accepted_host: false,
+            quiet_mode: true,
+            connect_timeout: @connect_timeout
+          ]
 
       case :ssh.connect(String.to_charlist(cfg.host), cfg.port || 22, opts, @connect_timeout) do
         {:ok, conn} ->
