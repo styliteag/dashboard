@@ -13,6 +13,7 @@ defmodule Orbit.Application do
         Orbit.Repo
       ] ++
         migrator_child() ++
+        bootstrap_child() ++
         [
           {DNSCluster, query: Application.get_env(:orbit, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: Orbit.PubSub},
@@ -50,6 +51,19 @@ defmodule Orbit.Application do
   defp migrator_child do
     if Application.get_env(:orbit, :migrate_on_boot, true) do
       [Orbit.Repo.Migrator]
+    else
+      []
+    end
+  end
+
+  # Derive the two password-only break-glass seed accounts (admin/superadmin)
+  # from DASH_*_PASSWORD right after the schema is at head and before anything
+  # serves. Without this a greenfield database has no account at all — the
+  # python backend did it on every start and the cutover dropped the creation
+  # half. Gated with the migrator: the :test suite manages its own fixtures.
+  defp bootstrap_child do
+    if Application.get_env(:orbit, :seed_bootstrap_accounts, true) do
+      [Orbit.Auth.Bootstrap]
     else
       []
     end

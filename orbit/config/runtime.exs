@@ -90,6 +90,11 @@ config :orbit,
 config :orbit, :admin_disabled_raw, System.get_env("DASH_ADMIN_DISABLED", "auto")
 config :orbit, :superadmin_disabled_raw, System.get_env("DASH_SUPERADMIN_DISABLED", "auto")
 
+# Seed passwords for those two accounts (auth/bootstrap.py). Unset = the seed is
+# never created; an empty database then has no way in at all.
+config :orbit, :admin_password, System.get_env("DASH_ADMIN_PASSWORD")
+config :orbit, :superadmin_password, System.get_env("DASH_SUPERADMIN_PASSWORD")
+
 # CrowdSec blocklist (DR-G8): the key turns it on, DISABLE turns it off
 # without losing the key; independent of the country restriction.
 config :orbit, :crowdsec_api_key, System.get_env("DASH_CROWDSEC_API_KEY")

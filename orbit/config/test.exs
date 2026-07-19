@@ -28,6 +28,7 @@ config :orbit, :dash_master_key, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 # The TestClient-started app must not migrate — the suite owns the test DB
 # (provision it with `just orbit-test-db`, i.e. mix ecto.create + ecto.migrate).
 config :orbit, :migrate_on_boot, false
+config :orbit, :seed_bootstrap_accounts, false
 
 # Maintenance jobs touch the alembic-owned schema the throwaway test DB lacks.
 config :orbit, :start_scheduler, false

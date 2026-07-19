@@ -51,6 +51,12 @@ services:
       # Fernet key for the *_enc columns (same key the python backend used —
       # the column format is unchanged, so existing secrets stay readable).
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
+      # Break-glass seed accounts (auth/bootstrap.ex). Without these an empty
+      # database has no account at all and nobody can log in.
+      DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-}
+      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-}
+      DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
+      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
       # Interactive shell gate + WS origin allowlist.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
       # Passkeys: rp_id is the shared host; the origin is orbit's OWN (dev :8000),

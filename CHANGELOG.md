@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A fresh installation could not be logged into at all.** The cutover ported
+  only the retirement half of the bootstrap-seed lifecycle: orbit read
+  `DASH_ADMIN_DISABLED`/`DASH_SUPERADMIN_DISABLED`, honoured `is_bootstrap` at
+  login and auto-retired a seed once a real account existed — but nothing read
+  `DASH_ADMIN_PASSWORD`/`DASH_SUPERADMIN_PASSWORD` and nothing ever *created* a
+  seed account. The python backend had done that on every start, so the gap
+  stayed invisible until it was removed. On an empty database orbit came up with
+  zero users and no way in. `Orbit.Auth.Bootstrap` restores the creation half as
+  a line-by-line port: both seeds are derived at boot (create on first start,
+  auto-disable once a real counterpart exists, break-glass re-enable plus
+  password reset when none remains, `*_DISABLED=1` forces off). The four
+  variables are now passed to orbit in both compose files — the dev stack passed
+  none of them.
+
+
 - **The baseline schema migration could have deleted the whole database.**
   `orbit/priv/repo/baseline_schema.sql` is supposed to be a no-op on an existing
   database — it exists only so orbit records that it now owns the schema. It

@@ -84,6 +84,8 @@ services:
       # only govern the seed-admin retirement lifecycle).
       DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
       DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
+      DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-}
+      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-}
       # Browser terminal (root shell on the firewall — docs §22). Global gate;
       # each instance additionally needs its per-instance "Terminal" opt-in.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
