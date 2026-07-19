@@ -56,9 +56,18 @@ defmodule OrbitWeb.ConnectivityLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
-  # Editing a monitor from the FLEET view: the row carries its instance, so every
-  # entry point re-scopes through Scope.get_instance/2 rather than trusting the
-  # id that came back from the browser (invariant 1).
+  # Editing a monitor from the FLEET view.
+  #
+  # `phx-value-iid` is rendered into the DOM, so its value is fully under the
+  # visitor's control — "the row carries it" and "the browser sent it" are the
+  # same thing. Nothing about the id can be trusted; what makes this safe is
+  # that EVERY entry point re-resolves it through Scope.get_instance/2 with the
+  # session's user, which answers nil for anything out of scope (invariant 1:
+  # a user with zero groups sees NOTHING). Save/delete additionally require the
+  # write role, and the SQL carries `WHERE id = ? AND instance_id = ?` so a
+  # forged monitor id cannot reach across instances either.
+  #
+  # Do not "simplify" any of these back to using the id directly.
   def handle_event("conn_open", %{"iid" => raw_iid} = params, socket) do
     with true <- socket.assigns.writable,
          {iid, ""} <- Integer.parse(raw_iid),
@@ -109,10 +118,15 @@ defmodule OrbitWeb.ConnectivityLive do
     end
   end
 
+  # Write-gated too: a test sends real traffic from the operator's box, so it is
+  # a mutation of the outside world even though it stores nothing. Today only a
+  # writable user can open the dialog at all, but that is an indirect guarantee
+  # — a crafted event must be refused on its own.
   def handle_event("conn_test", _params, socket) do
     editor = socket.assigns.conn_editor
 
-    with false <- socket.assigns.conn_test_busy,
+    with true <- socket.assigns.writable,
+         false <- socket.assigns.conn_test_busy,
          %{} <- editor,
          inst when not is_nil(inst) <-
            Scope.get_instance(editor.instance_id, socket.assigns.current_user) do

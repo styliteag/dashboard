@@ -197,7 +197,8 @@ defmodule OrbitWeb.VpnLive do
   def handle_event("p2mon_test", _params, socket) do
     editor = socket.assigns.ping_editor
 
-    with false <- socket.assigns.ping_test_busy,
+    with true <- socket.assigns.writable,
+         false <- socket.assigns.ping_test_busy,
          %{} <- editor,
          inst when not is_nil(inst) <-
            Scope.get_instance(editor.instance_id, socket.assigns.current_user) do

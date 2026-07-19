@@ -436,10 +436,11 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
+  # Write-gated: a test sends real traffic from the box.
   def handle_event("conn_test", _params, socket) do
     editor = socket.assigns.conn_editor
 
-    if socket.assigns.conn_test_busy or is_nil(editor) do
+    if not socket.assigns.writable or socket.assigns.conn_test_busy or is_nil(editor) do
       {:noreply, socket}
     else
       inst = socket.assigns.instance
@@ -536,10 +537,11 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
+  # Write-gated: a test sends real traffic from the box.
   def handle_event("p2mon_test", _params, socket) do
     editor = socket.assigns.ping_editor
 
-    if socket.assigns.ping_test_busy or is_nil(editor) do
+    if not socket.assigns.writable or socket.assigns.ping_test_busy or is_nil(editor) do
       {:noreply, socket}
     else
       inst = socket.assigns.instance
