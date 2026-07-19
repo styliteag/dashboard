@@ -25,7 +25,9 @@ defmodule OrbitWeb.SettingsLive do
        test_busy: false,
        test_results: nil,
        llm_busy: nil,
-       llm_result: nil
+       llm_result: nil,
+       restart_armed: false,
+       restarting: false
      )}
   end
 
@@ -89,6 +91,25 @@ defmodule OrbitWeb.SettingsLive do
     {:noreply, socket |> assign(rows: load_rows()) |> put_flash(:info, "#{key} reset to default")}
   end
 
+  # Two-step confirm (RestartBackend parity): first click arms for 5s, the
+  # second one audits and stops the BEAM after the reply flushed — the
+  # container restart policy brings up a fresh process, LiveView reconnects.
+  def handle_event("restart_backend", _params, socket) do
+    cond do
+      socket.assigns.restarting ->
+        {:noreply, socket}
+
+      not socket.assigns.restart_armed ->
+        Process.send_after(self(), :disarm_restart, 5_000)
+        {:noreply, assign(socket, restart_armed: true)}
+
+      true ->
+        audit(socket, "settings.restart", "ok", nil)
+        Process.send_after(self(), :do_restart, 500)
+        {:noreply, assign(socket, restart_armed: false, restarting: true)}
+    end
+  end
+
   @impl true
   def handle_async(:notify_test, {:ok, results}, socket) do
     {:noreply, assign(socket, test_busy: false, test_results: results)}
@@ -113,6 +134,17 @@ defmodule OrbitWeb.SettingsLive do
 
   def handle_async(:llm_test, {:exit, _}, socket) do
     {:noreply, assign(socket, llm_busy: nil, llm_result: {:error, "test crashed"})}
+  end
+
+  @impl true
+  def handle_info(:disarm_restart, socket) do
+    {:noreply, assign(socket, restart_armed: false)}
+  end
+
+  def handle_info(:do_restart, socket) do
+    # Graceful BEAM stop; supervised shutdown, then the container restarts.
+    System.stop(0)
+    {:noreply, socket}
   end
 
   defp audit(socket, action, result, detail) do
@@ -236,6 +268,42 @@ defmodule OrbitWeb.SettingsLive do
           No settings in this tab.
         </p>
 
+        <%!-- General tab: restart card (applies needs-restart settings). --%>
+        <div
+          :if={@tab == "general"}
+          class="mt-4 rounded-lg border border-base-300 bg-base-200/60 p-4"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <span class="text-sm font-medium text-base-content">Backend service</span>
+              <p class="mt-0.5 text-xs text-base-content/60">
+                Restart the backend process to apply “needs restart” settings. Takes a few
+                seconds — the UI reconnects automatically, agents re-attach on their own.
+              </p>
+            </div>
+            <button
+              phx-click="restart_backend"
+              disabled={@restarting}
+              class={[
+                "shrink-0 rounded px-3 py-1.5 text-sm text-white disabled:opacity-40",
+                if(@restart_armed,
+                  do: "bg-error hover:bg-error/80",
+                  else: "bg-neutral hover:bg-neutral/80"
+                )
+              ]}
+            >
+              {cond do
+                @restart_armed -> "Click again to restart"
+                @restarting -> "Restarting…"
+                true -> "Restart backend"
+              end}
+            </button>
+          </div>
+          <p :if={@restarting} class="mt-2 text-xs text-warning">
+            Backend is restarting — this page reconnects automatically once it is back.
+          </p>
+        </div>
+
         <%!-- Channel tabs: intro + mute toggle + connectivity test. The field
              rows above already rendered this channel's group. --%>
         <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4 space-y-3">
@@ -262,6 +330,11 @@ defmodule OrbitWeb.SettingsLive do
               </span>
             </div>
           </div>
+          <p class="text-xs text-base-content/60">
+            Which alert categories this channel receives is driven by the
+            <a href={~p"/selection"} class="text-primary hover:underline">service selection rules</a>
+            — base default is off until an include rule matches.
+          </p>
         </div>
 
         <%!-- AI tab: provider test buttons. --%>
@@ -291,8 +364,14 @@ defmodule OrbitWeb.SettingsLive do
           </div>
         </div>
 
-        <%!-- Checkmk tab: blackout toggle + api keys link. --%>
+        <%!-- Checkmk tab: intro + blackout toggle + api keys/selection links. --%>
         <div :if={@tab == "checkmk"} class="mt-4 space-y-3">
+          <p class="max-w-3xl text-sm text-base-content/70">
+            Connect Checkmk to the dashboard and choose which service checks are exported.
+            See <code class="rounded bg-base-300 px-1 py-0.5 text-xs">CHECKMK.md</code>
+            for the full integration guide. Changing the aggregate toggle alters which
+            services Checkmk discovers — re-inventorize the hosts afterwards.
+          </p>
           <.mute_toggle
             :if={mute_row(@rows, "checkmk_blackout")}
             row={mute_row(@rows, "checkmk_blackout")}
