@@ -98,21 +98,6 @@ services:
       db:
         condition: service_healthy
 
-  # GUI proxy: terminates TLS per-instance-port and reverse-proxies to the
-  # in-container tunnel forwarder (orbit:14400+id). Prod swaps the port vhost for a
-  # wildcard subdomain. See docker/Caddyfile.dev and §18.
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    ports:
-      - "9001-9010:9001-9010"
-    volumes:
-      - ./docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro
-    depends_on:
-      - orbit
-
-  # CrowdSec LAPI sidecar (OPTIONAL, DR-G8) — same opt-in as prod:
-  # docker compose -f compose-dev.yml --profile crowdsec up -d
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.7
     restart: unless-stopped
