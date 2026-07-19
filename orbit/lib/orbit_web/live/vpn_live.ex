@@ -364,15 +364,19 @@ defmodule OrbitWeb.VpnLive do
   end
 
   defp load(socket) do
-    agent_instances =
+    # NOT filtered to agent_mode?: a direct-polled box has an `ipsec` section
+    # in the hub cache too (Securepoint fills it via the swanctl-over-SSH
+    # enrichment). The filter hid every polled box's tunnels from the fleet
+    # view while its own detail page listed them. The rows below are pure
+    # display data — this page has no agent-only tunnel actions.
+    vpn_instances =
       socket.assigns.current_user
       |> Instances.list_visible()
-      |> Enum.filter(&Instances.Instance.agent_mode?/1)
 
-    monitors = Orbit.Monitors.list_ipsec_for(Enum.map(agent_instances, & &1.id))
+    monitors = Orbit.Monitors.list_ipsec_for(Enum.map(vpn_instances, & &1.id))
 
     tunnels =
-      Enum.flat_map(agent_instances, fn inst ->
+      Enum.flat_map(vpn_instances, fn inst ->
         ipsec = Hub.cache_entry(inst.id)["ipsec"] || %{}
         gui_openable = Orbit.GUI.openable(inst) == :ok
 
@@ -405,7 +409,7 @@ defmodule OrbitWeb.VpnLive do
     assign(socket,
       tunnels: tunnels,
       monitors: monitors,
-      comments: CommentEditor.lookup(agent_instances)
+      comments: CommentEditor.lookup(vpn_instances)
     )
   end
 

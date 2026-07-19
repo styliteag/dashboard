@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The fleet VPN page listed no tunnels for direct-polled boxes.** Their IPsec
+  data sits in the same place an agent's does, and the instance's own VPN tab
+  showed it — the fleet view simply filtered those boxes out before collecting
+  tunnels.
+
 - **Direct-polled boxes had an empty Checks tab and no Firmware tab at all**,
   although the data behind both was already being collected. Two `agent_mode?`
   filters hid working code: the Checks tab returned nothing for any polled
