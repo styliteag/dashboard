@@ -169,7 +169,10 @@
   --noise: 0;
 }
 
-/* Soft — warm white, friendly blue + coral, pill shapes */
+/* Soft — warm white, friendly green + coral, pill shapes. primary stays the
+   "ok/action" green of every other design (see orbit-light) — `primary` is
+   what the app paints OK badges, up-lanes and confirm buttons with, so a blue
+   primary made "OK" read as "info" here. `info` remains blue. */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
   name: "soft-light";
   default: false;
@@ -179,8 +182,8 @@
   --color-base-200: oklch(96% 0.01 85);
   --color-base-300: oklch(92% 0.015 85);
   --color-base-content: oklch(27% 0.02 60);
-  --color-primary: oklch(55% 0.19 262);
-  --color-primary-content: oklch(97% 0.01 262);
+  --color-primary: oklch(50% 0.13 165);
+  --color-primary-content: oklch(97% 0.01 165);
   --color-secondary: oklch(66% 0.16 20);
   --color-secondary-content: oklch(98% 0.01 20);
   --color-accent: oklch(76% 0.11 160);
@@ -205,7 +208,7 @@
   --noise: 0;
 }
 
-/* Soft at night — warm dark, brighter blue + coral, pill shapes */
+/* Soft at night — warm dark, brighter green + coral, pill shapes */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
   name: "soft-dark";
   default: false;
@@ -215,8 +218,8 @@
   --color-base-200: oklch(22% 0.014 60);
   --color-base-300: oklch(28% 0.016 60);
   --color-base-content: oklch(93% 0.01 85);
-  --color-primary: oklch(70% 0.15 262);
-  --color-primary-content: oklch(18% 0.05 262);
+  --color-primary: oklch(72% 0.13 165);
+  --color-primary-content: oklch(20% 0.05 165);
   --color-secondary: oklch(72% 0.14 20);
   --color-secondary-content: oklch(20% 0.05 20);
   --color-accent: oklch(76% 0.11 160);
