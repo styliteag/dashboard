@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SSH access is configurable again on a Securepoint.** The edit form had no
+  SSH fields at all, so the enrichment, the ping monitors and the terminal could
+  only ever work on boxes whose rows predated the rewrite — a new box could not
+  be set up through the UI. The form now has the enrichment switch, port, user
+  and private key, plus a **Capture host key** button: pinning is
+  trust-on-first-use and the transport refuses to connect without a pin, so
+  saving a new key would otherwise leave SSH silently dead. The captured key is
+  audited, and it can only come from probing the box — never from typing.
+
+- **Connectivity monitors are edited in a dialog too.** They could only be
+  created, toggled and deleted; correcting a destination meant deleting the
+  monitor and losing its history and its check key with it. Same dialog shape as
+  the Phase-2 ping monitors, with Test.
+
 - **The Phase-2 ping monitor dialog is now on the instance's own VPN tab too.**
   It previously only existed on the fleet VPN page; the instance page carried a
   cramped inline form per tunnel row that could only ADD a monitor — no editing,

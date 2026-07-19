@@ -134,6 +134,24 @@ defmodule Orbit.Instances do
     end
   end
 
+  @doc """
+  Store a host key captured by probing the box (trust on first use).
+
+  Deliberately NOT an editable form field: a pinned host key is only meaningful
+  if it came from the box itself. Letting it be typed would turn the whole
+  fail-closed check into something an operator can defeat by pasting whatever
+  the attacker presented.
+  """
+  def pin_ssh_host_key(%Instance{} = inst, line) when is_binary(line) do
+    if String.trim(line) == "" do
+      {:error, :empty}
+    else
+      inst
+      |> Ecto.Changeset.change(%{ssh_host_key: String.trim(line)})
+      |> Repo.update()
+    end
+  end
+
   @device_types ~w(opnsense pfsense proxmox truenas qnap securepoint linux)
   # Push-only device types have no direct API — base_url must stay empty (DR-9).
   @push_only_types ~w(linux)

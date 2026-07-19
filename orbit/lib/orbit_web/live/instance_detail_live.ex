@@ -13,6 +13,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
@@ -78,6 +79,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           ipsec_busy: MapSet.new(),
           ipsec_msg: nil,
           ipsec_expanded: MapSet.new(),
+          conn_editor: nil,
+          conn_test: nil,
+          conn_test_busy: false,
           ping_editor: nil,
           ping_test: nil,
           ping_test_busy: false,
@@ -387,29 +391,93 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   # Standalone connectivity monitors (ConnectivitySection parity) — every
   # mutation re-pushes the set to the agent so probing starts immediately.
-  def handle_event("conn_create", %{"monitor" => attrs}, %{assigns: %{writable: true}} = socket) do
-    case Orbit.Monitors.create_connectivity(socket.assigns.instance.id, attrs) do
-      :ok ->
-        audit_agent(socket, "connectivity.monitor.create", "ok")
-        {:noreply, load_monitors(socket)}
+  def handle_event("conn_open", params, %{assigns: %{writable: true}} = socket) do
+    mon =
+      case Integer.parse(to_string(params["id"] || "")) do
+        {id, ""} -> Enum.find(socket.assigns.conn_monitors, &(&1.id == id))
+        _ -> nil
+      end
 
-      {:error, msg} ->
-        {:noreply, assign(socket, conn_error: msg)}
+    editor = %{
+      instance_name: socket.assigns.instance.name,
+      monitor_id: mon && mon.id,
+      name: (mon && mon.name) || "",
+      source: (mon && mon.source) || "",
+      destination: (mon && mon.destination) || "",
+      ping_count: (mon && mon.ping_count) || 3,
+      enabled: is_nil(mon) or mon.enabled
+    }
+
+    {:noreply, assign(socket, conn_editor: editor, conn_test: nil)}
+  end
+
+  def handle_event("conn_cancel", _params, socket) do
+    {:noreply, assign(socket, conn_editor: nil, conn_test: nil)}
+  end
+
+  # Keep the editor in step with the form so Test probes what is on screen.
+  def handle_event("conn_change", %{"monitor" => attrs}, socket) do
+    case socket.assigns.conn_editor do
+      nil ->
+        {:noreply, socket}
+
+      editor ->
+        {:noreply,
+         assign(socket,
+           conn_editor: %{
+             editor
+             | name: attrs["name"] || "",
+               source: attrs["source"] || "",
+               destination: attrs["destination"] || "",
+               ping_count: attrs["ping_count"] || editor.ping_count,
+               enabled: attrs["enabled"] == "true"
+           }
+         )}
     end
   end
 
-  def handle_event("conn_toggle", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
-    {id, ""} = Integer.parse(raw)
-    :ok = Orbit.Monitors.toggle_connectivity(socket.assigns.instance.id, id)
-    audit_agent(socket, "connectivity.monitor.update", "ok")
-    {:noreply, load_monitors(socket)}
+  def handle_event("conn_test", _params, socket) do
+    editor = socket.assigns.conn_editor
+
+    if socket.assigns.conn_test_busy or is_nil(editor) do
+      {:noreply, socket}
+    else
+      inst = socket.assigns.instance
+
+      {:noreply,
+       socket
+       |> assign(conn_test_busy: true, conn_test: nil)
+       |> start_async(:conn_test, fn ->
+         Orbit.Monitors.ping_test(inst, editor.source, editor.destination, editor.ping_count)
+       end)}
+    end
+  end
+
+  def handle_event("conn_save", %{"monitor" => attrs}, %{assigns: %{writable: true}} = socket) do
+    editor = socket.assigns.conn_editor
+    iid = socket.assigns.instance.id
+
+    result =
+      case editor.monitor_id do
+        nil -> Orbit.Monitors.create_connectivity(iid, attrs)
+        mid -> Orbit.Monitors.update_connectivity(iid, mid, attrs)
+      end
+
+    case result do
+      :ok ->
+        audit_agent(socket, "connectivity.monitor.create", "ok")
+        {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load_monitors()}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, conn_test: {:error, msg})}
+    end
   end
 
   def handle_event("conn_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
     {id, ""} = Integer.parse(raw)
     :ok = Orbit.Monitors.delete_connectivity(socket.assigns.instance.id, id)
     audit_agent(socket, "connectivity.monitor.delete", "ok")
-    {:noreply, load_monitors(socket)}
+    {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load_monitors()}
   end
 
   def handle_event("conn_" <> _kind, _params, socket), do: {:noreply, socket}
@@ -811,6 +879,15 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   @impl true
+  def handle_async(:conn_test, {:ok, result}, socket) do
+    {:noreply, assign(socket, conn_test_busy: false, conn_test: result)}
+  end
+
+  def handle_async(:conn_test, {:exit, reason}, socket) do
+    {:noreply,
+     assign(socket, conn_test_busy: false, conn_test: {:error, "test failed: #{inspect(reason)}"})}
+  end
+
   def handle_async(:ping_test, {:ok, result}, socket) do
     {:noreply, assign(socket, ping_test_busy: false, ping_test: result)}
   end
@@ -1917,19 +1994,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                   </td>
                   <td :if={@writable} class="py-1.5 text-right text-xs">
                     <button
-                      phx-click="conn_toggle"
+                      phx-click="conn_open"
                       phx-value-id={m.id}
                       class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
-                      {if m.enabled, do: "Disable", else: "Enable"}
-                    </button>
-                    <button
-                      phx-click="conn_delete"
-                      phx-value-id={m.id}
-                      data-confirm={"Delete monitor #{m.name}?"}
-                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
-                    >
-                      Delete
+                      Edit
                     </button>
                   </td>
                 </tr>
@@ -1943,49 +2012,20 @@ defmodule OrbitWeb.InstanceDetailLive do
               do: " (run over SSH; this box has no agent)"}.
           </p>
 
-          <form
-            :if={@writable}
-            phx-submit="conn_create"
-            class="mt-3 flex flex-wrap items-end gap-2 text-xs"
-          >
-            <div>
-              <label class="mb-0.5 block text-base-content/60">Name *</label>
-              <input
-                name="monitor[name]"
-                required
-                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
-              />
-            </div>
-            <div>
-              <label class="mb-0.5 block text-base-content/60">Source (blank = default)</label>
-              <input
-                name="monitor[source]"
-                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
-              />
-            </div>
-            <div>
-              <label class="mb-0.5 block text-base-content/60">Destination *</label>
-              <input
-                name="monitor[destination]"
-                required
-                class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
-              />
-            </div>
-            <div>
-              <label class="mb-0.5 block text-base-content/60">Pings</label>
-              <input
-                name="monitor[ping_count]"
-                value="3"
-                class="w-14 rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
-              />
-            </div>
+          <div :if={@writable} class="mt-3 flex items-center gap-2">
             <button
-              type="submit"
-              class="rounded bg-primary px-3 py-1 text-white hover:bg-primary/80"
+              phx-click="conn_open"
+              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Add monitor
             </button>
-          </form>
+          </div>
+
+          <.connectivity_monitor_dialog
+            editor={@conn_editor}
+            busy={@conn_test_busy}
+            result={@conn_test}
+          />
         </div>
 
         <%!-- IPsec (IPsecSection parity): live SA table with phase-2 expand and

@@ -68,6 +68,40 @@ defmodule Orbit.Monitors do
         else: {:error, "save failed"}
   end
 
+  @doc """
+  Edit an existing connectivity monitor (name, source, destination, count,
+  enabled).
+
+  Was missing entirely: the UI could only create and delete, so changing a
+  destination meant deleting the monitor and losing its history and its
+  `connectivity:<id>` check key with it.
+  """
+  def update_connectivity(instance_id, monitor_id, attrs) do
+    with {:ok, name, destination} <- validate_conn(attrs) do
+      Orbit.Repo.query!(
+        "UPDATE connectivity_monitors SET name = ?, source = ?, destination = ?, " <>
+          "ping_count = ?, enabled = ?, updated_at = NOW() WHERE id = ? AND instance_id = ?",
+        [
+          name,
+          String.trim(attrs["source"] || ""),
+          destination,
+          ping_count(attrs),
+          attrs["enabled"] in ["true", "on", "1", true],
+          monitor_id,
+          instance_id
+        ]
+      )
+
+      push_to_agent(instance_id)
+      :ok
+    end
+  rescue
+    e in MyXQL.Error ->
+      if e.mysql && e.mysql.code == 1062,
+        do: {:error, "a monitor with this name already exists"},
+        else: {:error, "save failed"}
+  end
+
   def toggle_connectivity(instance_id, monitor_id) do
     Orbit.Repo.query!(
       "UPDATE connectivity_monitors SET enabled = NOT enabled, updated_at = NOW() " <>

@@ -28,13 +28,43 @@ defmodule OrbitWeb.InstanceEditLive do
     with {id, ""} <- Integer.parse(raw_id),
          inst when not is_nil(inst) <- Scope.get_instance(id, user),
          true <- user.role in @write_roles do
-      {:ok, assign(socket, instance: inst, admin: user.role == "admin", error: nil)}
+      {:ok,
+       assign(socket,
+         instance: inst,
+         admin: user.role == "admin",
+         error: nil,
+         pinning: false,
+         pin_result: nil
+       )}
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
     end
   end
 
+  # Trust-on-first-use host-key capture. This is the ONLY place that connects
+  # unpinned (Orbit.Securepoint.SSH.probe_host_key/1); every other SSH path
+  # refuses without a pin. Explicit and audited rather than silently trusting
+  # whatever answers — the operator confirms the box by pressing this.
   @impl true
+  def handle_event("ssh_pin_host_key", _params, socket) do
+    inst = socket.assigns.instance
+
+    if socket.assigns.pinning do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(pinning: true, pin_result: nil)
+       |> start_async(:pin_host_key, fn ->
+         with {:ok, cfg} <- Orbit.Securepoint.SSH.config_for(inst) do
+           Orbit.Securepoint.SSH.probe_host_key(cfg)
+         else
+           _ -> {:error, "no SSH key stored yet — save one first"}
+         end
+       end)}
+    end
+  end
+
   def handle_event("save", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
     inst = socket.assigns.instance
@@ -223,6 +253,75 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
+          <%!-- SSH enrichment: only Securepoint has no agent, so only it needs
+               the dashboard to log in for swanctl and the ping monitors. --%>
+          <div
+            :if={@instance.device_type == "securepoint"}
+            class="rounded-lg border border-base-300 bg-base-200 p-4"
+          >
+            <h2 class="mb-1 text-sm font-medium text-base-content/70">SSH access</h2>
+            <p class="mb-3 text-xs text-base-content/60">
+              A Securepoint has no agent. With SSH the dashboard reads rich IPsec state
+              via swanctl (SPIs, IKE cookies, byte counters), runs the ping monitors on
+              the box and can open a terminal. See docs/securepoint-ssh.md.
+            </p>
+
+            <.flag
+              name="instance[ssh_enabled]"
+              checked={@instance.ssh_enabled}
+              label="SSH enrichment (rich IPsec via swanctl — SPIs, cookies, byte counters)"
+            />
+
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <label class="block text-xs text-base-content/60">
+                SSH port
+                <input
+                  name="instance[ssh_port]"
+                  value={@instance.ssh_port || 22}
+                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
+                />
+              </label>
+              <label class="block text-xs text-base-content/60">
+                SSH user
+                <input
+                  name="instance[ssh_user]"
+                  value={@instance.ssh_user || "root"}
+                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
+                />
+              </label>
+            </div>
+
+            <label class="mt-3 block text-xs text-base-content/60">
+              SSH private key (ed25519 PEM) — leave empty to keep the stored one <textarea
+                name="instance[ssh_key]"
+                rows="4"
+                placeholder={if @instance.ssh_key_enc, do: "unchanged", else: "just gen-ssh-key"}
+                class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-xs text-base-content"
+              ></textarea>
+            </label>
+
+            <%!-- Host-key pinning is trust-on-first-use and FAIL-CLOSED: without a
+                 pinned key the transport refuses to connect at all, so a fresh key
+                 (which clears the pin) leaves SSH dead until this is captured. --%>
+            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+              <span :if={present?(@instance.ssh_host_key)} class="text-primary">
+                Host key pinned — {String.slice(@instance.ssh_host_key, 0, 28)}…
+              </span>
+              <span :if={not present?(@instance.ssh_host_key)} class="text-warning">
+                No host key pinned — SSH will refuse to connect until it is captured.
+              </span>
+              <button
+                type="button"
+                phx-click="ssh_pin_host_key"
+                disabled={@pinning}
+                class="rounded border border-base-content/20 px-2 py-1 text-base-content/80 hover:bg-base-300 disabled:opacity-50"
+              >
+                {if @pinning, do: "Connecting…", else: "Capture host key"}
+              </button>
+              <span :if={@pin_result} class={pin_class(@pin_result)}>{elem(@pin_result, 1)}</span>
+            </div>
+          </div>
+
           <div class="flex items-center gap-3">
             <button
               type="submit"
@@ -270,6 +369,49 @@ defmodule OrbitWeb.InstanceEditLive do
     </label>
     """
   end
+
+  @impl true
+  def handle_async(:pin_host_key, {:ok, {:ok, line}}, socket) do
+    inst = socket.assigns.instance
+
+    case Orbit.Instances.pin_ssh_host_key(inst, line) do
+      {:ok, updated} ->
+        Orbit.Audit.write(
+          action: "instance.ssh_host_key.pin",
+          result: "ok",
+          user_id: socket.assigns.current_user.id,
+          target_type: "instance",
+          target_id: inst.id
+        )
+
+        {:noreply,
+         assign(socket,
+           instance: updated,
+           pinning: false,
+           pin_result: {:ok, "pinned #{String.slice(line, 0, 24)}…"}
+         )}
+
+      _ ->
+        {:noreply,
+         assign(socket, pinning: false, pin_result: {:error, "could not store the key"})}
+    end
+  end
+
+  def handle_async(:pin_host_key, {:ok, {:error, msg}}, socket) do
+    {:noreply, assign(socket, pinning: false, pin_result: {:error, msg})}
+  end
+
+  def handle_async(:pin_host_key, {:exit, reason}, socket) do
+    {:noreply, assign(socket, pinning: false, pin_result: {:error, inspect(reason)})}
+  end
+
+  defp pin_class({:ok, _}), do: "text-primary"
+  defp pin_class(_), do: "text-error"
+
+  defp present?(nil), do: false
+  defp present?(""), do: false
+  defp present?(v) when is_binary(v), do: String.trim(v) != ""
+  defp present?(_), do: true
 
   defp input_cls do
     "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
