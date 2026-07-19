@@ -1,7 +1,6 @@
 # New Features to implement
 - Require second factor agian if WebUI or Terminal is accessed
-- Better UI which looks like more the old UI
-
+- Connectivity (ping) Graph wit ping response time
 
 # New things we maybe implement in the future:
 - Monitor ZFS host explicit with lesons we learned
