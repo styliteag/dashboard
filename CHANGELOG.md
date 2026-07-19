@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Published images are amd64-only from now on.** Release builds moved to
+  native runners, and the emulated arm64 build — which cost roughly ten of the
+  twelve minutes a release took — is switched off rather than emulated. Servers
+  are amd64; Mac workstations build their own image from `compose.yml`'s
+  `build:` block, which is the default there anyway. If you pull
+  `styliteag/dashboard` on an arm64 machine, build locally instead. Re-enabling
+  arm64 is a one-line change in the release workflow, on a paid runner.
+
 ### Fixed
 
 - **Securepoint boxes reported a load average of 0 that was never measured.**

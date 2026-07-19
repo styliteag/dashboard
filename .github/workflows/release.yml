@@ -11,15 +11,101 @@ on:
         description: "Tag to (re)build (e.g. 0.1.1)"
         required: true
 
+env:
+  GHCR_IMAGE: ghcr.io/styliteag/dashboard
+  DOCKERHUB_IMAGE: docker.io/styliteag/dashboard
+  # Separate package so the "delete old versions" step never prunes the cache.
+  CACHE_IMAGE: ghcr.io/styliteag/dashboard-cache
+
 jobs:
-  release:
+  # Build each architecture on a NATIVE runner (no QEMU emulation) and push the
+  # resulting image by digest. Measured on 4.0.2/4.0.3: the same
+  # `mix deps.compile` step took 413s under emulated arm64 versus 59s on native
+  # amd64, and the whole release took ~12 min. Native runners remove that gap.
+  build:
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-latest
+          # arm64 disabled: the native `ubuntu-24.04-arm` runner is BILLED per
+          # minute on private repos (kostet €). The Mac dev boxes build their
+          # own arm64 image from compose.yml's `build:` block, so nothing pulls
+          # arm64 from the registry today. Re-enable if arm64 servers appear —
+          # the merge job already handles multiple digests, so just uncomment.
+          # Do NOT add arm64 back to a single amd64 runner without this matrix:
+          # that silently falls back to QEMU emulation (~10 min extra).
+          # - platform: linux/arm64
+          #   arch: arm64
+          #   runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # No version extraction here: orbit/Dockerfile reads VERSION from the file
+      # it copies out of the build context, so this job needs no version input.
+      # The merge job below does the tagging and extracts it there.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build context is the repo root: orbit/Dockerfile copies VERSION and
+      # agent/ from there and reads the version out of the file, not a build-arg.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./orbit/Dockerfile
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          # Per-arch registry cache in a dedicated package. Survives across runs
+          # (no 10 GB GHA-cache limit); combined with copying VERSION *after*
+          # mix deps.compile, a version-only bump reuses the dependency layer.
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=max
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Assemble the per-arch digests into a multi-arch manifest list, tag it, and
+  # cut the GitHub Release. Runs once, after every build finishes.
+  merge:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
     env:
-      # Promoted to env so we can gate Docker-Hub steps with `if: env.X != ''`.
-      # Secrets aren't directly addressable in `if:` expressions.
+      # Secrets are not directly addressable in `if:` expressions.
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     steps:
@@ -36,13 +122,18 @@ jobs:
           else
             VERSION="${GITHUB_REF#refs/tags/}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Extracted version: $VERSION"
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
-      # --- GHCR (always available via GITHUB_TOKEN) ---
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -51,37 +142,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The orbit (Elixir/LiveView) release image IS the dashboard since c48d26e
-      # deleted the FastAPI+React stack along with the root Dockerfile. Build
-      # context is the repo root — orbit/Dockerfile copies VERSION and agent/
-      # from there, and reads the version from the file, not a build-arg.
-      - name: Build and push orbit to GHCR
-        uses: docker/build-push-action@v7
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ./orbit/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/styliteag/dashboard:${{ steps.version.outputs.version }}
-            ghcr.io/styliteag/dashboard:latest
-          provenance: false
-          sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache
-          cache-to: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache,mode=max
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Retention. A "version" here is a manifest, not a release: one multi-arch
-      # push creates the index PLUS one untagged child manifest per platform,
-      # and the buildcache is another tagged version rewritten every run. So a
-      # single release adds ~4 versions and the old buildcache falls untagged.
-      # min-versions-to-keep: 5 therefore did not mean "5 releases" — it meant
-      # roughly one, and it could evict the buildcache (silently costing ~12
-      # minutes of cold rebuild) or a child manifest of a still-tagged image.
-      # 30 keeps several releases with their per-arch manifests and the cache.
-      #
-      # delete-only-untagged-versions stays false on purpose: untagged versions
-      # here are mostly the per-platform children of *live* tags, so pruning
-      # "only untagged" is the more destructive option, not the safer one.
+      - name: Create GHCR manifest list
+        working-directory: /tmp/digests
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker buildx imagetools create \
+            -t "${GHCR_IMAGE}:${VERSION}" \
+            -t "${GHCR_IMAGE}:latest" \
+            $(printf "${GHCR_IMAGE}@sha256:%s " *)
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
+
+      - name: Create Docker Hub manifest list
+        if: env.DOCKERHUB_USERNAME != ''
+        working-directory: /tmp/digests
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # imagetools copies the per-arch blobs from GHCR into Docker Hub.
+          docker buildx imagetools create \
+            -t "${DOCKERHUB_IMAGE}:${VERSION}" \
+            -t "${DOCKERHUB_IMAGE}:latest" \
+            $(printf "${GHCR_IMAGE}@sha256:%s " *)
+
+      # Retention. A "version" here is a manifest, not a release: each release
+      # adds the per-arch image pushed by digest (untagged) plus the manifest
+      # list carrying the version tag and latest. The buildcache lives in its
+      # own package (CACHE_IMAGE) and is deliberately out of reach of this step
+      # — pruning it would silently cost a full cold rebuild.
       - name: Delete old GHCR package versions
         uses: actions/delete-package-versions@v5
         continue-on-error: true
@@ -91,37 +184,11 @@ jobs:
           min-versions-to-keep: 30
           delete-only-untagged-versions: false
 
-      # --- Docker Hub (only if secrets are configured) ---
-
-      - name: Log in to Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push orbit to Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./orbit/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            docker.io/styliteag/dashboard:${{ steps.version.outputs.version }}
-            docker.io/styliteag/dashboard:latest
-          provenance: false
-          sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache
-
       - name: Note Docker Hub skipped
         if: env.DOCKERHUB_USERNAME == ''
         run: |
           echo "::notice::DOCKERHUB_USERNAME secret is not set — skipping Docker Hub push."
           echo "::notice::Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets to enable."
-
-      # --- GitHub Release ---
 
       - name: Extract release notes from CHANGELOG
         id: release_notes
