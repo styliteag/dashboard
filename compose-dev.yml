@@ -1,13 +1,12 @@
-# Development compose. Backend and frontend run as separate containers,
-# both with their src/ bind-mounted from the host so saving a file triggers
-# uvicorn --reload (backend) or Vite HMR (frontend).
+# Development compose. Orbit runs as a container with lib/ and assets/ bind-mounted
+# from the host, so saving a file triggers a Phoenix hot reload.
 #
 # Quickstart:
 #   cp .env.example .env   # set DASH_MASTER_KEY (just gen-key), DASH_ADMIN_PASSWORD
 #   docker compose -f compose-dev.yml up --build
 #
-# Browse: http://localhost:5173 (frontend, proxies /api to backend)
-# Direct: http://localhost:8000/api/health (backend)
+# Browse: http://localhost:8000
+# Direct: http://localhost:8000/api/health
 
 services:
   db:
@@ -29,95 +28,8 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-    restart: unless-stopped
-    environment:
-      DASH_ENV: dev
-      DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
-      DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
-      # Vite proxies /api without adding X-Forwarded-For, so trust no hops in dev.
-      # Dev default 0 (never trust XFF). In prod this must match actual proxies.
-      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-0}
-      DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD:-devpassword}@db:3306/${DB_NAME:-dash}
-      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
-      DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:-admin}
-      DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
-      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-superadmin}
-      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
-      DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
-      # Dev: browser is at localhost:5173 (Vite proxies /api), so rp_id=localhost.
-      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
-      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
-      DASH_WEBAUTHN_RP_NAME: ${DASH_WEBAUTHN_RP_NAME:-Orbit Dashboard}
-      DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}
-      DASH_POLL_TICK_SECONDS: ${DASH_POLL_TICK_SECONDS:-10}
-      DASH_PUSH_INTERVAL_SECONDS: ${DASH_PUSH_INTERVAL_SECONDS:-30}
-      DASH_POLL_CONCURRENCY: ${DASH_POLL_CONCURRENCY:-20}
-      DASH_AGENT_STALE_SECONDS: ${DASH_AGENT_STALE_SECONDS:-120}
-      DASH_METRICS_RETENTION_DAYS: ${DASH_METRICS_RETENTION_DAYS:-30}
-      DASH_IPSEC_EVENT_RETENTION_DAYS: ${DASH_IPSEC_EVENT_RETENTION_DAYS:-90}
-      DASH_ACCESS_EVENTS_RETENTION_DAYS: ${DASH_ACCESS_EVENTS_RETENTION_DAYS:-30}
-      DASH_ACCESS_SESSIONS_RETENTION_DAYS: ${DASH_ACCESS_SESSIONS_RETENTION_DAYS:-30}
-      DASH_ACCESS_STATS_RETENTION_DAYS: ${DASH_ACCESS_STATS_RETENTION_DAYS:-365}
-      DASH_NOTIFY_WEBHOOK_URL: ${DASH_NOTIFY_WEBHOOK_URL:-}
-      DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
-      DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
-      DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
-      DASH_NOTIFY_MATTERMOST_URL: ${DASH_NOTIFY_MATTERMOST_URL:-}
-      # GUI proxy (on in dev — Caddy fronts it per-port; see docker/Caddyfile.dev).
-      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
-      DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
-      # Interactive shell (SPIKE §22) — off by default, opt in via .env for dev.
-      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
-      # GeoIP access restriction (docs/geoip-access-restriction.md).
-      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
-      DASH_MAXMIND_ACCOUNT_ID: ${DASH_MAXMIND_ACCOUNT_ID:-}
-      DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
-      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
-      # CrowdSec blocklist (optional sidecar, profile "crowdsec").
-      DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
-      DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
-      DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
-      TZ: ${TZ:-UTC}
-    ports:
-      - "${DASH_BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ./backend/src:/app/src
-      - ./backend/alembic:/app/alembic
-      - ./backend/alembic.ini:/app/alembic.ini:ro
-      - ./backend/pyproject.toml:/app/pyproject.toml:ro
-      - ./VERSION:/app/VERSION:ro
-      - dev_geoip_data:/data/geoip
-      - ./agent:/app/agent:ro
-    depends_on:
-      db:
-        condition: service_healthy
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    restart: unless-stopped
-    environment:
-      VITE_BACKEND_URL: http://backend:8000
-      TZ: ${TZ:-UTC}
-    ports:
-      - "${DASH_FRONTEND_PORT:-5173}:5173"
-    volumes:
-      # Bind the whole frontend dir so Vite sees config + src + index.html.
-      # Anonymous volume on node_modules prevents the empty host dir from
-      # shadowing the container's installed deps.
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-
-  # Elixir/Phoenix LiveView rewrite.
-  # Runs PARALLEL to backend+frontend against the same dev DB; everything in
-  # the container, no local Elixir toolchain (link-shortener ADR-0007 pattern).
+  # Orbit (Elixir/Phoenix LiveView) — the dashboard. Everything in the
+  # container, no local Elixir toolchain (link-shortener ADR-0007 pattern).
   # Toolchain caches live under ./orbit/data (gitignored) to survive rebuilds.
   orbit:
     build:
@@ -136,9 +48,10 @@ services:
       ORBIT_DB_HOST: db
       # Served agent code for self-update relay (mounted read-only below).
       AGENT_DIR: /app/agent
-      # Same fernet key as the python backend — orbit reads the same *_enc columns.
+      # Fernet key for the *_enc columns (same key the python backend used —
+      # the column format is unchanged, so existing secrets stay readable).
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
-      # Interactive shell gate + WS origin allowlist (mirror the backend service).
+      # Interactive shell gate + WS origin allowlist.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
       # Passkeys: rp_id is the shared host; the origin is orbit's OWN (dev :8000),
       # not the python UI's :5173 — ORBIT_WEBAUTHN_ORIGIN keeps them from
@@ -149,7 +62,7 @@ services:
       DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
       ORBIT_WEBAUTHN_ORIGIN: ${ORBIT_WEBAUTHN_ORIGIN:-http://localhost:8000,http://localhost:5173}
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
-      # GeoIP gate (same vars + shared mmdb volume as the backend service;
+      # GeoIP gate (shared mmdb volume;
       # the python updater keeps the db fresh until cutover).
       DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
       DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
@@ -166,7 +79,7 @@ services:
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
-      # Settings-page log defaults (same vars as the backend service).
+      # Settings-page log defaults.
       DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
       DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
       TZ: ${TZ:-UTC}
@@ -175,7 +88,7 @@ services:
     volumes:
       - ./orbit:/app
       - ./VERSION:/app/VERSION:ro
-      # Served agent code for the self-update relay (read-only, like backend).
+      # Served agent code for the self-update relay (read-only).
       - ./agent:/app/agent:ro
       - dev_geoip_data:/data/geoip
       - ./orbit/data/deps:/app/deps
@@ -186,7 +99,7 @@ services:
         condition: service_healthy
 
   # GUI proxy: terminates TLS per-instance-port and reverse-proxies to the
-  # in-container tunnel forwarder (backend:14444). Prod swaps the port vhost for a
+  # in-container tunnel forwarder (orbit:14400+id). Prod swaps the port vhost for a
   # wildcard subdomain. See docker/Caddyfile.dev and §18.
   caddy:
     image: caddy:2
@@ -196,7 +109,7 @@ services:
     volumes:
       - ./docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro
     depends_on:
-      - backend
+      - orbit
 
   # CrowdSec LAPI sidecar (OPTIONAL, DR-G8) — same opt-in as prod:
   # docker compose -f compose-dev.yml --profile crowdsec up -d

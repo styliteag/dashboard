@@ -47,7 +47,7 @@ Checkmk site                              Dashboard
 ## What gets exposed
 
 One `<<<local>>>` service per row below, per firewall host. Source of truth:
-`backend/src/app/checks/evaluate.py`. **Nothing is exported by default** (opt-in);
+`orbit/lib/orbit/checks/evaluate.ex`. **Nothing is exported by default** (opt-in);
 under **Settings → Checkmk** an admin turns on a whole category globally, then
 (optionally) adds or mutes a single service on one instance — include even works
 inside an otherwise-off category. Selection is export-only; the dashboard still
@@ -275,7 +275,7 @@ as **Local checks**.
 
 - Special agent: `checkmk/agent_styliteorbit.py` (stdlib only) ·
   short note: `checkmk/README.md`
-- Export endpoint: `backend/src/app/checks/routes.py` (`GET /api/export/checkmk`)
-- Check evaluation + thresholds: `backend/src/app/checks/evaluate.py`
-- API keys: `backend/src/app/apikeys/routes.py`
+- Export endpoint: `orbit/lib/orbit_web/controllers/export_controller.ex` (`GET /api/export/checkmk`)
+- Check evaluation + thresholds: `orbit/lib/orbit/checks/evaluate.ex`
+- API keys: `orbit/lib/orbit/api_keys.ex`
 - Test the output transform: `just checkmk-test`

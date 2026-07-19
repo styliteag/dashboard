@@ -106,7 +106,7 @@ services:
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-false}
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
       ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:-}
-      # Caddy admin endpoint the backend hot-loads the per-slug vhost map to
+      # Caddy admin endpoint orbit hot-loads the per-slug vhost map to
       # (gui-proxy:2019 on the internal network — NOT published). REQUIRED when
       # the proxy is enabled, else the push silently no-ops.
       DASH_GUI_CADDY_ADMIN_URL: ${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}
@@ -150,7 +150,8 @@ services:
   # regenerates the per-slug vhost map and hot-loads it via Caddy's admin API
   # (gui-proxy:2019) on every instance create/slug-change/delete and at startup.
   # Regenerate the bootstrap only if its global block changes:
-  #   uv --project backend run python scripts/gen-gui-caddyfile.py > docker/Caddyfile.gui-prod
+  #   docker compose -f compose-dev.yml run --rm orbit \
+  #     mix run -e 'IO.puts Orbit.Gui.Caddy.bootstrap_caddyfile()' > docker/Caddyfile.gui-prod
   # Wire your Traefik to reach it (shared network + a router *.<domain> → gui-proxy:80).
   # Two equivalent ways to add that router:
   #   A) file provider  — docker/traefik-gui.example.yml (dynamic config file)

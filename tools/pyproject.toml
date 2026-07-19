@@ -1,0 +1,41 @@
+# Python toolchain host for the components that outlived the FastAPI backend.
+#
+# The cutover to the orbit (Elixir/LiveView) release deleted backend/, which
+# until then doubled as the venv for things that have nothing to do with the
+# API server: agent signing, the agent and checkmk test suites, notice/SBOM
+# generation and the two key generators. None of them import backend code —
+# they only ever needed an interpreter with a handful of libraries.
+#
+# Deliberately NOT a package: `just` runs scripts and pytest out of this
+# project, nothing imports from it.
+
+[project]
+name = "orbit-tools"
+version = "0.0.0"
+description = "Repo tooling: agent signing, notices/SBOM generation, agent + checkmk test runners"
+requires-python = ">=3.12"
+dependencies = [
+    # sign_agent.py (Ed25519 self-update signature) and gen-key (Fernet master key)
+    "cryptography>=43.0",
+    # gen-ssh-key (Securepoint enrichment keypair)
+    "asyncssh>=2.18",
+    # agent/tests drive the agent's WebSocket client
+    "websockets>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

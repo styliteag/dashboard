@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The retired **FastAPI backend and React frontend are gone from the repo**.
+  They stopped being built or run at the orbit cutover but stayed on disk, so
+  `backend/` still looked like a live component — and `just backend-run` still
+  started a second dashboard against the same database, which could write rows
+  orbit did not expect. Deleted along with the combined production `Dockerfile`,
+  its nginx config and entrypoint, the `contract/` black-box suite (its job was
+  gating the port, which is finished) and the FastAPI-generated OpenAPI
+  snapshot. Recovering any of it is a `git show <pre-cutover-commit>:<path>`.
+
+- Notices and SBOM no longer list Python or JavaScript packages — the release
+  image ships neither. `THIRD-PARTY-NOTICES.md` drops from ~7800 to ~400 lines
+  and now covers the Elixir/Hex closure plus the vendored Checkmk agent.
+
+### Changed
+
+- **`backend/` was also the venv for tooling that has nothing to do with the
+  API server** — agent signing, the agent and Checkmk test suites, notices/SBOM
+  generation and the two key generators all ran out of it. Deleting it would
+  have taken away the ability to sign agent self-updates. That tooling now
+  lives in `tools/` (its own uv project, five dependencies instead of
+  eighteen); `just sign-agent`, `just agent-test`, `just checkmk-test`,
+  `just notices`, `just gen-key` and `just gen-ssh-key` are unchanged from the
+  caller's side. Run `just tools-install` once.
+
+- The dev stack is orbit only: `compose-dev.yml` no longer starts `backend` and
+  `frontend` containers, and the dev GUI proxy points at `orbit:4000` instead of
+  `backend:8000`. **The dev dashboard moves from `http://localhost:5173` to
+  `http://localhost:8000`.**
+
 ### Added
 
 - Orbit polls the direct-API fleet again. The cutover retired the python

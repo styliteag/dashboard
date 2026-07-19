@@ -74,7 +74,7 @@ enforceable.
 ## Third-party components
 
 Orbit bundles open-source libraries, each under its own license. The full list —
-backend (Python) and frontend (JavaScript), restricted to what actually ships in
+the orbit release (Elixir/Hex) plus vendored files, restricted to what actually ships in
 the production container — lives in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md),
 regenerated with `just notices` whenever a runtime dependency changes. The notices
 file ships inside the container image alongside this license. The same run emits

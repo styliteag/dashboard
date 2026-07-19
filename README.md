@@ -206,23 +206,26 @@ and the button is hidden — no wildcard/DNS needed.
   `DASH_GUI_CADDY_ADMIN_URL=http://gui-proxy:2019/load`, attach `gui-proxy` to
   Traefik's network, then `docker compose --profile gui up -d`.
 
-  > **`DASH_GUI_CADDY_ADMIN_URL` is required** — it's how the backend pushes the
+  > **`DASH_GUI_CADDY_ADMIN_URL` is required** — it's how orbit pushes the
   > vhost map to Caddy. The bundled `compose.yml` defaults it for you
   > (`${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}`), but a **hand-written
   > compose / Swarm stack has no such default** — you must set it explicitly. If it's
   > unset while the proxy is enabled, the hot-load **silently no-ops**: Caddy stays on
-  > the empty bootstrap and every `gui-<slug>` host returns a blank `200`. The backend
+  > the empty bootstrap and every `gui-<slug>` host returns a blank `200`. Orbit
   > logs `gui_caddy.admin_url_unset` at startup when this happens.
 
   Each instance gets a **persistent, URL-safe `slug`** (auto-derived from its name —
   "Firewall Büro Süd" → `firewall-buero-sued`, editable, unique). Because the host is
   now a slug (not arithmetic from the id), the host→port binding lives in the DB: the
   mounted Caddyfile is just a **bootstrap** (admin API + empty wildcard), and the
-  backend regenerates the per-slug vhost map and **hot-loads it through Caddy's admin
+  orbit regenerates the per-slug vhost map and **hot-loads it through Caddy's admin
   API** (`gui-proxy:2019`, internal network only — never publish it) on every instance
   create/slug-change/delete and at startup. No per-instance file editing, no `gui-N`
   cap. Regenerate the bootstrap only if its global block changes:
-  `uv --project backend run python scripts/gen-gui-caddyfile.py > docker/Caddyfile.gui-prod`.
+  ```bash
+  docker compose -f compose-dev.yml run --rm orbit \
+    mix run -e 'IO.puts Orbit.Gui.Caddy.bootstrap_caddyfile()' > docker/Caddyfile.gui-prod
+  ```
 
   Wire the Traefik router either via the **file provider**
   ([`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)) or, if your
@@ -249,10 +252,9 @@ docker/                 nginx.orbit.conf (front-door vhost → orbit:4000), Cadd
 agent/                  stdlib push agent for OPNsense/pfSense + install.sh + rc.d
 checkmk/                Checkmk special-agent plugin (pulls /api/export/checkmk)
 scripts/                sign_agent.py — Ed25519 signing for agent self-update
+tools/                  uv project hosting the python tooling (signing, notices,
+                        agent + checkmk test runners); imports no app code
 docs/                   public operator docs (Securepoint SSH, glossary, …)
-backend/ frontend/      retired FastAPI + React stack (kept for history + the
-                        Alembic migrations the orbit baseline was captured from;
-                        not built or run in prod)
 .github/workflows/      release.yml — multi-arch publish on tag push
 VERSION                 source of truth, baked into image at build
 release.sh              version bump + tag + push helper
@@ -260,41 +262,31 @@ release.sh              version bump + tag + push helper
 
 ## Development
 
-Two workflows — pick one:
-
-### A) Local (fast feedback, recommended)
-
-Backend and frontend run on the host. Database can run in Docker (just `db` from the dev compose) or locally.
+Everything runs in containers — there is no local Elixir toolchain to install.
 
 ```bash
-just backend-install        # uv sync --all-extras (creates backend/.venv)
-just backend-run            # uvicorn --reload on http://localhost:8000
-just backend-test           # pytest
-
-just frontend-install       # npm install
-just frontend-dev           # vite on http://localhost:5173 (proxies /api → backend)
-```
-
-### B) Docker dev compose (everything in containers)
-
-Both backend and frontend run as separate containers with their `src/` bind-mounted, so saving a file triggers `uvicorn --reload` (backend) or Vite HMR (frontend).
-
-```bash
-cp .env.example .env        # set DASH_MASTER_KEY at minimum
+cp .env.example .env        # set DASH_MASTER_KEY at minimum (just gen-key)
+just orbit-setup            # one-time: hex/rebar + deps into the cached volumes
 just dev-up                 # docker compose -f compose-dev.yml up -d --build
 just dev-logs
 
-# Browse: http://localhost:5173 (frontend)
-# Direct: http://localhost:8000/api/health (backend)
+# Browse: http://localhost:8000
+# Direct: http://localhost:8000/api/health
 ```
+
+Saving a file under `orbit/lib` or `orbit/assets` triggers a Phoenix hot reload;
+Ecto migrations apply on container start.
+
+The python tooling (agent signing, notices, the agent and checkmk test suites)
+lives in `tools/` and needs `just tools-install` once.
 
 ### Tests & gates
 
 ```bash
-just backend-test           # pytest (backend)
-just agent-test             # pytest over agent/tests (runs in the backend venv)
+just orbit-test             # mix test — the dashboard suite
+just orbit-lint             # mix format --check-formatted + compile --warnings-as-errors
+just agent-test             # pytest over agent/tests (runs in the tools venv)
 just checkmk-test           # pytest over checkmk/tests
-just frontend-build         # tsc -b && vite build — the only frontend gate
 ```
 
 ## Releasing

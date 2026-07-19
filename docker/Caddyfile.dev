@@ -1,7 +1,7 @@
 # Dev GUI proxy with auth gate (§18). One vhost per instance: port 9000+id is a
 # distinct browser origin (so the firewall GUI's absolute URLs resolve), Caddy
 # terminates TLS (internal CA) and reverse-proxies to that instance's on-demand
-# in-container forwarder (backend:14400+id, started by POST /gui/open). Prod swaps
+# in-container forwarder (orbit:14400+id, started by POST /gui/open). Prod swaps
 # these per-port vhosts for one wildcard-subdomain vhost — same snippet body.
 #
 # Auth: /__orbit/auth exchanges a dashboard-minted handoff token for an
@@ -17,14 +17,14 @@
 	@orbit path /__orbit/*
 	handle @orbit {
 		rewrite * /api/gui/handoff?{query}
-		reverse_proxy backend:8000
+		reverse_proxy orbit:4000
 	}
 
 	handle {
-		forward_auth backend:8000 {
+		forward_auth orbit:4000 {
 			uri /api/gui/authcheck?instance={args[0]}
 		}
-		reverse_proxy https://backend:{args[1]} {
+		reverse_proxy https://orbit:{args[1]} {
 			transport http {
 				tls_insecure_skip_verify
 			}

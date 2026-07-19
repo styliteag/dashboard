@@ -4,45 +4,34 @@ set shell := ["bash", "-cu"]
 default:
     @just --list
 
-# --- Backend ---------------------------------------------------------------
+# --- Tooling (tools/pyproject.toml) -----------------------------------------
+# The FastAPI backend is gone (orbit cutover). tools/ is the venv host for the
+# python bits that outlived it: agent signing, the agent + checkmk test suites,
+# notices/SBOM generation and the key generators. Nothing here imports app code.
 
-backend-install:
-    cd backend && uv sync --all-extras
+tools-install:
+    cd tools && uv sync --all-extras
 
-backend-run: _sign-if-key
-    cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+tools-lint:
+    cd tools && uv run ruff check ../scripts
 
-backend-test:
-    cd backend && uv run pytest -q
+tools-fmt:
+    cd tools && uv run ruff format ../scripts
 
-backend-lint:
-    cd backend && uv run ruff check src tests
-
-backend-fmt:
-    cd backend && uv run ruff format src tests
-
-# --- Agent (runs on OPNsense/pfSense; pure stdlib, tested via the backend venv) ---
+# --- Agent (runs on OPNsense/pfSense; pure stdlib, tested via the tools venv) ---
 
 agent-test:
-    cd backend && uv run pytest -o asyncio_mode=auto ../agent/tests -q
+    cd tools && uv run pytest -o asyncio_mode=auto ../agent/tests -q
 
 # Checkmk special agent (stdlib; runs on the Checkmk server)
 checkmk-test:
-    cd backend && uv run pytest ../checkmk/tests -q
-
-# Black-box API contract suite against a RUNNING backend (`just dev-up` first).
-# CONTRACT_BASE_URL switches the target: Python :8000 (default), orbit :4000.
-# Machine-contract pins (checkmk/prometheus/apikey scoping) are the migration
-# gate for the LiveView rewrite; the
-# session-JSON fixtures pin the python backend only — its UI api dies with react.
-contract-test *ARGS:
-    cd backend && uv run pytest ../contract -q {{ARGS}}
+    cd tools && uv run pytest ../checkmk/tests -q
 
 # Sign the agent for self-update. Auto-loads the OFFLINE Ed25519 private key from
 # env or the gitignored .env (DASH_AGENT_SIGNING_KEY) — no manual export needed.
 # Pass ARGS through: `--verify` (no key), `--gen` (mint keypair), `--key-file PATH`.
 sign-agent *ARGS:
-    uv --project backend run python scripts/sign_agent.py {{ARGS}}
+    uv --project tools run python scripts/sign_agent.py {{ARGS}}
 
 # Re-sign the agent IF a signing key is available (env or gitignored .env);
 # no-op + skip message otherwise. A dependency of the dev/run recipes so the
@@ -60,24 +49,7 @@ _sign-if-key:
         exit 0
     fi
     export DASH_AGENT_SIGNING_KEY
-    uv --project backend run python scripts/sign_agent.py
-
-# --- Frontend --------------------------------------------------------------
-
-frontend-install:
-    cd frontend && npm install
-
-frontend-dev:
-    cd frontend && npm run dev
-
-frontend-build:
-    cd frontend && npm run build
-
-frontend-lint:
-    cd frontend && npm run lint
-
-frontend-fmt:
-    cd frontend && npm run fmt
+    uv --project tools run python scripts/sign_agent.py
 
 # --- Orbit (Elixir/Phoenix LiveView rewrite) ---
 # Everything runs in the orbit container; no local Elixir toolchain.
@@ -166,7 +138,7 @@ down:
 logs:
     docker compose logs -f --tail=200
 
-# --- Stack (development: backend + frontend separate, src bind-mounted) ----
+# --- Stack (development: orbit with src bind-mounted, hot reload) ----------
 
 dev: _sign-if-key
     docker compose -f compose-dev.yml up --build
@@ -188,21 +160,21 @@ release type="patch":
     ./release.sh {{type}}
 
 # Regenerate THIRD-PARTY-NOTICES.md AND sbom.cdx.json (CycloneDX 1.6) from the
-# shipped runtime deps. Needs `backend-install` + `frontend-install` first (reads
-# the backend venv metadata and frontend node_modules). Run after changing any
-# runtime dependency. Covers app dependencies only — for an SBOM that also
+# shipped runtime deps of the orbit release. Needs the orbit deps fetched
+# (`just orbit-setup`) so the Hex license files are on disk. Run after changing
+# any runtime dependency. Covers app dependencies only — for an SBOM that also
 # includes base-image OS packages, scan the built image with syft.
 notices:
-    cd backend && uv run python ../scripts/gen_notices.py
+    cd tools && uv run python ../scripts/gen_notices.py
 
 # Alias: same generator, emphasises the SBOM artifact.
 sbom: notices
 
 # Generate a Fernet master key for DASH_MASTER_KEY
 gen-key:
-    cd backend && uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    cd tools && uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 
 # Generate an ed25519 keypair for Securepoint SSH enrichment (private key → paste
 # into the instance form; public key → install on the box, see docs/securepoint-ssh.md)
 gen-ssh-key:
-    cd backend && uv run python -c 'import asyncssh; k=asyncssh.generate_private_key("ssh-ed25519"); print(k.export_private_key().decode()); print(k.export_public_key().decode().strip())'
+    cd tools && uv run python -c 'import asyncssh; k=asyncssh.generate_private_key("ssh-ed25519"); print(k.export_private_key().decode()); print(k.export_public_key().decode().strip())'
