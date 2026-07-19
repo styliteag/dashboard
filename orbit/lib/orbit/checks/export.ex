@@ -10,12 +10,14 @@ defmodule Orbit.Checks.Export do
   instances need the poller (not ported yet) — they are skipped here with a
   documented seam, so a direct instance currently exports no checks.
 
-  Selection filtering + aggregation (Checkmk opt-in) also land with the
-  selection subsystem; until then the Checkmk export carries every evaluated
-  check (Prometheus never filters anyway).
+  Checkmk-only shaping (routes.py export_checkmk parity): the blackout
+  toggle empties the export, selection rules filter per check (base default
+  OFF — nothing exports until an include rule matches), and the aggregate
+  toggle collapses high-fan-out families. Prometheus never filters,
+  aggregates or blacks out — every evaluated check becomes a series.
   """
 
-  alias Orbit.Checks.{Evaluate, Overlay, Prometheus, Staleness}
+  alias Orbit.Checks.{Aggregate, Evaluate, Overlay, Prometheus, Staleness}
   alias Orbit.Instances.Instance
 
   @doc "Evaluated+overlaid `{instance, checks}` pairs for every visible instance."
@@ -45,8 +47,34 @@ defmodule Orbit.Checks.Export do
   @doc "Checkmk special-agent JSON body (version 1)."
   @spec checkmk(Orbit.Auth.Scope.principal(), DateTime.t()) :: map()
   def checkmk(principal, now) do
+    # Maintenance blackout: return no instances so Checkmk sees every service
+    # go stale/gone. Checked first — during a blackout we skip evaluating the
+    # whole fleet entirely (routes.py parity).
+    if Orbit.Settings.effective("checkmk_blackout") do
+      %{version: 1, instances: []}
+    else
+      principal
+      |> evaluated(now)
+      |> checkmk_body(
+        &Orbit.Selection.is_on_live("checkmk", &1, &2),
+        Orbit.Settings.effective("checkmk_aggregate")
+      )
+    end
+  end
+
+  @doc """
+  Pure Checkmk shaping over already-evaluated `{instance, checks}` pairs:
+  selection filter (`selected?.(check_key, instance_id)`), then the optional
+  aggregate collapse — after selection, so aggregates reflect exported
+  checks. Split out so tests drive it without DB/persistent_term state.
+  """
+  @spec checkmk_body([{map(), list()}], (String.t(), integer() -> boolean()), boolean()) :: map()
+  def checkmk_body(pairs, selected?, aggregate?) do
     instances =
-      for {inst, checks} <- evaluated(principal, now) do
+      for {inst, checks} <- pairs do
+        checks = Enum.filter(checks, &selected?.(&1.key, inst.id))
+        checks = if aggregate?, do: Aggregate.aggregate_for_checkmk(checks), else: checks
+
         %{
           instance_id: inst.id,
           name: inst.name,
