@@ -59,6 +59,42 @@ defmodule Orbit.GeoIP.UpdaterTest do
     assert Path.wildcard(Path.join(tmp_dir, "sub/.geoip-*")) == []
   end
 
+  test "skips the download when the installed mmdb is still fresh", %{tmp_dir: tmp_dir} do
+    put_creds("111", "lic")
+    target = Path.join(tmp_dir, "GeoLite2-City.mmdb")
+    File.write!(target, "FRESHDATA")
+    Application.put_env(:orbit, :geoip_db_path, target)
+    on_exit(fn -> Application.delete_env(:orbit, :geoip_db_path) end)
+
+    # A fresh DB must NOT be re-pulled — MaxMind rate-limits/bans over-eager
+    # accounts (HTTP 429). Any HTTP attempt here is the regression.
+    Req.Test.stub(Orbit.GeoIP.Updater, fn _conn ->
+      flunk("download attempted while the installed mmdb was still fresh")
+    end)
+
+    assert %{ok: nil, detail: "current mmdb still fresh — download skipped"} = Updater.refresh()
+    assert File.read!(target) == "FRESHDATA"
+  end
+
+  test "re-downloads once the installed mmdb has aged out", %{tmp_dir: tmp_dir} do
+    put_creds("111", "lic")
+    target = Path.join(tmp_dir, "GeoLite2-City.mmdb")
+    File.write!(target, "OLDDATA")
+    # Backdate well past the freshness floor (posix seconds, 2020-01-01).
+    File.touch!(target, 1_577_836_800)
+    Application.put_env(:orbit, :geoip_db_path, target)
+    on_exit(fn -> Application.delete_env(:orbit, :geoip_db_path) end)
+
+    tar = tarball([{"GeoLite2-City_20260718/GeoLite2-City.mmdb", "NEWMMDB"}], tmp_dir)
+
+    Req.Test.stub(Orbit.GeoIP.Updater, fn conn ->
+      Plug.Conn.send_resp(conn, 200, tar)
+    end)
+
+    assert %{ok: true, detail: "installed 7 bytes"} = Updater.refresh()
+    assert File.read!(target) == "NEWMMDB"
+  end
+
   test "http error becomes a failed outcome, target untouched", %{tmp_dir: tmp_dir} do
     put_creds("111", "lic")
     target = Path.join(tmp_dir, "GeoLite2-City.mmdb")

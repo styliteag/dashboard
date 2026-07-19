@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The GeoIP database is no longer re-downloaded on every restart.** The weekly
+  MaxMind refresh also runs ~30 s after each boot, and it pulled the tarball
+  unconditionally — so a dev stack (or a redeploying/crash-looping prod one) that
+  restarts often hit MaxMind dozens of times a day and eventually got throttled
+  (HTTP 429), which bans the whole account, not one box. The job now skips the
+  download when the installed `.mmdb` is younger than six days; a genuine weekly
+  refresh still goes through. Without a fresh database on disk it downloads as
+  before, so first setup is unchanged.
+
 ## [4.0.5] - 2026-07-19
 
 ### Added

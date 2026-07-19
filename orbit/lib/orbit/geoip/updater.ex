@@ -20,6 +20,15 @@ defmodule Orbit.GeoIP.Updater do
   # GeoLite2-City is ~35 MB; 100 MB = clearly broken.
   @max_tarball 100 * 1024 * 1024
 
+  # Skip the pull when the installed mmdb is younger than this. The scheduler
+  # fires this job once ~30 s after every boot and then weekly, so without a
+  # freshness floor every dev hot-restart / prod redeploy / crash loop re-pulls
+  # the tarball — dev already tripped MaxMind's rate limit (HTTP 429), which
+  # bans the whole account, not just one box. A 6-day floor (< the 7-day re-arm)
+  # lets a genuine weekly refresh through while making every extra boot-run a
+  # no-op.
+  @min_age_seconds 6 * 24 * 60 * 60
+
   @last_key {__MODULE__, :last}
 
   @doc "Outcome of the most recent run (for the GeoIP config surface)."
@@ -32,16 +41,36 @@ defmodule Orbit.GeoIP.Updater do
     account = Application.get_env(:orbit, :maxmind_account_id, "")
     key = Application.get_env(:orbit, :maxmind_license_key, "")
 
-    if account == "" or key == "" do
-      finish(nil, "no maxmind credentials configured — job idle")
-    else
-      with {:ok, tarball} <- download(account, key),
-           {:ok, mmdb} <- extract_mmdb(tarball),
-           :ok <- install(mmdb, Application.get_env(:orbit, :geoip_db_path, "")) do
-        finish(true, "installed #{byte_size(mmdb)} bytes")
-      else
-        {:error, detail} -> finish(false, detail)
-      end
+    cond do
+      account == "" or key == "" ->
+        finish(nil, "no maxmind credentials configured — job idle")
+
+      fresh?(Application.get_env(:orbit, :geoip_db_path, "")) ->
+        finish(nil, "current mmdb still fresh — download skipped")
+
+      true ->
+        with {:ok, tarball} <- download(account, key),
+             {:ok, mmdb} <- extract_mmdb(tarball),
+             :ok <- install(mmdb, Application.get_env(:orbit, :geoip_db_path, "")) do
+          finish(true, "installed #{byte_size(mmdb)} bytes")
+        else
+          {:error, detail} -> finish(false, detail)
+        end
+    end
+  end
+
+  # True when an mmdb is already installed and younger than @min_age_seconds.
+  # Empty path / missing file / unreadable stat → not fresh → the download runs
+  # (fail toward having a database, never toward a stale gate).
+  defp fresh?(""), do: false
+
+  defp fresh?(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{mtime: mtime}} ->
+        System.os_time(:second) - mtime < @min_age_seconds
+
+      _ ->
+        false
     end
   end
 
