@@ -153,13 +153,35 @@ defmodule OrbitWeb.Components.CommentEditor do
     _ -> %{}
   end
 
-  @doc "Comment text for one entity from a `lookup/1` map (nil when none)."
-  def text(map, instance_id, kind, entity_key) do
-    case Map.get(map, {instance_id, kind, entity_key}) do
+  @doc """
+  Comment text for one entity (nil when none).
+
+  Accepts EITHER shape the app has: the `lookup/1` map keyed by
+  `{instance_id, kind, entity_key}` that the fleet pages build, or the plain
+  list of comments a per-instance page already loads
+  (`Comments.list_for_instance/1`). Both are legitimate — the fleet pages need
+  one lookup across many instances, a detail page also renders the list itself.
+
+  Regression: this used to take the map only, and passing the list raised
+  `BadMapError` from `Map.get/3` — a 500 on the whole detail page, not a missing
+  badge, because it happens during render.
+  """
+  def text(comments, instance_id, kind, entity_key) when is_map(comments) do
+    case Map.get(comments, {instance_id, kind, entity_key}) do
       %{comment: c} -> c
       _ -> nil
     end
   end
+
+  def text(comments, instance_id, kind, entity_key) when is_list(comments) do
+    Enum.find_value(comments, fn c ->
+      if c.instance_id == instance_id and c.kind == kind and
+           to_string(c.entity_key) == to_string(entity_key),
+         do: c.comment
+    end)
+  end
+
+  def text(_comments, _instance_id, _kind, _entity_key), do: nil
 
   @doc "Handle a comment_save event; returns the (unchanged) socket."
   def save(socket, %{"instance_id" => raw, "kind" => kind} = params) do
