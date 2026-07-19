@@ -67,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Orbit Alerts: the page now states what it does and does not cover — only
+  agent-mode boxes (direct-API polled firewalls produce no alerts here), that
+  UNKNOWN means "could not check" rather than OK, and that a silent agent or a
+  box in maintenance caps its other CRITs to WARN, so a calm page can still
+  mean a loud box. A tally row above the table shows the affected check
+  families with their worst state (`ipsec.tunnel ×3` in red, `cert ×1` in
+  amber).
+
 - Orbit Hub: every number on the page now says what it counts. Each tile
   carries a one-line caption (your scope vs. fleet-wide, since when), the two
   counter blocks explain what a non-zero value means and that they are
