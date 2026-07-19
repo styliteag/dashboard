@@ -1835,8 +1835,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
 
           <p :if={@conn_monitors == []} class="text-sm text-base-content/60">
-            No monitors configured — the agent pings each (source, destination)
-            pair every push cycle.
+            No monitors configured — the box pings each (source, destination) pair
+            on every cycle{if not Instance.agent_mode?(@instance),
+              do: " (run over SSH; this box has no agent)"}.
           </p>
 
           <form
