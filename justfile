@@ -131,7 +131,7 @@ orbit-dump-baseline:
 
 # Build the production release image locally (CI builds/publishes on release tags)
 orbit-image:
-    docker build -f orbit/Dockerfile -t dashboard-orbit:local .
+    docker build -f orbit/Dockerfile -t dashboard:local .
 
 # --- Stack (production: single combined image) -----------------------------
 

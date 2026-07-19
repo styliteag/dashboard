@@ -63,20 +63,32 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/styliteag/dashboard-orbit:${{ steps.version.outputs.version }}
-            ghcr.io/styliteag/dashboard-orbit:latest
+            ghcr.io/styliteag/dashboard:${{ steps.version.outputs.version }}
+            ghcr.io/styliteag/dashboard:latest
           provenance: false
           sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache
-          cache-to: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache
+          cache-to: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache,mode=max
 
+      # Retention. A "version" here is a manifest, not a release: one multi-arch
+      # push creates the index PLUS one untagged child manifest per platform,
+      # and the buildcache is another tagged version rewritten every run. So a
+      # single release adds ~4 versions and the old buildcache falls untagged.
+      # min-versions-to-keep: 5 therefore did not mean "5 releases" — it meant
+      # roughly one, and it could evict the buildcache (silently costing ~12
+      # minutes of cold rebuild) or a child manifest of a still-tagged image.
+      # 30 keeps several releases with their per-arch manifests and the cache.
+      #
+      # delete-only-untagged-versions stays false on purpose: untagged versions
+      # here are mostly the per-platform children of *live* tags, so pruning
+      # "only untagged" is the more destructive option, not the safer one.
       - name: Delete old GHCR package versions
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          package-name: "dashboard-orbit"
+          package-name: "dashboard"
           package-type: "container"
-          min-versions-to-keep: 5
+          min-versions-to-keep: 30
           delete-only-untagged-versions: false
 
       # --- Docker Hub (only if secrets are configured) ---
@@ -97,11 +109,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            docker.io/styliteag/dashboard-orbit:${{ steps.version.outputs.version }}
-            docker.io/styliteag/dashboard-orbit:latest
+            docker.io/styliteag/dashboard:${{ steps.version.outputs.version }}
+            docker.io/styliteag/dashboard:latest
           provenance: false
           sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache
+          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache
 
       - name: Note Docker Hub skipped
         if: env.DOCKERHUB_USERNAME == ''

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The published image is called `dashboard` again, not `dashboard-orbit`.**
+  The Elixir release image briefly shipped under its own name while the old
+  FastAPI+React image still existed; now that it is the only image, it reclaims
+  the original name. `ghcr.io/styliteag/dashboard:latest` and
+  `docker.io/styliteag/dashboard:latest` — which until now still pointed at the
+  retired 3.1.8 python stack — move to the current release on the next tag.
+  4.0.2 was the only version ever published as `dashboard-orbit`; pull
+  `dashboard:<version>` from 4.0.3 onwards.
+
 ## [4.0.2] - 2026-07-19
 
 ### Fixed

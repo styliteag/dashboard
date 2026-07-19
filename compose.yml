@@ -50,8 +50,8 @@ services:
       context: .
       dockerfile: orbit/Dockerfile
     # Alternatively pull a prebuilt image:
-    # image: styliteag/dashboard-orbit:latest
-    # image: ghcr.io/styliteag/dashboard-orbit:latest
+    # image: styliteag/dashboard:latest
+    # image: ghcr.io/styliteag/dashboard:latest
     restart: unless-stopped
     volumes:
       # GeoLite2 database — volume-backed so the weekly download survives

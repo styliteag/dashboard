@@ -182,9 +182,9 @@ echo ""
 
 # Display Docker image URLs
 echo "Docker images that will be built:"
-echo "  - docker.io/styliteag/dashboard-orbit:$NEW_VERSION"
-echo "  - docker.io/styliteag/dashboard-orbit:latest"
-echo "  - ghcr.io/styliteag/dashboard-orbit:$NEW_VERSION"
-echo "  - ghcr.io/styliteag/dashboard-orbit:latest"
+echo "  - docker.io/styliteag/dashboard:$NEW_VERSION"
+echo "  - docker.io/styliteag/dashboard:latest"
+echo "  - ghcr.io/styliteag/dashboard:$NEW_VERSION"
+echo "  - ghcr.io/styliteag/dashboard:latest"
 echo ""
 echo "Release $NEW_VERSION completed successfully!"

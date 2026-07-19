@@ -153,7 +153,7 @@ Accounts live in that DB, so on a cutover the bootstrap admin/superadmin you see
 under the old stack keep working — no re-seed.
 
 To pull a published image instead of building locally, edit `compose.yml` — swap the
-`build:` block under `orbit` for `image: ghcr.io/styliteag/dashboard-orbit:latest`.
+`build:` block under `orbit` for `image: ghcr.io/styliteag/dashboard:latest`.
 
 ## Connecting a firewall via the push agent
 
