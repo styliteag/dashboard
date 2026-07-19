@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The 4.0.1 release build published no image.** The release workflow still
+  built the deleted root `Dockerfile` of the retired FastAPI+React stack and
+  aborted before it ever reached the orbit image. It now builds only orbit.
 - **Agent installation from the release image 404'd on every file but
   `orbit_agent.py`.** The install guide's `curl`/`fetch` lines pull five files
   from `/api/agent/*`, but the orbit image only shipped the agent script and its

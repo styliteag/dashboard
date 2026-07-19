@@ -51,25 +51,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/styliteag/dashboard:${{ steps.version.outputs.version }}
-            ghcr.io/styliteag/dashboard:latest
-          provenance: false
-          sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache
-          cache-to: type=registry,ref=ghcr.io/styliteag/dashboard:buildcache,mode=max
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-
-      # Orbit (Elixir/LiveView rewrite) release image — combined compose pulls
-      # it behind the "orbit" profile.
+      # The orbit (Elixir/LiveView) release image IS the dashboard since c48d26e
+      # deleted the FastAPI+React stack along with the root Dockerfile. Build
+      # context is the repo root — orbit/Dockerfile copies VERSION and agent/
+      # from there, and reads the version from the file, not a build-arg.
       - name: Build and push orbit to GHCR
         uses: docker/build-push-action@v7
         with:
@@ -89,7 +74,7 @@ jobs:
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          package-name: "dashboard"
+          package-name: "dashboard-orbit"
           package-type: "container"
           min-versions-to-keep: 5
           delete-only-untagged-versions: false
@@ -102,24 +87,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push to Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            docker.io/styliteag/dashboard:${{ steps.version.outputs.version }}
-            docker.io/styliteag/dashboard:latest
-          provenance: false
-          sbom: false
-          cache-from: type=registry,ref=docker.io/styliteag/dashboard:buildcache
-          cache-to: type=registry,ref=docker.io/styliteag/dashboard:buildcache,mode=max
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
 
       - name: Build and push orbit to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
