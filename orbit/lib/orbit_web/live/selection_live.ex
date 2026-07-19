@@ -96,8 +96,9 @@ defmodule OrbitWeb.SelectionLive do
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-base-content">
-            Selection rules <span class="ml-2 text-sm text-base-content/60">({length(@rules)})</span>
+          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+            <Icons.icon name={:list_checks} class="h-5 w-5 text-base-content/60" /> Selection rules
+            <span class="ml-2 text-sm text-base-content/60">({length(@rules)})</span>
           </h1>
           <a href={~p"/settings"} class="text-xs text-base-content/60 hover:text-base-content/80">settings</a>
         </div>

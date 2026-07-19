@@ -228,7 +228,10 @@ defmodule OrbitWeb.FirewallRulesLive do
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
-          <h1 class="text-lg font-medium text-base-content">Firewall rules — {@instance.name}</h1>
+          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+            <Icons.icon name={:firewall} class="h-5 w-5 text-base-content/60" />
+            Firewall rules — {@instance.name}
+          </h1>
           <a
             href={~p"/instances/#{@instance.id}"}
             class="text-xs text-base-content/60 hover:text-base-content/80"

@@ -243,7 +243,8 @@ defmodule OrbitWeb.Components.SelectionTree do
     ~H"""
     <div class="rounded-xl border border-base-300 bg-base-200/60 p-5">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-base-content">
+        <h3 class="flex items-center gap-2 text-sm font-semibold text-base-content">
+          <Icons.icon name={:list_checks} class="h-4 w-4 text-base-content/50" />
           {if @channel?, do: "Which alerts go to this channel", else: "Exported checks"}
         </h3>
         <button
@@ -251,8 +252,9 @@ defmodule OrbitWeb.Components.SelectionTree do
           phx-click="send_test"
           phx-target={@myself}
           disabled={@test_busy}
-          class="rounded-lg bg-neutral px-3 py-1.5 text-sm text-white hover:bg-neutral/80 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded-lg bg-neutral px-3 py-1.5 text-sm text-white hover:bg-neutral/80 disabled:opacity-50"
         >
+          <Icons.icon name={:bell} class="h-3.5 w-3.5" />
           {if @test_busy, do: "Sending…", else: "Send test"}
         </button>
       </div>
@@ -265,9 +267,10 @@ defmodule OrbitWeb.Components.SelectionTree do
 
       <p
         :if={@channel? and @configured == false}
-        class="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
+        class="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
       >
-        ⚠ This channel isn’t configured yet — selected alerts won’t be delivered until you
+        <Icons.icon name={:alerts} class="h-3.5 w-3.5 shrink-0" />
+        This channel isn’t configured yet — selected alerts won’t be delivered until you
         fill in its settings above.
       </p>
 
@@ -311,9 +314,9 @@ defmodule OrbitWeb.Components.SelectionTree do
         <button
           phx-click="refresh_preview"
           phx-target={@myself}
-          class="rounded px-2 py-1 text-xs text-base-content/60 hover:bg-base-300"
+          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-base-content/60 hover:bg-base-300"
         >
-          ⟳ Refresh
+          <Icons.icon name={:refresh} class="h-3 w-3" /> Refresh
         </button>
       </div>
 

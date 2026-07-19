@@ -113,8 +113,9 @@ defmodule OrbitWeb.ApiKeysLive do
 
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-base-content">
-            API keys <span class="ml-2 text-sm text-base-content/60">({length(@keys)})</span>
+          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+            <Icons.icon name={:password} class="h-5 w-5 text-base-content/60" /> API keys
+            <span class="ml-2 text-sm text-base-content/60">({length(@keys)})</span>
           </h1>
           <button
             phx-click="toggle_create"

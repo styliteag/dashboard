@@ -160,8 +160,8 @@ defmodule OrbitWeb.HubStatusLive do
       <.top_nav active={:hub} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-1 text-lg font-medium text-base-content">
-          Hub status
+        <h1 class="flex items-center gap-2 mb-1 text-lg font-medium text-base-content">
+          <Icons.icon name={:hub} class="h-5 w-5 text-base-content/60" /> Hub status
           <span class="ml-2 text-sm text-base-content/60">({length(@agents)} connected)</span>
         </h1>
         <p class="mb-4 text-xs text-base-content/60">

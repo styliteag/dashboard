@@ -114,7 +114,9 @@ defmodule OrbitWeb.SecurityLive do
       <.top_nav active={:security} current_user={@current_user} />
 
       <section class="mx-auto max-w-2xl p-6">
-        <h1 class="text-lg font-medium text-base-content">Security</h1>
+        <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+          <Icons.icon name={:security} class="h-5 w-5 text-base-content/60" /> Security
+        </h1>
         <p class="mt-1 text-sm text-base-content/70">
           Two-factor authentication is mandatory. Manage your authenticator and passkeys here.
         </p>

@@ -458,8 +458,9 @@ defmodule OrbitWeb.VpnLive do
       <.top_nav active={:vpn} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-base-content">
-          IPsec tunnels <span class="ml-2 text-sm text-base-content/60">({length(@tunnels)})</span>
+        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+          <Icons.icon name={:vpn} class="h-5 w-5 text-base-content/60" /> IPsec tunnels
+          <span class="ml-2 text-sm text-base-content/60">({length(@tunnels)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">

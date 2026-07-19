@@ -195,6 +195,16 @@ defmodule OrbitWeb.SettingsLive do
 
   def tabs, do: @tabs
 
+  # Tab glyphs (channel icons mirror the old SettingsPage CHANNELS map).
+  defp tab_icon("general"), do: :sliders
+  defp tab_icon("mattermost"), do: :message_square
+  defp tab_icon("telegram"), do: :send
+  defp tab_icon("email"), do: :mail
+  defp tab_icon("ai"), do: :bot
+  defp tab_icon("checkmk"), do: :list_checks
+  defp tab_icon("prometheus"), do: :hub
+  defp tab_icon(_), do: :settings
+
   # Rows of one tab as {group, rows} sections in the tab's declared group
   # order, empty groups skipped (GeneralSettings section headers parity).
   defp sections_for_tab(rows, tab) do
@@ -220,7 +230,9 @@ defmodule OrbitWeb.SettingsLive do
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-1 text-lg font-medium text-base-content">Settings</h1>
+        <h1 class="mb-1 flex items-center gap-2 text-lg font-medium text-base-content">
+          <Icons.icon name={:settings} class="h-5 w-5 text-base-content/60" /> Settings
+        </h1>
         <p class="mb-4 text-xs text-base-content/60">
           Override the defaults that otherwise come from the environment / <code>.env</code>.
           Infra and security settings (database URL, master key, proxy hops…) stay
@@ -233,14 +245,14 @@ defmodule OrbitWeb.SettingsLive do
             phx-click="set_tab"
             phx-value-tab={key}
             class={[
-              "rounded-md px-3 py-1 text-sm",
+              "flex items-center gap-1.5 rounded-md px-3 py-1 text-sm",
               if(@tab == key,
                 do: "bg-base-300 font-medium text-primary",
                 else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
               )
             ]}
           >
-            {label}
+            <Icons.icon name={tab_icon(key)} class="h-3.5 w-3.5" /> {label}
           </button>
         </nav>
 
@@ -280,6 +292,7 @@ defmodule OrbitWeb.SettingsLive do
           <.mute_toggle
             :if={mute_row(@rows, "checkmk_blackout")}
             row={mute_row(@rows, "checkmk_blackout")}
+            icon={:eye_off}
             title="Checkmk blackout"
             idle_note="The Checkmk export includes all instances and their checks."
             active_note="The Checkmk export is empty — Checkmk sees every service as stale/gone."
@@ -326,7 +339,9 @@ defmodule OrbitWeb.SettingsLive do
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
-              <span class="text-sm font-medium text-base-content">Backend service</span>
+              <span class="flex items-center gap-2 text-sm font-medium text-base-content">
+                <Icons.icon name={:power} class="h-4 w-4 text-base-content/50" /> Backend service
+              </span>
               <p class="mt-0.5 text-xs text-base-content/60">
                 Restart the backend process to apply “needs restart” settings. Takes a few
                 seconds — the UI reconnects automatically, agents re-attach on their own.
@@ -544,6 +559,7 @@ defmodule OrbitWeb.SettingsLive do
   attr :active_note, :string, required: true
   attr :active_badge, :string, required: true
   attr :hint, :string, default: nil
+  attr :icon, :atom, default: :bell_off
 
   defp mute_toggle(assigns) do
     on = assigns.row.effective in ["true", "1"]
@@ -556,7 +572,12 @@ defmodule OrbitWeb.SettingsLive do
     ]}>
       <div class="flex items-center justify-between gap-4">
         <div>
-          <h3 class="text-sm font-semibold text-base-content">{@title}</h3>
+          <h3 class="flex items-center gap-2 text-sm font-semibold text-base-content">
+            <Icons.icon
+              name={@icon}
+              class={["h-4 w-4", if(@on, do: "text-warning", else: "text-base-content/50")]}
+            /> {@title}
+          </h3>
           <p class="mt-0.5 text-xs text-base-content/60">
             {if @on, do: @active_note, else: @idle_note}
           </p>

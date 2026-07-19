@@ -139,7 +139,8 @@ defmodule OrbitWeb.ConnectivityLive do
       <.top_nav active={:connectivity} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+          <Icons.icon name={:connectivity} class="h-5 w-5 text-base-content/60" />
           Connectivity monitors
           <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>

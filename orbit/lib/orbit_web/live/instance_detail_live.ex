@@ -1117,7 +1117,9 @@ defmodule OrbitWeb.InstanceDetailLive do
 
       <section class="p-6">
         <div class="mb-6 flex items-center gap-3">
-          <h1 class="text-lg font-medium text-base-content">{@instance.name}</h1>
+          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> {@instance.name}
+          </h1>
           <span class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}>
             {if @connected, do: "agent connected", else: "no agent"}
           </span>

@@ -187,8 +187,9 @@ defmodule OrbitWeb.GroupsLive do
       <.top_nav active={:groups} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-4 text-lg font-medium text-base-content">
-          Groups <span class="ml-2 text-sm text-base-content/60">({length(@groups)})</span>
+        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+          <Icons.icon name={:groups} class="h-5 w-5 text-base-content/60" /> Groups
+          <span class="ml-2 text-sm text-base-content/60">({length(@groups)})</span>
         </h1>
 
         <div

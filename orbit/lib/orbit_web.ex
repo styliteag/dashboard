@@ -87,6 +87,9 @@ defmodule OrbitWeb do
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias OrbitWeb.Layouts
+      # Shared lucide icon catalog — used qualified (<Icons.icon name={:bell}/>)
+      # because CoreComponents owns the unqualified icon/1 for hero-* names.
+      alias OrbitWeb.Components.Icons
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())
