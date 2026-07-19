@@ -1,8 +1,8 @@
 defmodule Orbit.GeoIP.UpdaterTest do
   @moduledoc """
-  GeoLite2 refresh (updater.py parity): credential no-op, tarball download +
-  in-memory mmdb extraction, atomic install, failure shapes. Req.Test plug
-  is the static name from config/test.exs — stubs are per-process.
+  GeoLite2-Country refresh: credential no-op, tarball download + in-memory
+  mmdb extraction, atomic install, failure shapes. Req.Test plug is the
+  static name from config/test.exs — stubs are per-process.
   """
   use ExUnit.Case, async: false
 
@@ -40,11 +40,11 @@ defmodule Orbit.GeoIP.UpdaterTest do
 
   test "downloads, extracts and atomically installs the mmdb", %{tmp_dir: tmp_dir} do
     put_creds("111", "lic")
-    target = Path.join(tmp_dir, "sub/GeoLite2-City.mmdb")
+    target = Path.join(tmp_dir, "sub/GeoLite2-Country.mmdb")
     Application.put_env(:orbit, :geoip_db_path, target)
     on_exit(fn -> Application.delete_env(:orbit, :geoip_db_path) end)
 
-    tar = tarball([{"GeoLite2-City_20260718/GeoLite2-City.mmdb", "MMDBDATA"}], tmp_dir)
+    tar = tarball([{"GeoLite2-Country_20260718/GeoLite2-Country.mmdb", "MMDBDATA"}], tmp_dir)
 
     Req.Test.stub(Orbit.GeoIP.Updater, fn conn ->
       conn
@@ -61,7 +61,7 @@ defmodule Orbit.GeoIP.UpdaterTest do
 
   test "http error becomes a failed outcome, target untouched", %{tmp_dir: tmp_dir} do
     put_creds("111", "lic")
-    target = Path.join(tmp_dir, "GeoLite2-City.mmdb")
+    target = Path.join(tmp_dir, "GeoLite2-Country.mmdb")
     Application.put_env(:orbit, :geoip_db_path, target)
     on_exit(fn -> Application.delete_env(:orbit, :geoip_db_path) end)
 

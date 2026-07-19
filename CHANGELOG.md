@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Orbit GeoIP: the weekly auto-updater now downloads the GeoLite2-**Country**
+  edition instead of City. Orbit is the sole updater post-cutover; the gate
+  only reads country codes, so Country is the correct (and ~9 MB vs ~35 MB)
+  database and its filename matches `DASH_GEOIP_DB_PATH`. Previously it wrote
+  City data to a Country-named path — functional but misleading.
+
 - Orbit: writing an audit entry that carried an allowlisted detail field
   (comment.set, instance.delete, geoip.config.update, …) crashed the
   calling process on the log line (string detail keys vs. the atom-keyed
