@@ -84,13 +84,19 @@ defmodule OrbitWeb.Router do
       live "/firmware", FirmwareLive
       live "/logs", LogEventsLive
       live "/vpn", VpnLive
-      live "/hub", HubStatusLive
       live "/security", SecurityLive
     end
 
     live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do
       live "/settings", SettingsLive
       live "/selection", SelectionLive
+      # Hub is admin-only (python parity: hub/stats is Depends(require_admin),
+      # HubStatusPage's nav link is is_admin-gated). Only the ROSTER is scoped
+      # per instance — the counters, the pushes/min chart and the served-agent
+      # version are fleet-wide in-memory numbers, so a non-admin (or a
+      # group-less superadmin) got cross-tenant fleet activity out of an
+      # otherwise empty page. Do not move this back to :authenticated.
+      live "/hub", HubStatusLive
     end
 
     # Audit/Access oversight: admin OR superadmin (DR-AL1 — the superadmin's

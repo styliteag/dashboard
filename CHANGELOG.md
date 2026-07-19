@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Orbit: the Hub status page was reachable by **every** signed-in account,
+  while the python original gates `/hub/stats` on admin. Only the agent roster
+  is scoped per instance — the message/error counters, the fleet pushes-per-
+  minute chart and the served-agent version are global in-memory numbers, so a
+  view-only user, or the group-less seed superadmin (who by design sees no
+  instances at all), could read fleet-wide activity off an otherwise empty
+  page. `/hub` now lives in the admin-only route group and its nav link is
+  admin-gated, matching the react dashboard. Orbit-only regression from the
+  LiveView rewrite; the python dashboard was never affected.
+
 - Orbit: the login and agent-enrollment brute-force limiters keyed on the raw
   socket peer instead of the proxy-aware client IP. Behind nginx that peer is
   the reverse-proxy container — identical for every external client — so the
@@ -39,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Orbit GUI proxy: the live widgets inside a proxied firewall UI (traffic
   graph, firewall log, CPU) now work — server-sent-event streams are passed
   through chunked instead of buffering to a timeout.
+
+### Changed
+
+- Orbit: the top navigation now hides the instance pages (Instances, Alerts,
+  Connectivity, VPN, Certs, Firmware, Logs) for accounts that have no group
+  membership — every one of those pages renders an empty list for them, so the
+  links were seven dead ends. This is the normal state of a superadmin
+  (rights management only, no instance access) and of any user before groups
+  are assigned; a superadmin who *does* hold groups keeps the full menu. The
+  post-login landing page follows the same logic: admins still land on Hub,
+  users with groups on Instances, a group-less superadmin on Users.
 
 ### Added
 

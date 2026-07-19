@@ -3,8 +3,14 @@ defmodule OrbitWeb.Components.Nav do
   Shared top navigation for every authenticated LiveView. Centralises the link
   set and active-page highlight so no page is unreachable and the bar is
   identical everywhere (each LiveView used to hardcode its own partial nav —
-  the Hub page had none at all). Admin-only links (Settings, Audit) are hidden
-  for non-admins per the frontend role-hiding rule; the backend still enforces.
+  the Hub page had none at all). Links are hidden along three axes, per the
+  frontend role-hiding rule — the routes and the scoping still enforce:
+
+  - role: Settings/Hub admin-only, Audit admin-or-superadmin,
+    Users/Groups/Access superadmin-only;
+  - group membership: the instance-data links vanish for an account that
+    would see zero instances (see `instance_data?/1`);
+  - never security: everything here is cosmetics on top of the real gates.
   """
 
   use Phoenix.Component
@@ -25,19 +31,62 @@ defmodule OrbitWeb.Components.Nav do
           <.nav_icon name={:brand} class="h-5 w-5 text-primary" /> STYLiTE Orbit
         </a>
         <nav class="flex flex-wrap gap-3 text-sm text-base-content/70">
-          <.nav_link active={@active} key={:instances} href={~p"/instances"} label="Instances" />
-          <.nav_link active={@active} key={:hub} href={~p"/hub"} label="Hub" />
-          <.nav_link active={@active} key={:alerts} href={~p"/alerts"} label="Alerts" />
           <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:instances}
+            href={~p"/instances"}
+            label="Instances"
+          />
+          <.nav_link
+            :if={admin?(@current_user)}
+            active={@active}
+            key={:hub}
+            href={~p"/hub"}
+            label="Hub"
+          />
+          <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:alerts}
+            href={~p"/alerts"}
+            label="Alerts"
+          />
+          <.nav_link
+            :if={instance_data?(@current_user)}
             active={@active}
             key={:connectivity}
             href={~p"/connectivity"}
             label="Connectivity"
           />
-          <.nav_link active={@active} key={:vpn} href={~p"/vpn"} label="VPN" />
-          <.nav_link active={@active} key={:certificates} href={~p"/certificates"} label="Certs" />
-          <.nav_link active={@active} key={:firmware} href={~p"/firmware"} label="Firmware" />
-          <.nav_link active={@active} key={:logs} href={~p"/logs"} label="Logs" />
+          <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:vpn}
+            href={~p"/vpn"}
+            label="VPN"
+          />
+          <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:certificates}
+            href={~p"/certificates"}
+            label="Certs"
+          />
+          <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:firmware}
+            href={~p"/firmware"}
+            label="Firmware"
+          />
+          <.nav_link
+            :if={instance_data?(@current_user)}
+            active={@active}
+            key={:logs}
+            href={~p"/logs"}
+            label="Logs"
+          />
           <.nav_link
             :if={admin?(@current_user)}
             active={@active}
@@ -190,6 +239,22 @@ defmodule OrbitWeb.Components.Nav do
 
   defp admin?(%{role: "admin"}), do: true
   defp admin?(_), do: false
+
+  # "Would this account see any instance content?" Instance visibility comes
+  # solely from group membership (Orbit.Auth.Scope: zero groups compiles to
+  # WHERE false), so a group-less account gets "(0)" on every instance page —
+  # Instances, Alerts, Connectivity, VPN, Certs, Firmware, Logs. That is the
+  # normal state of a pure superadmin (rights management, no instance access)
+  # and of any user before group assignment; linking them to seven empty
+  # pages reads as breakage.
+  #
+  # Deliberately NOT keyed on is_superadmin: a superadmin may also hold
+  # groups, and then sees instances like anyone else.
+  #
+  # Fails OPEN (unloaded assoc → show the links): this is nav cosmetics, the
+  # scoping in Scope/the LiveViews is what actually withholds data.
+  defp instance_data?(%{groups: groups}) when is_list(groups), do: groups != []
+  defp instance_data?(_), do: true
 
   defp superadmin?(%{is_superadmin: true}), do: true
   defp superadmin?(_), do: false
