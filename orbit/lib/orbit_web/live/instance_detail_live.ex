@@ -120,7 +120,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       if(agent, do: {"capture", "Capture", :link}),
       if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
       unless(linux, do: {"security", "VPN", :tab}),
-      if(agent, do: {"connectivity", "Connectivity", :tab}),
+      if(Instance.monitors_runnable?(inst), do: {"connectivity", "Connectivity", :tab}),
       {"log", "Log", :tab},
       {"firmware", "Firmware", :tab},
       unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
@@ -1762,7 +1762,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              live ping results from the agent's last push, plus CRUD. The
              agent echoes each monitor's id, so results join by id. --%>
         <div
-          :if={@tab == "connectivity" and Instance.agent_mode?(@instance)}
+          :if={@tab == "connectivity" and Instance.monitors_runnable?(@instance)}
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Connectivity monitors</h2>
@@ -1905,7 +1905,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 Service {if @ipsec_running, do: "running", else: "stopped"}
               </span>
             </h2>
-            <div :if={Instance.agent_mode?(@instance)} class="flex items-center gap-1">
+            <div :if={Instance.monitors_runnable?(@instance)} class="flex items-center gap-1">
               <button
                 phx-click="ipsec_recheck"
                 title="Re-check tunnel status now (no 5s wait)"
@@ -1953,7 +1953,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <th class="py-1 pr-3 font-medium">Phase 2</th>
                 <th class="py-1 pr-3 font-medium">Uptime</th>
                 <th class="py-1 pr-3 font-medium">In / Out</th>
-                <th :if={@writable and Instance.agent_mode?(@instance)} class="py-1 font-medium"></th>
+                <th
+                  :if={@writable and Instance.monitors_runnable?(@instance)}
+                  class="py-1 font-medium"
+                >
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1993,7 +1997,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     {fmt_bytes(t["bytes_in"])} / {fmt_bytes(t["bytes_out"])}
                   </td>
                   <td
-                    :if={@writable and Instance.agent_mode?(@instance)}
+                    :if={@writable and Instance.monitors_runnable?(@instance)}
                     class="py-1.5 text-right text-xs"
                   >
                     <button

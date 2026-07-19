@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The monitor UI is reachable on Securepoint boxes.** The probes started
+  working over SSH, but the Connectivity tab and the Phase-2 monitor controls
+  were still hidden — they were gated on "has an agent" rather than on "can run
+  a ping", so the feature existed with no way to configure it. Both now appear
+  wherever monitors can actually run.
+
 - **Ping monitors work on Securepoint boxes.** IPsec Phase-2 and connectivity
   monitors both ping *from* the box — through the tunnel, from a chosen source
   address — which is something the dashboard cannot do from outside. With no

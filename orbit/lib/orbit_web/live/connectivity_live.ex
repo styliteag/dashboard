@@ -66,13 +66,14 @@ defmodule OrbitWeb.ConnectivityLive do
   end
 
   defp load(socket) do
-    agent_instances =
+    monitor_instances =
       socket.assigns.current_user
       |> Instances.list_visible()
-      |> Enum.filter(&Instances.Instance.agent_mode?/1)
+      # Not agent_mode?: a Securepoint runs the same monitors over SSH.
+      |> Enum.filter(&Instances.Instance.monitors_runnable?/1)
 
     rows =
-      agent_instances
+      monitor_instances
       |> Enum.flat_map(fn inst ->
         monitors = Hub.cache_entry(inst.id)["connectivity"] || []
 
@@ -95,7 +96,7 @@ defmodule OrbitWeb.ConnectivityLive do
         {-ServiceCheck.severity(c.state), n, c.key}
       end)
 
-    assign(socket, rows: rows, comments: CommentEditor.lookup(agent_instances))
+    assign(socket, rows: rows, comments: CommentEditor.lookup(monitor_instances))
   end
 
   defp visible(a) do

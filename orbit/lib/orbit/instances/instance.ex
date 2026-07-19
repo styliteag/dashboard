@@ -63,6 +63,33 @@ defmodule Orbit.Instances.Instance do
   def agent_mode?(%__MODULE__{transport: transport}), do: transport == "push"
 
   @spec primary_base_url(t()) :: String.t()
+  @doc """
+  Can ping monitors (IPsec Phase-2, connectivity) actually RUN on this box?
+
+  They probe from the box itself, so they need something on it to run them: an
+  agent, or — for a Securepoint, which never has one — the SSH access the
+  dashboard already uses for swanctl. A pinned host key is part of that, because
+  that transport is fail-closed and will refuse to connect without one.
+
+  Gate the monitor UI on this, not on `agent_mode?/1`: gating on the agent hid
+  the Connectivity tab and the Phase-2 monitor controls from every Securepoint
+  even after the probes themselves worked.
+  """
+  def monitors_runnable?(%__MODULE__{} = inst) do
+    agent_mode?(inst) or ssh_monitors?(inst)
+  end
+
+  defp ssh_monitors?(%__MODULE__{device_type: "securepoint", ssh_enabled: true} = inst) do
+    present?(inst.ssh_key_enc) and present?(inst.ssh_host_key)
+  end
+
+  defp ssh_monitors?(%__MODULE__{}), do: false
+
+  defp present?(nil), do: false
+  defp present?(""), do: false
+  defp present?(v) when is_binary(v), do: String.trim(v) != ""
+  defp present?(_), do: true
+
   def primary_base_url(%__MODULE__{base_url: base_url}) do
     base_url |> String.split(",", parts: 2) |> hd() |> String.trim()
   end
