@@ -6,7 +6,7 @@
 #   docker compose -f compose-dev.yml up --build
 #
 # Browse: http://localhost:8000
-# Direct: http://localhost:8000/api/health
+# Health: http://localhost:8000/api/health-ex
 
 services:
   db:

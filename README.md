@@ -271,7 +271,7 @@ just dev-up                 # docker compose -f compose-dev.yml up -d --build
 just dev-logs
 
 # Browse: http://localhost:8000
-# Direct: http://localhost:8000/api/health
+# Health: http://localhost:8000/api/health-ex
 ```
 
 Saving a file under `orbit/lib` or `orbit/assets` triggers a Phoenix hot reload;
