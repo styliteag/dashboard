@@ -166,6 +166,9 @@ services:
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
+      # Settings-page log defaults (same vars as the backend service).
+      DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
+      DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
       TZ: ${TZ:-UTC}
     ports:
       - "${ORBIT_PORT:-4000}:4000"

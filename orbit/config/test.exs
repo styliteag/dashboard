@@ -44,6 +44,10 @@ config :orbit, :start_gui, false
 # no metrics table and the fire-and-forget task would race the SQL sandbox.
 config :orbit, :write_metrics, false
 
+# The suite pins its own logger level below; settings writes in tests must
+# not reconfigure the live handler mid-run (Orbit.Logging no-ops).
+config :orbit, :apply_log_settings, false
+
 # Static Req.Test plug for the GeoLite2 updater (same per-process stub rule).
 config :orbit, :geoip_req_plug, {Req.Test, Orbit.GeoIP.Updater}
 

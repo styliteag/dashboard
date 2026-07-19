@@ -32,7 +32,12 @@ defmodule Orbit.Application do
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Orbit.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, pid} <- Supervisor.start_link(children, opts) do
+      # Settings-driven log level/format — after the Settings table exists.
+      Orbit.Logging.apply()
+      {:ok, pid}
+    end
   end
 
   defp maybe_scheduler(children) do
