@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Securepoint SSH enrichment could not connect to a box whose pinned host
   key was RSA.** Such a box typically offers several host keys, and the
   negotiated one was not necessarily the pinned one, so verification failed and
-  the connection was refused. The key exchange is now restricted to the pinned
-  key's algorithm.
+  the connection was refused. The key exchange now *prefers* the pinned key's
+  algorithm — without narrowing the list, which would have excluded the
+  dashboard's own ed25519 login key and broken authentication instead.
 
 ### Added
 

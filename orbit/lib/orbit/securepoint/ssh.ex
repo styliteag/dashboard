@@ -127,11 +127,21 @@ defmodule Orbit.Securepoint.SSH do
     end
   end
 
-  # The stored line names its algorithm; RESTRICT the KEX to that family so the
-  # server presents the key we can actually verify. `preferred_algorithms
-  # [public_key:]` is the host-key list — NOT `pref_public_key_algs`, which is
-  # the USER-auth key list and setting it to RSA breaks publickey auth with an
-  # ed25519 client key (both mistakes made and measured against a live box).
+  # The stored line names its algorithm; PREFER that family so the server
+  # presents the key we can actually verify. A box commonly offers several host
+  # keys and Erlang would otherwise negotiate by its own order — pinned RSA vs
+  # negotiated ECDSA is a guaranteed mismatch and a silent fail-closed refusal.
+  #
+  # It must be `modify_algorithms [prepend:]`, and both alternatives were
+  # measured against a live box:
+  #   pref_public_key_algs            -> the USER-auth key list. Leaves the host
+  #                                      key untouched AND breaks publickey auth
+  #                                      by excluding our ed25519 client key.
+  #   preferred_algorithms public_key -> REPLACES the list. Gets the right host
+  #                                      key, but drops ed25519 with it, so auth
+  #                                      fails.
+  #   modify_algorithms prepend       -> reorders only. Right host key, auth
+  #                                      still works. This one.
   # RSA additionally accepts the SHA-2 signature algorithms: same key material,
   # newer signing.
   defp host_key_algs(nil), do: []
@@ -139,19 +149,23 @@ defmodule Orbit.Securepoint.SSH do
   defp host_key_algs(line) when is_binary(line) do
     case line |> String.trim() |> String.split(~r/\s+/) |> List.first() do
       "ssh-rsa" ->
-        [preferred_algorithms: [public_key: [:"rsa-sha2-512", :"rsa-sha2-256", :"ssh-rsa"]]]
+        [
+          modify_algorithms: [
+            prepend: [public_key: [:"rsa-sha2-512", :"rsa-sha2-256", :"ssh-rsa"]]
+          ]
+        ]
 
       "ssh-ed25519" ->
-        [preferred_algorithms: [public_key: [:"ssh-ed25519"]]]
+        [modify_algorithms: [prepend: [public_key: [:"ssh-ed25519"]]]]
 
       "ecdsa-sha2-nistp256" ->
-        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp256"]]]
+        [modify_algorithms: [prepend: [public_key: [:"ecdsa-sha2-nistp256"]]]]
 
       "ecdsa-sha2-nistp384" ->
-        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp384"]]]
+        [modify_algorithms: [prepend: [public_key: [:"ecdsa-sha2-nistp384"]]]]
 
       "ecdsa-sha2-nistp521" ->
-        [preferred_algorithms: [public_key: [:"ecdsa-sha2-nistp521"]]]
+        [modify_algorithms: [prepend: [public_key: [:"ecdsa-sha2-nistp521"]]]]
 
       _ ->
         []
