@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saving a new key would otherwise leave SSH silently dead. The captured key is
   audited, and it can only come from probing the box — never from typing.
 
+- **Connectivity monitors are editable from the fleet page as well.** The
+  Connectivity overview could only be read; changing a monitor meant finding its
+  instance first. Each row now has Edit, opening the same dialog.
+
 - **Connectivity monitors are edited in a dialog too.** They could only be
   created, toggled and deleted; correcting a destination meant deleting the
   monitor and losing its history and its check key with it. Same dialog shape as

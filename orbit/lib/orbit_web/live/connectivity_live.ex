@@ -12,7 +12,9 @@ defmodule OrbitWeb.ConnectivityLive do
 
   import OrbitWeb.Components.ListKit
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+  import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
 
+  alias Orbit.Auth.Scope
   alias OrbitWeb.Components.CommentEditor
 
   alias Orbit.Checks.Evaluate
@@ -34,7 +36,10 @@ defmodule OrbitWeb.ConnectivityLive do
      |> assign(
        search: "",
        state_filter: "all",
-       writable: socket.assigns.current_user.role in ~w(admin user)
+       writable: socket.assigns.current_user.role in ~w(admin user),
+       conn_editor: nil,
+       conn_test: nil,
+       conn_test_busy: false
      )
      |> load()}
   end
@@ -51,11 +56,129 @@ defmodule OrbitWeb.ConnectivityLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
+  # Editing a monitor from the FLEET view: the row carries its instance, so every
+  # entry point re-scopes through Scope.get_instance/2 rather than trusting the
+  # id that came back from the browser (invariant 1).
+  def handle_event("conn_open", %{"iid" => raw_iid} = params, socket) do
+    with true <- socket.assigns.writable,
+         {iid, ""} <- Integer.parse(raw_iid),
+         inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user) do
+      mon =
+        case Integer.parse(to_string(params["id"] || "")) do
+          {mid, ""} -> Enum.find(Orbit.Monitors.list_connectivity(inst.id), &(&1.id == mid))
+          _ -> nil
+        end
+
+      editor = %{
+        instance_id: inst.id,
+        instance_name: inst.name,
+        monitor_id: mon && mon.id,
+        name: (mon && mon.name) || "",
+        source: (mon && mon.source) || "",
+        destination: (mon && mon.destination) || "",
+        ping_count: (mon && mon.ping_count) || 3,
+        enabled: is_nil(mon) or mon.enabled
+      }
+
+      {:noreply, assign(socket, conn_editor: editor, conn_test: nil)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("conn_cancel", _params, socket),
+    do: {:noreply, assign(socket, conn_editor: nil, conn_test: nil)}
+
+  def handle_event("conn_change", %{"monitor" => attrs}, socket) do
+    case socket.assigns.conn_editor do
+      nil ->
+        {:noreply, socket}
+
+      editor ->
+        {:noreply,
+         assign(socket,
+           conn_editor: %{
+             editor
+             | name: attrs["name"] || "",
+               source: attrs["source"] || "",
+               destination: attrs["destination"] || "",
+               ping_count: attrs["ping_count"] || editor.ping_count,
+               enabled: attrs["enabled"] == "true"
+           }
+         )}
+    end
+  end
+
+  def handle_event("conn_test", _params, socket) do
+    editor = socket.assigns.conn_editor
+
+    with false <- socket.assigns.conn_test_busy,
+         %{} <- editor,
+         inst when not is_nil(inst) <-
+           Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
+      {:noreply,
+       socket
+       |> assign(conn_test_busy: true, conn_test: nil)
+       |> start_async(:conn_test, fn ->
+         Orbit.Monitors.ping_test(inst, editor.source, editor.destination, editor.ping_count)
+       end)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("conn_save", %{"monitor" => attrs}, socket) do
+    editor = socket.assigns.conn_editor
+
+    with true <- socket.assigns.writable,
+         %{} <- editor,
+         inst when not is_nil(inst) <-
+           Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
+      result =
+        case editor.monitor_id do
+          nil -> Orbit.Monitors.create_connectivity(inst.id, attrs)
+          mid -> Orbit.Monitors.update_connectivity(inst.id, mid, attrs)
+        end
+
+      case result do
+        :ok ->
+          {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load()}
+
+        {:error, msg} ->
+          {:noreply, assign(socket, conn_test: {:error, msg})}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("conn_delete", %{"id" => raw}, socket) do
+    editor = socket.assigns.conn_editor
+
+    with true <- socket.assigns.writable,
+         %{} <- editor,
+         {mid, ""} <- Integer.parse(raw),
+         inst when not is_nil(inst) <-
+           Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
+      :ok = Orbit.Monitors.delete_connectivity(inst.id, mid)
+      {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load()}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("comment_save", params, socket),
     do: {:noreply, socket |> CommentEditor.save(params) |> load()}
 
   def handle_event("comment_clear", params, socket),
     do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
+  @impl true
+  def handle_async(:conn_test, {:ok, result}, socket),
+    do: {:noreply, assign(socket, conn_test_busy: false, conn_test: result)}
+
+  def handle_async(:conn_test, {:exit, reason}, socket),
+    do: {:noreply, assign(socket, conn_test_busy: false, conn_test: {:error, inspect(reason)})}
 
   @impl true
   def handle_info(:roster_changed, socket), do: {:noreply, load(socket)}
@@ -206,6 +329,7 @@ defmodule OrbitWeb.ConnectivityLive do
               <th class="py-2 pr-4 font-medium">Monitor</th>
               <th class="py-2 pr-4 text-right font-medium">RTT</th>
               <th class="py-2 pr-4 text-right font-medium">Loss</th>
+              <th :if={@writable} class="py-2 font-medium"></th>
             </tr>
           </thead>
           <tbody>
@@ -237,9 +361,25 @@ defmodule OrbitWeb.ConnectivityLive do
               </td>
               <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
               <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
+              <td :if={@writable} class="py-2 text-right">
+                <button
+                  phx-click="conn_open"
+                  phx-value-iid={r.instance_id}
+                  phx-value-id={r.monitor_id}
+                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                >
+                  Edit
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
+
+        <.connectivity_monitor_dialog
+          editor={@conn_editor}
+          busy={@conn_test_busy}
+          result={@conn_test}
+        />
       </section>
     </main>
     """
