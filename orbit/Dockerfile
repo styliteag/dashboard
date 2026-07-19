@@ -20,11 +20,18 @@ ENV MIX_ENV=prod
 
 RUN mix local.hex --force && mix local.rebar --force
 
-# Deps first for layer caching.
+# Deps first for layer caching. VERSION is deliberately NOT copied here even
+# though mix.exs reads it: release.sh bumps it on every release, and the layer
+# cache keys on file content, so a COPY VERSION above this line invalidates
+# deps.compile on every single release. That is the most expensive step in the
+# build (~7 min for the emulated arm64 arch alone). app_version/0 falls back to
+# "0.0.0-dev" when the file is absent, which is all deps.get/deps.compile need —
+# nothing about a dependency depends on the parent app's version. The real
+# VERSION lands below, before mix compile, where it is baked into the release.
 COPY orbit/mix.exs orbit/mix.lock ./
-COPY VERSION ./VERSION
 RUN mix deps.get --only prod && mix deps.compile
 
+COPY VERSION ./VERSION
 COPY orbit/config ./config
 COPY orbit/lib ./lib
 COPY orbit/priv ./priv
