@@ -118,7 +118,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       unless(linux, do: {"security", "VPN", :tab}),
       if(agent, do: {"connectivity", "Connectivity", :tab}),
       {"log", "Log", :tab},
-      if(agent, do: {"firmware", "Firmware", :tab}),
+      {"firmware", "Firmware", :tab},
       unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
     ]
     |> Enum.reject(&is_nil/1)
@@ -1061,6 +1061,16 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def normalize_ipsec(_), do: {[], nil}
 
+  # The Firmware TAB shows for every device that reports versions — the data is a
+  # plain status read and a direct-polled box has it too (it was hidden behind an
+  # agent_mode? gate although Orbit.Firmware already had a working direct
+  # branch). The ACTIONS are narrower: that direct branch talks to the OPNsense
+  # firmware API, and Securepoint firmware is read-only from here — python
+  # answered its check/update with a not-supported result. Offering the buttons
+  # there would only produce an error on click.
+  defp firmware_actionable?(%Instance{device_type: "securepoint"}), do: false
+  defp firmware_actionable?(%Instance{}), do: true
+
   defp load_metrics(socket) do
     entry = Hub.cache_entry(socket.assigns.instance.id)
     status = entry["status"] || %{}
@@ -1127,14 +1137,15 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports
   # and Alerts (four-surface parity). Direct-poll instances have no cached
   # sections yet (poller not ported), so only agent-mode instances get checks.
+  # NOT gated on agent_mode?: Export.checks_for/2 reads the hub cache, which a
+  # direct poll fills exactly like an agent push. The gate used to blank the
+  # Checks tab for every polled box although the evaluation was working — on a
+  # Securepoint instance it hid memory/cpu/load/disk/firmware and one row per
+  # IPsec tunnel, all of which the python UI showed.
   defp instance_checks(inst) do
-    if Instance.agent_mode?(inst) do
-      inst
-      |> Export.checks_for(DateTime.utc_now())
-      |> Enum.sort_by(&{-ServiceCheck.severity(&1.state), &1.key})
-    else
-      []
-    end
+    inst
+    |> Export.checks_for(DateTime.utc_now())
+    |> Enum.sort_by(&{-ServiceCheck.severity(&1.state), &1.key})
   end
 
   @impl true
@@ -1573,7 +1584,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </div>
 
         <div
-          :if={@tab == "firmware" and Instance.agent_mode?(@instance)}
+          :if={@tab == "firmware"}
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-base-content/70">
@@ -1662,7 +1673,15 @@ defmodule OrbitWeb.InstanceDetailLive do
             <pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-base-100 p-2 font-mono text-base-content/70">{@firmware["update_check_output"]}</pre>
           </details>
 
-          <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
+          <p :if={not firmware_actionable?(@instance)} class="mt-3 text-xs text-base-content/50">
+            Firmware on this device is read-only from the dashboard — the vendor API
+            reports the versions but exposes no check or update action.
+          </p>
+
+          <div
+            :if={@writable and firmware_actionable?(@instance)}
+            class="mt-3 flex flex-wrap items-center gap-2"
+          >
             <button
               phx-click="fw_check"
               disabled={not @connected or @fw_busy != nil or @upgrading}

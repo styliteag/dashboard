@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Direct-polled boxes had an empty Checks tab and no Firmware tab at all**,
+  although the data behind both was already being collected. Two `agent_mode?`
+  filters hid working code: the Checks tab returned nothing for any polled
+  instance, and the Firmware tab was not even offered. On a Securepoint box that
+  meant memory, CPU, load, disk, firmware and one row per IPsec tunnel were all
+  computed and then discarded before rendering. Both surfaces now show for
+  polled devices too. Firmware *actions* stay hidden where they cannot work —
+  Securepoint firmware is read-only from the dashboard, so the tab says so
+  instead of offering a button that would fail.
+
+- **Securepoint boxes reported no firmware version.** The vendor API carries the
+  installed version and the available upgrade; the port never read them, so the
+  Firmware tab had nothing to show and the "update available" warning could
+  never fire.
+
 ### Changed
 
 - **Published images are amd64-only from now on.** Release builds moved to

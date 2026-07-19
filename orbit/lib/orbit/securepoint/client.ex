@@ -110,6 +110,7 @@ defmodule Orbit.Securepoint.Client do
       |> maybe_put("uptime", info["Uptime"])
       |> maybe_put("system", system_from_info(info))
       |> maybe_put("interfaces", interfaces(c))
+      |> maybe_put("firmware", firmware_from_info(info))
       |> maybe_put("openvpn", section(c, "openvpn", ["status"]))
       |> maybe_put("ipsec", section(c, "ipsec", ["status"]))
     else
@@ -276,6 +277,46 @@ defmodule Orbit.Securepoint.Client do
   end
 
   def system_from_info(_), do: nil
+
+  @doc """
+  Firmware state from `system info`: `version`/`cur` is installed, `new` is the
+  available upgrade ("none" or "-" when up to date).
+
+  Same section shape the OPNsense client emits, so the Firmware tab and
+  `Evaluate.firmware_check/1` (the "Update available: X → Y" WARN) work for a
+  Securepoint box without a per-vendor branch.
+
+  Securepoint firmware is READ-ONLY from here: the python client answered its
+  check/update/reboot actions with a not-supported result and this port keeps
+  that — only the status is real. `security_updates` stays 0 because the API
+  does not classify updates; a plain `upgrade_available` yields the plain WARN.
+  """
+  def firmware_from_info(info) when is_map(info) do
+    installed = Map.get(info, "version") || Map.get(info, "cur") || ""
+    available = Map.get(info, "new", "")
+
+    upgrade? =
+      available != "" and String.downcase(available) not in ["none", "-"] and
+        available != installed
+
+    case installed do
+      "" ->
+        nil
+
+      _ ->
+        %{
+          "product_version" => installed,
+          "product_latest" => if(upgrade?, do: available, else: installed),
+          "upgrade_available" => upgrade?,
+          "updates_available" => if(upgrade?, do: 1, else: 0),
+          "security_updates" => 0,
+          "needs_reboot" => false,
+          "check_failed" => false
+        }
+    end
+  end
+
+  def firmware_from_info(_), do: nil
 
   @doc """
   Interfaces with their addresses. `ONLINE`/`DYNAMIC` in flags means up.
