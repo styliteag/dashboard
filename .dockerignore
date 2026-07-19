@@ -1,7 +1,8 @@
 # Root build context is only used by orbit/Dockerfile (repo root for
 # VERSION + agent/). Keep the context lean.
 .git
-tools/.venv
+**/.venv
+**/node_modules
 **/__pycache__
 orbit/data
 orbit/_build
@@ -9,3 +10,8 @@ orbit/deps
 orbit/priv/static/assets
 docs
 *.log
+# Local scratch dirs — gitignored, but docker does not read .gitignore.
+# data-before2.7 alone is 4.6 GB of DB copy; without these the root context
+# (orbit/Dockerfile builds from it for VERSION + agent/) is ~5 GB.
+data*/
+tmp/
