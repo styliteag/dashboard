@@ -172,4 +172,46 @@ defmodule Orbit.NotifierTest do
       assert_received {:host, "group.example.com"}
     end
   end
+
+  test "only: restricts a test send to one channel (per-channel test button)" do
+    Req.Test.stub(__MODULE__, fn conn -> Req.Test.json(conn, %{"ok" => true}) end)
+
+    results =
+      Notifier.send_test(
+        only: "mattermost",
+        settings: settings(@both),
+        req_plug: {Req.Test, __MODULE__},
+        ssrf_check: fn _url -> nil end
+      )
+
+    assert [%{channel: "mattermost", status: "sent"}] = results
+  end
+
+  describe "channel_configured?/2 — send-predicate parity" do
+    test "mattermost needs the webhook url" do
+      assert Notifier.channel_configured?("mattermost", settings(@both))
+      refute Notifier.channel_configured?("mattermost", settings(%{}))
+    end
+
+    test "telegram needs token AND chat id" do
+      assert Notifier.channel_configured?("telegram", settings(@both))
+
+      refute Notifier.channel_configured?(
+               "telegram",
+               settings(%{"notify_telegram_token" => "tok123"})
+             )
+    end
+
+    test "email needs host, from and at least one recipient" do
+      cfg = %{
+        "notify_email_smtp_host" => "smtp.example.com",
+        "notify_email_from" => "orbit@example.com",
+        "notify_email_to" => "ops@example.com"
+      }
+
+      assert Notifier.channel_configured?("email", settings(cfg))
+      refute Notifier.channel_configured?("email", settings(Map.delete(cfg, "notify_email_to")))
+      refute Notifier.channel_configured?("unknown", settings(cfg))
+    end
+  end
 end

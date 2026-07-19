@@ -22,8 +22,6 @@ defmodule OrbitWeb.SettingsLive do
        rows: load_rows(),
        tab: "general",
        flash_key: nil,
-       test_busy: false,
-       test_results: nil,
        llm_busy: nil,
        llm_result: nil,
        restart_armed: false,
@@ -33,7 +31,7 @@ defmodule OrbitWeb.SettingsLive do
 
   @impl true
   def handle_event("set_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, tab: tab, test_results: nil, llm_result: nil)}
+    {:noreply, assign(socket, tab: tab, llm_result: nil)}
   end
 
   @impl true
@@ -55,19 +53,6 @@ defmodule OrbitWeb.SettingsLive do
           {:error, msg} ->
             {:noreply, put_flash(socket, :error, msg)}
         end
-    end
-  end
-
-  # Connectivity test to every configured channel — bypasses routing/mutes
-  # (notifier.send_test parity); channel sends block up to 10s each, so async.
-  def handle_event("notify_test", _params, socket) do
-    if socket.assigns.test_busy do
-      {:noreply, socket}
-    else
-      {:noreply,
-       socket
-       |> assign(test_busy: true, test_results: nil)
-       |> start_async(:notify_test, fn -> Orbit.Notifier.send_test() end)}
     end
   end
 
@@ -108,15 +93,6 @@ defmodule OrbitWeb.SettingsLive do
         Process.send_after(self(), :do_restart, 500)
         {:noreply, assign(socket, restart_armed: false, restarting: true)}
     end
-  end
-
-  @impl true
-  def handle_async(:notify_test, {:ok, results}, socket) do
-    {:noreply, assign(socket, test_busy: false, test_results: results)}
-  end
-
-  def handle_async(:notify_test, {:exit, _}, socket) do
-    {:noreply, assign(socket, test_busy: false, test_results: [])}
   end
 
   # LiveView has no conn; source_ip is a documented seam (peer_data via
@@ -304,37 +280,20 @@ defmodule OrbitWeb.SettingsLive do
           </p>
         </div>
 
-        <%!-- Channel tabs: intro + mute toggle + connectivity test. The field
-             rows above already rendered this channel's group. --%>
-        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4 space-y-3">
+        <%!-- Channel tabs: mute toggle + per-channel selection tree (with its
+             own test-send). The field rows above already rendered this
+             channel's group. --%>
+        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4 space-y-4">
           <.mute_toggle
             :if={mute_row(@rows, "notify_#{@tab}_muted")}
             row={mute_row(@rows, "notify_#{@tab}_muted")}
           />
-          <button
-            phx-click="notify_test"
-            disabled={@test_busy}
-            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-40"
-          >
-            {if @test_busy, do: "Sending…", else: "Send test notification"}
-          </button>
-          <div :if={@test_results} class="rounded-lg border border-base-300 bg-base-200 p-3 text-sm">
-            <div :for={res <- @test_results} class="flex items-center gap-2">
-              <span class="w-24 text-base-content/70">{res.channel}</span>
-              <span class={[
-                res.status == "sent" && "text-primary",
-                res.status == "failed" && "text-error",
-                res.status == "skipped" && "text-base-content/60"
-              ]}>
-                {res.status}{if res.detail != "", do: " — #{res.detail}"}
-              </span>
-            </div>
-          </div>
-          <p class="text-xs text-base-content/60">
-            Which alert categories this channel receives is driven by the
-            <a href={~p"/selection"} class="text-primary hover:underline">service selection rules</a>
-            — base default is off until an include rule matches.
-          </p>
+          <.live_component
+            module={OrbitWeb.Components.SelectionTree}
+            id={"seltree-#{@tab}"}
+            consumer={@tab}
+            current_user={@current_user}
+          />
         </div>
 
         <%!-- AI tab: provider test buttons. --%>
@@ -364,8 +323,8 @@ defmodule OrbitWeb.SettingsLive do
           </div>
         </div>
 
-        <%!-- Checkmk tab: intro + blackout toggle + api keys/selection links. --%>
-        <div :if={@tab == "checkmk"} class="mt-4 space-y-3">
+        <%!-- Checkmk tab: intro + blackout toggle + api keys link + export tree. --%>
+        <div :if={@tab == "checkmk"} class="mt-4 space-y-4">
           <p class="max-w-3xl text-sm text-base-content/70">
             Connect Checkmk to the dashboard and choose which service checks are exported.
             See <code class="rounded bg-base-300 px-1 py-0.5 text-xs">CHECKMK.md</code>
@@ -379,9 +338,12 @@ defmodule OrbitWeb.SettingsLive do
           <a href={~p"/apikeys"} class="inline-block text-sm text-primary hover:underline">
             Manage Checkmk API keys →
           </a>
-          <a href={~p"/selection"} class="ml-4 inline-block text-sm text-primary hover:underline">
-            Service selection rules →
-          </a>
+          <.live_component
+            module={OrbitWeb.Components.SelectionTree}
+            id="seltree-checkmk"
+            consumer="checkmk"
+            current_user={@current_user}
+          />
         </div>
 
         <%!-- Prometheus tab: no settings, just the api key surface. --%>

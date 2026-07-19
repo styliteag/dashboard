@@ -89,17 +89,48 @@ defmodule Orbit.Notifier do
     }
   }
 
+  @doc """
+  Whether a channel has enough config to actually send — the same predicate
+  the senders use to decide skip-vs-send (channel_configured parity; drives
+  the "subscribed but not configured" hint in the selection tree).
+  """
+  def channel_configured?(channel, settings \\ &setting/1)
+
+  def channel_configured?("mattermost", settings) do
+    to_string(settings.("notify_mattermost_url") || "") != ""
+  end
+
+  def channel_configured?("telegram", settings) do
+    to_string(settings.("notify_telegram_token") || "") != "" and
+      to_string(settings.("notify_telegram_chat_id") || "") != ""
+  end
+
+  def channel_configured?("email", settings) do
+    to_string(settings.("notify_email_smtp_host") || "") != "" and
+      to_string(settings.("notify_email_from") || "") != "" and
+      parse_recipients(to_string(settings.("notify_email_to") || "")) != []
+  end
+
+  def channel_configured?(_channel, _settings), do: false
+
   @doc false
   def dispatch(title, message, check_key, instance_id, opts) do
     respect_routes = Keyword.get(opts, :respect_routes, true)
     settings = Keyword.get(opts, :settings, &setting/1)
+
+    # `only:` restricts a send to one channel (per-channel test button).
+    channels =
+      case Keyword.get(opts, :only) do
+        nil -> @channels
+        channel -> Enum.filter(@channels, &(&1 == channel))
+      end
 
     overrides =
       Keyword.get_lazy(opts, :overrides, fn ->
         if instance_id, do: group_channel_overrides(instance_id), else: %{}
       end)
 
-    Enum.map(@channels, fn channel ->
+    Enum.map(channels, fn channel ->
       cond do
         respect_routes and not Orbit.Selection.is_on_live(channel, check_key, instance_id) ->
           %{channel: channel, status: "skipped", detail: "not subscribed"}

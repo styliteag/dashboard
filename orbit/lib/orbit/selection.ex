@@ -33,11 +33,20 @@ defmodule Orbit.Selection do
   @doc "Category token of a check key (part before the first colon)."
   def category(check_key), do: check_key |> String.split(":", parts: 2) |> hd()
 
+  @rank_reason %{
+    @rank_instance_specific => "instance",
+    @rank_instance_category => "instance_category",
+    @rank_global_specific => "global",
+    @rank_global_category => "global_category"
+  }
+
   @doc """
-  Pure resolve over a rule list: is `consumer` interested in `check_key`
-  for `instance_id`? Rules are {consumer, instance_id | nil, selector, mode}.
+  Pure resolve over a rule list: `{on, by}` for one (consumer, instance,
+  check) — python model.resolve parity. `by` names the deciding level
+  (instance / instance_category / global / global_category) or "default"
+  (base default off). Rules are {consumer, instance_id | nil, selector, mode}.
   """
-  def is_on(consumer, check_key, instance_id, rules) do
+  def resolve(consumer, check_key, instance_id, rules) do
     cat = category(check_key)
 
     {best_rank, best_mode} =
@@ -59,7 +68,16 @@ defmodule Orbit.Selection do
         if rank > best, do: {rank, r_mode}, else: acc
       end)
 
-    best_rank > 0 and best_mode == "include"
+    if best_rank == 0 do
+      {false, "default"}
+    else
+      {best_mode == "include", @rank_reason[best_rank]}
+    end
+  end
+
+  @doc "Boolean resolve (see resolve/4)."
+  def is_on(consumer, check_key, instance_id, rules) do
+    resolve(consumer, check_key, instance_id, rules) |> elem(0)
   end
 
   @doc "Cached resolve for the dispatch path (default OFF until first load)."
@@ -122,6 +140,15 @@ defmodule Orbit.Selection do
 
     reload_if_running()
     :ok
+  end
+
+  @doc "One consumer's rules as resolve/4 tuples, fresh from the DB (tree UI)."
+  def consumer_rules(consumer) do
+    Orbit.Repo.query!(
+      "SELECT consumer, instance_id, selector, mode FROM selection_rules WHERE consumer = ?",
+      [consumer]
+    ).rows
+    |> Enum.map(fn [c, i, s, m] -> {c, i, s, m} end)
   end
 
   @doc "All rules with instance names for the editor."

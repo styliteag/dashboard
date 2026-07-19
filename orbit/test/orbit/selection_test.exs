@@ -46,4 +46,22 @@ defmodule Orbit.SelectionTest do
     rules = [{"email", nil, "availability", "include"}]
     assert Selection.is_on("email", "availability", 3, rules)
   end
+
+  test "resolve/4 names the deciding level (python resolve parity)" do
+    assert Selection.resolve("checkmk", "cpu", 1, []) == {false, "default"}
+
+    rules = [{"checkmk", nil, "gateway", "include"}]
+    assert Selection.resolve("checkmk", "gateway:WAN", 1, rules) == {true, "global_category"}
+
+    rules = rules ++ [{"checkmk", nil, "gateway:WAN", "exclude"}]
+    assert Selection.resolve("checkmk", "gateway:WAN", 1, rules) == {false, "global"}
+
+    rules = rules ++ [{"checkmk", 1, "gateway", "include"}]
+    assert Selection.resolve("checkmk", "gateway:WAN", 1, rules) == {true, "instance_category"}
+
+    rules = rules ++ [{"checkmk", 1, "gateway:WAN", "exclude"}]
+    assert Selection.resolve("checkmk", "gateway:WAN", 1, rules) == {false, "instance"}
+    # Other instances keep the global resolution.
+    assert Selection.resolve("checkmk", "gateway:WAN", 2, rules) == {false, "global"}
+  end
 end
