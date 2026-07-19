@@ -75,6 +75,41 @@ defmodule OrbitWeb.LogEventsLive do
     |> Enum.filter(&(a.instance_filter == "all" or &1.instance.name == a.instance_filter))
   end
 
+  # Which daemons are noisy, worst severity first — the shape of the noise
+  # before the first row. Top 8 keeps the row scannable; the count in the note
+  # says how many were left out rather than silently truncating.
+  defp program_tally(rows) do
+    rows
+    |> Enum.reject(&(&1.event.program in [nil, ""]))
+    |> Enum.group_by(& &1.event.program)
+    |> Enum.map(fn {program, list} ->
+      %{
+        program: program,
+        count: Enum.sum(Enum.map(list, & &1.event.count)),
+        tone: tone_for(Enum.min_by(list, & &1.event.severity).event.severity)
+      }
+    end)
+    |> Enum.sort_by(&{-&1.count, &1.program})
+  end
+
+  # Syslog severity is inverted: lower number = worse.
+  defp tone_for(sev) when sev <= 2, do: :crit
+  defp tone_for(3), do: :warn
+  defp tone_for(_), do: :neutral
+
+  # Newest ingest across the visible boxes — the age of everything on the page.
+  defp last_ingest([]), do: nil
+
+  defp last_ingest(rows) do
+    rows
+    |> Enum.map(& &1.event.updated_at)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      stamps -> Enum.max(stamps, DateTime)
+    end
+  end
+
   @impl true
   def render(assigns) do
     assigns =
@@ -83,7 +118,10 @@ defmodule OrbitWeb.LogEventsLive do
         crit: Enum.count(assigns.rows, &(&1.event.severity <= 2)),
         err: Enum.count(assigns.rows, &(&1.event.severity == 3)),
         warn: Enum.count(assigns.rows, &(&1.event.severity >= 4)),
-        instance_names: assigns.rows |> Enum.map(& &1.instance.name) |> Enum.uniq() |> Enum.sort()
+        instance_names:
+          assigns.rows |> Enum.map(& &1.instance.name) |> Enum.uniq() |> Enum.sort(),
+        programs: program_tally(assigns.rows),
+        last_ingest: last_ingest(assigns.rows)
       )
 
     ~H"""
@@ -91,10 +129,23 @@ defmodule OrbitWeb.LogEventsLive do
       <.top_nav active={:logs} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 mb-2 text-lg font-medium text-base-content">
           <Icons.icon name={:logs} class="h-5 w-5 text-base-content/60" /> Log events
           <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>
+
+        <.data_note>
+          Aggregated syslog lines of your agent-mode boxes, worst severity first. This is not a
+          log viewer: agents push their logfiles about once an hour, each push <em>replaces</em>
+          the events of that box, and only severity 4 (warning) or worse is kept at all —
+          everything quieter is dropped at ingest and can never appear here. Identical lines are
+          normalised (IPs and numbers masked) and counted, so one row is a pattern, not an
+          occurrence. Real fleets legitimately show zero CRIT rows.
+          <span :if={@last_ingest}>
+            Newest ingest: {Calendar.strftime(@last_ingest, "%Y-%m-%d %H:%M UTC")} — an idle box
+            keeps showing its last push.
+          </span>
+        </.data_note>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
           <.kpi_tile
@@ -151,6 +202,19 @@ defmodule OrbitWeb.LogEventsLive do
               {name}
             </button>
           </div>
+        </div>
+
+        <div :if={@programs != []} class="mb-3 flex flex-wrap gap-2">
+          <.count_chip
+            :for={p <- Enum.take(@programs, 8)}
+            label={p.program}
+            count={p.count}
+            tone={p.tone}
+            title="lines counted for this program, toned by its worst severity"
+          />
+          <span :if={length(@programs) > 8} class="self-center text-xs text-base-content/50">
+            +{length(@programs) - 8} more programs, see the table
+          </span>
         </div>
 
         <div :if={@rows == []} class="text-sm text-base-content/60">

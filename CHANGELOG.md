@@ -67,6 +67,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Orbit Log events: the page now says what it is not — not a log viewer.
+  It states the hourly push cadence, that each push replaces a box's events,
+  that anything below severity 4 is dropped at ingest and can never show up,
+  and that a row is a normalised pattern with a count rather than a single
+  occurrence. It also shows the newest ingest timestamp, so an idle box's old
+  data is recognisable as old. A program tally row (`kernel ×22`,
+  `sshd ×1`, toned by worst severity) sits above the table; if more than
+  eight programs are involved the row says how many it left out.
+
 - Orbit Alerts: the page now states what it does and does not cover — only
   agent-mode boxes (direct-API polled firewalls produce no alerts here), that
   UNKNOWN means "could not check" rather than OK, and that a silent agent or a
