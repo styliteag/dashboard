@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every Securepoint box answered 500 on its detail page.** The raw `ipsec`
+  hub section arrives in two shapes — agent and OPNsense pushes send a map
+  (`running` plus a `tunnels` list), while a Securepoint direct-poll stores a
+  bare list, because every section the Securepoint client fetches is a list.
+  The page only knew the map shape, so reading `["tunnels"]` off a list raised
+  `the Access module supports only keyword lists` and the whole view crashed
+  before rendering anything. Both shapes are handled now.
+
+
 - **A fresh installation could not be logged into at all.** The cutover ported
   only the retirement half of the bootstrap-seed lifecycle: orbit read
   `DASH_ADMIN_DISABLED`/`DASH_SUPERADMIN_DISABLED`, honoured `is_bootstrap` at

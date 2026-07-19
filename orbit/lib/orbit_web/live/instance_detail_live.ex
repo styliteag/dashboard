@@ -1034,9 +1034,37 @@ defmodule OrbitWeb.InstanceDetailLive do
     )
   end
 
+  @doc """
+  Normalise the raw `ipsec` hub section to `{tunnels, running}`.
+
+  The section has TWO shapes depending on where it came from, and the page must
+  survive both:
+
+  - agent / OPNsense push: a map `%{"running" => bool, "tunnels" => [...]}`
+  - Securepoint direct-poll: a BARE LIST of connections — `fetch_status/1`
+    stores whatever `ipsec status` returned, and every Securepoint section is a
+    list (see Orbit.Securepoint.Client and its fetch_status test).
+
+  Regression: the map form was hardcoded as `(entry["ipsec"] || %{})["tunnels"]`.
+  Applying Access to a Securepoint list raised
+  `ArgumentError: the Access module supports only keyword lists`, so the whole
+  detail page answered 500 for every Securepoint box (instance "bensheim").
+  Do not collapse this back into a single Access call.
+  """
+  def normalize_ipsec(%{"tunnels" => tunnels} = ipsec) when is_list(tunnels),
+    do: {tunnels, ipsec["running"]}
+
+  def normalize_ipsec(%{} = ipsec), do: {[], ipsec["running"]}
+
+  # Securepoint: bare list of connections, no service-level running flag.
+  def normalize_ipsec(tunnels) when is_list(tunnels), do: {tunnels, nil}
+
+  def normalize_ipsec(_), do: {[], nil}
+
   defp load_metrics(socket) do
     entry = Hub.cache_entry(socket.assigns.instance.id)
     status = entry["status"] || %{}
+    {ipsec_tunnels, ipsec_running} = normalize_ipsec(entry["ipsec"])
 
     assign(socket,
       connected: Hub.get(socket.assigns.instance.id) != nil,
@@ -1050,11 +1078,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       ntp: status["ntp"] || %{},
       section_ms: status["section_ms"] || %{},
       config_rev: status["config"] || %{},
-      # Raw ipsec section is a map %{"running", "tunnels" => [...]} — iterate the
-      # tunnel list, not the map (else :for yields {k,v} tuples). Real OPNsense
-      # data exposed this; synthetic pushes had used a bare list.
-      ipsec: (entry["ipsec"] || %{})["tunnels"] || [],
-      ipsec_running: (entry["ipsec"] || %{})["running"],
+      ipsec: ipsec_tunnels,
+      ipsec_running: ipsec_running,
       connectivity: entry["connectivity"] || [],
       last_seen: entry["last_metrics_ts"],
       firmware: entry["firmware"],
