@@ -95,7 +95,9 @@ defmodule Orbit.ProbeTest do
     end
 
     test "only the axes that ran produce a check" do
-      assert [only] = Confidence.probe_checks(false, %{Probe.empty() | icmp_up: true, rtt_ms: 2.0})
+      assert [only] =
+               Confidence.probe_checks(false, %{Probe.empty() | icmp_up: true, rtt_ms: 2.0})
+
       assert only.key == "ping"
     end
   end
