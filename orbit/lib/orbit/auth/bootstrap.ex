@@ -34,6 +34,7 @@ defmodule Orbit.Auth.Bootstrap do
   import Ecto.Query
   require Logger
 
+  alias Orbit.Accounts.Group
   alias Orbit.Accounts.User
   alias Orbit.Auth.Password
   alias Orbit.Repo
@@ -52,11 +53,58 @@ defmodule Orbit.Auth.Bootstrap do
     :ignore
   end
 
-  @doc "Derive and apply both seed accounts. Idempotent."
+  @doc "Seed the default group, then derive both seed accounts. Idempotent."
   def run do
+    ensure_default_group()
     ensure_admin()
     ensure_superadmin()
     :ok
+  end
+
+  # -- default group ---------------------------------------------------------
+
+  @doc """
+  Seed group 1 "default" on an empty groups table.
+
+  Alembic 028 did this as a DATA migration:
+
+      INSERT INTO groups (id, name) VALUES (1, 'default')
+      INSERT INTO user_groups (user_id, group_id) SELECT id, 1 FROM users
+
+  The orbit baseline captures the SCHEMA only, so a greenfield database has no
+  group at all. That is a dead end, not a cosmetic gap: instances carry a NOT
+  NULL group_id, `Orbit.Instances.resolve_create_group/2` answers
+  `:group_required` when the creator has no memberships, and `Orbit.Auth.Scope`
+  gives a user with zero groups `WHERE false` — no role escapes it, by design.
+  So without this the first admin can neither see nor create anything.
+
+  Only fires when the table is empty; an existing deployment is untouched.
+  """
+  def ensure_default_group do
+    if Repo.aggregate(Group, :count) == 0 do
+      Repo.insert!(%Group{id: 1, name: "default", created_at: now()})
+      Logger.info("group_bootstrap.created id=1 name=default")
+    end
+
+    :ok
+  end
+
+  # The seed admin joins "default" so it sees the fleet — 028's own rule ("every
+  # existing user keeps seeing everything: member of default"). The seed
+  # SUPERADMIN deliberately gets NO membership: it manages rights, not
+  # instances, and must see no instance at all.
+  defp join_default_group(user_id) do
+    case Repo.one(from(g in Group, where: g.name == "default", select: g.id)) do
+      nil ->
+        :ok
+
+      group_id ->
+        Repo.insert_all("user_groups", [%{user_id: user_id, group_id: group_id}],
+          on_conflict: :nothing
+        )
+
+        :ok
+    end
   end
 
   # -- admin -----------------------------------------------------------------
@@ -90,14 +138,16 @@ defmodule Orbit.Auth.Bootstrap do
       true ->
         disabled = mode == "disabled"
 
-        insert_seed(%{
-          username: "admin",
-          password_hash: Password.hash(password),
-          role: @role_admin,
-          is_superadmin: false,
-          disabled: disabled
-        })
+        {:ok, admin} =
+          insert_seed(%{
+            username: "admin",
+            password_hash: Password.hash(password),
+            role: @role_admin,
+            is_superadmin: false,
+            disabled: disabled
+          })
 
+        join_default_group(admin.id)
         Logger.info("admin_bootstrap.created username=admin disabled=#{disabled}")
     end
 
@@ -203,11 +253,13 @@ defmodule Orbit.Auth.Bootstrap do
         password_version: 1,
         is_bootstrap: true,
         totp_enabled: false,
-        created_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        created_at: now()
       })
     )
     |> Repo.insert()
   end
+
+  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp seed_row(superadmin?) do
     Repo.one(from(u in User, where: u.is_bootstrap == true and u.is_superadmin == ^superadmin?))

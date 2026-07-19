@@ -74,6 +74,45 @@ defmodule Orbit.Auth.BootstrapTest do
     end
   end
 
+  describe "default group" do
+    test "seeds group 1 \"default\" on an empty groups table (alembic 028 parity)" do
+      assert Repo.aggregate(Orbit.Accounts.Group, :count) == 0
+
+      Bootstrap.run()
+
+      g = Repo.one(from(g in Orbit.Accounts.Group, where: g.name == "default"))
+      assert g.id == 1
+    end
+
+    test "leaves an existing groups table alone" do
+      Repo.insert!(%Orbit.Accounts.Group{
+        id: 7,
+        name: "existing",
+        created_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      Bootstrap.run()
+
+      assert Repo.aggregate(Orbit.Accounts.Group, :count) == 1
+      assert Repo.one(from(g in Orbit.Accounts.Group, select: g.name)) == "existing"
+    end
+
+    test "the seed admin joins default, the seed superadmin does NOT" do
+      Bootstrap.run()
+
+      admin = seed(false)
+      super_ = seed(true)
+
+      assert Repo.all(from(ug in "user_groups", select: ug.user_id)) == [admin.id],
+             "only the admin may hold a membership — superadmin manages rights, not instances"
+
+      refute Enum.member?(
+               Repo.all(from(ug in "user_groups", select: ug.user_id)),
+               super_.id
+             )
+    end
+  end
+
   describe "first start" do
     test "creates both password-only seeds" do
       assert Repo.aggregate(User, :count) == 0

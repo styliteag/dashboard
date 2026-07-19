@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variables are now passed to orbit in both compose files — the dev stack passed
   none of them.
 
+- **A fresh installation also had no group, which is a second dead end.** Alembic
+  028 seeded group 1 `default` and put every user in it as a DATA migration; the
+  orbit baseline carries the schema only. Without a group the first admin can
+  neither see nor create anything: instances have a NOT NULL `group_id`, the
+  create form answers "group required" when the creator has no membership, and
+  scoping gives a user with zero groups `WHERE false` — no role escapes that, by
+  design. Boot now seeds `default` when the groups table is empty and puts the
+  seed admin in it, matching 028. The seed superadmin deliberately stays without
+  any membership: it manages rights, not instances.
+
 
 - **The baseline schema migration could have deleted the whole database.**
   `orbit/priv/repo/baseline_schema.sql` is supposed to be a no-op on an existing
