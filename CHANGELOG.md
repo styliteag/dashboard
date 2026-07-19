@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-07-19
+
 ### Fixed
 
 - **Direct-polled boxes had an empty Checks tab and no Firmware tab at all**,
