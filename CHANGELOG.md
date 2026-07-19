@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Orbit: the login and agent-enrollment brute-force limiters keyed on the raw
+  socket peer instead of the proxy-aware client IP. Behind nginx that peer is
+  the reverse-proxy container — identical for every external client — so the
+  per-IP lock collapsed into one shared bucket: five bad passwords (or five
+  bad enrollment codes) from anyone locked login for **all** users, and agent
+  enrollment for the **whole** fleet, for 15 minutes. Both controllers now
+  resolve the client IP through `Orbit.Net.client_ip/1` (honouring
+  `DASH_TRUSTED_PROXY_HOPS`), matching what audit and the geo gate already use.
+
 ### Fixed
 
 - Orbit: writing an audit entry that carried an allowlisted detail field

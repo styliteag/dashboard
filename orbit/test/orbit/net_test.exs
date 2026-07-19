@@ -33,4 +33,29 @@ defmodule Orbit.NetTest do
     assert Net.pick_client_ip(nil, "192.0.2.1") == "192.0.2.1"
     assert Net.pick_client_ip(nil, nil) == "unknown"
   end
+
+  # client_ip/1 reads the XFF header off a real conn — the seam the login and
+  # enroll rate limiters depend on. Regression: those controllers used to key
+  # the LoginLimiter on conn.remote_ip (the nginx container IP in prod, shared
+  # by every external client → one bad-code burst locks the whole fleet out).
+  # They must resolve through this proxy-aware helper instead.
+  describe "client_ip/1 (conn-level)" do
+    defp conn_with(xff, peer) do
+      conn = %Plug.Conn{remote_ip: peer}
+      if xff, do: Plug.Conn.put_req_header(conn, "x-forwarded-for", xff), else: conn
+    end
+
+    test "1 hop returns the proxy-appended client, never the peer" do
+      Application.put_env(:orbit, :trusted_proxy_hops, 1)
+      # nginx appends the real peer as the last XFF entry; the direct TCP peer
+      # is the proxy container. The limiter must key on 203.0.113.50.
+      assert Net.client_ip(conn_with("client-forged, 203.0.113.50", {10, 0, 0, 9})) ==
+               "203.0.113.50"
+    end
+
+    test "0 hops falls back to the direct peer (no proxy trusted)" do
+      Application.put_env(:orbit, :trusted_proxy_hops, 0)
+      assert Net.client_ip(conn_with("6.6.6.6", {192, 0, 2, 1})) == "192.0.2.1"
+    end
+  end
 end

@@ -272,7 +272,9 @@ defmodule OrbitWeb.SessionController do
 
   defp redirect_to_login(conn), do: conn |> redirect(to: ~p"/login")
 
-  # Dev stack runs without a trusted proxy (DASH_TRUSTED_PROXY_HOPS=0 mindset);
-  # the full client_ip port with hop handling lands with the access-log port.
-  defp client_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()
+  # Proxy-aware client IP (honours DASH_TRUSTED_PROXY_HOPS). MUST match what the
+  # limiter/audit use everywhere else: behind nginx conn.remote_ip is the proxy
+  # container IP, so keying the LoginLimiter on it collapses every external
+  # client into one bucket — 5 bad logins from anyone would lock out all users.
+  defp client_ip(conn), do: Orbit.Net.client_ip(conn)
 end

@@ -81,5 +81,8 @@ defmodule OrbitWeb.EnrollController do
   def enroll(conn, _params),
     do: conn |> put_status(422) |> json(%{detail: "code required"})
 
-  defp client_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()
+  # Proxy-aware client IP (honours DASH_TRUSTED_PROXY_HOPS). The public enroll
+  # limiter MUST key on the real client, not the nginx container IP — otherwise
+  # 5 bad codes from anyone lock fleet-wide enrollment for 15 min.
+  defp client_ip(conn), do: Orbit.Net.client_ip(conn)
 end
