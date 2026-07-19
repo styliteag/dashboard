@@ -25,6 +25,11 @@ defmodule Orbit.Scheduler do
     {:check_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_check_events/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
     {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
+    # Out-of-band reachability (ICMP + HTTP) measured BY the dashboard. Runs on
+    # its own cadence, deliberately independent of the poller: the probe matters
+    # most exactly when polling fails, and for an agent-less box it is the only
+    # liveness signal there is.
+    {:reachability_probe, :timer.seconds(60), &Orbit.Probe.Runner.run_all/0},
     # Direct-API fleet (OPNsense/pfSense API, Securepoint spcgi): tick-and-gate.
     # The tick is the RESOLUTION, not the poll rate — each box is polled on its
     # own effective interval (Orbit.Poller.Gate). The job itself only fans out

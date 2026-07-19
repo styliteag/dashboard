@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The dashboard checks reachability itself again — `ping` and `http`.** For a
+  box without an agent this is the only honest liveness signal: it cannot tell
+  us it is down, it just stops answering. The instance's ping target decides
+  what runs — a bare host or IP is pinged, a full `http(s)://` URL is pinged
+  *and* fetched, and the two are reported separately because a box answering
+  ICMP while its web interface is down is a different problem. Any HTTP status
+  counts as reachable; a firewall GUI answering 401 is alive.
+
+  A failing probe is graded by what else is known: WARN when something still
+  confirms the box is up (a fresh agent, or an ICMP reply while only HTTP
+  fails), CRIT when nothing does. These two checks are deliberately exempt from
+  the staleness cap — they are freshly measured, and they are what tells a
+  genuinely dead box apart from one whose agent merely went quiet.
+
 ## [4.0.4] - 2026-07-19
 
 ### Fixed

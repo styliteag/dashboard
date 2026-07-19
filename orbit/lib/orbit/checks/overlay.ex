@@ -5,10 +5,9 @@ defmodule Orbit.Checks.Overlay do
 
   1. agent-staleness — prepend the `agent` service (OK fresh / WARN stale) and
      cap stale sub-states CRIT→WARN (a "down" verdict on stale data is a guess);
-  2. the out-of-band probe (ping/http) — appended after the staleness cap
-     (the probe is live, the signal that can take a stale-but-confirmed-down
-     box to CRIT). NOT YET PORTED — probe registry lands with the probe
-     subsystem; overlay leaves a documented seam here.
+  2. the out-of-band probe (ping/http) — appended after the staleness cap (the
+     probe is live, and is the signal that can take a stale-but-confirmed-down
+     box to CRIT, so it must not itself be capped);
   3. maintenance ceiling — cap everything at WARN + a `maintenance` banner.
 
   Used by every check surface (Checkmk export, Prometheus, Alerts, per-instance
@@ -16,6 +15,7 @@ defmodule Orbit.Checks.Overlay do
   capped checks are new structs.
   """
 
+  alias Orbit.Checks.Confidence
   alias Orbit.Checks.ServiceCheck
   alias Orbit.Checks.Staleness
 
@@ -24,9 +24,23 @@ defmodule Orbit.Checks.Overlay do
   `Staleness.t()` or nil; `maintenance?` the instance flag.
   """
   @spec overlay([ServiceCheck.t()], Staleness.t() | nil, boolean()) :: [ServiceCheck.t()]
-  def overlay(base, staleness, maintenance?) do
+  def overlay(base, staleness, maintenance?), do: overlay(base, staleness, maintenance?, nil)
+
+  @doc """
+  As `overlay/3`, plus the probe result for this instance.
+
+  The probe is appended AFTER the staleness cap on purpose: it is freshly
+  measured, so capping it would throw away the only evidence that distinguishes
+  "stale and dead" from "stale but alive".
+  """
+  @spec overlay([ServiceCheck.t()], Staleness.t() | nil, boolean(), Orbit.Probe.result() | nil) ::
+          [ServiceCheck.t()]
+  def overlay(base, staleness, maintenance?, probe) do
+    agent_fresh? = staleness != nil and not staleness.stale
+
     base
     |> apply_staleness(staleness)
+    |> Kernel.++(Confidence.probe_checks(agent_fresh?, probe))
     |> apply_maintenance(maintenance?)
   end
 

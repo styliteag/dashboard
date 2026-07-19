@@ -41,7 +41,7 @@ defmodule Orbit.Checks.Export do
 
     base = inst.id |> Orbit.Hub.cache_entry() |> Evaluate.evaluate()
     staleness = Staleness.resolve(inst, push_default, stale_floor, now)
-    Overlay.overlay(base, staleness, inst.maintenance == true)
+    Overlay.overlay(base, staleness, inst.maintenance == true, Orbit.Probe.Registry.get(inst.id))
   end
 
   @doc "Checkmk special-agent JSON body (version 1)."

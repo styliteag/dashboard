@@ -21,6 +21,7 @@ defmodule Orbit.Application do
           {Orbit.Settings, []},
           {Orbit.Hub, []},
           {Orbit.Shell.Slots, []},
+          {Orbit.Probe.Registry, []},
           {Orbit.Capture.Snapshots, []}
         ]
 
