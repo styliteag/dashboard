@@ -501,6 +501,13 @@ defmodule Orbit.Settings.Registry do
   @spec editable() :: %{String.t() => %Def{}}
   def editable, do: @editable
 
+  # The @defs list order is curated (python registry parity: the common
+  # settings lead each group) — the UI sorts rows by it, not alphabetically.
+  @ordered_keys Enum.map(@defs, & &1.key)
+
+  @doc "Definition order of all keys — the settings page's row order."
+  def ordered_keys, do: @ordered_keys
+
   @spec fetch(String.t()) :: {:ok, %Def{}} | :error
   def fetch(key), do: Map.fetch(@editable, key)
 

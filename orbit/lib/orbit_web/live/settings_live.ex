@@ -133,6 +133,8 @@ defmodule OrbitWeb.SettingsLive do
   end
 
   defp load_rows do
+    order = Registry.ordered_keys() |> Enum.with_index() |> Map.new()
+
     Registry.editable()
     |> Map.values()
     |> Enum.map(fn defn ->
@@ -144,6 +146,8 @@ defmodule OrbitWeb.SettingsLive do
         type: defn.type,
         secret: defn.is_secret,
         options: defn.options,
+        min: defn.min,
+        max: defn.max,
         label: meta.label,
         help: meta.help,
         group: meta.group,
@@ -155,7 +159,8 @@ defmodule OrbitWeb.SettingsLive do
         input: if(defn.is_secret, do: "", else: effective)
       }
     end)
-    |> Enum.sort_by(& &1.label)
+    # Curated definition order (GeneralSettings parity), not alphabetical.
+    |> Enum.sort_by(&Map.get(order, &1.key, 999))
   end
 
   # Tabs (SettingsPage parity). Each tab shows one or more registry groups;
@@ -172,9 +177,14 @@ defmodule OrbitWeb.SettingsLive do
 
   def tabs, do: @tabs
 
-  defp rows_for_tab(rows, tab) do
+  # Rows of one tab as {group, rows} sections in the tab's declared group
+  # order, empty groups skipped (GeneralSettings section headers parity).
+  defp sections_for_tab(rows, tab) do
     groups = Enum.find_value(@tabs, [], fn {k, _, gs} -> if k == tab, do: gs end)
-    Enum.filter(rows, &(&1.group in groups))
+
+    groups
+    |> Enum.map(fn group -> {group, Enum.filter(rows, &(&1.group == group))} end)
+    |> Enum.reject(fn {_group, rows} -> rows == [] end)
   end
 
   # The per-channel mute toggle lives on that channel's tab (not the field list).
@@ -185,7 +195,7 @@ defmodule OrbitWeb.SettingsLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, tab_rows: rows_for_tab(assigns.rows, assigns.tab))
+    assigns = assign(assigns, tab_sections: sections_for_tab(assigns.rows, assigns.tab))
 
     ~H"""
     <main class="min-h-screen bg-base-100 text-base-content">
@@ -229,14 +239,51 @@ defmodule OrbitWeb.SettingsLive do
           {@flash[:error]}
         </p>
 
-        <%!-- General + AI + settings-bearing tabs: the rich setting rows. --%>
-        <div class="space-y-3">
-          <.setting_row :for={r <- @tab_rows} row={r} />
+        <%!-- Channel/Checkmk tabs: the mute/blackout switch comes FIRST
+             (SettingsPage order — MuteToggle above the connection fields). --%>
+        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mb-5">
+          <.mute_toggle
+            :if={mute_row(@rows, "notify_#{@tab}_muted")}
+            row={mute_row(@rows, "notify_#{@tab}_muted")}
+          />
         </div>
+        <div :if={@tab == "checkmk"} class="mb-5 space-y-3">
+          <p class="max-w-3xl text-sm text-base-content/70">
+            Connect Checkmk to the dashboard and choose which service checks are exported.
+            See <code class="rounded bg-base-300 px-1 py-0.5 text-xs">CHECKMK.md</code>
+            for the full integration guide. Changing the aggregate toggle alters which
+            services Checkmk discovers — re-inventorize the hosts afterwards.
+          </p>
+          <.mute_toggle
+            :if={mute_row(@rows, "checkmk_blackout")}
+            row={mute_row(@rows, "checkmk_blackout")}
+          />
+        </div>
+
+        <%!-- Settings-bearing tabs: one card per registry group with an
+             uppercase section header, rows divided (GeneralSettings parity). --%>
+        <div class="space-y-5">
+          <section
+            :for={{group, rows} <- @tab_sections}
+            class="rounded-xl border border-base-300 bg-base-200/60 p-5"
+          >
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/50">
+              {group}
+            </h4>
+            <div class="mt-1 divide-y divide-base-300/60">
+              <.setting_row :for={r <- rows} row={r} />
+            </div>
+          </section>
+        </div>
+
+        <p :if={@tab_sections != []} class="mt-3 text-xs text-base-content/40">
+          “Needs restart” settings take effect after the next backend restart; all others
+          apply live.
+        </p>
 
         <p
           :if={
-            @tab_rows == [] and
+            @tab_sections == [] and
               @tab not in ["mattermost", "telegram", "email", "checkmk", "prometheus"]
           }
           class="text-sm text-base-content/60"
@@ -280,14 +327,9 @@ defmodule OrbitWeb.SettingsLive do
           </p>
         </div>
 
-        <%!-- Channel tabs: mute toggle + per-channel selection tree (with its
-             own test-send). The field rows above already rendered this
-             channel's group. --%>
-        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4 space-y-4">
-          <.mute_toggle
-            :if={mute_row(@rows, "notify_#{@tab}_muted")}
-            row={mute_row(@rows, "notify_#{@tab}_muted")}
-          />
+        <%!-- Channel tabs: per-channel selection tree (with its own
+             test-send) below the connection fields. --%>
+        <div :if={@tab in ["mattermost", "telegram", "email"]} class="mt-4">
           <.live_component
             module={OrbitWeb.Components.SelectionTree}
             id={"seltree-#{@tab}"}
@@ -323,18 +365,8 @@ defmodule OrbitWeb.SettingsLive do
           </div>
         </div>
 
-        <%!-- Checkmk tab: intro + blackout toggle + api keys link + export tree. --%>
+        <%!-- Checkmk tab: api keys link + export tree below the fields. --%>
         <div :if={@tab == "checkmk"} class="mt-4 space-y-4">
-          <p class="max-w-3xl text-sm text-base-content/70">
-            Connect Checkmk to the dashboard and choose which service checks are exported.
-            See <code class="rounded bg-base-300 px-1 py-0.5 text-xs">CHECKMK.md</code>
-            for the full integration guide. Changing the aggregate toggle alters which
-            services Checkmk discovers — re-inventorize the hosts afterwards.
-          </p>
-          <.mute_toggle
-            :if={mute_row(@rows, "checkmk_blackout")}
-            row={mute_row(@rows, "checkmk_blackout")}
-          />
           <a href={~p"/apikeys"} class="inline-block text-sm text-primary hover:underline">
             Manage Checkmk API keys →
           </a>
@@ -361,76 +393,115 @@ defmodule OrbitWeb.SettingsLive do
   end
 
   # One rich setting row: label + badges, help, key/default line, typed input.
+  # Bools save on click (GeneralSettings checkbox parity); everything else
+  # submits through its Save button.
   attr :row, :map, required: true
 
   defp setting_row(assigns) do
     ~H"""
-    <div class="rounded-lg border border-base-300 bg-base-200/60 p-4">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-medium text-base-content">{@row.label}</span>
-            <span
-              :if={not @row.overridden}
-              class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
-            >
-              default
-            </span>
-            <span
-              :if={@row.restart}
-              class="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] text-warning"
-            >
-              needs restart
-            </span>
-          </div>
-          <p :if={@row.help != ""} class="mt-0.5 text-xs text-base-content/60">{@row.help}</p>
-          <p class="mt-0.5 font-mono text-[11px] text-base-content/40">
-            {@row.key}{if @row.default not in [nil, ""], do: " · default #{@row.default}"}
-          </p>
-        </div>
-
-        <form phx-submit="save" class="flex shrink-0 items-center gap-2">
-          <input type="hidden" name="key" value={@row.key} />
-          <select
-            :if={@row.type == :str and @row.options not in [nil, []]}
-            name="value"
-            class="rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
+    <div class="flex flex-wrap items-start justify-between gap-3 py-3">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm font-medium text-base-content">{@row.label}</span>
+          <span
+            :if={not @row.overridden}
+            class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
           >
-            <option :for={o <- @row.options} value={o} selected={@row.input == o}>{o}</option>
-          </select>
-          <input
-            :if={not (@row.type == :str and @row.options not in [nil, []])}
-            type={
-              cond do
-                @row.secret -> "password"
-                @row.type == :int -> "number"
-                true -> "text"
-              end
-            }
-            name="value"
-            value={@row.input}
-            placeholder={if @row.secret, do: "blank = keep", else: nil}
-            autocomplete="off"
-            class="w-28 rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
-          />
-          <button
-            type="submit"
-            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
-          >
-            Save
-          </button>
-          <button
+            {if @row.secret, do: "not set", else: "default"}
+          </span>
+          <span
             :if={@row.overridden}
-            type="button"
-            phx-click="clear"
-            phx-value-key={@row.key}
-            title="Reset to the environment default"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary"
           >
-            ↺
-          </button>
-        </form>
+            {if @row.secret, do: "set", else: "custom"}
+          </span>
+          <span
+            :if={@row.restart}
+            class="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] text-warning"
+          >
+            needs restart
+          </span>
+        </div>
+        <p :if={@row.help != ""} class="mt-0.5 text-xs text-base-content/60">{@row.help}</p>
+        <p class="mt-0.5 font-mono text-[11px] text-base-content/40">
+          {@row.key}{if not @row.secret and @row.default not in [nil, ""],
+            do: " · default #{@row.default}"}
+        </p>
       </div>
+
+      <div :if={@row.type == :bool} class="flex shrink-0 items-center gap-2">
+        <input
+          type="checkbox"
+          checked={@row.effective in ["true", "1"]}
+          phx-click="save"
+          phx-value-key={@row.key}
+          phx-value-value={to_string(@row.effective not in ["true", "1"])}
+          class="h-4 w-4 cursor-pointer accent-primary"
+        />
+        <button
+          :if={@row.overridden}
+          type="button"
+          phx-click="clear"
+          phx-value-key={@row.key}
+          title="Reset to the environment default"
+          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+        >
+          ↺
+        </button>
+      </div>
+
+      <form :if={@row.type != :bool} phx-submit="save" class="flex shrink-0 items-center gap-2">
+        <input type="hidden" name="key" value={@row.key} />
+        <select
+          :if={@row.type == :str and @row.options not in [nil, []]}
+          name="value"
+          class="rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
+        >
+          <option :for={o <- @row.options} value={o} selected={@row.input == o}>{o}</option>
+        </select>
+        <input
+          :if={not (@row.type == :str and @row.options not in [nil, []])}
+          type={
+            cond do
+              @row.secret -> "password"
+              @row.type == :int -> "number"
+              true -> "text"
+            end
+          }
+          name="value"
+          value={@row.input}
+          min={@row.min}
+          max={@row.max}
+          placeholder={
+            cond do
+              @row.secret and @row.overridden -> "•••••• (set — type to replace)"
+              @row.secret -> "not set"
+              true -> nil
+            end
+          }
+          autocomplete="off"
+          class={[
+            if(@row.secret, do: "w-64", else: "w-28"),
+            "rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
+          ]}
+        />
+        <button
+          type="submit"
+          class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
+        >
+          Save
+        </button>
+        <button
+          :if={@row.overridden}
+          type="button"
+          phx-click="clear"
+          phx-value-key={@row.key}
+          title="Reset to the environment default"
+          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+        >
+          ↺
+        </button>
+      </form>
     </div>
     """
   end
