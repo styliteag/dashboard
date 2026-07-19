@@ -63,5 +63,14 @@ defmodule Orbit.Maintenance.Prune do
     deleted
   end
 
+  @doc "Delete check state-change events older than the retention window. Returns rows deleted."
+  @spec prune_check_events() :: non_neg_integer()
+  def prune_check_events do
+    days = Orbit.Settings.effective("check_event_retention_days")
+    deleted = prune_before("check_events", cutoff(days))
+    if deleted > 0, do: Logger.info("check_events.pruned rows=#{deleted}")
+    deleted
+  end
+
   defp cutoff(days), do: DateTime.add(DateTime.utc_now(), -days * 86_400, :second)
 end

@@ -9,9 +9,9 @@ defmodule Orbit.Scheduler do
   NOT started in :test (config :orbit, :start_scheduler) — the jobs touch the
   alembic-owned schema the throwaway test DB doesn't have.
 
-  Jobs so far: enrollment-code cleanup. Retention/pruning jobs (metrics,
-  ipsec/check events, logfiles) port next — those need the batched
-  oldest-first delete pattern (gap-lock incident), not a plain DELETE.
+  Jobs: enrollment-code cleanup, retention pruning (metrics, ipsec/check
+  events — batched oldest-first deletes, gap-lock incident), agent stale
+  sweep, weekly GeoIP refresh.
   """
 
   use GenServer
@@ -22,6 +22,7 @@ defmodule Orbit.Scheduler do
     {:enrollment_cleanup, :timer.hours(1), &__MODULE__.cleanup_enrollment_codes/0},
     {:metrics_prune, :timer.hours(1), &Orbit.Maintenance.Prune.prune_metrics/0},
     {:ipsec_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_ipsec_events/0},
+    {:check_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_check_events/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
     {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
     # Weekly GeoLite2-City refresh (DR-G1); idle no-op without credentials.
