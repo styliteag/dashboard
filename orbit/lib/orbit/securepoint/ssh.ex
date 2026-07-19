@@ -219,6 +219,79 @@ defmodule Orbit.Securepoint.SSH do
   end
 
   @doc """
+  Run one ping ON the box and classify it — the agent's `_ping_once` over SSH.
+
+  This is how an agent-less appliance gets IPsec Phase-2 and connectivity
+  monitors at all: the probe has to originate ON the box (through the tunnel,
+  from the right source address), which is exactly what an agent would do and
+  what the dashboard cannot do from outside.
+
+  Three outcomes, and the middle one matters:
+
+    ok    — replies came back
+    fail  — no reply: the target is down or the tunnel is not passing traffic
+    error — the probe never RAN (unassignable source, unresolvable host). That
+            is a misconfiguration, not an outage, and must not read as one.
+
+  The discriminator is the summary line: no `% packet loss` at all means ping
+  refused to start. Verified on a live UTM — a bogus source prints
+  "can't set multicast source interface" and no summary.
+  """
+  @spec ping(term(), String.t() | nil, String.t() | nil, pos_integer()) :: map()
+  def ping(_conn, _source, dest, _count) when dest in [nil, ""] do
+    %{"ping_state" => "error", "ping_loss_pct" => nil, "ping_rtt_ms" => nil}
+  end
+
+  def ping(conn, source, dest, count) do
+    count = max(count || 3, 1)
+    # Pace 0.3s apart so a healthy target answers well inside the deadline.
+    # -W is the busybox spelling and iputils accepts it too (both checked on a
+    # live box); -I binds the source on either.
+    src = if present(source), do: " -I #{shell_arg(source)}", else: ""
+    cmd = "ping -n -i 0.3 -c #{count} -W #{max(count, 2)}#{src} #{shell_arg(dest)} 2>&1"
+
+    case exec(conn, String.to_charlist(cmd)) do
+      {:ok, out} -> classify(out)
+      {:error, _} -> %{"ping_state" => "error", "ping_loss_pct" => nil, "ping_rtt_ms" => nil}
+    end
+  end
+
+  defp classify(out) do
+    case Regex.run(~r/([\d.]+)%\s*packet loss/, out) do
+      [_, loss_s] ->
+        loss = String.to_float(ensure_float(loss_s))
+
+        %{
+          "ping_state" => if(loss < 100, do: "ok", else: "fail"),
+          "ping_loss_pct" => loss,
+          "ping_rtt_ms" => avg_rtt(out)
+        }
+
+      _ ->
+        # No summary line at all → the probe never ran.
+        %{"ping_state" => "error", "ping_loss_pct" => nil, "ping_rtt_ms" => nil}
+    end
+  end
+
+  defp avg_rtt(out) do
+    case Regex.run(~r/=\s*[\d.]+\/([\d.]+)\//, out) do
+      [_, avg] -> String.to_float(ensure_float(avg))
+      _ -> nil
+    end
+  end
+
+  defp ensure_float(s), do: if(String.contains?(s, "."), do: s, else: s <> ".0")
+
+  defp present(v), do: is_binary(v) and String.trim(v) != ""
+
+  # Monitor sources/destinations are operator-entered. Refuse anything that is
+  # not a plain host/IP token rather than interpolating it into a shell command.
+  defp shell_arg(v) do
+    v = String.trim(to_string(v))
+    if Regex.match?(~r/^[A-Za-z0-9._:\-]+$/, v), do: v, else: "--"
+  end
+
+  @doc """
   Connect once WITHOUT a pinned key and return the box's host key for storage.
 
   The only unpinned path in this module (trust on first use). Everything else

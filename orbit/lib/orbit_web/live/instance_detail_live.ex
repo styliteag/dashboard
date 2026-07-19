@@ -13,6 +13,10 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+
+  alias OrbitWeb.Components.CommentEditor
+
   import OrbitWeb.Components.MetricChart
 
   alias Orbit.Audit
@@ -1588,7 +1592,14 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-base-content/70">
-            Firmware <.comment_badge comments={@comments} kind="firmware" entity_key="" />
+            Firmware
+            <.comment_editor
+              text={CommentEditor.text(@comments, @instance.id, "firmware", "")}
+              writable={@writable}
+              instance_id={@instance.id}
+              kind="firmware"
+              entity_key=""
+            />
             <span
               :if={@instance.firmware_locked}
               class="rounded bg-base-300 px-1.5 py-0.5 text-xs text-warning"
@@ -1777,8 +1788,12 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <td class="py-1.5 pr-3 text-base-content/80">
                     {m.name}
                     <span :if={not m.enabled} class="ml-1 text-xs text-base-content/40">(disabled)</span>
-                    <.comment_badge
-                      comments={@comments}
+                    <.comment_editor
+                      text={
+                        CommentEditor.text(@comments, @instance.id, "connectivity", to_string(m.id))
+                      }
+                      writable={@writable}
+                      instance_id={@instance.id}
                       kind="connectivity"
                       entity_key={to_string(m.id)}
                     />
@@ -1955,7 +1970,13 @@ defmodule OrbitWeb.InstanceDetailLive do
                       {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
                     </button>
                     <span class="text-base-content/80">{t["description"] || id}</span>
-                    <.comment_badge comments={@comments} kind="ipsec" entity_key={id} />
+                    <.comment_editor
+                      text={CommentEditor.text(@comments, @instance.id, "ipsec", id)}
+                      writable={@writable}
+                      instance_id={@instance.id}
+                      kind="ipsec"
+                      entity_key={id}
+                    />
                   </td>
                   <td class="py-1.5 pr-3 text-base-content/70">{t["remote"] || "—"}</td>
                   <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
@@ -2304,8 +2325,17 @@ defmodule OrbitWeb.InstanceDetailLive do
                       >
                         GUI
                       </span>
-                      <.comment_badge
-                        comments={@comments}
+                      <.comment_editor
+                        text={
+                          CommentEditor.text(
+                            @comments,
+                            @instance.id,
+                            "cert",
+                            to_string(c["refid"] || c["name"] || "")
+                          )
+                        }
+                        writable={@writable}
+                        instance_id={@instance.id}
                         kind="cert"
                         entity_key={to_string(c["refid"] || c["name"] || "")}
                       />
@@ -2780,31 +2810,6 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp tunnel_up?(status) do
     status |> to_string() |> String.downcase() |> Kernel.in(@tunnel_up)
-  end
-
-  # Inline note badge (EntityCommentBadge parity): shows the operator note
-  # for one entity as a tooltip; editing stays in the central Notes form.
-  attr :comments, :list, required: true
-  attr :kind, :string, required: true
-  attr :entity_key, :string, required: true
-
-  defp comment_badge(assigns) do
-    note =
-      Enum.find(assigns.comments, fn c ->
-        c.kind == assigns.kind and c.entity_key == assigns.entity_key
-      end)
-
-    assigns = assign(assigns, note: note)
-
-    ~H"""
-    <span
-      :if={@note}
-      title={"#{@note.comment} — #{@note.updated_by}"}
-      class="ml-1 inline-flex cursor-help align-middle text-warning/80"
-    >
-      <Icons.icon name={:message_square} class="h-3.5 w-3.5" />
-    </span>
-    """
   end
 
   defp p2_monitor(monitors, child_name) do

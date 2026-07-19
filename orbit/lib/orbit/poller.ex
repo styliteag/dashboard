@@ -153,6 +153,7 @@ defmodule Orbit.Poller do
       client
       |> SecurepointClient.fetch_status()
       |> enrich_ipsec_over_ssh(inst)
+      |> enrich_monitors_over_ssh(inst)
       |> non_empty()
     end
   end
@@ -190,6 +191,21 @@ defmodule Orbit.Poller do
   end
 
   defp enrich_ipsec_over_ssh(status, _inst), do: status
+
+  # Ping monitors (IPsec Phase-2 and standalone connectivity) have to run ON the
+  # box — through the tunnel, from the configured source. With no agent to do
+  # it, SSH is the only way, and without this an agent-less appliance simply has
+  # no ping results. Fail-open like the ipsec enrichment: an SSH problem leaves
+  # the sections as they were.
+  defp enrich_monitors_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
+    Orbit.Securepoint.Monitors.enrich(status, inst)
+  rescue
+    e ->
+      Logger.debug("securepoint.monitor_probe_failed id=#{inst.id} error=#{Exception.message(e)}")
+      status
+  end
+
+  defp enrich_monitors_over_ssh(status, _inst), do: status
 
   # The spcgi section is a bare list of connections; a non-empty one means the
   # daemon answered. Keep that verdict — swanctl cannot tell us more.

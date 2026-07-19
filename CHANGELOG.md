@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ping monitors work on Securepoint boxes.** IPsec Phase-2 and connectivity
+  monitors both ping *from* the box — through the tunnel, from a chosen source
+  address — which is something the dashboard cannot do from outside. With no
+  agent to run them, an agent-less appliance simply had no ping results at all;
+  they now run over the same SSH access the tunnel enrichment uses. A probe that
+  cannot even start (an unassignable source, an unresolvable host) is reported
+  as a configuration error, not as an outage.
+
+- **Comments are editable wherever they are shown.** The little note marker on a
+  tunnel, certificate, monitor or the firmware panel was read-only — hover for
+  the text, then go find the central Notes form to change it. It is now the same
+  inline editor used everywhere else. It also drew a raw emoji; it uses the
+  regular icon set now.
+
 - **The Terminal works on Securepoint boxes.** They have no agent to attach to,
   so the shell now runs over the same SSH access the IPsec enrichment uses. The
   requirements are deliberately the same as before plus one: the terminal must
