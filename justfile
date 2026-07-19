@@ -104,6 +104,11 @@ orbit-dump-baseline:
     # FK-dependency order (parents first) — mariadb-dump keeps the CLI table
     # order, and the baseline relies on it (see the migration's comment). A new
     # table must be added here in an order where its FK targets come first.
+    #
+    # --skip-add-drop-table is NOT optional: mariadb-dump emits DROP TABLE IF
+    # EXISTS per table by default, and the comment filter below does not strip
+    # it. A baseline carrying DROPs is no longer the promised no-op — on the
+    # first orbit boot against a populated database it deletes every table.
     order="groups users api_keys access_events access_stats app_settings \
       geoip_config geoip_denial_events geoip_denial_stats instances \
       apikey_groups audit_log auth_sessions check_events config_backups \
@@ -116,7 +121,8 @@ orbit-dump-baseline:
       echo "-- DB creates cleanly. Regenerate via 'just orbit-dump-baseline'. Do not hand-edit."
       echo "SET FOREIGN_KEY_CHECKS = 0;"
       docker compose -f compose-dev.yml exec -T db sh -c \
-        "mariadb-dump -u\"\$MYSQL_USER\" -p\"\$MYSQL_PASSWORD\" --no-data --skip-comments --no-tablespaces \"\$MYSQL_DATABASE\" $order" \
+        "mariadb-dump -u\"\$MYSQL_USER\" -p\"\$MYSQL_PASSWORD\" --no-data --skip-comments \\
+           --skip-add-drop-table --no-tablespaces \"\$MYSQL_DATABASE\" $order" \
         | grep -vE '^/\*|^--|^$' \
         | sed -E 's/^CREATE TABLE /CREATE TABLE IF NOT EXISTS /; s/ AUTO_INCREMENT=[0-9]+//'
       echo "SET FOREIGN_KEY_CHECKS = 1;"

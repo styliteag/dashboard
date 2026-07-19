@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The baseline schema migration could have deleted the whole database.**
+  `orbit/priv/repo/baseline_schema.sql` is supposed to be a no-op on an existing
+  database — it exists only so orbit records that it now owns the schema. It
+  shipped with 27 `DROP TABLE IF EXISTS` statements instead: `mariadb-dump`
+  emits those by default and the `just orbit-dump-baseline` comment filter did
+  not strip them. On the first orbit boot against a populated database the
+  migration tried to drop every table. It failed harmlessly only because
+  `SET FOREIGN_KEY_CHECKS = 0` does not survive between statements, so the first
+  DROP hit a foreign key (errno 1451) and aborted — leaving orbit in a crash
+  loop rather than an empty database. The dump recipe now passes
+  `--skip-add-drop-table`, the migration refuses to execute any
+  DROP/TRUNCATE/DELETE/RENAME statement, and a test asserts the shipped SQL is
+  free of them.
+
 ### Removed
+
 
 - The retired **FastAPI backend and React frontend are gone from the repo**.
   They stopped being built or run at the orbit cutover but stayed on disk, so
@@ -34,9 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caller's side. Run `just tools-install` once.
 
 - The dev stack is orbit only: `compose-dev.yml` no longer starts `backend` and
-  `frontend` containers, and the dev GUI proxy points at `orbit:4000` instead of
-  `backend:8000`. **The dev dashboard moves from `http://localhost:5173` to
-  `http://localhost:8000`.**
+  `frontend` containers. **The dev dashboard moves from `http://localhost:5173`
+  to `http://localhost:8000`.** The `caddy` service went with them, so the
+  firewall GUI proxy is not available in the dev stack any more — prod still
+  ships it behind the `gui` profile. `docker/Caddyfile.dev` is kept and now
+  points at `orbit:4000` / `orbit:14400+id`, so re-adding the service is a
+  compose edit if the feature needs testing locally.
 
 ### Added
 

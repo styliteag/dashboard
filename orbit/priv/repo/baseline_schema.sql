@@ -1,10 +1,11 @@
 -- Baseline schema (MariaDB) captured from the Alembic head at orbit cutover.
--- Idempotent (CREATE TABLE IF NOT EXISTS): a no-op on an existing DB, a full
--- create on an empty one. Tables are emitted in FK-dependency order (parents
+-- Idempotent (CREATE TABLE IF NOT EXISTS, and NO 'DROP TABLE'): a no-op on an
+-- existing DB, a full create on an empty one. mariadb-dump emits DROP TABLE by
+-- default -- the dump recipe passes --skip-add-drop-table for exactly this
+-- reason. A DROP here would delete production data on the first orbit boot. Tables are emitted in FK-dependency order (parents
 -- first) so creation succeeds regardless of connection/transaction behaviour;
 -- the FK-check guard is belt-and-suspenders. Regenerate via 'just orbit-dump-baseline'.
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS `groups`;
 CREATE TABLE IF NOT EXISTS `groups` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(64) NOT NULL,
@@ -12,7 +13,6 @@ CREATE TABLE IF NOT EXISTS `groups` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `users`;
 CREATE TABLE IF NOT EXISTS `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(64) NOT NULL,
@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `api_keys`;
 CREATE TABLE IF NOT EXISTS `api_keys` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(128) NOT NULL,
@@ -47,7 +46,6 @@ CREATE TABLE IF NOT EXISTS `api_keys` (
   UNIQUE KEY `key_hash` (`key_hash`),
   KEY `ix_api_keys_key_hash` (`key_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `access_events`;
 CREATE TABLE IF NOT EXISTS `access_events` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `ts` datetime NOT NULL,
@@ -59,7 +57,6 @@ CREATE TABLE IF NOT EXISTS `access_events` (
   PRIMARY KEY (`id`),
   KEY `ix_access_events_ts` (`ts`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `access_stats`;
 CREATE TABLE IF NOT EXISTS `access_stats` (
   `bucket` datetime NOT NULL,
   `principal_type` varchar(8) NOT NULL,
@@ -68,7 +65,6 @@ CREATE TABLE IF NOT EXISTS `access_stats` (
   `last_ip` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`bucket`,`principal_type`,`principal_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `app_settings`;
 CREATE TABLE IF NOT EXISTS `app_settings` (
   `key` varchar(64) NOT NULL,
   `value` text NOT NULL,
@@ -76,7 +72,6 @@ CREATE TABLE IF NOT EXISTS `app_settings` (
   `updated_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `geoip_config`;
 CREATE TABLE IF NOT EXISTS `geoip_config` (
   `id` int(11) NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT 0,
@@ -86,7 +81,6 @@ CREATE TABLE IF NOT EXISTS `geoip_config` (
   `updated_by` varchar(64) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `geoip_denial_events`;
 CREATE TABLE IF NOT EXISTS `geoip_denial_events` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `ts` datetime NOT NULL,
@@ -97,7 +91,6 @@ CREATE TABLE IF NOT EXISTS `geoip_denial_events` (
   PRIMARY KEY (`id`),
   KEY `ix_geoip_denial_events_ts` (`ts`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `geoip_denial_stats`;
 CREATE TABLE IF NOT EXISTS `geoip_denial_stats` (
   `bucket` date NOT NULL,
   `reason` varchar(32) NOT NULL,
@@ -105,7 +98,6 @@ CREATE TABLE IF NOT EXISTS `geoip_denial_stats` (
   `count` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`bucket`,`reason`,`country`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `instances`;
 CREATE TABLE IF NOT EXISTS `instances` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(128) NOT NULL,
@@ -150,7 +142,6 @@ CREATE TABLE IF NOT EXISTS `instances` (
   KEY `ix_instances_group_id` (`group_id`),
   CONSTRAINT `fk_instances_group_id_groups` FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `apikey_groups`;
 CREATE TABLE IF NOT EXISTS `apikey_groups` (
   `apikey_id` int(11) NOT NULL,
   `group_id` int(11) NOT NULL,
@@ -159,7 +150,6 @@ CREATE TABLE IF NOT EXISTS `apikey_groups` (
   CONSTRAINT `apikey_groups_ibfk_1` FOREIGN KEY (`apikey_id`) REFERENCES `api_keys` (`id`) ON DELETE CASCADE,
   CONSTRAINT `apikey_groups_ibfk_2` FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `audit_log`;
 CREATE TABLE IF NOT EXISTS `audit_log` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `ts` datetime NOT NULL DEFAULT current_timestamp(),
@@ -177,7 +167,6 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
   KEY `ix_audit_log_action` (`action`),
   CONSTRAINT `audit_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `auth_sessions`;
 CREATE TABLE IF NOT EXISTS `auth_sessions` (
   `sid` varchar(32) NOT NULL,
   `user_id` int(11) NOT NULL,
@@ -191,7 +180,6 @@ CREATE TABLE IF NOT EXISTS `auth_sessions` (
   KEY `ix_auth_sessions_last_seen_at` (`last_seen_at`),
   CONSTRAINT `fk_auth_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `check_events`;
 CREATE TABLE IF NOT EXISTS `check_events` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -205,7 +193,6 @@ CREATE TABLE IF NOT EXISTS `check_events` (
   KEY `ix_check_events_ts` (`ts`),
   CONSTRAINT `check_events_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `config_backups`;
 CREATE TABLE IF NOT EXISTS `config_backups` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -218,7 +205,6 @@ CREATE TABLE IF NOT EXISTS `config_backups` (
   KEY `ix_config_backup_lookup` (`instance_id`,`collected_at`),
   CONSTRAINT `config_backups_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `connectivity_monitors`;
 CREATE TABLE IF NOT EXISTS `connectivity_monitors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -234,7 +220,6 @@ CREATE TABLE IF NOT EXISTS `connectivity_monitors` (
   KEY `ix_connectivity_monitors_instance_id` (`instance_id`),
   CONSTRAINT `connectivity_monitors_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `enrollment_codes`;
 CREATE TABLE IF NOT EXISTS `enrollment_codes` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `code_hash` varchar(64) NOT NULL,
@@ -248,7 +233,6 @@ CREATE TABLE IF NOT EXISTS `enrollment_codes` (
   KEY `ix_enrollment_codes_code_hash` (`code_hash`),
   CONSTRAINT `enrollment_codes_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `entity_comments`;
 CREATE TABLE IF NOT EXISTS `entity_comments` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -261,7 +245,6 @@ CREATE TABLE IF NOT EXISTS `entity_comments` (
   UNIQUE KEY `uq_entity_comment` (`instance_id`,`kind`,`entity_key`),
   CONSTRAINT `entity_comments_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `group_channels`;
 CREATE TABLE IF NOT EXISTS `group_channels` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `group_id` int(11) NOT NULL,
@@ -273,7 +256,6 @@ CREATE TABLE IF NOT EXISTS `group_channels` (
   UNIQUE KEY `uq_group_channel` (`group_id`,`channel`),
   CONSTRAINT `group_channels_ibfk_1` FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `ipsec_ping_monitors`;
 CREATE TABLE IF NOT EXISTS `ipsec_ping_monitors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -293,7 +275,6 @@ CREATE TABLE IF NOT EXISTS `ipsec_ping_monitors` (
   KEY `ix_ipsec_ping_monitors_instance_id` (`instance_id`),
   CONSTRAINT `ipsec_ping_monitors_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `ipsec_tunnel_events`;
 CREATE TABLE IF NOT EXISTS `ipsec_tunnel_events` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -308,7 +289,6 @@ CREATE TABLE IF NOT EXISTS `ipsec_tunnel_events` (
   KEY `ix_ipsec_events_ts` (`ts`),
   CONSTRAINT `ipsec_tunnel_events_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `log_events`;
 CREATE TABLE IF NOT EXISTS `log_events` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -325,7 +305,6 @@ CREATE TABLE IF NOT EXISTS `log_events` (
   KEY `ix_log_event_severity` (`severity`),
   CONSTRAINT `log_events_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `logfiles`;
 CREATE TABLE IF NOT EXISTS `logfiles` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `instance_id` int(11) NOT NULL,
@@ -337,7 +316,6 @@ CREATE TABLE IF NOT EXISTS `logfiles` (
   KEY `ix_logfile_lookup` (`instance_id`,`name`,`collected_at`),
   CONSTRAINT `logfiles_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `metrics`;
 CREATE TABLE IF NOT EXISTS `metrics` (
   `instance_id` int(11) NOT NULL,
   `ts` datetime NOT NULL,
@@ -347,7 +325,6 @@ CREATE TABLE IF NOT EXISTS `metrics` (
   KEY `ix_metrics_ts` (`ts`),
   CONSTRAINT `metrics_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `selection_rules`;
 CREATE TABLE IF NOT EXISTS `selection_rules` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `consumer` varchar(32) NOT NULL,
@@ -361,7 +338,6 @@ CREATE TABLE IF NOT EXISTS `selection_rules` (
   KEY `ix_selection_rules_instance_id` (`instance_id`),
   CONSTRAINT `selection_rules_ibfk_1` FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `user_groups`;
 CREATE TABLE IF NOT EXISTS `user_groups` (
   `user_id` int(11) NOT NULL,
   `group_id` int(11) NOT NULL,
@@ -370,7 +346,6 @@ CREATE TABLE IF NOT EXISTS `user_groups` (
   CONSTRAINT `user_groups_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `user_groups_ibfk_2` FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-DROP TABLE IF EXISTS `webauthn_credentials`;
 CREATE TABLE IF NOT EXISTS `webauthn_credentials` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,

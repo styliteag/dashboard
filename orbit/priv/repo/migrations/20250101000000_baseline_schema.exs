@@ -26,7 +26,29 @@ defmodule Orbit.Repo.Migrations.BaselineSchema do
     |> baseline_path()
     |> File.read!()
     |> statements()
+    |> Enum.map(&refuse_destructive!/1)
     |> Enum.each(&execute/1)
+  end
+
+  # The baseline is a no-op on an existing database — that is its whole contract.
+  # mariadb-dump emits `DROP TABLE IF EXISTS` per table by DEFAULT, and the dump
+  # recipe's comment filter does not strip it; a regenerated baseline carrying
+  # DROPs would delete every table on the first boot against a populated DB.
+  # That shipped once (the SQL was committed with 27 DROPs) and only failed
+  # harmlessly because FOREIGN_KEY_CHECKS = 0 does not survive between
+  # statements, so the first DROP hit an FK and aborted the migration.
+  # Do not remove: `just orbit-dump-baseline` passing --skip-add-drop-table is
+  # the fix, this is the backstop for when someone regenerates it by hand.
+  defp refuse_destructive!(sql) do
+    if Regex.match?(~r/^\s*(DROP|TRUNCATE|DELETE|RENAME)\b/i, sql) do
+      raise Ecto.MigrationError,
+        message:
+          "baseline_schema.sql contains a destructive statement: #{String.slice(sql, 0, 80)}. " <>
+            "The baseline must be pure CREATE TABLE IF NOT EXISTS. " <>
+            "Regenerate it with `just orbit-dump-baseline` (--skip-add-drop-table)."
+    end
+
+    sql
   end
 
   # Irreversible: rolling the baseline back would drop every table (all data).
