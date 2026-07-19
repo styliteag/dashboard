@@ -77,6 +77,48 @@ defmodule Orbit.Securepoint.SSH do
   # -- public ---------------------------------------------------------------
 
   @doc """
+  Build the per-instance SSH config, decrypting the stored key.
+
+  One source for both callers — the poller's swanctl enrichment and the
+  interactive terminal — so they can never drift on which host, port, user or
+  key is used. `:error` when the instance is not SSH-configured; the caller
+  decides whether that is "skip the enrichment" or "no shell here".
+  """
+  @spec config_for(struct()) :: {:ok, %Config{}} | :error
+  def config_for(inst) do
+    with key when is_binary(key) and key != "" <- decrypted_key(inst),
+         host when is_binary(host) and host != "" <- ssh_host(inst) do
+      {:ok,
+       %Config{
+         host: host,
+         port: inst.ssh_port || 22,
+         user: inst.ssh_user || "root",
+         private_key: key,
+         host_key: inst.ssh_host_key
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  defp decrypted_key(%{ssh_key_enc: nil}), do: nil
+
+  defp decrypted_key(%{ssh_key_enc: enc}) do
+    case Orbit.Crypto.decrypt(enc) do
+      {:ok, key} -> key
+      _ -> nil
+    end
+  end
+
+  # SSH targets the box itself, not its API URL — take the host out of base_url.
+  defp ssh_host(inst) do
+    case inst |> Orbit.Instances.Instance.primary_base_url() |> URI.parse() do
+      %URI{host: h} when is_binary(h) and h != "" -> h
+      _ -> nil
+    end
+  end
+
+  @doc """
   Run swanctl over SSH and return the `ipsec` hub section (with SPIs).
 
   `running` is the service state the caller already knows from the spcgi API —
@@ -94,6 +136,85 @@ defmodule Orbit.Securepoint.SSH do
       after
         :ssh.close(conn)
       end
+    end
+  end
+
+  @doc """
+  Open a host-key-verified connection plus an interactive login PTY.
+
+  Returns `{:ok, conn, channel}`. The CALLER becomes the owner: `:ssh` delivers
+  channel messages to the process that opened it, so the WebSocket process opens
+  this itself and receives PTY output directly as `{:ssh_cm, conn, …}`.
+
+  The caller MUST close the channel and then the connection when the session
+  ends — otherwise a root shell lingers on the box. `close_interactive/2` does
+  both in the right order.
+
+  Fail-closed like everything else here: an unpinned or mismatched host key
+  refuses before any channel is opened.
+  """
+  @spec open_interactive(%Config{}, pos_integer(), pos_integer()) ::
+          {:ok, term(), term()} | {:error, String.t()}
+  def open_interactive(%Config{} = cfg, rows, cols) do
+    with {:ok, conn} <- connect(cfg) do
+      with {:ok, chan} <- session_channel(conn),
+           :ok <- alloc_pty(conn, chan, rows, cols),
+           :ok <- start_shell(conn, chan) do
+        {:ok, conn, chan}
+      else
+        {:error, reason} ->
+          :ssh.close(conn)
+          {:error, "open interactive shell failed: #{describe(reason)}"}
+      end
+    end
+  end
+
+  @doc "Close the PTY channel, then the connection. Safe to call twice."
+  def close_interactive(conn, chan) do
+    if chan, do: :ssh_connection.close(conn, chan)
+    :ssh.close(conn)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  @doc "Tell the box the terminal was resized."
+  def resize(conn, chan, rows, cols) do
+    :ssh_connection.window_change(conn, chan, cols, rows)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  @doc "Forward keystrokes to the PTY."
+  def send_data(conn, chan, data) do
+    :ssh_connection.send(conn, chan, data, @cmd_timeout)
+  rescue
+    _ -> {:error, :closed}
+  end
+
+  defp session_channel(conn) do
+    case :ssh_connection.session_channel(conn, @cmd_timeout) do
+      {:ok, chan} -> {:ok, chan}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp alloc_pty(conn, chan, rows, cols) do
+    case :ssh_connection.ptty_alloc(conn, chan, [
+           {:term, ~c"xterm-256color"},
+           {:width, cols},
+           {:height, rows}
+         ]) do
+      :success -> :ok
+      other -> {:error, other}
+    end
+  end
+
+  defp start_shell(conn, chan) do
+    case :ssh_connection.shell(conn, chan) do
+      :ok -> :ok
+      other -> {:error, other}
     end
   end
 

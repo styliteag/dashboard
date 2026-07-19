@@ -171,7 +171,7 @@ defmodule Orbit.Poller do
   # whole poll. Fail-CLOSED still governs the connection itself — an unpinned or
   # mismatched host key refuses to connect, it does not fall back to trusting it.
   defp enrich_ipsec_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
-    case ssh_config(inst) do
+    case Orbit.Securepoint.SSH.config_for(inst) do
       {:ok, cfg} ->
         running = ipsec_running?(status)
 
@@ -190,39 +190,6 @@ defmodule Orbit.Poller do
   end
 
   defp enrich_ipsec_over_ssh(status, _inst), do: status
-
-  defp ssh_config(%Instance{} = inst) do
-    with key when is_binary(key) and key != "" <- decrypted_ssh_key(inst),
-         host when is_binary(host) and host != "" <- ssh_host(inst) do
-      {:ok,
-       %Orbit.Securepoint.SSH.Config{
-         host: host,
-         port: inst.ssh_port || 22,
-         user: inst.ssh_user || "root",
-         private_key: key,
-         host_key: inst.ssh_host_key
-       }}
-    else
-      _ -> :error
-    end
-  end
-
-  defp decrypted_ssh_key(%Instance{ssh_key_enc: nil}), do: nil
-
-  defp decrypted_ssh_key(%Instance{ssh_key_enc: enc}) do
-    case Orbit.Crypto.decrypt(enc) do
-      {:ok, key} -> key
-      _ -> nil
-    end
-  end
-
-  # SSH targets the box itself, not its API URL — take the host out of base_url.
-  defp ssh_host(%Instance{} = inst) do
-    case inst |> Instance.primary_base_url() |> URI.parse() do
-      %URI{host: h} when is_binary(h) and h != "" -> h
-      _ -> nil
-    end
-  end
 
   # The spcgi section is a bare list of connections; a non-empty one means the
   # daemon answered. Keep that verdict — swanctl cannot tell us more.

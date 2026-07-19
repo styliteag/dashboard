@@ -32,7 +32,9 @@ import {FitAddon} from "../vendor/addon-fit.js"
 const SHELL_CLOSE = {
   4401: "Session expired — please log in again.",
   4403: "Shell is disabled on this server (DASH_SHELL_ENABLED is off).",
-  4404: "Agent is not connected — no box to attach to.",
+  // 4404 covers both transports: no connected agent, and no usable SSH shell
+  // (a Securepoint needs SSH enabled with a key and a pinned host key).
+  4404: "No shell available — the agent is not connected, or SSH is not configured for this box.",
   4008: "Too many terminal sessions — close one and retry.",
 }
 

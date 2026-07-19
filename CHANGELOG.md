@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The Terminal works on Securepoint boxes.** They have no agent to attach to,
+  so the shell now runs over the same SSH access the IPsec enrichment uses. The
+  requirements are deliberately the same as before plus one: the terminal must
+  be enabled globally and for that instance, and the box needs a stored key and
+  a **pinned host key** — a root shell is the last thing that should be opened
+  to an unverified peer. Boxes with an agent are unaffected and still attach to
+  it. Closing the tab ends the login on the box.
+
 - **The dashboard checks reachability itself again — `ping` and `http`.** For a
   box without an agent this is the only honest liveness signal: it cannot tell
   us it is down, it just stops answering. The instance's ping target decides

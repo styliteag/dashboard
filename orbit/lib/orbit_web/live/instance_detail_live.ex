@@ -2800,9 +2800,9 @@ defmodule OrbitWeb.InstanceDetailLive do
     <span
       :if={@note}
       title={"#{@note.comment} — #{@note.updated_by}"}
-      class="ml-1 cursor-help text-warning/80"
+      class="ml-1 inline-flex cursor-help align-middle text-warning/80"
     >
-      📝
+      <Icons.icon name={:message_square} class="h-3.5 w-3.5" />
     </span>
     """
   end

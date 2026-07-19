@@ -30,8 +30,8 @@ defmodule OrbitWeb.ShellWSController do
          {id, ""} <- Integer.parse(raw_id),
          %Instance{} = inst <- Scope.get_instance(id, user),
          :ok <- opt_in(inst),
-         :ok <- agent_present(id) do
-      %{instance_id: id, user_id: user.id}
+         {:ok, transport} <- transport(inst) do
+      %{instance_id: id, user_id: user.id, transport: transport}
     else
       {:error, code} -> %{auth_error: code}
       # out-of-scope / missing instance / not push-connected: 4403 like the
@@ -51,8 +51,30 @@ defmodule OrbitWeb.ShellWSController do
   defp opt_in(%Instance{shell_enabled: true}), do: :ok
   defp opt_in(%Instance{}), do: {:error, 4403}
 
-  # A connected agent must exist (ssh-only Securepoint path ports later).
-  defp agent_present(instance_id) do
-    if Orbit.Hub.get(instance_id), do: :ok, else: {:error, 4404}
+  # LAST gate, and the only transport-aware one: everything above (feature gate,
+  # session, scope, per-instance opt-in) is identical for both paths.
+  #
+  # A push box attaches to its agent's PTY. A Securepoint has no agent and never
+  # will, so it uses the same SSH access the swanctl enrichment uses — which
+  # means it needs a pinned host key, because that transport is fail-closed.
+  # Anything else is 4404 ("no box to attach to"), unchanged.
+  defp transport(%Instance{id: id} = inst) do
+    cond do
+      Orbit.Hub.get(id) -> {:ok, :agent}
+      ssh_shell_possible?(inst) -> {:ok, :ssh}
+      true -> {:error, 4404}
+    end
   end
+
+  @doc false
+  def ssh_shell_possible?(%Instance{device_type: "securepoint", ssh_enabled: true} = inst) do
+    present?(inst.ssh_key_enc) and present?(inst.ssh_host_key)
+  end
+
+  def ssh_shell_possible?(%Instance{}), do: false
+
+  defp present?(nil), do: false
+  defp present?(""), do: false
+  defp present?(v) when is_binary(v), do: String.trim(v) != ""
+  defp present?(_), do: true
 end
