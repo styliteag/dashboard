@@ -61,16 +61,23 @@ defmodule Orbit.Settings do
   def set_override(key, raw) do
     with {:ok, defn} <- fetch_def(key),
          {:ok, value} <- Registry.coerce(defn, raw) do
-      # No editable key is a secret yet (all 6 are ints). When the fernet-
-      # encrypted keys (LLM api keys) get ported, encrypt here on
-      # defn.is_secret and store is_secret=1 — mirror of store.set_override.
+      stored = to_string(value)
+
+      # Secrets are fernet-encrypted at rest with is_secret=1 (mirror of
+      # store.set_override, invariant 3) — the python backend reads the same
+      # row, so a plaintext write here would leak the secret into a column
+      # both sides treat as encrypted.
+      {db_value, secret_flag} =
+        if defn.is_secret, do: {Orbit.Crypto.encrypt(stored), 1}, else: {stored, 0}
+
       Orbit.Repo.query!(
-        "INSERT INTO app_settings (`key`, `value`, `is_secret`) VALUES (?, ?, 0) " <>
-          "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `is_secret` = 0",
-        [key, to_string(value)]
+        "INSERT INTO app_settings (`key`, `value`, `is_secret`) VALUES (?, ?, ?) " <>
+          "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `is_secret` = VALUES(`is_secret`)",
+        [key, db_value, secret_flag]
       )
 
       reload()
+      Orbit.Logging.maybe_apply(key)
       {:ok, value}
     end
   end
@@ -82,6 +89,7 @@ defmodule Orbit.Settings do
       {:ok, _defn} ->
         Orbit.Repo.query!("DELETE FROM app_settings WHERE `key` = ?", [key])
         reload()
+        Orbit.Logging.maybe_apply(key)
         :ok
 
       err ->
