@@ -4,8 +4,11 @@
 
 # New things we maybe implement in the future:
 - Monitor ZFS host explicit with lesons we learned
--   special plugin for truenas onen open-e
+  - special plugin for truenas onen open-e
+- Split agent in OPNsense/pfSense and Linux
 - Monitor Proxmox
 - Monitor UCS
 - Monitor Drupal
 - Monitor Docker on linux
+- Make pro version:
+  - with https://phoenix.hexdocs.pm/Phoenix.Router.html#forward/4
