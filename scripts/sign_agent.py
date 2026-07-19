@@ -2,9 +2,9 @@
 """Sign the agent for self-update (Ed25519). Run with the OFFLINE private key.
 
     DASH_AGENT_SIGNING_KEY=<base64 raw 32-byte priv> \
-        uv --project backend run python scripts/sign_agent.py
+        uv --project tools run python scripts/sign_agent.py
     # or
-    uv --project backend run python scripts/sign_agent.py --key-file path
+    uv --project tools run python scripts/sign_agent.py --key-file path
 
 Writes ``<agent>.sig`` (base64 of the Ed25519 signature over the agent bytes).
 The agent must have ``_UPDATE_PUBKEY`` set to the matching public key (hex,

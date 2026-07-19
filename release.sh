@@ -41,8 +41,8 @@ if [[ -n "$AGENT_PUBKEY" ]]; then
         exit 1
     fi
     echo "Signing agent for self-update..."
-    uv --project backend run python scripts/sign_agent.py >/dev/null
-    if ! uv --project backend run python scripts/sign_agent.py --verify; then
+    uv --project tools run python scripts/sign_agent.py >/dev/null
+    if ! uv --project tools run python scripts/sign_agent.py --verify; then
         echo "Error: agent signature failed to verify after signing."
         exit 1
     fi
