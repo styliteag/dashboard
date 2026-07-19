@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Rich IPsec data for Securepoint boxes, over SSH.** The spcgi JSON API
+  reports tunnels but none of the IKE cookies, ESP SPIs or byte counters — the
+  identifiers that let two ends of the same tunnel be recognised as a pair
+  across NAT, and the numbers behind the traffic graphs. The dashboard now runs
+  `swanctl --raw` on the box and parses it, as the python backend did. Opt-in
+  per instance (SSH enabled, a key stored, a pinned host key), and the
+  enrichment fails open: any SSH problem leaves the plain spcgi tunnel list in
+  place rather than failing the poll. The connection itself stays fail-closed —
+  an unpinned or mismatched host key refuses to connect, it never falls back to
+  trusting the peer.
+
 ## [4.0.3] - 2026-07-19
 
 ### Changed
