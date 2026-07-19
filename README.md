@@ -111,8 +111,9 @@ self-update) don't apply to Securepoint.
   `mix release` (`orbit/`). In-process schedulers handle metrics retention, the GeoIP
   refresh and CrowdSec sync — no external job runner.
 - **Database:** **MariaDB 11**. Metrics are bucketed on the fly from the raw table
-  (no rollup table, no TimescaleDB). The schema is still **Alembic-managed** (shared
-  with the retired python stack); orbit reads it and does not own migrations yet.
+  (no rollup table, no TimescaleDB). Orbit **owns the schema** via Ecto migrations
+  (applied at boot; a baseline migration captures the current schema and creates it
+  on an empty DB).
 - **Agent:** pure-stdlib Python (no pip dependencies), runs on OPNsense/pfSense (FreeBSD).
 - **Container:** the `orbit` release image runs Bandit on `:4000`; a thin **nginx**
   service is the only front door — it proxies the UI, `/api`, the agent websocket
@@ -138,15 +139,18 @@ docker compose up -d --build
 # http://localhost  (DASH_PORT in .env to remap; put your TLS proxy in front)
 ```
 
-**Schema prerequisite.** Orbit does not own database migrations yet — the MariaDB
-schema is Alembic-managed (shared with the retired python stack). If you are
-**cutting over** an existing deployment the DB is already migrated, so there is
-nothing to do. For a **greenfield** install, run the python stack's
-`alembic upgrade head` against this database once before the first `orbit` boot;
-orbit only reads the schema.
+**Schema.** Orbit **owns** the database schema (Ecto migrations, applied
+automatically at boot by `Orbit.Repo.Migrator` — no manual step). A **greenfield**
+database is created from the baseline migration on first boot; a **cutover** from
+the old stack finds the tables already present and the idempotent baseline adopts
+them as a no-op, just recording the schema version. Data is never touched.
 
-Accounts live in that shared DB, so the bootstrap admin/superadmin you seeded under
-the old stack keep working — no re-seed on cutover.
+Future schema changes are ordinary migrations under
+[`orbit/priv/repo/migrations/`](orbit/priv/repo/migrations/) — scaffold one with
+`just orbit-migration <name>`, apply with `just orbit-migrate` (or on the next boot).
+
+Accounts live in that DB, so on a cutover the bootstrap admin/superadmin you seeded
+under the old stack keep working — no re-seed.
 
 To pull a published image instead of building locally, edit `compose.yml` — swap the
 `build:` block under `orbit` for `image: ghcr.io/styliteag/dashboard-orbit:latest`.
@@ -246,8 +250,9 @@ agent/                  stdlib push agent for OPNsense/pfSense + install.sh + rc
 checkmk/                Checkmk special-agent plugin (pulls /api/export/checkmk)
 scripts/                sign_agent.py — Ed25519 signing for agent self-update
 docs/                   public operator docs (Securepoint SSH, glossary, …)
-backend/ frontend/      retired FastAPI + React stack (kept for the shared Alembic
-                        schema + history; not built or run in prod)
+backend/ frontend/      retired FastAPI + React stack (kept for history + the
+                        Alembic migrations the orbit baseline was captured from;
+                        not built or run in prod)
 .github/workflows/      release.yml — multi-arch publish on tag push
 VERSION                 source of truth, baked into image at build
 release.sh              version bump + tag + push helper

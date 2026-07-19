@@ -11,12 +11,13 @@
 #   #            DB_ROOT_PASSWORD, DASH_PUBLIC_HOST
 #   docker compose up -d --build
 #
-# SCHEMA PREREQUISITE: orbit does not own database migrations yet — the MariaDB
-# schema is still Alembic-managed (shared with the retired python stack). This
-# compose therefore assumes the schema already exists:
-#   - Cutover from the python stack → the DB is already migrated. Nothing to do.
-#   - Greenfield install → run the python stack's `alembic upgrade head` once
-#     against this DB before first `orbit` boot (orbit only reads the schema).
+# SCHEMA: orbit now OWNS the database schema (Ecto migrations, run at boot by
+# Orbit.Repo.Migrator — no manual step):
+#   - Empty/greenfield DB → the baseline migration creates the whole schema.
+#   - Cutover from the python stack → the baseline is idempotent (CREATE TABLE
+#     IF NOT EXISTS), so it adopts the already-migrated tables as a no-op and
+#     just records the version. Accounts and data are untouched.
+# Future schema changes are ordinary migrations in orbit/priv/repo/migrations/.
 #
 # To pull prebuilt images instead of building, comment the `build:` block under
 # `orbit` and uncomment its `image:` line.

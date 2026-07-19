@@ -1,8 +1,9 @@
 import Config
 
-# Shared dev MariaDB from compose-dev.yml — same DB the Python backend uses.
-# Schema is owned by Alembic until cutover: NEVER run ecto.create/ecto.migrate
-# against it (docs/elixir-liveview-rewrite.md §7).
+# Shared dev MariaDB from compose-dev.yml. Orbit now OWNS the schema (Ecto): the
+# baseline migration is idempotent (CREATE TABLE IF NOT EXISTS), so `just
+# orbit-migrate` against this DB is safe — it stamps schema_migrations and is a
+# no-op on the already-created tables. Add schema changes as normal migrations.
 config :orbit, Orbit.Repo,
   username: System.get_env("DB_USER", "dash"),
   password: System.get_env("DB_PASSWORD", "devpassword"),

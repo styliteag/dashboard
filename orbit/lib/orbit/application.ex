@@ -7,17 +7,21 @@ defmodule Orbit.Application do
 
   @impl true
   def start(_type, _args) do
-    base = [
-      OrbitWeb.Telemetry,
-      Orbit.Repo,
-      {DNSCluster, query: Application.get_env(:orbit, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Orbit.PubSub},
-      {Orbit.Auth.LoginLimiter, []},
-      {Orbit.Settings, []},
-      {Orbit.Hub, []},
-      {Orbit.Shell.Slots, []},
-      {Orbit.Capture.Snapshots, []}
-    ]
+    base =
+      [
+        OrbitWeb.Telemetry,
+        Orbit.Repo
+      ] ++
+        migrator_child() ++
+        [
+          {DNSCluster, query: Application.get_env(:orbit, :dns_cluster_query) || :ignore},
+          {Phoenix.PubSub, name: Orbit.PubSub},
+          {Orbit.Auth.LoginLimiter, []},
+          {Orbit.Settings, []},
+          {Orbit.Hub, []},
+          {Orbit.Shell.Slots, []},
+          {Orbit.Capture.Snapshots, []}
+        ]
 
     # GeoIP gate + access accounting start BEFORE the endpoint — both must
     # be up before the first request; the endpoint stays last so it only
@@ -37,6 +41,17 @@ defmodule Orbit.Application do
       # Settings-driven log level/format — after the Settings table exists.
       Orbit.Logging.apply()
       {:ok, pid}
+    end
+  end
+
+  # Run pending migrations at boot (empty DB → full baseline schema; existing
+  # DB → incremental changes) BEFORE Settings/Hub/endpoint touch any table.
+  # Off in :test — the suite manages its own database.
+  defp migrator_child do
+    if Application.get_env(:orbit, :migrate_on_boot, true) do
+      [Orbit.Repo.Migrator]
+    else
+      []
     end
   end
 

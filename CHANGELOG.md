@@ -15,9 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LiveView socket to the `orbit` release on `:4000`. Old and new never run side
   by side. New required env: `ORBIT_SECRET_KEY_BASE` and `DASH_PUBLIC_HOST`; the
   orbit runner image now bundles `curl` for its `/api/health-ex` healthcheck.
-  Note: orbit does not own DB migrations yet — the schema stays Alembic-managed,
-  so greenfield installs must run `alembic upgrade head` once before first boot
-  (a cutover reuses the already-migrated DB and its accounts). README updated.
+  A cutover reuses the already-migrated DB and its accounts. README updated.
+
+- Orbit now **owns the database schema** (Ecto migrations), ending the Alembic
+  dependency. `Orbit.Repo.Migrator` runs pending migrations at boot, before the
+  app serves a request: an **empty** database is created from a baseline
+  migration (`orbit/priv/repo/baseline_schema.sql`, the captured Alembic-head
+  schema, emitted in FK-dependency order and idempotent), and a **cutover**
+  database has its existing tables adopted as a no-op that just records the
+  version — data untouched. Schema changes are now ordinary migrations
+  (`just orbit-migration <name>` / `just orbit-migrate`); `Orbit.Release`
+  exposes `migrate`/`rollback` for the release. No more `alembic upgrade head`
+  step on greenfield installs.
 
 ### Security
 
