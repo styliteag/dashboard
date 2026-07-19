@@ -1,0 +1,277 @@
+/* See the Tailwind configuration guide for advanced usage
+   https://tailwindcss.com/docs/configuration */
+
+@import "tailwindcss" source(none);
+@import "../vendor/xterm.css";
+@import "phoenix-colocated/orbit/colocated.css";
+@source "../css";
+@source "../js";
+@source "../../lib/orbit_web";
+/* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
+@source "../../_build/dev/phoenix-colocated/orbit/*/";
+
+/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
+   The heroicons installation itself is managed by your mix.exs */
+@plugin "../vendor/heroicons";
+
+/* daisyUI Tailwind Plugin. */
+@plugin "daisyui/packages/bundle/daisyui" {
+  themes: false;
+}
+
+/* daisyUI themes — three designs x light/dark (link-shortener pattern,
+   OrbitWeb.Design). orbit-dark is the classic dashboard look and maps the
+   semantic tokens EXACTLY onto the historical palette so the token sweep
+   is pixel-faithful: base-100=slate-950 (page), base-200=slate-900
+   (cards), base-300=slate-800 (chips/borders), primary=emerald,
+   warning=amber, error=red, info=sky. Note the inverted base lightness
+   vs. daisyUI convention — deliberate, the sweep maps surfaces 1:1. */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "orbit-dark";
+  default: true;
+  prefersdark: true;
+  color-scheme: "dark";
+  --color-base-100: oklch(12.9% 0.042 264.695);
+  --color-base-200: oklch(20.8% 0.042 265.755);
+  --color-base-300: oklch(27.9% 0.041 260.031);
+  --color-base-content: oklch(96.8% 0.007 247.896);
+  --color-primary: oklch(69.6% 0.17 162.48);
+  --color-primary-content: oklch(26.2% 0.051 172.552);
+  --color-secondary: oklch(70.4% 0.04 256.788);
+  --color-secondary-content: oklch(20.8% 0.042 265.755);
+  --color-accent: oklch(71.4% 0.203 305.504);
+  --color-accent-content: oklch(29.1% 0.149 302.717);
+  --color-neutral: oklch(37.2% 0.044 257.287);
+  --color-neutral-content: oklch(96.8% 0.007 247.896);
+  --color-info: oklch(68.5% 0.169 237.323);
+  --color-info-content: oklch(29.3% 0.066 243.157);
+  --color-success: oklch(69.6% 0.17 162.48);
+  --color-success-content: oklch(26.2% 0.051 172.552);
+  --color-warning: oklch(76.9% 0.188 70.08);
+  --color-warning-content: oklch(27.9% 0.077 45.635);
+  --color-error: oklch(63.7% 0.237 25.331);
+  --color-error-content: oklch(97.1% 0.013 17.38);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Orbit in daylight — cool paper, slate ink, deepened emerald */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "orbit-light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(98.4% 0.003 247.858);
+  --color-base-200: oklch(94% 0.006 247.9);
+  --color-base-300: oklch(88% 0.01 248);
+  --color-base-content: oklch(20.8% 0.042 265.755);
+  --color-primary: oklch(50.8% 0.118 165.612);
+  --color-primary-content: oklch(97.9% 0.021 166.113);
+  --color-secondary: oklch(44.6% 0.043 257.281);
+  --color-secondary-content: oklch(98.4% 0.003 247.858);
+  --color-accent: oklch(49.6% 0.265 301.924);
+  --color-accent-content: oklch(97.7% 0.014 308.299);
+  --color-neutral: oklch(27.9% 0.041 260.031);
+  --color-neutral-content: oklch(98.4% 0.003 247.858);
+  --color-info: oklch(50% 0.134 242.749);
+  --color-info-content: oklch(97.7% 0.013 236.62);
+  --color-success: oklch(50.8% 0.118 165.612);
+  --color-success-content: oklch(97.9% 0.021 166.113);
+  --color-warning: oklch(55.5% 0.163 48.998);
+  --color-warning-content: oklch(98.7% 0.022 95.277);
+  --color-error: oklch(51.4% 0.222 16.935);
+  --color-error-content: oklch(97.1% 0.013 17.38);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Bench — ink on paper, stamp green, square corners */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "bench-light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(99% 0.002 100);
+  --color-base-200: oklch(96.5% 0.003 100);
+  --color-base-300: oklch(92% 0.004 100);
+  --color-base-content: oklch(18% 0.01 260);
+  --color-primary: oklch(45% 0.12 165);
+  --color-primary-content: oklch(98% 0.01 165);
+  --color-secondary: oklch(35% 0.02 260);
+  --color-secondary-content: oklch(98% 0 0);
+  --color-accent: oklch(55% 0.18 40);
+  --color-accent-content: oklch(98% 0.01 40);
+  --color-neutral: oklch(25% 0.01 260);
+  --color-neutral-content: oklch(98% 0 0);
+  --color-info: oklch(55% 0.15 240);
+  --color-info-content: oklch(98% 0.01 240);
+  --color-success: oklch(50% 0.13 160);
+  --color-success-content: oklch(98% 0.01 160);
+  --color-warning: oklch(62% 0.16 70);
+  --color-warning-content: oklch(20% 0.05 70);
+  --color-error: oklch(52% 0.2 25);
+  --color-error-content: oklch(97% 0.014 25);
+  --radius-selector: 0rem;
+  --radius-field: 0rem;
+  --radius-box: 0rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Bench after dark — terminal: phosphor green on near-black */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "bench-dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: "dark";
+  --color-base-100: oklch(13% 0.004 160);
+  --color-base-200: oklch(16.5% 0.005 160);
+  --color-base-300: oklch(22% 0.006 160);
+  --color-base-content: oklch(90% 0.02 150);
+  --color-primary: oklch(75% 0.16 150);
+  --color-primary-content: oklch(18% 0.05 150);
+  --color-secondary: oklch(80% 0.01 260);
+  --color-secondary-content: oklch(18% 0.01 260);
+  --color-accent: oklch(75% 0.15 70);
+  --color-accent-content: oklch(20% 0.05 70);
+  --color-neutral: oklch(28% 0.008 160);
+  --color-neutral-content: oklch(90% 0.02 150);
+  --color-info: oklch(70% 0.12 235);
+  --color-info-content: oklch(20% 0.04 235);
+  --color-success: oklch(72% 0.14 155);
+  --color-success-content: oklch(18% 0.05 155);
+  --color-warning: oklch(78% 0.15 80);
+  --color-warning-content: oklch(24% 0.06 80);
+  --color-error: oklch(65% 0.19 25);
+  --color-error-content: oklch(97% 0.014 25);
+  --radius-selector: 0rem;
+  --radius-field: 0rem;
+  --radius-box: 0rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Soft — warm white, friendly green + coral, pill shapes. primary stays the
+   "ok/action" green of every other design (see orbit-light) — `primary` is
+   what the app paints OK badges, up-lanes and confirm buttons with, so a blue
+   primary made "OK" read as "info" here. `info` remains blue. */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "soft-light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(99% 0.004 90);
+  --color-base-200: oklch(96% 0.01 85);
+  --color-base-300: oklch(92% 0.015 85);
+  --color-base-content: oklch(27% 0.02 60);
+  --color-primary: oklch(50% 0.13 165);
+  --color-primary-content: oklch(97% 0.01 165);
+  --color-secondary: oklch(66% 0.16 20);
+  --color-secondary-content: oklch(98% 0.01 20);
+  --color-accent: oklch(76% 0.11 160);
+  --color-accent-content: oklch(22% 0.05 160);
+  --color-neutral: oklch(40% 0.02 60);
+  --color-neutral-content: oklch(98% 0 0);
+  --color-info: oklch(62% 0.14 240);
+  --color-info-content: oklch(97% 0.01 240);
+  --color-success: oklch(64% 0.13 165);
+  --color-success-content: oklch(98% 0.01 165);
+  --color-warning: oklch(75% 0.14 80);
+  --color-warning-content: oklch(25% 0.05 80);
+  --color-error: oklch(60% 0.2 20);
+  --color-error-content: oklch(97% 0.014 20);
+  --radius-selector: 2rem;
+  --radius-field: 1rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Soft at night — warm dark, brighter green + coral, pill shapes */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "soft-dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: "dark";
+  --color-base-100: oklch(18% 0.012 60);
+  --color-base-200: oklch(22% 0.014 60);
+  --color-base-300: oklch(28% 0.016 60);
+  --color-base-content: oklch(93% 0.01 85);
+  --color-primary: oklch(72% 0.13 165);
+  --color-primary-content: oklch(20% 0.05 165);
+  --color-secondary: oklch(72% 0.14 20);
+  --color-secondary-content: oklch(20% 0.05 20);
+  --color-accent: oklch(76% 0.11 160);
+  --color-accent-content: oklch(22% 0.05 160);
+  --color-neutral: oklch(34% 0.018 60);
+  --color-neutral-content: oklch(93% 0.01 85);
+  --color-info: oklch(70% 0.12 240);
+  --color-info-content: oklch(20% 0.04 240);
+  --color-success: oklch(72% 0.13 165);
+  --color-success-content: oklch(20% 0.05 165);
+  --color-warning: oklch(78% 0.14 80);
+  --color-warning-content: oklch(24% 0.05 80);
+  --color-error: oklch(68% 0.18 20);
+  --color-error-content: oklch(97% 0.014 20);
+  --radius-selector: 2rem;
+  --radius-field: 1rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Use the data attribute for dark mode  */
+@custom-variant dark (&:where([data-theme$="-dark"], [data-theme$="-dark"] *));
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* This file is for your main application CSS */
+
+/* ---- UI polish (ui-ux-pro-max pass, 2026-07-19) -------------------------
+   Tailwind v4 preflight leaves buttons with cursor:default — every enabled
+   button in this app is an action. Focus ring for keyboard nav (emerald,
+   matches the accent), gentle color transitions on interactive elements,
+   and a subtle hover on data-table rows. Motion is color-only, so no
+   prefers-reduced-motion branch is needed. */
+@layer base {
+  button:not(:disabled) { cursor: pointer; }
+  a, button, summary, select, input[type="checkbox"] {
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  tbody tr:hover {
+    background-color: color-mix(in oklab, var(--color-base-300) 45%, transparent);
+  }
+}

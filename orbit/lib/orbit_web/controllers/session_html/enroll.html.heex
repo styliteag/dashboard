@@ -1,0 +1,50 @@
+<main class="flex min-h-screen items-center justify-center bg-base-100 text-base-content">
+  <div class="w-full max-w-md rounded-lg border border-base-300 bg-base-200 p-6">
+    <h1 class="mb-2 text-lg font-medium text-base-content">Set up two-factor authentication</h1>
+    <p class="mb-4 text-sm text-base-content/70">
+      This account requires 2FA. Add the secret to your authenticator app, then confirm
+      with the current code.
+    </p>
+
+    <p
+      :if={@error}
+      class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
+    >
+      {@error}
+    </p>
+
+    <div class="mb-4 rounded border border-base-300 bg-base-100 p-3">
+      <div class="mb-1 text-xs text-base-content/60">Secret (enter manually):</div>
+      <code class="break-all font-mono text-sm text-primary">{@secret}</code>
+      <div class="mb-1 mt-3 text-xs text-base-content/60">…or open in your authenticator:</div>
+      <a
+        href={@uri}
+        class="break-all font-mono text-xs text-base-content/70 underline decoration-slate-700"
+      >
+        {@uri}
+      </a>
+    </div>
+
+    <form action={~p"/login/enroll"} method="post" class="space-y-3">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <label class="block text-sm">
+        <span class="mb-1 block text-xs text-base-content/60">Code from your app</span>
+        <input
+          type="text"
+          name="code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          required
+          autofocus
+          class="w-full rounded border border-base-content/20 bg-base-100 p-2 text-center font-mono text-lg tracking-widest text-base-content"
+        />
+      </label>
+      <button
+        type="submit"
+        class="w-full rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/80"
+      >
+        Confirm and sign in
+      </button>
+    </form>
+  </div>
+</main>

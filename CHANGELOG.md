@@ -7,6 +7,294 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Orbit polls the direct-API fleet again. The cutover retired the python
+  backend, and with it the only process that polled OPNsense/pfSense API boxes
+  and Securepoint UTMs — those instances went unmonitored (their data froze at
+  the last python poll). Orbit's scheduler now ticks every
+  `poll_tick_seconds`, polls each box once its own `poll_interval_seconds`
+  (per-instance override honoured) has elapsed since its last attempt, and
+  fans the work out at `poll_concurrency` so one hung appliance cannot stall
+  the tick. Each poll writes the metric rows, updates the online/offline
+  columns and fires the same recovered/offline notifications and history rows
+  as a push agent.
+
+- Direct-polled OPNsense boxes now also report **interfaces, uptime and the
+  running version**, not just CPU/memory/disks — so their interface traffic
+  graphs, uptime sawtooth and version display work like an agent box's.
+
+### Fixed
+
+- A direct-API box that is unreachable is now reported as **offline**.
+  Previously (python behaviour, carried into the port) the vendor client
+  swallowed connection errors, the poll counted as a success, and the box
+  stayed green while its CPU graph flatlined at 0 % — a dead firewall looked
+  idle rather than down. A poll that yields no data at all is now an error.
+
+## [4.0.0] - 2026-07-19
+
+### Changed
+
+- Production compose is now the **Orbit (Elixir/LiveView) cutover topology**: the
+  old combined FastAPI+React `app` image is gone; a thin `nginx` service is the
+  only front door and proxies the UI, `/api`, the agent websocket and the
+  LiveView socket to the `orbit` release on `:4000`. Old and new never run side
+  by side. New required env: `ORBIT_SECRET_KEY_BASE` and `DASH_PUBLIC_HOST`; the
+  orbit runner image now bundles `curl` for its `/api/health-ex` healthcheck.
+  A cutover reuses the already-migrated DB and its accounts. README updated.
+
+- Orbit now **owns the database schema** (Ecto migrations), ending the Alembic
+  dependency. `Orbit.Repo.Migrator` runs pending migrations at boot, before the
+  app serves a request: an **empty** database is created from a baseline
+  migration (`orbit/priv/repo/baseline_schema.sql`, the captured Alembic-head
+  schema, emitted in FK-dependency order and idempotent), and a **cutover**
+  database has its existing tables adopted as a no-op that just records the
+  version — data untouched. Schema changes are now ordinary migrations
+  (`just orbit-migration <name>` / `just orbit-migrate`); `Orbit.Release`
+  exposes `migrate`/`rollback` for the release. No more `alembic upgrade head`
+  step on greenfield installs.
+
+### Security
+
+- Orbit: the fleet Log events page was reachable by every signed-in account,
+  while the python original gates `/logs/events` — like every logfile route —
+  on admin. The rows carry the program name and the log line itself, and raw
+  log content is admin-only by policy, so a `user` or `view_only` member of a
+  group could read the log lines of that group's firewalls. `/logs` is now in
+  the admin-only route group and its nav link needs admin **and** group
+  membership. Orbit-only regression from the LiveView rewrite; the python
+  dashboard was never affected.
+
+- Orbit: the Hub status page was reachable by **every** signed-in account,
+  while the python original gates `/hub/stats` on admin. Only the agent roster
+  is scoped per instance — the message/error counters, the fleet pushes-per-
+  minute chart and the served-agent version are global in-memory numbers, so a
+  view-only user, or the group-less seed superadmin (who by design sees no
+  instances at all), could read fleet-wide activity off an otherwise empty
+  page. `/hub` now lives in the admin-only route group and its nav link is
+  admin-gated, matching the react dashboard. Orbit-only regression from the
+  LiveView rewrite; the python dashboard was never affected.
+
+- Orbit: the login and agent-enrollment brute-force limiters keyed on the raw
+  socket peer instead of the proxy-aware client IP. Behind nginx that peer is
+  the reverse-proxy container — identical for every external client — so the
+  per-IP lock collapsed into one shared bucket: five bad passwords (or five
+  bad enrollment codes) from anyone locked login for **all** users, and agent
+  enrollment for the **whole** fleet, for 15 minutes. Both controllers now
+  resolve the client IP through `Orbit.Net.client_ip/1` (honouring
+  `DASH_TRUSTED_PROXY_HOPS`), matching what audit and the geo gate already use.
+
+### Fixed
+
+- Orbit: writing an audit entry that carried an allowlisted detail field
+  (comment.set, instance.delete, geoip.config.update, …) crashed the
+  calling process on the log line (string detail keys vs. the atom-keyed
+  log meta); the DB row was written first so it surfaced only as noise —
+  now fixed, with a regression test.
+
+- Orbit GUI proxy: the very first request after opening a firewall WebUI no
+  longer fails with "firewall gui unavailable" — the proxy now retries the
+  initial connection while the on-demand tunnel (agent stream + TLS/HTTP-2
+  handshake) comes up.
+- Orbit GUI proxy: the live widgets inside a proxied firewall UI (traffic
+  graph, firewall log, CPU) now work — server-sent-event streams are passed
+  through chunked instead of buffering to a timeout.
+
+### Changed
+
+- Orbit Log events: the page now says what it is not — not a log viewer.
+  It states the hourly push cadence, that each push replaces a box's events,
+  that anything below severity 4 is dropped at ingest and can never show up,
+  and that a row is a normalised pattern with a count rather than a single
+  occurrence. It also shows the newest ingest timestamp, so an idle box's old
+  data is recognisable as old. A program tally row (`kernel ×22`,
+  `sshd ×1`, toned by worst severity) sits above the table; if more than
+  eight programs are involved the row says how many it left out.
+
+- Orbit Alerts: the page now states what it does and does not cover — only
+  agent-mode boxes (direct-API polled firewalls produce no alerts here), that
+  UNKNOWN means "could not check" rather than OK, and that a silent agent or a
+  box in maintenance caps its other CRITs to WARN, so a calm page can still
+  mean a loud box. A tally row above the table shows the affected check
+  families with their worst state (`ipsec.tunnel ×3` in red, `cert ×1` in
+  amber).
+
+- Orbit Hub: every number on the page now says what it counts. Each tile
+  carries a one-line caption (your scope vs. fleet-wide, since when), the two
+  counter blocks explain what a non-zero value means and that they are
+  hub-wide totals — so "Total pushes" (your agents) legitimately disagreeing
+  with "Metric pushes" (whole fleet) is no longer a puzzle — and the roster
+  gets a tally row above it (`opnsense ×2`, `3.1.8 ×5`, outdated versions in
+  amber). Same presentation the Access-control page uses.
+
+- Orbit: the top navigation now hides the instance pages (Instances, Alerts,
+  Connectivity, VPN, Certs, Firmware, Logs) for accounts that have no group
+  membership — every one of those pages renders an empty list for them, so the
+  links were seven dead ends. This is the normal state of a superadmin
+  (rights management only, no instance access) and of any user before groups
+  are assigned; a superadmin who *does* hold groups keeps the full menu. The
+  post-login landing page follows the same logic: admins still land on Hub,
+  users with groups on Instances, a group-less superadmin on Users.
+
+### Added
+
+- Orbit GeoIP: the dashboard now shows the **city** (not just the country) an
+  IP resolves from, using the GeoLite2-City edition the weekly updater already
+  pulls. A small footer on every page shows where you are connecting from; the
+  Access-control page shows the admin's own "City, CC" (and evaluates the
+  self-lockout dry-run against the real proxy-forwarded IP, not the nginx
+  container); and a firewall's External IP panel shows the location of its WAN
+  address. Display-only — the access gate still decides on country, so nothing
+  about who is blocked changes. Persisted city in the denial history/stats
+  waits until orbit owns the shared schema (those tables stay country-only for
+  now).
+
+- Orbit: the Settings page is rebuilt to match the old UI — real tabs
+  (General, Mattermost, Telegram, Email, AI, Checkmk, Prometheus) with rich
+  rows per setting (friendly label, help text, key + default line, "default"
+  and "needs restart" badges, typed inputs, per-row Save + reset). Channel
+  tabs carry the mute toggle + test, AI the provider test buttons, Checkmk
+  and Prometheus the API-key/selection links. Two settings that were
+  env-only (GUI proxy idle timeout, IPsec event retention) are now
+  DB-overridable and appear in the list.
+
+- Orbit: inline editable comments in the list views — a pencil per row on
+  Instances (the box's notes), VPN tunnels and Connectivity monitors opens
+  a small popover to add/edit/clear a comment, matching the old UI's
+  EntityCommentBadge.
+- Orbit: the VPN page's WebGUI icon now deep-links to the firewall's own
+  IPsec status page (/ui/ipsec/sessions on OPNsense, /status_ipsec.php on
+  pfSense) instead of the GUI root, matching the old UI.
+- Orbit: the Instances list rows (list and grid) get the WebUI and Terminal
+  quick links they were missing — same per-row icons as the fleet pages.
+
+- Orbit (LiveView rewrite): metric history charts on the instance detail page
+  — CPU, RAM, load, pf states, agent collect time and the uptime sawtooth,
+  switchable across 1h/6h/24h/7d/30d like the old UI. The Elixir hub now also
+  persists metric rows on every agent push, so the series keeps growing when
+  Orbit (not the Python stack) is the active hub.
+- Orbit: the firewall rules page grows the full editor — create, edit,
+  clone, move up/down (reorder), search — on top of toggle/delete/apply.
+- Orbit: packet capture gains snapshot mode — bounded tcpdump via the
+  agent, pcap download, and an in-browser packet viewer (proto/src/dst/
+  flags, hex preview, client-side filter) next to the live stream.
+- Orbit: every page now renders through the semantic theme tokens, so all
+  three designs and both modes restyle the whole UI (status colors stay
+  semantic: warning=amber-family, error=red-family per theme).
+- Orbit: three switchable designs (Orbit, Bench, Soft), each with light and
+  dark mode — same system as the link-shortener: year-long cookies, served
+  as data-theme, switcher bottom-right on every page including login.
+  Orbit-dark is the classic slate+emerald look and stays the default.
+- Orbit: UI polish pass — pointer cursors on all buttons (Tailwind v4
+  preflight left them default), emerald keyboard-focus rings, 150ms color
+  transitions on interactive elements, subtle table-row hover, a clear
+  active state in the top navigation, and real SVG icons for the WebUI/
+  Terminal quick links instead of unicode glyphs.
+- Orbit: the Hub page reaches full parity with the old one — pushes/min and
+  errors-total KPIs, the error-counter grid (auth failures, bad JSON,
+  unknown frames — red when non-zero), the message-counter grid (pushes,
+  command results, tunnel frames, pongs, connects, disconnects), CRIT
+  alerts grouped as chips linking to the owning page, and the in-memory
+  uptime note; the Elixir hub now counts all of these itself.
+- Orbit: the console-password policy note is back on the instance detail
+  overview — an amber banner when "Password protect the console menu" is
+  enabled on the box (fleet standard is no console password).
+- Orbit: the VPN page has a dedicated Graph button per tunnel (three-lane
+  state view, larger lanes) next to History (lanes + transition table),
+  matching the old UI's two separate popups.
+- Orbit: the Hub page shows the fleet push-activity chart (pushes per
+  minute over the last 6 hours).
+- Orbit: per-tunnel Diagnose on the instance detail — the agent's readable
+  diagnostic bundle (swanctl/status/log sections) inline under the IPsec
+  table, first section expanded.
+- Orbit: the tunnel History dialog renders the three-lane state graph
+  (Phase 1 / Phase 2 / Ping — green up, amber partial, red down, grey no
+  data), and persistent duplicate CHILD_SAs are detected again: the Elixir
+  hub debounces the agent's dup signal over three pushes, shows the ⚠ N×
+  SAs note on the phase-2 rows and records phase2_dup_on/off history
+  events, exactly like the Python hub did.
+- Orbit: tunnel history is back — a History dialog per tunnel on the VPN
+  page with an up/down timeline graph and the recorded transitions
+  (phase-1 up/down, phase-2 count changes, ping ok/fail); the Elixir hub
+  now records these transitions on every push, so history keeps growing
+  after cutover.
+- Orbit: phase-2 ping monitors get a proper edit dialog on the VPN page —
+  source/destination/count/enabled plus a Test button that live-pings the
+  current form values through the agent before saving; the expand arrow
+  moved to the first column and is properly clickable now.
+- Orbit: the root URL goes straight to the Hub page — the interim landing
+  page from the first milestone is gone.
+- Orbit: the fleet VPN page gains the phase-2 expander (traffic selectors,
+  child status, ping state) and inline phase-2 ping-monitor add/remove per
+  child SA — same controls as the instance detail, one query for the whole
+  fleet.
+- Orbit: the instance detail page is tabbed again like the old UI —
+  Overview, Config, Checks, Network, Capture, Firewall, VPN, Connectivity,
+  Log, Firmware, Agent — with the same device-capability filter (no agent
+  tabs on Securepoint, rule editor only on OPNsense) and the active tab in
+  the URL; plus an inline two-version config-backup diff viewer with
+  colored +/- lines.
+- Orbit: the Settings page is organized into sections (Polling & agents,
+  Retention, Notifications, AI providers), the notification mutes become
+  one-click mute/unmute toggles, and each AI provider gets a Test button
+  that proves key, base URL and model through the real analyze path.
+- Orbit: Phase-2 ping monitors can be added/removed inline in the IPsec
+  phase-2 expander (source pre-filled from the agent's suggestion; one
+  monitor per child SA).
+- Orbit: the Groups page gains the instance-assignment table (move any
+  instance between groups, applies immediately) and the firmware card shows
+  pending-package list, update counters, needs-reboot and the last check
+  output.
+- Orbit: inline note badges (📝 with the note as tooltip) on IPsec tunnels,
+  certificates, connectivity monitors and the firmware card.
+- Orbit: connectivity monitors on the instance detail page — live ping
+  results (state/RTT/loss) joined per monitor, create/enable/disable/delete,
+  and the agent now receives both monitor sets (standalone + IPsec phase-2)
+  right after every reconnect, so probes keep running when Orbit owns the
+  hub.
+- Orbit: full agent lifecycle on the instance detail page — enable/disable
+  agent mode (token mint/revoke), refresh-now, reconnect, test-local-API
+  through the relay, show token, uninstall with fallback to direct
+  transport, plus condensed copy-paste install instructions (FreeBSD and
+  Linux) and the public bootstrap download endpoints
+  (/api/agent/script|run|rc|systemd|checkmk).
+- Orbit: instance detail gains the System-health strip (load per core, swap,
+  pf state table, NTP), the last-config-revision card, per-collector runtime
+  bars on the Agent card, and per-check notify/export toggles (instance
+  override vs global, same selection rules as the exports).
+- Orbit: GeoIP database "Refresh now" button on the Access page (with last
+  refresh outcome), a version tag in the navigation header, and audit
+  Actions-tab filters (free text, time window, load-more) with usernames
+  instead of raw user ids.
+- Orbit: the fleet overview pages regain the old UI's interaction — Alerts
+  (severity tiles, search with deep link from the instance badges, Checkmk
+  exported/excluded filter), VPN (up/down tiles, search, sortable columns,
+  phase-2/uptime/traffic, reconnect per row), Firmware (verdict tiles,
+  search, type chips, latest/security/needs-reboot/lock columns) and
+  Certificates (expiry tiles, search, issuer/expiry columns with runway
+  bars, GUI/CA badges); Connectivity (state tiles, search), Log events
+  (severity tiles, search, per-instance chips) and Hub status (KPI cards,
+  instance names + links instead of bare ids, connected-since column); all
+  with WebUI/Terminal quick links per row.
+- Orbit: IPsec tunnels on the instance detail page are interactive again —
+  connect/disconnect/reconnect per tunnel, service restart with confirmation,
+  instant recheck, phase-2 expand with traffic selectors and ping state, plus
+  remote/uptime/traffic columns and a stale-push banner when the agent is
+  silent.
+- Orbit: per-group notification channels — alerts for a group's instances go
+  to the group's own Mattermost/Telegram/Email target instead of the global
+  one, and the Groups page gains the channel editor (masked secrets,
+  "keep stored" on save, remove falls back to global).
+- Orbit: the weekly GeoLite2-City database refresh now also runs in the
+  Elixir stack (idle without MaxMind credentials, atomic install) — after
+  cutover the GeoIP database keeps updating without the Python scheduler.
+- Orbit: the instances list regains the old UI's interaction — clickable KPI
+  tiles (Total/Online/Degraded/Offline) that filter by status, search over
+  name/location/tags, device-type and tag chips, a maintenance-only filter,
+  sortable columns, list/grid toggle, per-row CRIT/WARN alert badges, edit and
+  delete row actions, and the amber "Update all agents" banner.
+
 ## [3.1.8] - 2026-07-16
 
 ### Changed

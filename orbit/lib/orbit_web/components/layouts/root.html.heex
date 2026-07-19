@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" data-theme={assigns[:theme] || OrbitWeb.Design.theme(OrbitWeb.Design.default())}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="Orbit" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+  </head>
+  <body>
+    {@inner_content}
+    <%!-- Login has no top nav — give it the switcher top-right. In-app the
+         switcher lives in the nav header (Components.Nav.theme_switcher). --%>
+    <div :if={is_nil(assigns[:current_user])} class="fixed right-4 top-3 z-50">
+      <OrbitWeb.Components.Nav.theme_switcher />
+    </div>
+    <%!-- Footer on every page (rendered on the initial request, so it shows
+         on LiveView routes too): where the viewer is connecting from. Geo is
+         display-only (City edition); nil for private/unknown IPs → hidden. --%>
+    <footer
+      :if={assigns[:geo_label]}
+      class="fixed bottom-2 right-3 z-40 text-[11px] text-base-content/40"
+    >
+      <span title="Your connection, resolved via GeoIP">
+        <OrbitWeb.Components.Icons.icon name={:access_control} class="mr-1 inline h-3 w-3" />{@geo_label}
+      </span>
+    </footer>
+  </body>
+</html>

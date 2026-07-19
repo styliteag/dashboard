@@ -68,6 +68,23 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
 
+      # Orbit (Elixir/LiveView rewrite) release image — combined compose pulls
+      # it behind the "orbit" profile.
+      - name: Build and push orbit to GHCR
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./orbit/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/styliteag/dashboard-orbit:${{ steps.version.outputs.version }}
+            ghcr.io/styliteag/dashboard-orbit:latest
+          provenance: false
+          sbom: false
+          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache
+          cache-to: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache,mode=max
+
       - name: Delete old GHCR package versions
         uses: actions/delete-package-versions@v5
         continue-on-error: true
@@ -103,6 +120,21 @@ jobs:
           cache-to: type=registry,ref=docker.io/styliteag/dashboard:buildcache,mode=max
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
+
+      - name: Build and push orbit to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./orbit/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            docker.io/styliteag/dashboard-orbit:${{ steps.version.outputs.version }}
+            docker.io/styliteag/dashboard-orbit:latest
+          provenance: false
+          sbom: false
+          cache-from: type=registry,ref=ghcr.io/styliteag/dashboard-orbit:buildcache
 
       - name: Note Docker Hub skipped
         if: env.DOCKERHUB_USERNAME == ''

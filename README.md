@@ -19,10 +19,12 @@ NAT (reached through an outbound push agent), Securepoint polled directly over i
   with two-layer rollback, one-time **enrollment**, **uninstall**. Config (e.g. IPsec
   ping monitors) is pushed on every (re)connect — the agent persists nothing, the DB is
   the source of truth.
-- **Stack:** FastAPI + async SQLAlchemy on **MariaDB**, React 18 + Vite frontend, pure-
-  stdlib agent. Ships as a single combined Docker image; TLS is operator-side.
-- **Run it:** `cp .env.example .env`, set the secrets, `just up` (or `docker compose up`).
-  Dev: `just dev-up`. See [Quickstart](#quickstart-production).
+- **Stack:** **Elixir / Phoenix LiveView** (server-rendered UI) on **MariaDB**, pure-
+  stdlib agent. Ships as the `orbit` release image behind a thin nginx; TLS is
+  operator-side. (The former FastAPI + React stack has been retired — prod runs
+  orbit only, no parallel operation.)
+- **Run it:** `cp .env.example .env`, set the secrets, `docker compose up -d --build`.
+  See [Quickstart](#quickstart-production).
 
 ## What it does
 
@@ -104,16 +106,20 @@ self-update) don't apply to Securepoint.
 
 ## Stack
 
-- **Backend:** Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, httpx, APScheduler,
-  structlog. Managed with [`uv`](https://docs.astral.sh/uv/), `src/`-layout package.
-- **Frontend:** React 18 + TypeScript, Vite, Tailwind, TanStack Query, React Router,
-  Recharts.
-- **Database:** **MariaDB 11** (async via `aiomysql`). Metrics retention and a 5-minute
-  rollup are handled by in-process scheduler jobs — no TimescaleDB.
+- **App:** **Elixir** + **Phoenix LiveView** (server-rendered UI, no separate SPA),
+  Ecto on MariaDB, Bandit web server, structlog-style structured logging. Runs as a
+  `mix release` (`orbit/`). In-process schedulers handle metrics retention, the GeoIP
+  refresh and CrowdSec sync — no external job runner.
+- **Database:** **MariaDB 11**. Metrics are bucketed on the fly from the raw table
+  (no rollup table, no TimescaleDB). Orbit **owns the schema** via Ecto migrations
+  (applied at boot; a baseline migration captures the current schema and creates it
+  on an empty DB).
 - **Agent:** pure-stdlib Python (no pip dependencies), runs on OPNsense/pfSense (FreeBSD).
-- **Container:** single combined image — nginx serves the built frontend on `:80` and
-  proxies `/api/` to uvicorn at `127.0.0.1:8000` inside the same container.
-- **Deployment:** Docker Compose. TLS is operator-side (host reverse proxy, cloud LB).
+- **Container:** the `orbit` release image runs Bandit on `:4000`; a thin **nginx**
+  service is the only front door — it proxies the UI, `/api`, the agent websocket
+  (`/api/ws`) and the LiveView socket (`/live`) to `orbit:4000`.
+- **Deployment:** Docker Compose. TLS is operator-side (host reverse proxy, cloud LB)
+  forwarding HTTP to the nginx front door.
 
 ## Quickstart (production)
 
@@ -122,18 +128,32 @@ Prerequisites: Docker, Docker Compose, and (optionally) [`just`](https://github.
 ```bash
 # 1. Configure secrets
 cp .env.example .env
-just gen-key            # paste output into DASH_MASTER_KEY in .env
-# also set DB_PASSWORD, DB_ROOT_PASSWORD, DASH_ADMIN_PASSWORD and DASH_SUPERADMIN_PASSWORD
+just gen-key                        # paste output into DASH_MASTER_KEY in .env
+openssl rand -base64 48             # paste into ORBIT_SECRET_KEY_BASE in .env
+# also set DB_PASSWORD, DB_ROOT_PASSWORD, and DASH_PUBLIC_HOST (your real domain)
 
-# 2. Start the stack (MariaDB + combined app image)
-just up                 # or: docker compose up -d --build
+# 2. Start the stack (MariaDB + orbit release + nginx front door)
+docker compose up -d --build
 
 # 3. Open
-# http://localhost  (DASH_PORT in .env to remap)
+# http://localhost  (DASH_PORT in .env to remap; put your TLS proxy in front)
 ```
 
+**Schema.** Orbit **owns** the database schema (Ecto migrations, applied
+automatically at boot by `Orbit.Repo.Migrator` — no manual step). A **greenfield**
+database is created from the baseline migration on first boot; a **cutover** from
+the old stack finds the tables already present and the idempotent baseline adopts
+them as a no-op, just recording the schema version. Data is never touched.
+
+Future schema changes are ordinary migrations under
+[`orbit/priv/repo/migrations/`](orbit/priv/repo/migrations/) — scaffold one with
+`just orbit-migration <name>`, apply with `just orbit-migrate` (or on the next boot).
+
+Accounts live in that DB, so on a cutover the bootstrap admin/superadmin you seeded
+under the old stack keep working — no re-seed.
+
 To pull a published image instead of building locally, edit `compose.yml` — swap the
-`build:` block under `app` for `image: ghcr.io/styliteag/dashboard:latest`.
+`build:` block under `orbit` for `image: ghcr.io/styliteag/dashboard-orbit:latest`.
 
 ## Connecting a firewall via the push agent
 
@@ -180,7 +200,7 @@ and the button is hidden — no wildcard/DNS needed.
   for `*.gui.example.com` (DNS-01 wildcard cert) and forwards the wildcard to that
   Caddy over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
   Caddy host-matches `gui-<slug>`, runs the `forwardAuth` gate, and proxies to that
-  firewall's forwarder (`app:14400+id`), so Traefik needs **no per-instance config**.
+  firewall's forwarder (`orbit:14400+id`), so Traefik needs **no per-instance config**.
   Set `ORBIT_GUI_DOMAIN=gui.example.com`, `DASH_GUI_PROXY_ENABLED=true`,
   `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`,
   `DASH_GUI_CADDY_ADMIN_URL=http://gui-proxy:2019/load`, attach `gui-proxy` to
@@ -222,16 +242,17 @@ and the button is hidden — no wildcard/DNS needed.
 ## Layout
 
 ```
-Dockerfile              combined prod image (multi-stage: frontend + backend)
-compose.yml             production stack (MariaDB + app)
-compose-dev.yml         dev stack (db + backend + frontend, src bind-mounted)
-docker/                 nginx.conf + start.sh used by the prod image
-backend/                FastAPI app (src/app/), tests, Dockerfile.dev
-frontend/               Vite + React + TS app, Dockerfile.dev
+orbit/                  Elixir/Phoenix LiveView app + orbit/Dockerfile (prod release image)
+compose.yml             production stack (MariaDB + orbit + nginx front door)
+compose-dev.yml         dev stack (db + orbit dev container, src bind-mounted)
+docker/                 nginx.orbit.conf (front-door vhost → orbit:4000), Caddyfiles
 agent/                  stdlib push agent for OPNsense/pfSense + install.sh + rc.d
 checkmk/                Checkmk special-agent plugin (pulls /api/export/checkmk)
 scripts/                sign_agent.py — Ed25519 signing for agent self-update
 docs/                   public operator docs (Securepoint SSH, glossary, …)
+backend/ frontend/      retired FastAPI + React stack (kept for history + the
+                        Alembic migrations the orbit baseline was captured from;
+                        not built or run in prod)
 .github/workflows/      release.yml — multi-arch publish on tag push
 VERSION                 source of truth, baked into image at build
 release.sh              version bump + tag + push helper

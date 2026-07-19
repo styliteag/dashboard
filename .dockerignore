@@ -1,0 +1,14 @@
+# Root build context is only used by orbit/Dockerfile (repo root for
+# VERSION + agent/). Keep the context lean — the per-service images
+# (backend/, frontend/) use their own contexts and ignore files.
+.git
+frontend/node_modules
+frontend/dist
+backend/.venv
+backend/**/__pycache__
+orbit/data
+orbit/_build
+orbit/deps
+orbit/priv/static/assets
+docs
+*.log

@@ -1,0 +1,11 @@
+# Dev image: everything runs in the
+# container, no local Elixir toolchain on any developer machine — same pattern
+# as link-shortener ADR-0007. cmake: lazy_html/lexbor source build (no
+# precompiled binary for this Elixir/OTP). inotify-tools: Phoenix live reload.
+FROM elixir:1.20
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake inotify-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app

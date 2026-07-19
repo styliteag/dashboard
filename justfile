@@ -30,6 +30,14 @@ agent-test:
 checkmk-test:
     cd backend && uv run pytest ../checkmk/tests -q
 
+# Black-box API contract suite against a RUNNING backend (`just dev-up` first).
+# CONTRACT_BASE_URL switches the target: Python :8000 (default), orbit :4000.
+# Machine-contract pins (checkmk/prometheus/apikey scoping) are the migration
+# gate for the LiveView rewrite; the
+# session-JSON fixtures pin the python backend only — its UI api dies with react.
+contract-test *ARGS:
+    cd backend && uv run pytest ../contract -q {{ARGS}}
+
 # Sign the agent for self-update. Auto-loads the OFFLINE Ed25519 private key from
 # env or the gitignored .env (DASH_AGENT_SIGNING_KEY) — no manual export needed.
 # Pass ARGS through: `--verify` (no key), `--gen` (mint keypair), `--key-file PATH`.
@@ -70,6 +78,82 @@ frontend-lint:
 
 frontend-fmt:
     cd frontend && npm run fmt
+
+# --- Orbit (Elixir/Phoenix LiveView rewrite) ---
+# Everything runs in the orbit container; no local Elixir toolchain.
+
+# One-time (and after dep changes): install hex/rebar + fetch deps into the caches
+orbit-setup:
+    docker compose -f compose-dev.yml run --rm orbit sh -c "mix local.hex --force && mix local.rebar --force && mix deps.get"
+
+# Tests; arguments are passed through: just orbit-test test/orbit_web
+orbit-test *ARGS:
+    docker compose -f compose-dev.yml run --rm orbit mix test {{ARGS}}
+
+orbit-fmt:
+    docker compose -f compose-dev.yml run --rm orbit mix format
+
+orbit-lint:
+    docker compose -f compose-dev.yml run --rm orbit sh -c "mix format --check-formatted && mix compile --warnings-as-errors"
+
+orbit-sh:
+    docker compose -f compose-dev.yml run --rm orbit bash
+
+orbit-iex:
+    docker compose -f compose-dev.yml run --rm orbit iex -S mix
+
+# Schema is now orbit-owned (Ecto). Daily workflow:
+#   just orbit-migration add_widget_flag   # scaffold priv/repo/migrations/NNN_*.exs
+#   # edit the migration, then apply it:
+#   just orbit-migrate                      # mix ecto.migrate (also runs at app boot)
+#   just orbit-rollback                     # mix ecto.rollback (last migration)
+orbit-migration NAME:
+    docker compose -f compose-dev.yml run --rm orbit mix ecto.gen.migration {{NAME}}
+
+orbit-migrate:
+    docker compose -f compose-dev.yml run --rm orbit mix ecto.migrate
+
+orbit-rollback *ARGS:
+    docker compose -f compose-dev.yml run --rm orbit mix ecto.rollback {{ARGS}}
+
+# Provision the throwaway test DB (create + migrate to head) — gives the suite
+# every table, incl. ones the old partial dump lacked.
+orbit-test-db:
+    docker compose -f compose-dev.yml run --rm -e MIX_ENV=test orbit sh -c "mix ecto.create && mix ecto.migrate"
+
+# Regenerate priv/repo/baseline_schema.sql from the running dev DB. RARE — for
+# an established schema you add an incremental migration instead; this only
+# re-captures the baseline (e.g. after a fresh greenfield bring-up). Needs the
+# dev `db` container up.
+orbit-dump-baseline:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=orbit/priv/repo/baseline_schema.sql
+    # FK-dependency order (parents first) — mariadb-dump keeps the CLI table
+    # order, and the baseline relies on it (see the migration's comment). A new
+    # table must be added here in an order where its FK targets come first.
+    order="groups users api_keys access_events access_stats app_settings \
+      geoip_config geoip_denial_events geoip_denial_stats instances \
+      apikey_groups audit_log auth_sessions check_events config_backups \
+      connectivity_monitors enrollment_codes entity_comments group_channels \
+      ipsec_ping_monitors ipsec_tunnel_events log_events logfiles metrics \
+      selection_rules user_groups webauthn_credentials"
+    {
+      echo "-- Baseline schema (MariaDB) captured from the current DB head."
+      echo "-- Idempotent (IF NOT EXISTS), emitted in FK-dependency order so an empty"
+      echo "-- DB creates cleanly. Regenerate via 'just orbit-dump-baseline'. Do not hand-edit."
+      echo "SET FOREIGN_KEY_CHECKS = 0;"
+      docker compose -f compose-dev.yml exec -T db sh -c \
+        "mariadb-dump -u\"\$MYSQL_USER\" -p\"\$MYSQL_PASSWORD\" --no-data --skip-comments --no-tablespaces \"\$MYSQL_DATABASE\" $order" \
+        | grep -vE '^/\*|^--|^$' \
+        | sed -E 's/^CREATE TABLE /CREATE TABLE IF NOT EXISTS /; s/ AUTO_INCREMENT=[0-9]+//'
+      echo "SET FOREIGN_KEY_CHECKS = 1;"
+    } > "$out"
+    echo "wrote $out"
+
+# Build the production release image locally (CI builds/publishes on release tags)
+orbit-image:
+    docker build -f orbit/Dockerfile -t dashboard-orbit:local .
 
 # --- Stack (production: single combined image) -----------------------------
 

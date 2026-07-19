@@ -115,6 +115,76 @@ services:
     depends_on:
       - backend
 
+  # Elixir/Phoenix LiveView rewrite.
+  # Runs PARALLEL to backend+frontend against the same dev DB; everything in
+  # the container, no local Elixir toolchain (link-shortener ADR-0007 pattern).
+  # Toolchain caches live under ./orbit/data (gitignored) to survive rebuilds.
+  orbit:
+    build:
+      context: ./orbit
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "mix local.hex --force && mix local.rebar --force && mix deps.get && mix phx.server"
+    environment:
+      MIX_HOME: /toolchain/mix
+      HEX_HOME: /toolchain/hex
+      DB_USER: ${DB_USER:-dash}
+      DB_PASSWORD: ${DB_PASSWORD:-devpassword}
+      DB_NAME: ${DB_NAME:-dash}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
+      ORBIT_DB_HOST: db
+      # Served agent code for self-update relay (mounted read-only below).
+      AGENT_DIR: /app/agent
+      # Same fernet key as the python backend — orbit reads the same *_enc columns.
+      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
+      # Interactive shell gate + WS origin allowlist (mirror the backend service).
+      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # Passkeys: rp_id is the shared host; the origin is orbit's OWN (dev :8000),
+      # not the python UI's :5173 — ORBIT_WEBAUTHN_ORIGIN keeps them from
+      # clobbering each other. Comma-separated accepts both (lab boxes reach :8000,
+      # a local browser may still hit :5173).
+      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
+      DASH_WEBAUTHN_RP_NAME: ${DASH_WEBAUTHN_RP_NAME:-Orbit Dashboard}
+      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
+      ORBIT_WEBAUTHN_ORIGIN: ${ORBIT_WEBAUTHN_ORIGIN:-http://localhost:8000,http://localhost:5173}
+      DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
+      # GeoIP gate (same vars + shared mmdb volume as the backend service;
+      # the python updater keeps the db fresh until cutover).
+      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
+      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
+      # Weekly GeoLite2 refresh now also runs in orbit (idle without creds).
+      DASH_MAXMIND_ACCOUNT_ID: ${DASH_MAXMIND_ACCOUNT_ID:-}
+      DASH_MAXMIND_LICENSE_KEY: ${DASH_MAXMIND_LICENSE_KEY:-}
+      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-0}
+      DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
+      DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
+      DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
+      # GUI proxy (§18): on in dev so the Open-GUI button renders. Orbit's
+      # own TCP forwarder binds 14400+id; the browser reaches it via the dev
+      # port convention https://localhost:900{id} (no Caddy — transparent tunnel).
+      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-true}
+      DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
+      DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
+      # Settings-page log defaults (same vars as the backend service).
+      DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-debug}
+      DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${ORBIT_PORT:-4000}:4000"
+    volumes:
+      - ./orbit:/app
+      - ./VERSION:/app/VERSION:ro
+      # Served agent code for the self-update relay (read-only, like backend).
+      - ./agent:/app/agent:ro
+      - dev_geoip_data:/data/geoip
+      - ./orbit/data/deps:/app/deps
+      - ./orbit/data/build:/app/_build
+      - ./orbit/data/toolchain:/toolchain
+    depends_on:
+      db:
+        condition: service_healthy
+
   # GUI proxy: terminates TLS per-instance-port and reverse-proxies to the
   # in-container tunnel forwarder (backend:14444). Prod swaps the port vhost for a
   # wildcard subdomain. See docker/Caddyfile.dev and §18.
