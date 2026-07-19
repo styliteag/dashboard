@@ -431,55 +431,55 @@ defmodule Orbit.Settings.Registry do
       restart: false
     },
     "llm_openai_api_key" => %{
-      group: "AI",
+      group: "OpenAI",
       label: "OpenAI API key",
       help: "API key for OpenAI-compatible chat completions.",
       restart: false
     },
     "llm_openai_base_url" => %{
-      group: "AI",
+      group: "OpenAI",
       label: "OpenAI base URL",
       help: "Override the OpenAI API base URL (self-hosted / proxy).",
       restart: false
     },
     "llm_openai_model" => %{
-      group: "AI",
+      group: "OpenAI",
       label: "OpenAI model",
       help: "Model id used for log analysis.",
       restart: false
     },
     "llm_anthropic_api_key" => %{
-      group: "AI",
+      group: "Anthropic",
       label: "Anthropic API key",
       help: "API key for Anthropic (Claude) messages.",
       restart: false
     },
     "llm_anthropic_base_url" => %{
-      group: "AI",
+      group: "Anthropic",
       label: "Anthropic base URL",
       help: "Override the Anthropic API base URL.",
       restart: false
     },
     "llm_anthropic_model" => %{
-      group: "AI",
+      group: "Anthropic",
       label: "Anthropic model",
       help: "Model id used for log analysis.",
       restart: false
     },
     "llm_openrouter_api_key" => %{
-      group: "AI",
+      group: "OpenRouter",
       label: "OpenRouter API key",
       help: "API key for OpenRouter.",
       restart: false
     },
     "llm_openrouter_base_url" => %{
-      group: "AI",
+      group: "OpenRouter",
       label: "OpenRouter base URL",
       help: "Override the OpenRouter API base URL.",
       restart: false
     },
     "llm_openrouter_model" => %{
-      group: "AI",
+      group: "OpenRouter",
       label: "OpenRouter model",
       help: "Model id used for log analysis.",
       restart: false

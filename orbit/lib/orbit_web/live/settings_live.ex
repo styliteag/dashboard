@@ -34,26 +34,18 @@ defmodule OrbitWeb.SettingsLive do
     {:noreply, assign(socket, tab: tab, llm_result: nil)}
   end
 
+  # Click-driven saves (switches/checkboxes) carry the new value as "val":
+  # on click events LiveView merges the element's DOM `value` attribute into
+  # the params as "value" (empty string for a bare <button>), CLOBBERING a
+  # phx-value-value — so the click path must use a different param name.
+  # This clause must come first: click params contain both "val" and "value".
   @impl true
+  def handle_event("save", %{"key" => key, "val" => value}, socket) do
+    save_setting(key, value, socket)
+  end
+
   def handle_event("save", %{"key" => key, "value" => value}, socket) do
-    secret? = match?({:ok, %{is_secret: true}}, Registry.fetch(key))
-
-    cond do
-      # Empty submit on a secret keeps the stored value (invariant 3 shape —
-      # the field renders blank, so an untouched form must not wipe it).
-      secret? and String.trim(value) == "" ->
-        {:noreply, put_flash(socket, :info, "#{key} unchanged (blank keeps the stored value)")}
-
-      true ->
-        case Settings.set_override(key, value) do
-          {:ok, _} ->
-            audit(socket, "settings.update", "ok", %{"name" => key})
-            {:noreply, socket |> assign(rows: load_rows()) |> put_flash(:info, "#{key} saved")}
-
-          {:error, msg} ->
-            {:noreply, put_flash(socket, :error, msg)}
-        end
-    end
+    save_setting(key, value, socket)
   end
 
   # One-off provider ping (SettingsPage LLM test-button parity): a tiny
@@ -64,8 +56,13 @@ defmodule OrbitWeb.SettingsLive do
      |> assign(llm_busy: provider, llm_result: nil)
      |> start_async(:llm_test, fn ->
        case Orbit.LLM.Analyze.analyze_logs(provider, "ping — reply with the single word: pong") do
-         {:ok, text} -> {:ok, provider, String.slice(text, 0, 120)}
-         {:error, msg} -> {:error, provider, String.slice(to_string(msg), 0, 200)}
+         # analyze_logs returns {:ok, %{findings: text, ...}} — slicing the
+         # whole map (and non-binary error terms) crashed the async task.
+         {:ok, %{findings: text}} ->
+           {:ok, provider, String.slice(to_string(text), 0, 120)}
+
+         {:error, msg} ->
+           {:error, provider, String.slice(to_string(msg), 0, 200)}
        end
      end)}
   end
@@ -123,6 +120,27 @@ defmodule OrbitWeb.SettingsLive do
     {:noreply, socket}
   end
 
+  defp save_setting(key, value, socket) do
+    secret? = match?({:ok, %{is_secret: true}}, Registry.fetch(key))
+
+    cond do
+      # Empty submit on a secret keeps the stored value (invariant 3 shape —
+      # the field renders blank, so an untouched form must not wipe it).
+      secret? and String.trim(value) == "" ->
+        {:noreply, put_flash(socket, :info, "#{key} unchanged (blank keeps the stored value)")}
+
+      true ->
+        case Settings.set_override(key, value) do
+          {:ok, _} ->
+            audit(socket, "settings.update", "ok", %{"name" => key})
+            {:noreply, socket |> assign(rows: load_rows()) |> put_flash(:info, "#{key} saved")}
+
+          {:error, msg} ->
+            {:noreply, put_flash(socket, :error, msg)}
+        end
+    end
+  end
+
   defp audit(socket, action, result, detail) do
     Orbit.Audit.write(
       action: action,
@@ -170,7 +188,7 @@ defmodule OrbitWeb.SettingsLive do
     {"mattermost", "Mattermost", ["Mattermost"]},
     {"telegram", "Telegram", ["Telegram"]},
     {"email", "Email", ["Email"]},
-    {"ai", "AI", ["AI"]},
+    {"ai", "AI", ["OpenAI", "Anthropic", "OpenRouter"]},
     {"checkmk", "Checkmk", ["Checkmk"]},
     {"prometheus", "Prometheus", []}
   ]
@@ -245,6 +263,11 @@ defmodule OrbitWeb.SettingsLive do
           <.mute_toggle
             :if={mute_row(@rows, "notify_#{@tab}_muted")}
             row={mute_row(@rows, "notify_#{@tab}_muted")}
+            title={"Temporarily mute #{String.capitalize(@tab)} alerts"}
+            idle_note={"#{String.capitalize(@tab)} alerts are delivered normally."}
+            active_note={"#{String.capitalize(@tab)} alerts are paused — real alerts are not sent."}
+            active_badge={"Muted — no #{String.capitalize(@tab)} alerts sent"}
+            hint="Manual toggle — stays until you switch it back. An explicit “Send test” below still fires."
           />
         </div>
         <div :if={@tab == "checkmk"} class="mb-5 space-y-3">
@@ -257,6 +280,11 @@ defmodule OrbitWeb.SettingsLive do
           <.mute_toggle
             :if={mute_row(@rows, "checkmk_blackout")}
             row={mute_row(@rows, "checkmk_blackout")}
+            title="Checkmk blackout"
+            idle_note="The Checkmk export includes all instances and their checks."
+            active_note="The Checkmk export is empty — Checkmk sees every service as stale/gone."
+            active_badge="Blackout — export empty"
+            hint="Manual toggle — stays until you switch it back. Use during maintenance to silence Checkmk."
           />
         </div>
 
@@ -435,7 +463,7 @@ defmodule OrbitWeb.SettingsLive do
           checked={@row.effective in ["true", "1"]}
           phx-click="save"
           phx-value-key={@row.key}
-          phx-value-value={to_string(@row.effective not in ["true", "1"])}
+          phx-value-val={to_string(@row.effective not in ["true", "1"])}
           class="h-4 w-4 cursor-pointer accent-primary"
         />
         <button
@@ -506,34 +534,63 @@ defmodule OrbitWeb.SettingsLive do
     """
   end
 
-  # A bool setting as one-click mute/unmute (notify mutes, checkmk blackout).
+  # A bool setting as a status-first mute/blackout card (MuteToggle.tsx
+  # parity): a real slider switch shows the STATE (right+amber = active),
+  # the sub-line and badge say what is happening right now — never an
+  # ambiguous action label like "turn on".
   attr :row, :map, required: true
+  attr :title, :string, required: true
+  attr :idle_note, :string, required: true
+  attr :active_note, :string, required: true
+  attr :active_badge, :string, required: true
+  attr :hint, :string, default: nil
 
   defp mute_toggle(assigns) do
     on = assigns.row.effective in ["true", "1"]
     assigns = assign(assigns, on: on)
 
     ~H"""
-    <form phx-submit="save" class="flex items-center gap-3">
-      <input type="hidden" name="key" value={@row.key} />
-      <input type="hidden" name="value" value={to_string(not @on)} />
-      <div>
-        <span class="text-sm text-base-content">{@row.label}</span>
-        <p :if={@row.help != ""} class="text-xs text-base-content/60">{@row.help}</p>
+    <div class={[
+      "rounded-xl border p-5",
+      if(@on, do: "border-warning/40 bg-warning/5", else: "border-base-300 bg-base-200/60")
+    ]}>
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h3 class="text-sm font-semibold text-base-content">{@title}</h3>
+          <p class="mt-0.5 text-xs text-base-content/60">
+            {if @on, do: @active_note, else: @idle_note}
+          </p>
+          <p :if={@hint} class="mt-0.5 text-xs text-base-content/40">{@hint}</p>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={to_string(@on)}
+          aria-label={@title}
+          phx-click="save"
+          phx-value-key={@row.key}
+          phx-value-val={to_string(not @on)}
+          title={if @on, do: "Active — click to switch off", else: "Inactive — click to switch on"}
+          class={[
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors",
+            if(@on, do: "bg-warning", else: "bg-base-300")
+          ]}
+        >
+          <span class={[
+            "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+            if(@on, do: "translate-x-6", else: "translate-x-1")
+          ]}></span>
+        </button>
       </div>
-      <button
-        type="submit"
-        class={[
-          "rounded px-3 py-1 text-xs",
-          if(@on,
-            do: "bg-warning text-white hover:bg-warning/80",
-            else: "border border-base-content/20 text-base-content/80 hover:bg-base-300"
-          )
-        ]}
+
+      <div
+        :if={@on}
+        class="mt-3 inline-flex items-center gap-1.5 rounded bg-warning/20 px-2 py-1 text-xs text-warning"
       >
-        {if @on, do: "on — turn off", else: "turn on"}
-      </button>
-    </form>
+        {@active_badge}
+      </div>
+    </div>
     """
   end
 end
