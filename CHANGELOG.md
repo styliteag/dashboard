@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A Test button on the SSH settings.** It does not just open a socket: it
+  logs in, reports which account it landed as, and then runs the same swanctl
+  dumps the poller runs. "SSH connects" and "swanctl answers" are different
+  failures — a box can accept the key while strongSwan is missing or unreadable
+  for that account — and the message says which, plus how many tunnels it found.
+
 - **SSH access is configurable again on a Securepoint.** The edit form had no
   SSH fields at all, so the enrichment, the ping monitors and the terminal could
   only ever work on boxes whose rows predated the rewrite — a new box could not

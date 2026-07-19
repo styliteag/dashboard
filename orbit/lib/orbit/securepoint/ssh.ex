@@ -310,6 +310,38 @@ defmodule Orbit.Securepoint.SSH do
   end
 
   @doc """
+  Prove the configured access actually works — the edit form's "Test" button.
+
+  Deliberately exercises the REAL enrichment path rather than just opening a
+  socket: it logs in, reports which account it landed as, and then runs the same
+  swanctl dumps the poller runs and parses them. "SSH connects" and "swanctl
+  answers" are different failures — a box can accept the key while strongSwan is
+  absent or the account cannot read it — and the operator needs to know which.
+  """
+  @spec test_access(%Config{}) :: {:ok, String.t()} | {:error, String.t()}
+  def test_access(%Config{} = cfg) do
+    with_connection(cfg, fn conn ->
+      who =
+        case exec(conn, ~c"id -un") do
+          {:ok, out} -> String.trim(out)
+          _ -> cfg.user
+        end
+
+      case ipsec_status(conn, true) do
+        {:ok, %{"tunnels" => tunnels}} ->
+          {:ok,
+           "connected as #{who}@#{cfg.host}:#{cfg.port} — swanctl answered, " <>
+             "#{length(tunnels)} tunnel(s) configured"}
+
+        _ ->
+          {:error,
+           "connected as #{who}@#{cfg.host}:#{cfg.port}, but swanctl did not answer — " <>
+             "IPsec enrichment will fall back to the API"}
+      end
+    end)
+  end
+
+  @doc """
   Connect once WITHOUT a pinned key and return the box's host key for storage.
 
   The only unpinned path in this module (trust on first use). Everything else

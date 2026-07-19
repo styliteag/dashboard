@@ -34,7 +34,9 @@ defmodule OrbitWeb.InstanceEditLive do
          admin: user.role == "admin",
          error: nil,
          pinning: false,
-         pin_result: nil
+         pin_result: nil,
+         ssh_testing: false,
+         ssh_result: nil
        )}
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
@@ -45,7 +47,27 @@ defmodule OrbitWeb.InstanceEditLive do
   # unpinned (Orbit.Securepoint.SSH.probe_host_key/1); every other SSH path
   # refuses without a pin. Explicit and audited rather than silently trusting
   # whatever answers — the operator confirms the box by pressing this.
+  # Prove the saved settings work, end to end (login + swanctl), before anyone
+  # relies on the enrichment. Read-only on the box.
   @impl true
+  def handle_event("ssh_test", _params, socket) do
+    inst = socket.assigns.instance
+
+    if socket.assigns.ssh_testing do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(ssh_testing: true, ssh_result: nil)
+       |> start_async(:ssh_test, fn ->
+         case Orbit.Securepoint.SSH.config_for(inst) do
+           {:ok, cfg} -> Orbit.Securepoint.SSH.test_access(cfg)
+           _ -> {:error, "no SSH key stored yet — save one first"}
+         end
+       end)}
+    end
+  end
+
   def handle_event("ssh_pin_host_key", _params, socket) do
     inst = socket.assigns.instance
 
@@ -312,6 +334,14 @@ defmodule OrbitWeb.InstanceEditLive do
               </span>
               <button
                 type="button"
+                phx-click="ssh_test"
+                disabled={@ssh_testing or @pinning}
+                class="rounded border border-info/40 px-2 py-1 text-info hover:bg-info/15 disabled:opacity-50"
+              >
+                {if @ssh_testing, do: "Testing…", else: "Test"}
+              </button>
+              <button
+                type="button"
                 phx-click="ssh_pin_host_key"
                 disabled={@pinning}
                 class="rounded border border-base-content/20 px-2 py-1 text-base-content/80 hover:bg-base-300 disabled:opacity-50"
@@ -320,6 +350,9 @@ defmodule OrbitWeb.InstanceEditLive do
               </button>
               <span :if={@pin_result} class={pin_class(@pin_result)}>{elem(@pin_result, 1)}</span>
             </div>
+            <p :if={@ssh_result} class={["mt-2 text-xs", pin_class(@ssh_result)]}>
+              {elem(@ssh_result, 1)}
+            </p>
           </div>
 
           <div class="flex items-center gap-3">
@@ -371,6 +404,14 @@ defmodule OrbitWeb.InstanceEditLive do
   end
 
   @impl true
+  def handle_async(:ssh_test, {:ok, result}, socket) do
+    {:noreply, assign(socket, ssh_testing: false, ssh_result: result)}
+  end
+
+  def handle_async(:ssh_test, {:exit, reason}, socket) do
+    {:noreply, assign(socket, ssh_testing: false, ssh_result: {:error, inspect(reason)})}
+  end
+
   def handle_async(:pin_host_key, {:ok, {:ok, line}}, socket) do
     inst = socket.assigns.instance
 
