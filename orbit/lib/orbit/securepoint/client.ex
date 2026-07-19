@@ -78,20 +78,174 @@ defmodule Orbit.Securepoint.Client do
   end
 
   @doc """
-  Live status of a Securepoint box as raw sections for the checks engine:
-  system info + openvpn + ipsec status. Best-effort per section (a failing
-  command yields no section, never a crash — mirrors the python gather).
+  Live status of a Securepoint box as raw sections for the checks engine.
+
+  Emits the SAME section shapes the OPNsense client does (cpu/memory/disks/
+  interfaces/uptime/system), so one evaluation path serves both vendors and the
+  detail page needs no per-vendor branch.
+
+  The numbers come from `system info`, which returns live stats as
+  `{attribute, value}` rows — User/System/Idle %, Mem Total/Avail (KiB),
+  storage/storage free (bytes), Uptime. Interface byte counters are NOT exposed
+  by this JSON API (RRD only), so the counters stay 0 and only addresses and
+  up/down are filled.
+
+  Regression: this used to fetch `appmgmt get_information` and hand the raw
+  payload through as the "system" section. That endpoint carries none of the
+  live stats, so every Securepoint box rendered without CPU, memory, disk,
+  uptime or interface data — the metrics surface the python client had filled
+  since day one (`poll_status`, "fills the same metrics surface as OPNsense").
+
+  Best-effort per section: a failing command yields no section, never a crash.
   """
   def fetch_status(%__MODULE__{} = c) do
     with {:ok, c} <- login(c) do
+      info = system_info(c)
+
       %{}
-      |> maybe_put("system", section(c, "appmgmt", ["get_information"]))
+      |> maybe_put("cpu", cpu_from_info(info))
+      |> maybe_put("memory", memory_from_info(info))
+      |> maybe_put("disks", disks_from_info(info))
+      |> maybe_put("uptime", info["Uptime"])
+      |> maybe_put("system", system_from_info(info))
+      |> maybe_put("interfaces", interfaces(c))
       |> maybe_put("openvpn", section(c, "openvpn", ["status"]))
       |> maybe_put("ipsec", section(c, "ipsec", ["status"]))
     else
       _ -> %{}
     end
   end
+
+  @doc """
+  `system info` flattened to an attribute map.
+
+  The endpoint returns `[%{"attribute" => k, "value" => v}, ...]` (hostname,
+  version, productname, Idle, Mem Total, …) — collapsed to `%{k => v}`.
+  """
+  def system_info(%__MODULE__{} = c) do
+    case section(c, "system", ["info"]) do
+      rows when is_list(rows) -> flatten_info(rows)
+      _ -> %{}
+    end
+  end
+
+  @doc false
+  def flatten_info(rows) when is_list(rows) do
+    for %{"attribute" => k} = row <- rows, into: %{} do
+      {to_string(k), to_string(Map.get(row, "value", ""))}
+    end
+  end
+
+  def flatten_info(_), do: %{}
+
+  @doc """
+  Parse a Securepoint number that may carry a percent sign and padding:
+  `"  98%"` → `98.0`. Unparseable input is 0.0, never an error — a single odd
+  attribute must not blank the whole section.
+  """
+  def num(raw) do
+    case raw
+         |> to_string()
+         |> String.trim()
+         |> String.trim_trailing("%")
+         |> String.trim()
+         |> Float.parse() do
+      {v, _} -> v
+      :error -> 0.0
+    end
+  end
+
+  @doc "CPU busy % — `system info` reports per-state %, busy = 100 - Idle."
+  def cpu_from_info(%{"Idle" => idle}), do: %{"total_pct" => Float.round(100.0 - num(idle), 1)}
+  def cpu_from_info(_), do: nil
+
+  @doc "Memory section from Mem Total / Mem Avail (KiB)."
+  def memory_from_info(info) when is_map(info) do
+    total_kb = num(Map.get(info, "Mem Total", "0"))
+    avail_kb = num(Map.get(info, "Mem Avail", "0"))
+
+    if total_kb <= 0 do
+      nil
+    else
+      used_kb = max(total_kb - avail_kb, 0.0)
+
+      %{
+        "total_mb" => Float.round(total_kb / 1024, 1),
+        "used_mb" => Float.round(used_kb / 1024, 1),
+        "used_pct" => Float.round(used_kb / total_kb * 100, 1),
+        # No swap data from this endpoint — the no-data sentinel keeps
+        # swap_check/1 silent instead of alarming on an absent feature.
+        "swap_total_mb" => 0.0,
+        "swap_used_pct" => 0.0
+      }
+    end
+  end
+
+  def memory_from_info(_), do: nil
+
+  @doc "The persistent /data volume from `storage` / `storage free` (bytes)."
+  def disks_from_info(info) when is_map(info) do
+    total = num(Map.get(info, "storage", "0"))
+    free = num(Map.get(info, "storage free", "0"))
+
+    if total <= 0 do
+      []
+    else
+      [
+        %{
+          "device" => "/data",
+          "mountpoint" => "/data",
+          "used_pct" => Float.round((total - free) / total * 100, 1),
+          "total_mb" => Float.round(total / 1_048_576, 1)
+        }
+      ]
+    end
+  end
+
+  def disks_from_info(_), do: []
+
+  @doc "Hostname + version, falling back to the product fields."
+  def system_from_info(info) when is_map(info) do
+    name = Map.get(info, "hostname") || Map.get(info, "productname") || ""
+    version = Map.get(info, "version") || Map.get(info, "productversion") || ""
+
+    case {name, version} do
+      {"", ""} -> nil
+      _ -> %{"hostname" => name, "os" => version}
+    end
+  end
+
+  def system_from_info(_), do: nil
+
+  @doc """
+  Interfaces with their addresses. `ONLINE`/`DYNAMIC` in flags means up.
+
+  Byte counters are not in this API (RRD only) — emitted as 0 so
+  Metrics.rows_for_push keeps one continuous series shape across vendors
+  without inventing traffic.
+  """
+  def interfaces(%__MODULE__{} = c) do
+    case section(c, "interface", ["address", "get"]) do
+      rows when is_list(rows) -> Enum.map(rows, &interface_row/1)
+      _ -> []
+    end
+  end
+
+  @doc false
+  def interface_row(row) when is_map(row) do
+    flags = if is_list(row["flags"]), do: row["flags"], else: []
+    up? = "ONLINE" in flags or "DYNAMIC" in flags
+
+    %{
+      "name" => to_string(row["device"] || ""),
+      "status" => if(up?, do: "up", else: "down"),
+      "address" => row["address"],
+      "bytes_received" => 0,
+      "bytes_transmitted" => 0
+    }
+  end
+
+  def interface_row(_), do: %{}
 
   # -- internals ------------------------------------------------------------
 
