@@ -152,8 +152,7 @@ defmodule Orbit.Poller do
     with {:ok, client} <- SecurepointClient.new(inst) do
       client
       |> SecurepointClient.fetch_status()
-      |> enrich_ipsec_over_ssh(inst)
-      |> enrich_monitors_over_ssh(inst)
+      |> enrich_over_ssh(inst)
       |> non_empty()
     end
   end
@@ -164,48 +163,53 @@ defmodule Orbit.Poller do
     end
   end
 
-  # SSH enrichment (docs/securepoint-ssh.md): the spcgi `ipsec status` carries no
-  # IKE cookies, ESP SPIs or byte counters — swanctl over SSH does, and those are
-  # what pair tunnel ends across NAT. Opt-in per instance and FAIL-OPEN on the
-  # enrichment itself: any SSH problem (no key pinned yet, box unreachable on 22,
-  # swanctl missing) leaves the spcgi section in place rather than failing the
-  # whole poll. Fail-CLOSED still governs the connection itself — an unpinned or
-  # mismatched host key refuses to connect, it does not fall back to trusting it.
-  defp enrich_ipsec_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
+  # Everything this poll needs from the box over SSH, in ONE session
+  # (docs/securepoint-ssh.md): the swanctl dump, then every ping monitor. The
+  # spcgi API carries no IKE cookies, ESP SPIs or byte counters and cannot ping
+  # from the box at all, so without this an agent-less appliance has neither.
+  #
+  # FAIL-OPEN as a whole: any SSH problem (no key pinned yet, box unreachable,
+  # swanctl missing) leaves the spcgi sections in place rather than failing the
+  # poll. Fail-CLOSED still governs the connection itself — an unpinned or
+  # mismatched host key refuses to connect, it never falls back to trusting it.
+  defp enrich_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
     case Orbit.Securepoint.SSH.config_for(inst) do
       {:ok, cfg} ->
         running = ipsec_running?(status)
 
-        case Orbit.Securepoint.SSH.fetch_ipsec_status(cfg, running) do
-          {:ok, section} ->
-            Map.put(status, "ipsec", section)
+        result =
+          Orbit.Securepoint.SSH.with_connection(cfg, fn conn ->
+            status
+            |> put_ipsec(conn, running)
+            |> Orbit.Securepoint.Monitors.enrich(conn, inst)
+          end)
 
+        case result do
           {:error, reason} ->
             Logger.debug("securepoint.ssh_enrich_skipped instance_id=#{inst.id} reason=#{reason}")
             status
+
+          enriched when is_map(enriched) ->
+            enriched
         end
 
       :error ->
         status
     end
-  end
-
-  defp enrich_ipsec_over_ssh(status, _inst), do: status
-
-  # Ping monitors (IPsec Phase-2 and standalone connectivity) have to run ON the
-  # box — through the tunnel, from the configured source. With no agent to do
-  # it, SSH is the only way, and without this an agent-less appliance simply has
-  # no ping results. Fail-open like the ipsec enrichment: an SSH problem leaves
-  # the sections as they were.
-  defp enrich_monitors_over_ssh(status, %Instance{ssh_enabled: true} = inst) do
-    Orbit.Securepoint.Monitors.enrich(status, inst)
   rescue
     e ->
-      Logger.debug("securepoint.monitor_probe_failed id=#{inst.id} error=#{Exception.message(e)}")
+      Logger.debug("securepoint.ssh_enrich_failed id=#{inst.id} error=#{Exception.message(e)}")
       status
   end
 
-  defp enrich_monitors_over_ssh(status, _inst), do: status
+  defp enrich_over_ssh(status, _inst), do: status
+
+  defp put_ipsec(status, conn, running) do
+    case Orbit.Securepoint.SSH.ipsec_status(conn, running) do
+      {:ok, section} -> Map.put(status, "ipsec", section)
+      _ -> status
+    end
+  end
 
   # The spcgi section is a bare list of connections; a non-empty one means the
   # daemon answered. Keep that verdict — swanctl cannot tell us more.

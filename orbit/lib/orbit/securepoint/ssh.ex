@@ -127,15 +127,33 @@ defmodule Orbit.Securepoint.SSH do
   """
   @spec fetch_ipsec_status(%Config{}, boolean()) :: {:ok, map()} | {:error, String.t()}
   def fetch_ipsec_status(%Config{} = cfg, running) when is_boolean(running) do
+    with_connection(cfg, &ipsec_status(&1, running))
+  end
+
+  @doc """
+  Open one connection, run `fun.(conn)`, close it again.
+
+  Everything a single poll needs from the box should go through ONE call: the
+  swanctl dump and every ping monitor together. Two handshakes per poll against
+  a remote appliance is pure waste, and the poll runs on an interval.
+  """
+  @spec with_connection(%Config{}, (term() -> result)) :: result | {:error, String.t()}
+        when result: term()
+  def with_connection(%Config{} = cfg, fun) when is_function(fun, 1) do
     with {:ok, conn} <- connect(cfg) do
       try do
-        with {:ok, sas} <- exec(conn, ~c"swanctl --list-sas --raw"),
-             {:ok, conns} <- exec(conn, ~c"swanctl --list-conns --raw") do
-          {:ok, Swanctl.status(sas, conns, running)}
-        end
+        fun.(conn)
       after
         :ssh.close(conn)
       end
+    end
+  end
+
+  @doc "The `ipsec` section over an ALREADY open connection."
+  def ipsec_status(conn, running) do
+    with {:ok, sas} <- exec(conn, ~c"swanctl --list-sas --raw"),
+         {:ok, conns} <- exec(conn, ~c"swanctl --list-conns --raw") do
+      {:ok, Swanctl.status(sas, conns, running)}
     end
   end
 

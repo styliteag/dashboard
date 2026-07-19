@@ -1163,8 +1163,11 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
             <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> {@instance.name}
           </h1>
-          <span class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}>
-            {if @connected, do: "agent connected", else: "no agent"}
+          <span
+            class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}
+            title={agent_badge_hint(@instance, @connected)}
+          >
+            {agent_badge(@instance, @connected)}
           </span>
           <a
             :if={@instance.shell_enabled}
@@ -2756,6 +2759,27 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp dur(s) when is_number(s) and s >= 60, do: "#{div(trunc(s), 60)}m#{rem(trunc(s), 60)}s"
   defp dur(s) when is_number(s), do: "#{trunc(s)}s"
   defp dur(_), do: "—"
+
+  # "no agent" used to mean only "not connected right now", which reads the same
+  # on a box that HAS an agent that is momentarily down and on one that never
+  # has one at all. Those imply different things — the first will pick up
+  # queued monitor config on reconnect, the second is polled and runs its
+  # monitors over SSH — so the badge names which it is.
+  defp agent_badge(_inst, true), do: "agent connected"
+
+  defp agent_badge(inst, false) do
+    if Instance.agent_mode?(inst), do: "agent offline", else: "no agent"
+  end
+
+  defp agent_badge_hint(_inst, true), do: "The agent is connected and pushing."
+
+  defp agent_badge_hint(inst, false) do
+    if Instance.agent_mode?(inst) do
+      "This box runs an agent but it is not connected right now."
+    else
+      "This box has no agent by design — the dashboard polls it."
+    end
+  end
 
   defp conn_badge(true), do: "bg-primary/20 text-primary"
   defp conn_badge(false), do: "bg-base-300 text-base-content/60"

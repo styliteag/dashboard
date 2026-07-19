@@ -26,28 +26,19 @@ defmodule Orbit.Securepoint.Monitors do
   Attach ping results to a status map: the `connectivity` section, and
   `ping_*` fields on the matching IPsec children.
 
-  Opens ONE SSH connection for all monitors — a box with a dozen Phase-2
-  monitors should not pay a dozen handshakes.
+  Takes an ALREADY OPEN connection: the caller shares one handshake with the
+  swanctl dump, and every monitor on the box reuses it.
   """
-  def enrich(status, inst) do
+  def enrich(status, conn, inst) do
     conn_monitors = Enum.filter(Monitors.list_connectivity(inst.id), & &1.enabled)
     ipsec_monitors = Enum.filter(Monitors.list_ipsec(inst.id), & &1.enabled)
 
     if conn_monitors == [] and ipsec_monitors == [] do
       status
     else
-      with {:ok, cfg} <- SSH.config_for(inst),
-           {:ok, conn} <- SSH.connect(cfg) do
-        try do
-          status
-          |> put_connectivity(conn, conn_monitors)
-          |> put_ipsec_pings(conn, ipsec_monitors)
-        after
-          :ssh.close(conn)
-        end
-      else
-        _ -> status
-      end
+      status
+      |> put_connectivity(conn, conn_monitors)
+      |> put_ipsec_pings(conn, ipsec_monitors)
     end
   end
 
