@@ -54,6 +54,14 @@ RUN chown nobody /app
 # Served agent code for the self-update relay (read-only path parity with
 # the python image; the signed .sig ships beside the .py).
 COPY --chown=nobody:root agent/orbit_agent.py agent/orbit_agent.py.sig /app/agent/
+# The other four bootstrap downloads in AgentApiController.@downloads — the
+# install guides curl/fetch these, so an image without them 404s every new
+# enrollment. Copied as an explicit allowlist (not the whole agent/ dir the
+# python image shipped) to keep tests/ and install scripts out of the image.
+COPY --chown=nobody:root agent/run-agent.sh /app/agent/
+COPY --chown=nobody:root agent/rc.d/orbit_agent /app/agent/rc.d/
+COPY --chown=nobody:root agent/systemd/orbit-agent.service /app/agent/systemd/
+COPY --chown=nobody:root agent/vendor/check_mk_agent.linux /app/agent/vendor/
 ENV AGENT_DIR=/app/agent
 
 COPY --from=builder --chown=nobody:root /app/_build/prod/rel/orbit ./

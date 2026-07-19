@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Agent installation from the release image 404'd on every file but
+  `orbit_agent.py`.** The install guide's `curl`/`fetch` lines pull five files
+  from `/api/agent/*`, but the orbit image only shipped the agent script and its
+  signature — `run-agent.sh`, the FreeBSD `rc.d` script, the systemd unit and the
+  vendored `check_mk_agent.linux` were never copied in, so enrolling a new box
+  against a released image was impossible. All five now ship.
+
 - **Securepoint boxes showed no CPU, memory, disk, uptime or interface data.**
   The port fetched `appmgmt get_information` and passed that payload through as
   the raw "system" section, but none of the live numbers live there. The python
