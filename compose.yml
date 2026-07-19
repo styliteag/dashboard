@@ -1,12 +1,25 @@
-# Production compose. Single combined image for frontend + backend.
+# Production compose — Orbit (Elixir/LiveView) stack.
+#
+# This is the CUTOVER topology (plan docs/elixir-liveview-rewrite.md §3/M7): the
+# old FastAPI+React `app` image is gone; a thin nginx front door proxies
+# everything to the `orbit` release (Bandit on :4000). Old and new never run
+# side by side — one dashboard, one poller, one notifier.
 #
 # Quickstart:
 #   cp .env.example .env
-#   # edit .env (set DASH_MASTER_KEY, DASH_ADMIN_PASSWORD, DB_PASSWORD)
+#   # edit .env: DASH_MASTER_KEY, ORBIT_SECRET_KEY_BASE, DB_PASSWORD,
+#   #            DB_ROOT_PASSWORD, DASH_PUBLIC_HOST
 #   docker compose up -d --build
 #
-# To pull a prebuilt image instead of building locally, comment out the
-# `build:` block under `app` and uncomment the `image:` line.
+# SCHEMA PREREQUISITE: orbit does not own database migrations yet — the MariaDB
+# schema is still Alembic-managed (shared with the retired python stack). This
+# compose therefore assumes the schema already exists:
+#   - Cutover from the python stack → the DB is already migrated. Nothing to do.
+#   - Greenfield install → run the python stack's `alembic upgrade head` once
+#     against this DB before first `orbit` boot (orbit only reads the schema).
+#
+# To pull prebuilt images instead of building, comment the `build:` block under
+# `orbit` and uncomment its `image:` line.
 
 services:
   db:
@@ -26,80 +39,55 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  # Orbit release (Elixir/LiveView) — the whole dashboard. Bandit listens on
+  # :4000; the nginx service below is the only front door (no published ports
+  # here). Config that used to be env-only now largely lives in DB settings, so
+  # this block is smaller than the old `app` — only boot-time secrets, host
+  # identity, the proxy-hop count and the GeoIP/CrowdSec/GUI switches remain.
+  orbit:
     build:
       context: .
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      dockerfile: orbit/Dockerfile
     # Alternatively pull a prebuilt image:
-    # image: styliteag/dashboard:latest
-    # image: ghcr.io/styliteag/dashboard:latest
+    # image: styliteag/dashboard-orbit:latest
+    # image: ghcr.io/styliteag/dashboard-orbit:latest
     restart: unless-stopped
-    ports:
-      - "${DASH_PORT:-80}:80"
     volumes:
-      # Bake-vs-mount: prod uses the VERSION baked into the image; this bind
-      # only matters for dev-style runs where the host VERSION drifts.
-      - ./VERSION:/app/VERSION:ro
       # GeoLite2 database — volume-backed so the weekly download survives
-      # container recreation (or drop your own mmdb in here manually).
+      # container recreation (or drop your own mmdb in here manually). Orbit is
+      # now the sole updater (GeoLite2-City); set the MaxMind creds below.
       - geoip_data:/data/geoip
     environment:
-      DASH_ENV: ${DASH_ENV:-prod}
-      DASH_LOG_LEVEL: ${DASH_LOG_LEVEL:-info}
-      DASH_LOG_FORMAT: ${DASH_LOG_FORMAT:-console}
-      # Trust exactly this many rightmost X-Forwarded-For entries (nginx in the image).
-      # Too high = clients can spoof IPs for login rate limits and audit.
-      # See .env.example. The app refuses to boot in non-dev if > 3.
-      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-1}
+      # Same DB + Fernet key as the retired python stack — the schema and the
+      # *_enc secret columns are shared/compatible.
       DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
       DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
-      DASH_ADMIN_PASSWORD: ${DASH_ADMIN_PASSWORD:?set in .env}
-      # Bootstrap-admin lifecycle + 2FA. Passkeys REQUIRE WEBAUTHN_RP_ID/ORIGIN set
-      # to your real domain — the localhost defaults make passkey registration fail
-      # behind a reverse proxy (Traefik) with a browser SecurityError. Set
-      # DASH_WEBAUTHN_RP_ID=dash.example.com and DASH_WEBAUTHN_ORIGIN=https://dash.example.com
-      # (exact https origin, no trailing slash). TOTP works regardless.
-      DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
-      # Bootstrap superadmin (rights management only) — same lifecycle as the
-      # bootstrap admin. Empty = seed is skipped.
-      DASH_SUPERADMIN_PASSWORD: ${DASH_SUPERADMIN_PASSWORD:-}
-      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
+      # Phoenix cookie/token signing base — generate with: openssl rand -base64 48
+      SECRET_KEY_BASE: ${ORBIT_SECRET_KEY_BASE:?set in .env - openssl rand -base64 48}
+      # Public host (address bar) — used for the URL, the LiveView origin check
+      # and the passkey defaults below. Set to your real domain.
+      PHX_HOST: ${DASH_PUBLIC_HOST:-localhost}
+      POOL_SIZE: ${ORBIT_POOL_SIZE:-10}
+      # Trust exactly this many rightmost X-Forwarded-For entries (the nginx
+      # service adds one). Too high = clients can spoof the IP behind login rate
+      # limits, the audit log and the geo gate. See .env.example.
+      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-1}
+      # 2FA / passkeys. Passkeys REQUIRE the RP id + origin to match the real
+      # host EXACTLY (localhost defaults make registration fail behind a proxy
+      # with a browser SecurityError). TOTP works regardless.
       DASH_MFA_ISSUER: ${DASH_MFA_ISSUER:-Orbit Dashboard}
-      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-localhost}
-      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
+      DASH_WEBAUTHN_RP_ID: ${DASH_WEBAUTHN_RP_ID:-${DASH_PUBLIC_HOST:-localhost}}
+      DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-https://${DASH_PUBLIC_HOST:-localhost}}
       DASH_WEBAUTHN_RP_NAME: ${DASH_WEBAUTHN_RP_NAME:-Orbit Dashboard}
-      DASH_POLL_INTERVAL_SECONDS: ${DASH_POLL_INTERVAL_SECONDS:-30}
-      DASH_POLL_TICK_SECONDS: ${DASH_POLL_TICK_SECONDS:-10}
-      DASH_PUSH_INTERVAL_SECONDS: ${DASH_PUSH_INTERVAL_SECONDS:-30}
-      DASH_POLL_CONCURRENCY: ${DASH_POLL_CONCURRENCY:-20}
-      DASH_AGENT_STALE_SECONDS: ${DASH_AGENT_STALE_SECONDS:-120}
-      DASH_METRICS_RETENTION_DAYS: ${DASH_METRICS_RETENTION_DAYS:-30}
-      DASH_IPSEC_EVENT_RETENTION_DAYS: ${DASH_IPSEC_EVENT_RETENTION_DAYS:-90}
-      DASH_ACCESS_EVENTS_RETENTION_DAYS: ${DASH_ACCESS_EVENTS_RETENTION_DAYS:-30}
-      DASH_ACCESS_SESSIONS_RETENTION_DAYS: ${DASH_ACCESS_SESSIONS_RETENTION_DAYS:-30}
-      DASH_ACCESS_STATS_RETENTION_DAYS: ${DASH_ACCESS_STATS_RETENTION_DAYS:-365}
-      DASH_NOTIFY_WEBHOOK_URL: ${DASH_NOTIFY_WEBHOOK_URL:-}
-      DASH_NOTIFY_TELEGRAM_TOKEN: ${DASH_NOTIFY_TELEGRAM_TOKEN:-}
-      DASH_NOTIFY_TELEGRAM_CHAT_ID: ${DASH_NOTIFY_TELEGRAM_CHAT_ID:-}
-      DASH_NOTIFY_NTFY_URL: ${DASH_NOTIFY_NTFY_URL:-}
-      DASH_NOTIFY_MATTERMOST_URL: ${DASH_NOTIFY_MATTERMOST_URL:-}
-      # Firewall GUI proxy (OPTIONAL — off by default). Needs the `gui-proxy`
-      # service below + an external reverse proxy (e.g. Traefik) routing the
-      # wildcard. See README "Firewall GUI proxy".
-      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-false}
-      DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
-      # Caddy admin endpoint the backend hot-loads the per-slug vhost map to
-      # (reachable as gui-proxy:2019 on the internal compose network — NOT published
-      # to the host). REQUIRED when the proxy is enabled — without it the push
-      # silently no-ops and gui-<slug> hosts return a blank 200. The default below
-      # only applies to THIS compose; a hand-written/Swarm stack must set it itself.
-      DASH_GUI_CADDY_ADMIN_URL: ${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}
-      DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
-      # Browser terminal (SPIKE, root shell on the firewall — see docs §22). Global
-      # gate; each instance additionally needs its per-instance "Terminal" opt-in.
+      # Bootstrap-seed force flags (accounts already live in the shared DB; these
+      # only govern the seed-admin retirement lifecycle).
+      DASH_ADMIN_DISABLED: ${DASH_ADMIN_DISABLED:-auto}
+      DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
+      # Browser terminal (root shell on the firewall — docs §22). Global gate;
+      # each instance additionally needs its per-instance "Terminal" opt-in.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # Extra allowed WS Origin hosts (comma-separated) beyond PHX_HOST/localhost.
+      DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
       # GeoIP access restriction (docs/geoip-access-restriction.md).
       # DASH_GEOIP_DISABLE=true is the emergency kill switch when a bad
       # country/whitelist config locks everyone out (env-only by design).
@@ -111,64 +99,55 @@ services:
       DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
       DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
       DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
+      # Firewall GUI proxy (OPTIONAL — off by default). Needs the `gui-proxy`
+      # service below + an external reverse proxy routing the wildcard. See
+      # README "Firewall GUI proxy".
+      DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-false}
+      DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
+      ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:-}
+      # Caddy admin endpoint the backend hot-loads the per-slug vhost map to
+      # (gui-proxy:2019 on the internal network — NOT published). REQUIRED when
+      # the proxy is enabled, else the push silently no-ops.
+      DASH_GUI_CADDY_ADMIN_URL: ${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}
+      DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       TZ: ${TZ:-UTC}
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/api/health >/dev/null 2>&1 || exit 1"]
+      # curl ships in the runner image for exactly this (debian-slim has no wget).
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4000/api/health-ex >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      # Generous start window: boot runs alembic migrations first, and a single
-      # DDL (e.g. index build on a large metrics table) can take minutes. An
-      # orchestrator that kills on early health failures (Swarm) would otherwise
-      # abort the migration mid-build and crash-loop the task.
-      start_period: 600s
+      start_period: 60s
 
-  # Orbit (Elixir/LiveView rewrite, plan docs/elixir-liveview-rewrite.md §M7).
-  # Opt-in via `docker compose --profile orbit up -d orbit` — NEVER runs by
-  # default beside the python stack (double polling/notifications, plan §3).
-  # Cutover = swap the app container's nginx vhost to docker/nginx.orbit.conf
-  # (see that file's header) and restart app; rollback = restore the vhost.
-  # No published ports: nginx inside the app container is the only front door.
-  orbit:
-    build:
-      context: .
-      dockerfile: orbit/Dockerfile
-    # Alternatively pull a prebuilt image:
-    # image: styliteag/dashboard-orbit:latest
+  # The only front door: TLS terminates at your external reverse proxy / LB,
+  # which forwards HTTP here; this nginx proxies the dashboard, /api and both
+  # websockets (/api/ws for agents, /live for the browser) to orbit:4000.
+  nginx:
+    image: nginx:1.27-alpine
     restart: unless-stopped
-    profiles: [orbit]
+    ports:
+      - "${DASH_PORT:-80}:80"
     volumes:
-      - geoip_data:/data/geoip
-    environment:
-      # Same DB + fernet key as the python stack — shared schema until M8.
-      DASH_DATABASE_URL: mysql+aiomysql://${DB_USER:-dash}:${DB_PASSWORD}@db:3306/${DB_NAME:-dash}
-      DASH_MASTER_KEY: ${DASH_MASTER_KEY:?set in .env}
-      SECRET_KEY_BASE: ${ORBIT_SECRET_KEY_BASE:?set in .env - generate with: openssl rand -base64 48}
-      PHX_HOST: ${DASH_PUBLIC_HOST:-localhost}
-      DASH_TRUSTED_PROXY_HOPS: ${DASH_TRUSTED_PROXY_HOPS:-1}
-      DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
-      DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
-      # GeoIP gate + CrowdSec blocklist (same vars as the app service).
-      DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}
-      DASH_GEOIP_DB_PATH: ${DASH_GEOIP_DB_PATH:-/data/geoip/GeoLite2-Country.mmdb}
-      DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
-      DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
-      DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
-      TZ: ${TZ:-UTC}
+      - ./docker/nginx.orbit.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      db:
+      orbit:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/api/health-ex >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Firewall GUI proxy (OPTIONAL). Your EXTERNAL Traefik terminates TLS and routes
   # Host(*.${ORBIT_GUI_DOMAIN}) to THIS Caddy (over HTTP); it host-matches gui-<slug>,
   # gates on the orbit_gui cookie (forward_auth), and proxies to that firewall's
-  # forwarder (app:14400+id). Opt-in: `docker compose --profile gui up -d`.
-  # The mounted Caddyfile is only a BOOTSTRAP (admin API + empty wildcard); the
-  # backend regenerates the per-slug vhost map and hot-loads it via Caddy's admin
-  # API (gui-proxy:2019) on every instance create/slug-change/delete and at startup.
+  # forwarder (orbit:14400+id). Opt-in: `docker compose --profile gui up -d`.
+  # The mounted Caddyfile is only a BOOTSTRAP (admin API + empty wildcard); orbit
+  # regenerates the per-slug vhost map and hot-loads it via Caddy's admin API
+  # (gui-proxy:2019) on every instance create/slug-change/delete and at startup.
   # Regenerate the bootstrap only if its global block changes:
   #   uv --project backend run python scripts/gen-gui-caddyfile.py > docker/Caddyfile.gui-prod
   # Wire your Traefik to reach it (shared network + a router *.<domain> → gui-proxy:80).
@@ -182,12 +161,14 @@ services:
     profiles: [gui]
     environment:
       ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:?set this to your gui wildcard base, e.g. gui.example.com}
-      ORBIT_GUI_APP: app:80
-      ORBIT_GUI_FWD_HOST: app
+      # authcheck subrequests + per-instance forwarders both live in the orbit
+      # release now (was the python `app` container pre-cutover).
+      ORBIT_GUI_APP: orbit:4000
+      ORBIT_GUI_FWD_HOST: orbit
     volumes:
       - ./docker/Caddyfile.gui-prod:/etc/caddy/Caddyfile:ro
     depends_on:
-      - app
+      - orbit
     # --- Option B: wire Traefik via LABELS (instead of the file provider in A). ---
     # Uncomment and replace `gui.example.com` with your ORBIT_GUI_DOMAIN. Traefik
     # only terminates TLS and forwards HTTP here; Caddy does the host-match + auth.

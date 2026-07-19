@@ -38,9 +38,11 @@ RUN mix compile && mix assets.deploy && mix release
 
 FROM debian:trixie-slim
 
+# curl: container HEALTHCHECK hits /api/health-ex (debian-slim ships neither
+# curl nor wget; the release has no HTTP client of its own).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    libstdc++6 openssl libncurses6 locales ca-certificates \
+    libstdc++6 openssl libncurses6 locales ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
