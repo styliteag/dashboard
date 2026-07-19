@@ -202,6 +202,40 @@ defmodule Orbit.Settings.Registry do
       env: "DASH_NOTIFY_EMAIL_PASSWORD",
       default: "",
       is_secret: true
+    },
+    %Def{
+      key: "check_event_retention_days",
+      type: :int,
+      env: "DASH_CHECK_EVENT_RETENTION_DAYS",
+      default: "90",
+      min: 1,
+      max: 3650
+    },
+    %Def{
+      key: "log_level",
+      type: :str,
+      env: "DASH_LOG_LEVEL",
+      default: "info",
+      options: ~w(debug info warning error)
+    },
+    %Def{
+      key: "log_format",
+      type: :str,
+      env: "DASH_LOG_FORMAT",
+      default: "console",
+      options: ~w(console json)
+    },
+    %Def{
+      key: "checkmk_blackout",
+      type: :bool,
+      env: "DASH_CHECKMK_BLACKOUT",
+      default: "false"
+    },
+    %Def{
+      key: "checkmk_aggregate",
+      type: :bool,
+      env: "DASH_CHECKMK_AGGREGATE",
+      default: "true"
     }
   ]
 
@@ -290,14 +324,15 @@ defmodule Orbit.Settings.Registry do
     "log_level" => %{
       group: "Service",
       label: "Log level",
-      help: "Backend log verbosity.",
-      restart: true
+      help: "Backend log verbosity. Applies immediately (no restart needed).",
+      restart: false
     },
     "log_format" => %{
       group: "Service",
       label: "Log format",
-      help: "Backend log output: human-readable console lines or JSON lines.",
-      restart: true
+      help:
+        "Backend log output: human-readable console lines or JSON lines. Applies immediately (no restart needed).",
+      restart: false
     },
     "notify_mattermost_url" => %{
       group: "Mattermost",
