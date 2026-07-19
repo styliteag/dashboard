@@ -15,6 +15,8 @@ defmodule OrbitWeb.VpnLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
+
   import OrbitWeb.Components.ListKit
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
@@ -794,116 +796,11 @@ defmodule OrbitWeb.VpnLive do
           </div>
         </div>
 
-        <%!-- Edit-ping dialog (PingMonitorDialog parity): Test runs the
-             agent's one-off ipsec.ping_test on the CURRENT form values. --%>
-        <div
-          :if={@ping_editor}
-          class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
-        >
-          <div class="w-full max-w-md rounded-lg border border-base-content/20 bg-base-200 p-5">
-            <h3 class="text-sm font-medium text-base-content">
-              {if @ping_editor.monitor_id, do: "Edit ping monitor", else: "Add ping monitor"}
-            </h3>
-            <p class="mt-1 text-xs text-base-content/60">
-              {@ping_editor.instance_name} · {@ping_editor.child_name}
-              <span :if={@ping_editor.local_ts != ""}>
-                · {@ping_editor.local_ts} ⇄ {@ping_editor.remote_ts}
-              </span>
-            </p>
-
-            <form phx-change="p2mon_change" phx-submit="p2mon_save" class="mt-4 space-y-3 text-sm">
-              <label class="block text-xs text-base-content/60">
-                Source IP (must be box-owned; blank = default route)
-                <input
-                  name="mon[source]"
-                  value={@ping_editor.source}
-                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
-                />
-              </label>
-              <label class="block text-xs text-base-content/60">
-                Destination *
-                <input
-                  name="mon[destination]"
-                  value={@ping_editor.destination}
-                  required
-                  placeholder="host on the far side of the tunnel"
-                  class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
-                />
-              </label>
-              <div class="flex items-end gap-4">
-                <label class="block text-xs text-base-content/60">
-                  Pings per cycle
-                  <input
-                    name="mon[ping_count]"
-                    value={@ping_editor.ping_count}
-                    class="mt-1 w-20 rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
-                  />
-                </label>
-                <label class="flex items-center gap-1.5 pb-1.5 text-xs text-base-content/70">
-                  <input
-                    type="checkbox"
-                    name="mon[enabled]"
-                    value="true"
-                    checked={@ping_editor.enabled}
-                    class="accent-primary"
-                  /> Enabled
-                </label>
-              </div>
-
-              <div
-                :if={@ping_test}
-                class={[
-                  "rounded px-3 py-2 text-xs",
-                  case @ping_test do
-                    {:ok, _} -> "bg-primary/15 text-primary"
-                    _ -> "bg-error/15 text-error"
-                  end
-                ]}
-              >
-                Test: {elem(@ping_test, 1)}
-              </div>
-
-              <div class="flex items-center justify-between pt-2">
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    phx-click="p2mon_cancel"
-                    class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    :if={@ping_editor.monitor_id}
-                    type="button"
-                    phx-click="p2mon_delete"
-                    phx-value-id={@ping_editor.monitor_id}
-                    phx-value-iid={@ping_editor.instance_id}
-                    data-confirm="Remove this Phase-2 ping monitor?"
-                    class="rounded border border-error/40 px-3 py-1.5 text-xs text-error hover:bg-error/15"
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    phx-click="p2mon_test"
-                    disabled={@ping_test_busy}
-                    class="rounded border border-info/40 px-3 py-1.5 text-xs text-info hover:bg-info/15 disabled:opacity-50"
-                  >
-                    {if @ping_test_busy, do: "Testing…", else: "Test"}
-                  </button>
-                  <button
-                    type="submit"
-                    class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
+        <.ping_monitor_dialog
+          editor={@ping_editor}
+          busy={@ping_test_busy}
+          result={@ping_test}
+        />
       </section>
     </main>
     """

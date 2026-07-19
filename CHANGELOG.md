@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The Phase-2 ping monitor dialog is now on the instance's own VPN tab too.**
+  It previously only existed on the fleet VPN page; the instance page carried a
+  cramped inline form per tunnel row that could only ADD a monitor — no editing,
+  no disabling, no deleting, and no way to try a ping before saving. Both pages
+  now open the same dialog, with source, destination, pings per cycle, an
+  enabled switch, and Test.
+
+- **Test works on boxes without an agent.** It ran the agent's one-off ping and
+  answered "no agent" everywhere else — including the Securepoint boxes whose
+  monitors had just been made to work. It now uses whichever way the box can be
+  reached.
+
 - **The monitor UI is reachable on Securepoint boxes.** The probes started
   working over SSH, but the Connectivity tab and the Phase-2 monitor controls
   were still hidden — they were gated on "has an agent" rather than on "can run

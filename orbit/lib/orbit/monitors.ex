@@ -281,6 +281,71 @@ defmodule Orbit.Monitors do
   end
 
   @doc """
+  Run ONE ping right now against the values in the editor, whichever way this
+  box can be reached — the dialog's "Test" button.
+
+  An agent box runs the agent's one-off `ipsec.ping_test`; a Securepoint has no
+  agent and runs the same probe over SSH. Without this branch Test answered
+  "no agent" on exactly the boxes whose monitors we had just made work.
+
+  Returns `{:ok, summary}` / `{:error, summary}` — never raises, because this is
+  a user-facing button and a bad source address is a normal answer, not a crash.
+  """
+  def ping_test(inst, source, destination, count) do
+    cond do
+      Orbit.Instances.Instance.agent_mode?(inst) ->
+        agent_ping_test(inst, source, destination, count)
+
+      Orbit.Instances.Instance.monitors_runnable?(inst) ->
+        ssh_ping_test(inst, source, destination, count)
+
+      true ->
+        {:error, "this box cannot run pings — no agent, and SSH is not configured"}
+    end
+  end
+
+  defp agent_ping_test(inst, source, destination, count) do
+    payload = %{
+      "source" => String.trim(to_string(source)),
+      "destination" => String.trim(to_string(destination)),
+      "ping_count" => to_string(count)
+    }
+
+    case Hub.send_command(inst.id, "ipsec.ping_test", payload, 20_000) do
+      %{"success" => true} = r -> {:ok, r["output"] || "ok"}
+      %{"output" => out} -> {:error, out || "ping failed"}
+      _ -> {:error, "agent not connected"}
+    end
+  end
+
+  defp ssh_ping_test(inst, source, destination, count) do
+    with {:ok, cfg} <- Orbit.Securepoint.SSH.config_for(inst) do
+      case Orbit.Securepoint.SSH.with_connection(cfg, fn conn ->
+             Orbit.Securepoint.SSH.ping(conn, source, destination, count)
+           end) do
+        %{"ping_state" => "ok"} = r ->
+          {:ok, "reachable — #{r["ping_loss_pct"]}% loss, #{r["ping_rtt_ms"]} ms avg"}
+
+        %{"ping_state" => "fail"} ->
+          {:error, "no reply (100% loss)"}
+
+        %{"ping_state" => "error"} ->
+          {:error, "the ping could not run — check the source address"}
+
+        {:error, reason} ->
+          {:error, to_string(reason)}
+
+        _ ->
+          {:error, "ping failed"}
+      end
+    else
+      _ -> {:error, "SSH is not configured for this box"}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
   Push the instance's current monitor sets to its connected agent
   (best-effort; an offline agent gets them re-sent after its next hello).
   """
