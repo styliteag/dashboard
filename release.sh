@@ -21,6 +21,21 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
+# Lint gate. There is no CI on pushes to main and the release workflow only runs
+# AFTER the tag is pushed, so a formatting slip or a compile warning would first
+# surface in a build that can no longer be un-tagged. Runs before signing, which
+# is the first step that writes anything.
+#
+# `mix compile` here is incremental against the dev stack's warm _build, so it
+# checks what changed, not the whole tree; the release image compiles cold.
+echo "Running orbit lint gate..."
+if ! just orbit-lint; then
+    echo "Error: 'just orbit-lint' failed. Fix formatting/warnings before releasing."
+    exit 1
+fi
+echo "✓ Lint passed"
+echo ""
+
 # Agent self-update signing: if a public key is baked into the agent, the served
 # .sig MUST match it (else deployed agents reject every update). Re-sign here so a
 # release always ships a signature current with the agent bytes, then verify.
@@ -167,9 +182,9 @@ echo ""
 
 # Display Docker image URLs
 echo "Docker images that will be built:"
-echo "  - docker.io/styliteag/dashboard:$NEW_VERSION"
-echo "  - docker.io/styliteag/dashboard:latest"
-echo "  - ghcr.io/styliteag/dashboard:$NEW_VERSION"
-echo "  - ghcr.io/styliteag/dashboard:latest"
+echo "  - docker.io/styliteag/dashboard-orbit:$NEW_VERSION"
+echo "  - docker.io/styliteag/dashboard-orbit:latest"
+echo "  - ghcr.io/styliteag/dashboard-orbit:$NEW_VERSION"
+echo "  - ghcr.io/styliteag/dashboard-orbit:latest"
 echo ""
 echo "Release $NEW_VERSION completed successfully!"
