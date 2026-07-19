@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Securepoint boxes showed no CPU, memory, disk, uptime or interface data.**
+  The port fetched `appmgmt get_information` and passed that payload through as
+  the raw "system" section, but none of the live numbers live there. The python
+  client had read `system info` — per-state CPU %, Mem Total/Avail, storage,
+  uptime — and derived the same section shapes the OPNsense client emits, so a
+  pulled Securepoint box filled the same metrics surface as an agent box. That
+  derivation is back: CPU busy (100 − idle), memory in MB with a used %, the
+  /data volume, hostname/version, and interfaces with their addresses and
+  up/down state. Interface byte counters stay 0 — that API exposes them only
+  via RRD, so the graphs stay honest rather than inventing traffic.
+
 ## [4.0.1] - 2026-07-19
 
 ### Fixed
