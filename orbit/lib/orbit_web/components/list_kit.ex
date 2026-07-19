@@ -15,6 +15,72 @@ defmodule OrbitWeb.Components.ListKit do
 
   alias Orbit.Auth.Scope
 
+  @doc """
+  Read-only counterpart of `kpi_tile/1`: a number plus a `hint` line saying
+  what it actually counts (your scope vs. fleet-wide, since when, of what
+  total). The Access-control page sets the house standard — a number without
+  that line makes the reader guess, and on Hub two tiles legitimately count
+  the same events at different scopes.
+  """
+  attr :label, :string, required: true
+  attr :value, :any, required: true
+  attr :color, :string, default: "text-base-content"
+  slot :hint, doc: "one short line under the number; omit only when truly self-evident"
+
+  def stat_tile(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+      <div class="text-xs text-base-content/60">{@label}</div>
+      <div class={["text-2xl font-semibold", @color]}>{@value}</div>
+      <div :if={@hint != []} class="mt-0.5 text-[11px] leading-tight text-base-content/50">
+        {render_slot(@hint)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Non-interactive tally chip ("opnsense ×2") for the aggregate row above a
+  table — the shape of the data before the first row is read.
+  """
+  attr :label, :string, required: true
+  attr :count, :any, required: true
+  attr :tone, :atom, default: :neutral, values: [:neutral, :ok, :warn, :crit]
+  attr :title, :string, default: nil
+
+  def count_chip(assigns) do
+    ~H"""
+    <span
+      title={@title}
+      class={[
+        "rounded-full px-2.5 py-0.5 text-xs",
+        case @tone do
+          :ok -> "bg-primary/20 text-primary"
+          :warn -> "bg-warning/20 text-warning"
+          :crit -> "bg-error/20 text-error"
+          :neutral -> "bg-base-300 text-base-content/70"
+        end
+      ]}
+    >
+      {@label} ×{@count}
+    </span>
+    """
+  end
+
+  @doc """
+  The honesty line under a heading: retention, sampling, scope, cadence —
+  whatever tells the operator when NOT to trust what follows.
+  """
+  slot :inner_block, required: true
+
+  def data_note(assigns) do
+    ~H"""
+    <p class="mb-2 max-w-3xl text-xs leading-relaxed text-base-content/60">
+      {render_slot(@inner_block)}
+    </p>
+    """
+  end
+
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :color, :string, default: "text-base-content"

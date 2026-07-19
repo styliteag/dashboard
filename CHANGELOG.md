@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Production compose is now the **Orbit (Elixir/LiveView) cutover topology**: the
+  old combined FastAPI+React `app` image is gone; a thin `nginx` service is the
+  only front door and proxies the UI, `/api`, the agent websocket and the
+  LiveView socket to the `orbit` release on `:4000`. Old and new never run side
+  by side. New required env: `ORBIT_SECRET_KEY_BASE` and `DASH_PUBLIC_HOST`; the
+  orbit runner image now bundles `curl` for its `/api/health-ex` healthcheck.
+  Note: orbit does not own DB migrations yet — the schema stays Alembic-managed,
+  so greenfield installs must run `alembic upgrade head` once before first boot
+  (a cutover reuses the already-migrated DB and its accounts). README updated.
+
 ### Security
 
 - Orbit: the fleet Log events page was reachable by every signed-in account,
@@ -54,6 +66,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through chunked instead of buffering to a timeout.
 
 ### Changed
+
+- Orbit Hub: every number on the page now says what it counts. Each tile
+  carries a one-line caption (your scope vs. fleet-wide, since when), the two
+  counter blocks explain what a non-zero value means and that they are
+  hub-wide totals — so "Total pushes" (your agents) legitimately disagreeing
+  with "Metric pushes" (whole fleet) is no longer a puzzle — and the roster
+  gets a tally row above it (`opnsense ×2`, `3.1.8 ×5`, outdated versions in
+  amber). Same presentation the Access-control page uses.
 
 - Orbit: the top navigation now hides the instance pages (Instances, Alerts,
   Connectivity, VPN, Certs, Firmware, Logs) for accounts that have no group

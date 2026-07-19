@@ -65,6 +65,17 @@ defmodule OrbitWeb.HubStatusLive do
     end
   end
 
+  # {label, count} pairs for the chip row above the roster, biggest group
+  # first. Built from the roster the socket already holds — no extra query,
+  # and nothing claimed about boxes that are not connected.
+  defp tally(agents, fun) do
+    agents
+    |> Enum.map(fun)
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.frequencies()
+    |> Enum.sort_by(fn {label, n} -> {-n, label} end)
+  end
+
   # Counters that indicate something is wrong — rendered red when non-zero.
   defp error_counters do
     [
@@ -149,6 +160,8 @@ defmodule OrbitWeb.HubStatusLive do
         update_errors: Enum.count(assigns.agents, & &1.update_error),
         served_version: Orbit.Agent.Package.served_version(),
         per_minute: per_minute,
+        platform_tally: tally(assigns.agents, & &1.platform),
+        version_tally: tally(assigns.agents, & &1.version),
         errors_total:
           error_counters()
           |> Enum.map(fn {k, _} -> Map.get(assigns.counters, k, 0) end)
@@ -164,46 +177,51 @@ defmodule OrbitWeb.HubStatusLive do
           <Icons.icon name={:hub} class="h-5 w-5 text-base-content/60" /> Hub status
           <span class="ml-2 text-sm text-base-content/60">({length(@agents)} connected)</span>
         </h1>
-        <p class="mb-4 text-xs text-base-content/60">
-          In-memory since {Calendar.strftime(@started_at, "%Y-%m-%d %H:%M UTC")} — a restart
-          resets these numbers.
+        <p class="mb-4 max-w-3xl text-xs leading-relaxed text-base-content/60">
+          Live state of the agent WebSocket hub, in memory since {Calendar.strftime(
+            @started_at,
+            "%Y-%m-%d %H:%M UTC"
+          )} — a backend restart resets every
+          number on this page, and nothing here is persisted. Agents reconnect on their own.
+          Tiles and the roster below are limited to your groups; the counter blocks and the
+          chart are hub-wide totals across the whole fleet, so they can exceed what you see here.
         </p>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Connected</div>
-            <div class="text-2xl font-semibold text-primary">{length(@agents)}</div>
-          </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Pushes / min</div>
-            <div class="text-2xl font-semibold text-info">{@per_minute}</div>
-          </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Total pushes</div>
-            <div class="text-2xl font-semibold text-base-content">{@total_pushes}</div>
-          </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Errors total</div>
-            <div class={[
-              "text-2xl font-semibold",
-              if(@errors_total > 0, do: "text-error", else: "text-base-content")
-            ]}>
-              {@errors_total}
-            </div>
-          </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Update errors</div>
-            <div class={[
-              "text-2xl font-semibold",
-              if(@update_errors > 0, do: "text-warning", else: "text-base-content")
-            ]}>
-              {@update_errors}
-            </div>
-          </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Served agent</div>
-            <div class="text-2xl font-semibold text-base-content">{@served_version || "—"}</div>
-          </div>
+          <.stat_tile label="Connected" value={length(@agents)} color="text-primary">
+            <:hint>agents in your scope, right now</:hint>
+          </.stat_tile>
+          <.stat_tile label="Pushes / min" value={@per_minute} color="text-info">
+            <:hint>fleet-wide, last full minute</:hint>
+          </.stat_tile>
+          <.stat_tile label="Total pushes" value={@total_pushes}>
+            <:hint>your agents, since the hub started</:hint>
+          </.stat_tile>
+          <.stat_tile
+            label="Errors total"
+            value={@errors_total}
+            color={if @errors_total > 0, do: "text-error", else: "text-base-content"}
+          >
+            <:hint>
+              {if @errors_total > 0,
+                do: "hub-wide — see the error counters below",
+                else: "hub-wide; no rejected frames"}
+            </:hint>
+          </.stat_tile>
+          <.stat_tile
+            label="Update errors"
+            value={@update_errors}
+            color={if @update_errors > 0, do: "text-warning", else: "text-base-content"}
+          >
+            <:hint>
+              {if @update_errors > 0,
+                do: "your agents; last self-update failed",
+                else: "your agents; last self-update clean"}
+            </:hint>
+          </.stat_tile>
+          <.stat_tile label="Served agent" value={@served_version || "—"}>
+            <:hint>version this dashboard offers on update</:hint>
+          </.stat_tile>
         </div>
 
         <%!-- Fleet push activity (HubStatusPage rate-chart parity): pushes
@@ -232,7 +250,12 @@ defmodule OrbitWeb.HubStatusLive do
           </div>
         </div>
 
-        <h2 class="mb-2 mt-6 text-sm font-semibold text-base-content/80">Error counters</h2>
+        <h2 class="mb-1 mt-6 text-sm font-semibold text-base-content/80">Error counters</h2>
+        <.data_note>
+          Frames the hub refused, fleet-wide and not limited to your groups. Anything above zero
+          means an agent (or something posing as one) is talking to the hub wrongly — these do
+          not clear on their own, only on a backend restart.
+        </.data_note>
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
           <div
             :for={{key, label} <- error_counters()}
@@ -248,7 +271,13 @@ defmodule OrbitWeb.HubStatusLive do
           </div>
         </div>
 
-        <h2 class="mb-2 mt-6 text-sm font-semibold text-base-content/80">Message counters</h2>
+        <h2 class="mb-1 mt-6 text-sm font-semibold text-base-content/80">Message counters</h2>
+        <.data_note>
+          Every frame type the hub has handled since it started — fleet-wide, so these exceed
+          the "Total pushes" tile above, which counts only your agents. Pongs stay at zero by
+          design: agent liveness runs on WebSocket control frames, the hub sends no
+          application-level ping.
+        </.data_note>
         <div class="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div
             :for={{key, label} <- traffic_counters()}
@@ -257,6 +286,28 @@ defmodule OrbitWeb.HubStatusLive do
             <p class="text-xs text-base-content/60">{label}</p>
             <p class="text-lg font-semibold text-base-content">{Map.get(@counters, key, 0)}</p>
           </div>
+        </div>
+
+        <h2 class="mb-1 mt-6 text-sm font-semibold text-base-content/80">Connected agents</h2>
+        <.data_note>
+          Push-mode boxes of your groups holding an open WebSocket right now. A box missing here
+          is not necessarily down — it may be direct-API polled, or reconnecting; the Instances
+          page is the authority on reachability.
+        </.data_note>
+
+        <div :if={@agents != []} class="mb-3 flex flex-wrap gap-2">
+          <.count_chip :for={{label, n} <- @platform_tally} label={label} count={n} />
+          <.count_chip
+            :for={{version, n} <- @version_tally}
+            label={version}
+            count={n}
+            tone={if @served_version && version != @served_version, do: :warn, else: :ok}
+            title={
+              if @served_version && version != @served_version,
+                do: "update available → #{@served_version}",
+                else: "current"
+            }
+          />
         </div>
 
         <div :if={@agents == []} class="text-sm text-base-content/60">
