@@ -27,6 +27,45 @@ config :orbit, OrbitWeb.Endpoint, http: [port: String.to_integer(System.get_env(
 # Orbit.Crypto.master_key!/0 which raises a clear error when unset.
 config :orbit, :dash_master_key, System.get_env("DASH_MASTER_KEY")
 
+# A key that is SET but unusable is caught here rather than on first use. It
+# used to surface as a LiveView crash the moment somebody created an instance
+# — the operator saw the form reset with no message, and the log blamed
+# Fernet.split_key!/1 four frames deep instead of naming the variable.
+# Reported from prod with a placeholder value still in place.
+#
+# Deliberately only validates the FORMAT of a key that is present: leaving it
+# unset stays tolerated at boot (see Orbit.Crypto.master_key!/0), because that
+# is an existing, documented choice and not this guard's business to change.
+# An unparseable key is different — it can never decrypt anything, so there is
+# no deployment where continuing is the right answer.
+case System.get_env("DASH_MASTER_KEY") do
+  key when is_binary(key) and key != "" ->
+    case Base.url_decode64(key, padding: true) do
+      {:ok, raw} when byte_size(raw) == 32 ->
+        :ok
+
+      _ ->
+        raise """
+        DASH_MASTER_KEY is not a valid Fernet key.
+
+        It must be url-safe base64 of exactly 32 bytes (44 characters). Every
+        *_enc column is sealed with it, so nothing encrypted can be read or
+        written until it is right.
+
+        Generate one with:  just gen-key
+        (or: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+
+        WARNING: if this database already holds encrypted data, it was sealed
+        with the PREVIOUS key. Putting a new one here does not re-encrypt
+        anything — it makes the existing rows unreadable. Restore the original
+        key instead.
+        """
+    end
+
+  _ ->
+    :ok
+end
+
 # GeoIP access restriction (docs/geoip-access-restriction.md) — same env
 # vars as the python backend. DASH_GEOIP_DISABLE is the env-only kill
 # switch (DR-G2); the mmdb lives on the shared geoip volume and is kept

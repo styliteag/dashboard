@@ -11,6 +11,18 @@
 #   #            DB_ROOT_PASSWORD, DASH_PUBLIC_HOST
 #   docker compose up -d --build
 #
+# Generating the two secrets (the app refuses to boot on a bad value):
+#   DASH_MASTER_KEY      url-safe base64 of exactly 32 bytes
+#                          openssl rand -base64 32 | tr '+/' '-_'
+#                        The `tr` is NOT optional — plain base64 uses + and /,
+#                        which a Fernet key may not contain, so ~72% of runs
+#                        without it produce a key the app rejects.
+#                        NEVER change it on a database that already holds data:
+#                        every *_enc column is sealed with it and a new key
+#                        makes those rows unreadable, it does not re-encrypt.
+#   ORBIT_SECRET_KEY_BASE  at least 64 bytes, no character restriction
+#                          openssl rand -base64 48
+#
 # SCHEMA: orbit now OWNS the database schema (Ecto migrations, run at boot by
 # Orbit.Repo.Migrator — no manual step):
 #   - Empty/greenfield DB → the baseline migration creates the whole schema.

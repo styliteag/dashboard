@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An invalid `DASH_MASTER_KEY` is caught at startup, not on the first
+  instance you create.** A key that is not url-safe base64 of 32 bytes used to
+  pass boot unnoticed and then crash the LiveView the moment somebody saved an
+  instance — the operator saw the form reset with no message, and the log
+  blamed a Fernet function four frames deep instead of naming the variable. The
+  format is checked at boot now, with the generator command in the error.
+  Worth knowing: `openssl rand -base64 32` alone is **not** a valid key (plain
+  base64 uses `+` and `/`, which Fernet forbids — 72% of runs produce a key the
+  app rejects). Append `| tr '+/' '-_'`. README, `compose.yml` and
+  `.env.example` now spell this out, including the warning that changing the
+  key on a populated database does not re-encrypt anything, it makes the
+  existing rows unreadable.
 - **Starting before the database no longer crashes the app.** Swarm and
   Kubernetes have no `depends_on`, so orbit routinely comes up first — and it
   died on the spot, writing an `erl_crash.dump`, for a race that resolves

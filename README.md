@@ -139,6 +139,34 @@ docker compose up -d --build
 # http://localhost  (DASH_PORT in .env to remap; put your TLS proxy in front)
 ```
 
+**The two secrets, in detail.**
+
+- `DASH_MASTER_KEY` — the Fernet key every stored credential is encrypted with
+  (firewall API keys, SSH keys, notification tokens). Must be **url-safe base64
+  of exactly 32 bytes**; the app refuses to boot on anything else.
+
+  Generate it with any ONE of these — all produce url-safe base64 of 32 bytes:
+
+  ```bash
+  just gen-key                                   # from a repo checkout
+  openssl rand -base64 32 | tr '+/' '-_'         # anywhere openssl exists
+  python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+  ```
+
+  > `openssl rand -base64 32` **on its own is not enough**: plain base64 uses
+  > `+` and `/`, which a Fernet key may not contain — measured, 72% of runs
+  > produce a key the app rejects. The `tr` is what makes it url-safe.
+
+  > **Never change this key on a database that already holds data.** Every
+  > `*_enc` column is sealed with it; a new key does not re-encrypt anything,
+  > it makes the existing rows unreadable. Back it up somewhere your disaster
+  > recovery can reach.
+
+- `ORBIT_SECRET_KEY_BASE` — signs cookies and tokens. Needs **at least 64
+  bytes**; `openssl rand -base64 48` gives exactly that and has no character
+  restriction, so it needs no `tr`. The app refuses to boot if it is shorter.
+
+
 **Schema.** Orbit **owns** the database schema (Ecto migrations, applied
 automatically at boot by `Orbit.Repo.Migrator` — no manual step). A **greenfield**
 database is created from the baseline migration on first boot; a **cutover** from
