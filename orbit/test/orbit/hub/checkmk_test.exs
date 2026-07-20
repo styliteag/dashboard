@@ -94,7 +94,7 @@ defmodule Orbit.Hub.CheckmkTest do
   end
 
   test "the parsed sections actually produce checks" do
-    {sections, state} = Checkmk.parse(payload())
+    {_first, state} = Checkmk.parse(payload())
 
     {sections, _} =
       Checkmk.parse(payload(), %{"busy" => state["busy"] - 5, "total" => state["total"] - 100})

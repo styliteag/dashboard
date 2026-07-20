@@ -70,6 +70,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **"Analyse with AI" is back on the IPsec diagnosis**, for every kind of box.
+  The old dialog offered it whenever an AI provider was configured; the
+  rewrite kept the analyse button only on the Log tab, so the tunnel bundle —
+  the one place where reading strongSwan output is genuinely hard — lost it.
+  The bundle goes through the same anonymiser and character caps as the log
+  analysis.
+- **Securepoint boxes can be diagnosed at all.** The Diagnose button was
+  wired to the agent relay only, so on a box that has no agent (and never
+  will) it was permanently greyed out. The same bundle — connection config,
+  crypto proposals, live SAs, the charon log and a peer ping — is now
+  gathered over the SSH session the swanctl enrichment already uses. Without
+  a pinned SSH host key it explains why instead of connecting unverified.
+
 - **The bundled Checkmk agent script updates itself on Linux nodes again.**
   The agent has reported the script's checksum on every connect all along and
   nothing ever read it, so bumping the vendored copy never reached the fleet

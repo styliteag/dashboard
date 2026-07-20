@@ -91,6 +91,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           cb_diff: nil,
           diagnosis: nil,
           diagnosis_busy: nil,
+          diag_ai_busy: false,
+          diag_ai_result: nil,
+          diag_ai_error: nil,
           history: nil
         )
         |> load_comments()
@@ -245,10 +248,20 @@ defmodule OrbitWeb.InstanceDetailLive do
     else
       {:noreply,
        socket
-       |> assign(diagnosis_busy: id, diagnosis: nil)
+       |> assign(diagnosis_busy: id, diagnosis: nil, diag_ai_result: nil, diag_ai_error: nil)
        |> start_async(:ipsec_diagnose, fn ->
-         result = Hub.send_command(inst.id, "ipsec.diagnose", %{"tunnel_id" => id}, 30_000)
-         if is_map(result), do: {id, result}, else: {id, %{"success" => false}}
+         # Transport split: an agent builds the bundle on the box and relays
+         # it; a Securepoint has no agent and never will, so the same
+         # information is gathered over the SSH session the swanctl
+         # enrichment already uses. Before this the button simply did
+         # nothing on those boxes.
+         if Instance.agent_mode?(inst) do
+           result = Hub.send_command(inst.id, "ipsec.diagnose", %{"tunnel_id" => id}, 30_000)
+           if is_map(result), do: {id, result}, else: {id, %{"success" => false}}
+         else
+           sections = Orbit.Securepoint.Diagnose.run(inst, id)
+           {id, %{"success" => true, "sections" => sections}}
+         end
        end)}
     end
   end
@@ -292,8 +305,40 @@ defmodule OrbitWeb.InstanceDetailLive do
     {:noreply, assign(socket, history: nil)}
   end
 
+  # "Analyse with AI" on the IPsec bundle (DiagnoseDialog parity). The old
+  # dialog offered this for EVERY device type — it was gated on a configured
+  # provider, never on agent presence — and the port dropped it: only the Log
+  # tab kept an analyse button. The bundle is flattened to text and goes
+  # through the same Orbit.LLM.Analyze path as the logs, so the anonymiser
+  # and the character caps apply unchanged (invariant 4).
+  def handle_event("diag_ai_analyze", %{"provider" => provider}, socket) do
+    cond do
+      not socket.assigns.admin or socket.assigns.diag_ai_busy ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns.diagnosis) ->
+        {:noreply, socket}
+
+      true ->
+        text = diagnosis_text(socket.assigns.diagnosis)
+
+        {:noreply,
+         socket
+         |> assign(diag_ai_busy: true, diag_ai_result: nil, diag_ai_error: nil)
+         |> start_async(:diag_ai_analyze, fn ->
+           Orbit.LLM.Analyze.analyze_logs(provider, text)
+         end)}
+    end
+  end
+
   def handle_event("ipsec_diagnose_close", _params, socket) do
-    {:noreply, assign(socket, diagnosis: nil)}
+    {:noreply,
+     assign(socket,
+       diagnosis: nil,
+       diag_ai_result: nil,
+       diag_ai_error: nil,
+       diag_ai_busy: false
+     )}
   end
 
   def handle_event("ipsec_recheck", _params, socket) do
@@ -700,6 +745,23 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
+  # The diagnose bundle as one text blob for the analyser: section titles
+  # kept as headings so the model can tell swanctl output from the log tail.
+  # Agent boxes need a live connection to relay ipsec.diagnose; a Securepoint
+  # gathers over its own SSH session, so gating it on @connected (which is
+  # agent presence) disabled the button there permanently.
+  defp diagnose_disabled?(instance, busy, connected) do
+    busy != nil or (Instance.agent_mode?(instance) and not connected)
+  end
+
+  defp diagnosis_text(%{sections: sections}) when is_list(sections) do
+    Enum.map_join(sections, "\n\n", fn s ->
+      "== #{s["title"] || "section"} ==\n#{s["content"]}"
+    end)
+  end
+
+  defp diagnosis_text(_), do: ""
+
   # Canary mechanism (DR-6): one box per click. Shared push logic lives in
   # Orbit.Agent.Update (also drives the list page's "Update all agents").
   defp push_agent_update(inst, user), do: Orbit.Agent.Update.push(inst, user)
@@ -941,6 +1003,18 @@ defmodule OrbitWeb.InstanceDetailLive do
   def handle_async(:ping_test, {:exit, reason}, socket) do
     {:noreply,
      assign(socket, ping_test_busy: false, ping_test: {:error, "test failed: #{inspect(reason)}"})}
+  end
+
+  def handle_async(:diag_ai_analyze, {:ok, {:ok, result}}, socket) do
+    {:noreply, assign(socket, diag_ai_busy: false, diag_ai_result: result)}
+  end
+
+  def handle_async(:diag_ai_analyze, {:ok, {:error, msg}}, socket) do
+    {:noreply, assign(socket, diag_ai_busy: false, diag_ai_error: to_string(msg))}
+  end
+
+  def handle_async(:diag_ai_analyze, {:exit, _reason}, socket) do
+    {:noreply, assign(socket, diag_ai_busy: false, diag_ai_error: "analysis crashed")}
   end
 
   def handle_async(:ipsec_diagnose, {:ok, {id, result}}, socket) do
@@ -2358,7 +2432,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                       <button
                         phx-click="ipsec_diagnose"
                         phx-value-id={id}
-                        disabled={@diagnosis_busy != nil or not @connected}
+                        disabled={diagnose_disabled?(@instance, @diagnosis_busy, @connected)}
                         class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
@@ -2470,6 +2544,40 @@ defmodule OrbitWeb.InstanceDetailLive do
               </summary>
               <pre class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-base-200 p-2 font-mono text-base-content/80">{s["content"]}</pre>
             </details>
+
+            <%!-- "Analyse with AI" over the bundle (DiagnoseDialog parity).
+                 Admin-only like the Log-tab analyser, since the bundle is raw
+                 box output; the anonymiser and char caps are inside
+                 Orbit.LLM.Analyze, so nothing raw leaves here. --%>
+            <form
+              :if={@admin and @diagnosis.sections != []}
+              phx-submit="diag_ai_analyze"
+              class="mt-3 flex flex-wrap items-center gap-2 border-t border-base-300 pt-3"
+            >
+              <select
+                name="provider"
+                class="rounded border border-base-content/20 bg-base-100 p-1 text-xs text-base-content/80"
+              >
+                <option :for={p <- Orbit.LLM.Analyze.providers()} value={p.id}>{p.label}</option>
+              </select>
+              <button
+                type="submit"
+                disabled={@diag_ai_busy}
+                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {if @diag_ai_busy, do: "Analyzing…", else: "Analyse with AI"}
+              </button>
+              <span class="text-xs text-base-content/40">anonymized before it leaves the box</span>
+            </form>
+
+            <div :if={@diag_ai_error} class="mt-2 text-xs text-error">{@diag_ai_error}</div>
+
+            <div :if={@diag_ai_result} class="mt-3 rounded border border-base-300 bg-base-200 p-3">
+              <div class="mb-2 text-xs text-base-content/60">
+                {@diag_ai_result.provider} · {@diag_ai_result.model}
+              </div>
+              <pre class="whitespace-pre-wrap text-xs text-base-content/80">{@diag_ai_result.findings}</pre>
+            </div>
           </div>
         </div>
 

@@ -65,7 +65,6 @@ defmodule OrbitWeb.FirewallRulesLive do
     end
   end
 
-  @impl true
   # Alias + well-known values for the editor's datalists. Fetched when the
   # editor opens (not per keystroke, and not on page load: a box with no
   # aliases must not pay for the call), and only once per open.
@@ -79,6 +78,7 @@ defmodule OrbitWeb.FirewallRulesLive do
     end
   end
 
+  @impl true
   def handle_event("select_interface", %{"interface" => iface}, socket) do
     {:noreply, socket |> assign(interface: iface) |> load_rules()}
   end

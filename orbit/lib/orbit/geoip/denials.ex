@@ -88,19 +88,6 @@ defmodule Orbit.GeoIP.Denials do
 
   # -- GenServer ------------------------------------------------------------
 
-  @impl true
-  def init(:ok) do
-    Process.send_after(self(), :flush, @flush_ms)
-    Process.send_after(self(), :prune, @prune_ms)
-    # Lock-free counter for the all-pages footer. An ETS read costs
-    # microseconds and needs no message to this process — a GenServer.call
-    # on every rendered page would serialise the whole site through here,
-    # and a COUNT(*) per page would hit the database just as often.
-    :ets.new(@counter_table, [:named_table, :public, :set, write_concurrency: true])
-    :ets.insert(@counter_table, {:blocked, 0})
-    {:ok, empty_buffers()}
-  end
-
   @counter_table :orbit_geoip_denial_count
 
   @doc """
@@ -120,19 +107,32 @@ defmodule Orbit.GeoIP.Denials do
   end
 
   @impl true
+  def init(:ok) do
+    Process.send_after(self(), :flush, @flush_ms)
+    Process.send_after(self(), :prune, @prune_ms)
+    # Lock-free counter for the all-pages footer. An ETS read costs
+    # microseconds and needs no message to this process — a GenServer.call
+    # on every rendered page would serialise the whole site through here,
+    # and a COUNT(*) per page would hit the database just as often.
+    :ets.new(@counter_table, [:named_table, :public, :set, write_concurrency: true])
+    :ets.insert(@counter_table, {:blocked, 0})
+    {:ok, empty_buffers()}
+  end
+
+  @impl true
   def handle_cast({:record, ip, country, path, reason}, buffers) do
     bump_counter()
     {:noreply, add_denial(buffers, ip, country, path, reason, DateTime.utc_now())}
+  end
+
+  def handle_cast(:record_fail_open, buffers) do
+    {:noreply, add_fail_open(buffers)}
   end
 
   defp bump_counter do
     :ets.update_counter(@counter_table, :blocked, 1)
   rescue
     ArgumentError -> 0
-  end
-
-  def handle_cast(:record_fail_open, buffers) do
-    {:noreply, add_fail_open(buffers)}
   end
 
   @impl true

@@ -460,31 +460,37 @@ defmodule Orbit.Securepoint.SSH do
     end
   end
 
-  @doc false
-  def exec(conn, command) do
-    case :ssh_connection.session_channel(conn, @cmd_timeout) do
+  @doc """
+  Run one command over an open connection.
+
+  `timeout` defaults to the swanctl-poll budget. The diagnose bundle needs
+  far more (it tails syslog and runs a 4-second ping), so that caller passes
+  its own — a fixed 5s silently truncated it to "timed out".
+  """
+  def exec(conn, command, timeout \\ @cmd_timeout) do
+    case :ssh_connection.session_channel(conn, timeout) do
       {:ok, chan} ->
-        :ssh_connection.exec(conn, chan, command, @cmd_timeout)
-        collect(conn, chan, [])
+        :ssh_connection.exec(conn, chan, command, timeout)
+        collect(conn, chan, [], timeout)
 
       {:error, reason} ->
         {:error, "swanctl over SSH failed: #{describe(reason)}"}
     end
   end
 
-  defp collect(conn, chan, acc) do
+  defp collect(conn, chan, acc, timeout) do
     receive do
       # type 0 = stdout; 1 = stderr, which swanctl uses for warnings we ignore.
-      {:ssh_cm, ^conn, {:data, ^chan, 0, data}} -> collect(conn, chan, [data | acc])
-      {:ssh_cm, ^conn, {:data, ^chan, _type, _data}} -> collect(conn, chan, acc)
-      {:ssh_cm, ^conn, {:eof, ^chan}} -> collect(conn, chan, acc)
-      {:ssh_cm, ^conn, {:exit_status, ^chan, _status}} -> collect(conn, chan, acc)
+      {:ssh_cm, ^conn, {:data, ^chan, 0, data}} -> collect(conn, chan, [data | acc], timeout)
+      {:ssh_cm, ^conn, {:data, ^chan, _type, _data}} -> collect(conn, chan, acc, timeout)
+      {:ssh_cm, ^conn, {:eof, ^chan}} -> collect(conn, chan, acc, timeout)
+      {:ssh_cm, ^conn, {:exit_status, ^chan, _status}} -> collect(conn, chan, acc, timeout)
       {:ssh_cm, ^conn, {:closed, ^chan}} -> {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
-      {:ssh_cm, ^conn, _other} -> collect(conn, chan, acc)
+      {:ssh_cm, ^conn, _other} -> collect(conn, chan, acc, timeout)
     after
-      @cmd_timeout ->
+      timeout ->
         :ssh_connection.close(conn, chan)
-        {:error, "swanctl over SSH timed out after #{@cmd_timeout}ms"}
+        {:error, "swanctl over SSH timed out after #{timeout}ms"}
     end
   end
 
