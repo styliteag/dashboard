@@ -97,7 +97,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           diag_ai_result: nil,
           diag_ai_error: nil,
           history: nil,
-          check_history: nil
+          check_history: nil,
+          upgrade_confirm: "",
+          upgrade_confirm_open: false
         )
         |> load_comments()
         |> load_logs()
@@ -399,8 +401,38 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Firmware actions ride the same write gate; the handler re-checks (never
   # trust the hidden UI). Commands block up to 90s, so they run in start_async
   # off the LiveView process; one action at a time (fw_busy).
-  def handle_event("fw_" <> kind, _params, socket) when kind in ["check", "update", "upgrade"] do
+  def handle_event("fw_" <> kind, _params, socket) when kind in ["check", "update"] do
     {:noreply, fw_start(socket, kind)}
+  end
+
+  # A series upgrade is a major version jump that reboots a customer's
+  # firewall and cannot be undone from here. A browser confirm() is one
+  # reflexive Enter away, and it looked identical to the ordinary update's
+  # confirm right beside it. Typing the box's name makes the operator read
+  # WHICH box they are about to jump.
+  def handle_event("fw_upgrade", _params, socket) do
+    {:noreply, assign(socket, upgrade_confirm: "", upgrade_confirm_open: true)}
+  end
+
+  def handle_event("fw_upgrade_typing", %{"name" => typed}, socket) do
+    {:noreply, assign(socket, upgrade_confirm: typed)}
+  end
+
+  def handle_event("fw_upgrade_cancel", _params, socket) do
+    {:noreply, assign(socket, upgrade_confirm_open: false, upgrade_confirm: "")}
+  end
+
+  # Checked HERE, not in the browser: the dialog is a prompt, the gate is this
+  # comparison. A crafted event without the matching name does nothing.
+  def handle_event("fw_upgrade_confirm", %{"name" => typed}, socket) do
+    if String.trim(typed) == socket.assigns.instance.name do
+      {:noreply,
+       socket
+       |> assign(upgrade_confirm_open: false, upgrade_confirm: "")
+       |> fw_start("upgrade")}
+    else
+      {:noreply, assign(socket, upgrade_confirm: typed)}
+    end
   end
 
   # Agent enrollment + self-update (AgentSection parity; write-gated).
@@ -2123,7 +2155,6 @@ defmodule OrbitWeb.InstanceDetailLive do
                   truthy_str(@firmware && @firmware["upgrade_major_version"])
               }
               phx-click="fw_upgrade"
-              data-confirm={"Start the SERIES upgrade to #{@firmware["upgrade_major_version"]} on #{@instance.name}? This is a major version jump; the box will reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
               class="rounded bg-warning px-3 py-1 text-xs text-warning-content hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -2131,6 +2162,51 @@ defmodule OrbitWeb.InstanceDetailLive do
                 do: "Starting…",
                 else: "Series upgrade → #{@firmware["upgrade_major_version"]}"}
             </button>
+          </div>
+
+          <%!-- Type-the-name confirmation. The comparison happens on the
+               server (fw_upgrade_confirm); this is the prompt, not the gate. --%>
+          <div
+            :if={@upgrade_confirm_open}
+            class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
+          >
+            <form
+              phx-submit="fw_upgrade_confirm"
+              phx-change="fw_upgrade_typing"
+              class="w-full max-w-md rounded-lg border border-warning/50 bg-base-200 p-5"
+            >
+              <h3 class="text-sm font-medium text-warning">
+                Series upgrade to {@firmware["upgrade_major_version"]}
+              </h3>
+              <p class="mt-2 text-sm text-base-content/70">
+                This is a major version jump on <span class="font-medium text-base-content">{@instance.name}</span>. The box
+                reboots, and it cannot be undone from here. Type the instance name to confirm.
+              </p>
+              <input
+                name="name"
+                value={@upgrade_confirm}
+                autocomplete="off"
+                spellcheck="false"
+                placeholder={@instance.name}
+                class="mt-3 w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-warning focus:outline-none"
+              />
+              <div class="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  phx-click="fw_upgrade_cancel"
+                  class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={String.trim(@upgrade_confirm) != @instance.name}
+                  class="rounded bg-warning px-3 py-1 text-xs text-warning-content hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Start series upgrade
+                </button>
+              </div>
+            </form>
           </div>
 
           <div

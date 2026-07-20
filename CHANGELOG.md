@@ -45,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard host. 8 MB per session, after which the file closes with a note
   and the session continues unrecorded; a failing or full disk never touches
   the session. Works for agent and Securepoint SSH terminals alike.
+- **A series upgrade asks you to type the instance name.** It was confirmed by
+  a browser dialog identical to the ordinary firmware update's, one reflexive
+  Enter away — for a major version jump that reboots a customer's firewall and
+  cannot be undone from the dashboard. The confirmation now names the target
+  version and the box and requires the box's name typed back, checked on the
+  server rather than in the browser.
+- **Addresses show their location outside the audit Actions table too.** The
+  Timeline and the online-sessions tile showed a bare IP, which is where an
+  unfamiliar address actually matters. All three now share one cell, so they
+  cannot drift apart again; private and unknown addresses still render alone.
 - **The instances list flags boxes with a console password**, and its status
   badge is a link. Fleet standard is no password on the console menu, and the
   instance page has said so for a while — but from the list there was no way to
