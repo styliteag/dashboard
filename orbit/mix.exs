@@ -5,7 +5,7 @@ defmodule Orbit.MixProject do
     [
       app: :orbit,
       version: app_version(),
-      elixir: "~> 1.17",
+      elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -71,7 +71,7 @@ defmodule Orbit.MixProject do
        depth: 1},
       {:daisyui,
        github: "saadeghi/daisyui",
-       tag: "v5.5.20",
+       tag: "v5.6.18",
        sparse: "packages/bundle",
        app: false,
        compile: false,
