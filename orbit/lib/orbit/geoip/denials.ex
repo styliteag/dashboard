@@ -92,12 +92,43 @@ defmodule Orbit.GeoIP.Denials do
   def init(:ok) do
     Process.send_after(self(), :flush, @flush_ms)
     Process.send_after(self(), :prune, @prune_ms)
+    # Lock-free counter for the all-pages footer. An ETS read costs
+    # microseconds and needs no message to this process — a GenServer.call
+    # on every rendered page would serialise the whole site through here,
+    # and a COUNT(*) per page would hit the database just as often.
+    :ets.new(@counter_table, [:named_table, :public, :set, write_concurrency: true])
+    :ets.insert(@counter_table, {:blocked, 0})
     {:ok, empty_buffers()}
+  end
+
+  @counter_table :orbit_geoip_denial_count
+
+  @doc """
+  Denials since this process started (footer badge).
+
+  Deliberately process-local and not a query: it answers "is the gate doing
+  anything right now", the same live-health semantics as the hub counters.
+  Returns 0 before the table exists (boot, or tests without the supervisor).
+  """
+  def blocked_count do
+    case :ets.lookup(@counter_table, :blocked) do
+      [{:blocked, n}] -> n
+      _ -> 0
+    end
+  rescue
+    ArgumentError -> 0
   end
 
   @impl true
   def handle_cast({:record, ip, country, path, reason}, buffers) do
+    bump_counter()
     {:noreply, add_denial(buffers, ip, country, path, reason, DateTime.utc_now())}
+  end
+
+  defp bump_counter do
+    :ets.update_counter(@counter_table, :blocked, 1)
+  rescue
+    ArgumentError -> 0
   end
 
   def handle_cast(:record_fail_open, buffers) do

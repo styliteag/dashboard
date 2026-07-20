@@ -29,7 +29,9 @@ defmodule OrbitWeb.Router do
   # Set on the initial request so it rides into the root layout for LiveView
   # routes too; private/unknown IPs resolve to nil and the footer stays hidden.
   defp put_geo_label(conn, _opts) do
-    Plug.Conn.assign(conn, :geo_label, OrbitWeb.Geo.viewer_label(conn))
+    conn
+    |> Plug.Conn.assign(:geo_label, OrbitWeb.Geo.viewer_label(conn))
+    |> Plug.Conn.assign(:blocked_count, Orbit.GeoIP.Denials.blocked_count())
   end
 
   # Design/mode cookies → assigns; the root layout renders the combined

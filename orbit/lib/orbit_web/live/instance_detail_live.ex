@@ -15,6 +15,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
+  import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
@@ -89,7 +90,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           show_token: false,
           cb_diff: nil,
           diagnosis: nil,
-          diagnosis_busy: nil
+          diagnosis_busy: nil,
+          history: nil
         )
         |> load_comments()
         |> load_logs()
@@ -253,6 +255,41 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("fw_log_dismiss", _params, socket) do
     {:noreply, assign(socket, upgrade_log: [], upgrade_started: nil)}
+  end
+
+  # Tunnel history / graph, same dialog the fleet VPN page uses. An operator
+  # debugging ONE tunnel lands here, not on the fleet page, and had no way
+  # into the transition timeline at all.
+  def handle_event("history_open", %{"tunnel" => tunnel_id} = params, socket) do
+    inst = socket.assigns.instance
+    events = Orbit.Ipsec.History.read(inst.id, tunnel_id, 100)
+
+    # @ipsec is the tunnel LIST here (the fleet page keeps a struct list) —
+    # reading it as a map crashed the LiveView on the first click.
+    # Rows key on id, falling back to description (same expression the table
+    # uses), so the lookup has to accept both.
+    live =
+      Enum.find(socket.assigns.ipsec || [], fn t ->
+        to_string(t["id"] || t["description"] || "tunnel") == tunnel_id
+      end)
+
+    {:noreply,
+     assign(socket,
+       history: %{
+         mode: if(params["mode"] == "graph", do: :graph, else: :history),
+         instance_name: inst.name,
+         tunnel_id: tunnel_id,
+         label: params["label"] || tunnel_id,
+         up: params["up"] == "true",
+         phase2_up: (live && live["phase2_up"]) || 0,
+         phase2_total: (live && live["phase2_total"]) || 0,
+         events: events
+       }
+     )}
+  end
+
+  def handle_event("history_close", _params, socket) do
+    {:noreply, assign(socket, history: nil)}
   end
 
   def handle_event("ipsec_diagnose_close", _params, socket) do
@@ -2295,6 +2332,30 @@ defmodule OrbitWeb.InstanceDetailLive do
                       class="py-1.5 text-right text-xs"
                     >
                       <button
+                        phx-click="history_open"
+                        phx-value-tunnel={id}
+                        phx-value-label={t["description"] || id}
+                        phx-value-up={to_string(tunnel_up?(t["status"]))}
+                        phx-value-mode="graph"
+                        title="Uptime graph"
+                        aria-label="Uptime graph"
+                        class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
+                      >
+                        <Icons.icon name={:chart} class="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        phx-click="history_open"
+                        phx-value-tunnel={id}
+                        phx-value-label={t["description"] || id}
+                        phx-value-up={to_string(tunnel_up?(t["status"]))}
+                        phx-value-mode="history"
+                        title="Transition history"
+                        aria-label="Transition history"
+                        class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
+                      >
+                        <Icons.icon name={:audit} class="h-3.5 w-3.5" />
+                      </button>
+                      <button
                         phx-click="ipsec_diagnose"
                         phx-value-id={id}
                         disabled={@diagnosis_busy != nil or not @connected}
@@ -2377,6 +2438,8 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tbody>
             </table>
           </div>
+
+          <.tunnel_history_dialog history={@history} />
 
           <.ping_monitor_dialog
             editor={@ping_editor}

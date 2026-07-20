@@ -20,11 +20,20 @@
          on LiveView routes too): where the viewer is connecting from. Geo is
          display-only (City edition); nil for private/unknown IPs → hidden. --%>
     <footer
-      :if={assigns[:geo_label]}
-      class="fixed bottom-2 right-3 z-40 text-[11px] text-base-content/40"
+      :if={assigns[:geo_label] || (assigns[:blocked_count] || 0) > 0}
+      class="fixed bottom-2 right-3 z-40 flex items-center gap-3 text-[11px] text-base-content/40"
     >
-      <span title="Your connection, resolved via GeoIP">
+      <span :if={assigns[:geo_label]} title="Your connection, resolved via GeoIP">
         <OrbitWeb.Components.Icons.icon name={:access_control} class="mr-1 inline h-3 w-3" />{@geo_label}
+      </span>
+      <%!-- Requests the access gate refused since this backend started —
+           live health, same semantics as the hub counters. Hidden at zero
+           so a quiet install shows nothing. --%>
+      <span
+        :if={(assigns[:blocked_count] || 0) > 0}
+        title="Requests blocked by the GeoIP / CrowdSec access gate since this backend started"
+      >
+        {@blocked_count} blocked
       </span>
     </footer>
   </body>

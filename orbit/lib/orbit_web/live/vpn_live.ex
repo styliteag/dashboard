@@ -18,6 +18,7 @@ defmodule OrbitWeb.VpnLive do
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
   alias OrbitWeb.Components.CommentEditor
@@ -712,104 +713,7 @@ defmodule OrbitWeb.VpnLive do
           </table>
         </div>
 
-        <%!-- Tunnel history dialog: up/down timeline + recorded transitions. --%>
-        <div
-          :if={@history}
-          class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
-        >
-          <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-base-content/20 bg-base-200 p-5">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-medium text-base-content">
-                {if @history.mode == :graph, do: "Tunnel graph", else: "Tunnel history"} — {@history.label}
-                <span class="ml-1 text-xs text-base-content/60">{@history.instance_name}</span>
-              </h3>
-              <button
-                phx-click="history_close"
-                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
-              >
-                Close
-              </button>
-            </div>
-
-            <%!-- Three state lanes from the transition log (TunnelGraphDialog
-                 parity): green up, red down, amber partial, grey no data. --%>
-            <% lanes =
-              Orbit.Ipsec.History.lanes(
-                @history.events,
-                %{
-                  up: @history.up,
-                  phase2_up: @history.phase2_up,
-                  phase2_total: @history.phase2_total
-                },
-                DateTime.utc_now()
-              ) %>
-            <div class="mt-4 space-y-2">
-              <div
-                :for={
-                  {label, segs} <- [
-                    {"Phase 1", lanes.phase1},
-                    {"Phase 2", lanes.phase2},
-                    {"Ping", lanes.ping}
-                  ]
-                }
-                class="flex items-center gap-2"
-              >
-                <span class="w-16 text-right text-[10px] text-base-content/60">{label}</span>
-                <div class={[
-                  "relative flex-1 overflow-hidden rounded bg-base-300",
-                  if(@history.mode == :graph, do: "h-7", else: "h-3.5")
-                ]}>
-                  <div
-                    :for={seg <- segs}
-                    class={["absolute h-full", lane_color(seg.state)]}
-                    style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
-                  >
-                  </div>
-                </div>
-              </div>
-              <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/40">
-                <span :if={@history.events != []}>{fmt_event_ts(lanes.window_start)}</span>
-                <span :if={@history.events == []}>no recorded transitions yet</span>
-                <span>now</span>
-              </div>
-              <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/60">
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-primary"></span>up</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-warning"></span>partial</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-error"></span>down</span>
-                <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-neutral"></span>no data</span>
-              </div>
-            </div>
-
-            <table
-              :if={@history.mode == :history and @history.events != []}
-              class="mt-4 w-full text-left text-xs"
-            >
-              <thead class="text-base-content/60">
-                <tr class="border-b border-base-300">
-                  <th class="py-1 pr-3 font-medium">Time (UTC)</th>
-                  <th class="py-1 pr-3 font-medium">Event</th>
-                  <th class="py-1 pr-3 font-medium">Phase 2</th>
-                  <th class="py-1 font-medium">Change</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :for={e <- @history.events} class="border-b border-base-300/50 last:border-0">
-                  <td class="py-1 pr-3 font-mono text-base-content/60">{fmt_event_ts(e.ts)}</td>
-                  <td class={["py-1 pr-3", event_color(e.event_type)]}>{e.event_type}</td>
-                  <td class="py-1 pr-3 text-base-content/60">{e.child_name}</td>
-                  <td class="py-1 text-base-content/70">{e.old_value} → {e.new_value}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p
-              :if={@history.mode == :history and @history.events == []}
-              class="mt-4 text-sm text-base-content/60"
-            >
-              No transitions recorded yet — events appear as soon as the tunnel
-              changes state (orbit records them per agent push).
-            </p>
-          </div>
-        </div>
+        <.tunnel_history_dialog history={@history} />
 
         <.ping_monitor_dialog
           editor={@ping_editor}
@@ -820,19 +724,6 @@ defmodule OrbitWeb.VpnLive do
     </main>
     """
   end
-
-  defp lane_color(:up), do: "bg-primary"
-  defp lane_color(:partial), do: "bg-warning"
-  defp lane_color(:down), do: "bg-error"
-  defp lane_color(:unknown), do: "bg-neutral"
-
-  defp event_color("phase1_up"), do: "text-primary"
-  defp event_color("ping_ok"), do: "text-primary"
-  defp event_color("phase1_down"), do: "text-error"
-  defp event_color("ping_fail"), do: "text-error"
-  defp event_color(_), do: "text-warning"
-
-  defp fmt_event_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S UTC")
 
   defp child_up?(ch) do
     String.downcase(to_string(ch["status"] || "")) in @ipsec_up

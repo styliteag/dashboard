@@ -70,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tunnel graph and history in the per-instance VPN tab.** Both dialogs only
+  existed on the fleet VPN page — so an operator debugging one tunnel, who
+  lands on that box's own tab, had to navigate back out and find the row
+  again to see its timeline. Same dialog, now shared by both surfaces.
+- **A "N blocked" counter in the footer** once the access gate has refused
+  something, next to the GeoIP tag. Hidden while it is zero.
+
 - **The capture viewer reads like `hexdump -C` again**: offset, sixteen bytes
   of hex in two groups, and the printable-ASCII gutter — so a hostname, an
   SNI or an HTTP verb in the payload is actually spottable. Packets also
