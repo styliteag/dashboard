@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.10] - 2026-07-20
+
 ### Added
 
 - **Tags, ping URL, push interval and notes can be set while creating an
