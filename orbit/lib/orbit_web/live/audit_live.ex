@@ -306,9 +306,8 @@ defmodule OrbitWeb.AuditLive do
                        audit rows — where an unfamiliar address actually
                        matters — showed a bare number. nil for private and
                        unknown addresses, so nothing is invented. --%>
-                  <td class="py-2 pr-4 text-base-content/60">
-                    {r.ip || "—"}
-                    <span :if={r.geo} class="ml-1 text-xs text-base-content/40">{r.geo}</span>
+                  <td class="py-2 pr-4">
+                    <OrbitWeb.Geo.ip_geo ip={r.ip} geo={r.geo} />
                   </td>
                 </tr>
               </tbody>
@@ -329,7 +328,7 @@ defmodule OrbitWeb.AuditLive do
               <div class="text-xs text-base-content/60">Online now</div>
               <div class="mt-1 text-2xl text-primary">{length(@summary.online)}</div>
               <div :for={s <- Enum.take(@summary.online, 5)} class="mt-1 text-xs text-base-content/70">
-                {s.username || "user ##{s.user_id}"} · {s.ip}
+                {s.username || "user ##{s.user_id}"} · <OrbitWeb.Geo.ip_geo ip={s.ip} class="" />
               </div>
             </div>
             <div class="rounded-lg border border-base-300 bg-base-200 p-4">
@@ -454,7 +453,7 @@ defmodule OrbitWeb.AuditLive do
                     </span>
                   </td>
                   <td class="py-2 pr-4 text-base-content/80">{e.who}</td>
-                  <td class="py-2 pr-4 text-base-content/60">{e.ip || "—"}</td>
+                  <td class="py-2 pr-4"><OrbitWeb.Geo.ip_geo ip={e.ip} /></td>
                   <td class="py-2 pr-4 text-base-content/70">{e.text}</td>
                 </tr>
               </tbody>
