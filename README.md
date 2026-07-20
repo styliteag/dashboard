@@ -176,16 +176,15 @@ assume 443/4444). Config reference: [`agent/orbit-agent.conf.example`](agent/orb
 Reach a NAT'd firewall's **web GUI** through its agent — no inbound access or VPN.
 The dashboard tunnels raw TCP to the firewall over the agent's WebSocket; a reverse
 proxy in front gives each firewall a **per-instance origin** (so the GUI's absolute
-URLs resolve) and a valid TLS cert. The browser speaks TLS end-to-end with the
-firewall — nothing is rewritten, so AJAX/forms/live views work. Access is gated by a
-one-time handoff from your dashboard session → an origin-scoped cookie checked on
-every request (`forwardAuth`), bound to that one firewall.
+URLs resolve) and a valid TLS cert. Access is gated by a one-time handoff from your
+dashboard session → an origin-scoped cookie checked on every request by orbit
+itself, bound to that one firewall.
 
 **Off by default.** It needs the reverse proxy set up, so enable it only then:
 
 ```sh
 DASH_GUI_PROXY_ENABLED=true
-DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.example.com # prod; {slug} = instance slug
+DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com # prod; {slug} = instance slug
 DASH_GUI_IDLE_MINUTES=15                               # close idle forwarders
 ```
 
@@ -196,8 +195,12 @@ and the button is hidden — no wildcard/DNS needed.
   opens `http://<slug>.localhost:8000` — every `*.localhost` name resolves to
   127.0.0.1 in modern browsers, so nothing needs configuring.
 - **Prod, behind your existing reverse proxy** (wildcard subdomain): terminate TLS
-  for `*.gui.example.com` (DNS-01 wildcard cert) and forward the whole wildcard to
-  orbit over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
+  for `*.gui.example.com` (DNS-01 wildcard cert — HTTP-01 cannot issue wildcards)
+  and forward the whole wildcard to orbit over HTTP. Two ready-made Traefik
+  examples, both covering **v2 and v3** rule syntax — use one, never both:
+  [`docker/compose.traefik-gui.example.yml`](docker/compose.traefik-gui.example.yml)
+  (Docker provider, labels; a compose overlay you add with a second `-f`) and
+  [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml) (file provider).
   Set `DASH_GUI_PROXY_ENABLED=true` and
   `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`. That's the whole
   setup: **no sidecar, no extra compose profile, no per-instance config.**
@@ -210,10 +213,16 @@ and the button is hidden — no wildcard/DNS needed.
   → `firewall-buero-sued`, editable, unique), and the host→instance lookup is a DB
   read, so there is no `gui-N` cap and nothing to regenerate when instances change.
 
-  Two things your proxy must do: pass the original `Host` through
-  (`passHostHeader: true` — it is what orbit matches on) and set
+  Two things your proxy must do — Traefik does both by default, so this only
+  matters if a middleware of yours changes them: pass the original `Host`
+  through (`passHostHeader: true` — it is the routing key; rewrite it and you
+  get the dashboard login instead of the firewall), and set
   `X-Forwarded-Proto: https` (orbit speaks plain HTTP behind you and reads that
   header to mark the GUI cookie `Secure`).
+
+  Traefik **v2 and v3 spell the wildcard rule differently**, and the v2 form
+  silently matches nothing on v3 — a 404 from Traefik, not a startup error.
+  Both example files carry both spellings side by side.
 
 > Security: each origin fronts a firewall **admin** GUI — the `orbit_gui` cookie gate
 > is what keeps it closed. The cookie is bound to one instance id, so a session for

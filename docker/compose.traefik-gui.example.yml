@@ -1,0 +1,86 @@
+# Example OVERLAY for exposing the optional firewall GUI proxy through an
+# EXTERNAL Traefik, using the Docker provider (labels). Covers Traefik 2.x and
+# 3.x — the router rule is the only thing that differs between them.
+#
+# Use it as a second compose file, so compose.yml stays untouched:
+#
+#   docker compose -f compose.yml -f docker/compose.traefik-gui.example.yml up -d
+#
+# If your Traefik uses the FILE provider instead, ignore this file and use
+# docker/traefik-gui.example.yml. Use one or the other, never both — two routers
+# for the same host rule is a coin flip at request time.
+#
+# What Traefik does here: terminate TLS for the wildcard and hand the request to
+# orbit. Nothing else. Orbit host-matches gui-<slug> itself, gates on the
+# orbit_gui cookie and proxies through that firewall's internal forwarder — so
+# there is NO per-instance router, and nothing to change when instances come and
+# go. See README "Firewall GUI proxy" and docs §18.
+#
+# Prerequisites:
+#   1. .env:  DASH_GUI_PROXY_ENABLED=true
+#             DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com
+#   2. A wildcard cert for *.gui.example.com. It MUST be DNS-01 — HTTP-01 cannot
+#      issue wildcards.
+#   3. Traefik and orbit on a shared docker network (`traefik` below; rename to
+#      whatever yours is called).
+#
+# Replace gui.example.com with your own domain in every rule below.
+
+services:
+  orbit:
+    networks:
+      - default          # keep talking to db on the stack's own network
+      - traefik
+    labels:
+      - traefik.enable=true
+      # Traefik cannot infer the port (orbit publishes none), so declare it:
+      - traefik.http.services.orbit-gui.loadbalancer.server.port=4000
+      # If orbit is attached to more than one network, tell Traefik which one to
+      # reach it on, or it may pick the wrong address:
+      - traefik.docker.network=traefik
+
+      # --- Router: pick EXACTLY ONE of the two rules below ------------------
+      #
+      # Traefik 2.x — HostRegexp with a named group {name:regexp}; literal text
+      # outside the group, no ^$ anchors (the whole host is matched):
+      - traefik.http.routers.orbit-gui.rule=HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)
+      #
+      # Traefik 3.x — HostRegexp takes a raw Go regexp instead: anchored, no
+      # named group. The v2 form above SILENTLY MATCHES NOTHING on v3, which
+      # presents as a 404 from Traefik rather than an error at startup:
+      # - traefik.http.routers.orbit-gui.rule=HostRegexp(`^gui-[a-z0-9-]+\.gui\.example\.com$`)
+      # -----------------------------------------------------------------------
+
+      - traefik.http.routers.orbit-gui.entrypoints=websecure
+      - traefik.http.routers.orbit-gui.tls=true
+      - traefik.http.routers.orbit-gui.tls.certresolver=letsencrypt
+      - traefik.http.routers.orbit-gui.tls.domains[0].main=gui.example.com
+      - traefik.http.routers.orbit-gui.tls.domains[0].sans=*.gui.example.com
+      - traefik.http.routers.orbit-gui.service=orbit-gui
+
+      # Plain HTTP → HTTPS for the same wildcard (optional but recommended).
+      # Same v2/v3 rule caveat as above.
+      - traefik.http.routers.orbit-gui-web.rule=HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)
+      - traefik.http.routers.orbit-gui-web.entrypoints=web
+      - traefik.http.routers.orbit-gui-web.middlewares=orbit-gui-https
+      - traefik.http.routers.orbit-gui-web.service=orbit-gui
+      - traefik.http.middlewares.orbit-gui-https.redirectscheme.scheme=https
+
+# Two things Traefik must get right, both of which it does by DEFAULT — listed
+# so you notice if some middleware of yours changes them:
+#
+#   * The original Host reaches orbit. That host IS the routing key; rewrite it
+#     and the GUI proxy never engages (you get the dashboard login instead).
+#     Traefik passes it through unless a middleware overrides it.
+#   * X-Forwarded-Proto says https. Traefik sets it; orbit speaks plain HTTP
+#     behind you, and reads that header to decide whether the orbit_gui cookie
+#     gets the Secure flag. Strip it and the cookie loses Secure on an https
+#     origin.
+#
+# SWARM users: the Docker provider reads top-level `labels:`, the SWARM provider
+# reads ONLY `deploy.labels:`. Moving these labels under `deploy:` is the whole
+# difference — everything else stays the same.
+
+networks:
+  traefik:
+    external: true

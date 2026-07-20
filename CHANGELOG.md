@@ -99,8 +99,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `X-Forwarded-Proto: https`. Nothing to regenerate when instances change, no
   extra compose profile, no admin API to keep off the network.
   **Upgrading:** drop `--profile gui` and the two variables; repoint your
-  wildcard router from `gui-proxy:80` to `orbit:4000`
-  (`docker/traefik-gui.example.yml` shows the new shape).
+  wildcard router from `gui-proxy:80` to `orbit:4000`.
+- **Two ready-made Traefik examples for the GUI proxy, both covering v2 and
+  v3.** `docker/compose.traefik-gui.example.yml` is a compose overlay for the
+  Docker provider (add it with a second `-f`, labels and network wiring
+  included); `docker/traefik-gui.example.yml` is the file-provider equivalent.
+  The label form previously existed only as a commented block on the removed
+  sidecar. Both spell out that Traefik v2's `HostRegexp` named-group syntax
+  matches **nothing** on v3 — which shows up as a 404 from Traefik rather than a
+  startup error, and used to send people debugging the dashboard.
 
 ### Fixed
 

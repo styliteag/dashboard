@@ -6,7 +6,8 @@
 # proxy sidecar to run. See README "Firewall GUI proxy" and §18.
 #
 # This is the FILE-PROVIDER form (load it via Traefik's file provider). With the
-# Docker/Swarm provider, express the same router as labels on the orbit service.
+# Docker/Swarm provider, use the label form instead:
+# docker/compose.traefik-gui.example.yml. Use one or the other, never both.
 #
 # Prereqs: orbit reachable on Traefik's network, a wildcard cert for
 # *.gui.example.com (DNS-01), and the dashboard set with
@@ -19,7 +20,10 @@ http:
       # Traefik v2 HostRegexp: a named group {name:regexp}, literal text outside it,
       # no ^$ anchors (the whole host is matched). Covers every gui-<slug> subdomain.
       rule: "HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)"
-      # Traefik v3 instead uses a raw Go regexp (anchored, no named group):
+      # Traefik v3 instead uses a raw Go regexp (anchored, no named group). The
+      # v2 form above SILENTLY MATCHES NOTHING on v3 — it presents as a 404 from
+      # Traefik, not as a startup error, so check your version before debugging
+      # orbit:
       #   rule: "HostRegexp(`^gui-[a-z0-9-]+\\.gui\\.example\\.com$`)"
       service: orbit-gui
       tls:
