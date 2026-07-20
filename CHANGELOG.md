@@ -118,6 +118,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A too-short `SECRET_KEY_BASE` now refuses to boot instead of serving a
+  broken dashboard.** Plug's cookie store requires at least 64 bytes and
+  raises per request when it is shorter — so the release booted, migrated,
+  reported healthy (the health endpoint holds no session and answered `200`
+  all day) and then failed every actual page with "cookie store expects
+  conn.secret_key_base to be at least 64 bytes". The length is checked at
+  startup now, with the fix in the message. Reported from a Swarm deploy.
 - **The Audit page survives a database it cannot read, and says so.** Its own
   queries had no guard at all, so a stressed connection pool killed the page
   on its 30-second refresh — exactly when an operator opens it. It now keeps

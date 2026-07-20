@@ -162,6 +162,29 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
+  # Length is checked HERE, not left to the first request. Plug's cookie store
+  # requires >= 64 bytes and raises per-request when it is shorter, which fails
+  # in the worst possible shape: the release boots, migrates, reports healthy
+  # (/api/health-ex holds no session, so it answers 200 all day) and then 500s
+  # every actual page. An operator sees a green container serving a broken
+  # dashboard. Refusing to boot is the honest failure. Reported from prod
+  # 2026-07-20 on a swarm deploy that shipped a placeholder value.
+  #
+  # Deliberately inline rather than a testable helper module: config/runtime.exs
+  # is evaluated before the application starts, so it must not grow a dependency
+  # on app modules being loadable at that point.
+  if byte_size(secret_key_base) < 64 do
+    raise """
+    environment variable SECRET_KEY_BASE is too short: #{byte_size(secret_key_base)} bytes, need at least 64.
+
+    Plug's cookie session store rejects anything shorter, so every page would
+    fail with "cookie store expects conn.secret_key_base to be at least 64 bytes"
+    while the health check still reported the container as up.
+
+    Generate a valid one with:  openssl rand -base64 48
+    """
+  end
+
   host = System.get_env("PHX_HOST") || "example.com"
 
   config :orbit, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
