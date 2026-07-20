@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handing over a raw params map would have written secrets into a table that
   admins and superadmins can read.
 
+### Added
+
+- **Connectivity monitors have a History button.** Orbit has been recording
+  every check state change since the cutover, but nothing read those rows per
+  monitor, so "has this link been flapping all week, or did it just drop?" had
+  no answer in the UI. Both the fleet Connectivity page and an instance's
+  Connectivity tab now open a timeline with the recorded transitions beneath
+  it. Reading it needs no write role. Short outages are widened so they stay
+  visible in a long window, and the dialog says plainly that failures are
+  debounced over three polls, so a brief blip may leave no trace.
+
 ### Fixed
 
 - **A failed update check no longer counts as "update available".** When a box

@@ -14,6 +14,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
+  import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
   import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1, tabs_for: 1]
   import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
@@ -95,7 +96,8 @@ defmodule OrbitWeb.InstanceDetailLive do
           diag_ai_busy: false,
           diag_ai_result: nil,
           diag_ai_error: nil,
-          history: nil
+          history: nil,
+          check_history: nil
         )
         |> load_comments()
         |> load_logs()
@@ -281,6 +283,34 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("history_close", _params, socket) do
     {:noreply, assign(socket, history: nil)}
+  end
+
+  # Monitor timeline. The instance is already scoped by mount, so only the
+  # monitor id comes off the DOM — and it is used solely to name a check key
+  # read under this instance's id, never to reach another box's rows.
+  def handle_event("check_history_open", %{"id" => raw_id}, socket) do
+    inst = socket.assigns.instance
+    mon = Enum.find(socket.assigns.conn_monitors || [], &(to_string(&1.id) == to_string(raw_id)))
+
+    if mon do
+      result = Enum.find(socket.assigns.connectivity || [], &(&1["id"] == mon.id))
+
+      {:noreply,
+       assign(socket,
+         check_history: %{
+           instance_name: inst.name,
+           label: mon.name,
+           live_state: ping_check_state(result),
+           events: Orbit.Checks.History.read(inst.id, "connectivity:#{mon.id}")
+         }
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("check_history_close", _params, socket) do
+    {:noreply, assign(socket, check_history: nil)}
   end
 
   # "Analyse with AI" on the IPsec bundle (DiagnoseDialog parity). The old
@@ -2162,7 +2192,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <th class="py-1 pr-3 font-medium">Source → Destination</th>
                   <th class="py-1 pr-3 font-medium">State</th>
                   <th class="py-1 pr-3 font-medium">RTT / Loss</th>
-                  <th :if={@writable} class="py-1 font-medium"></th>
+                  <th class="py-1 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -2196,11 +2226,21 @@ defmodule OrbitWeb.InstanceDetailLive do
                         · {result["ping_loss_pct"]}%
                       </span>
                     </td>
-                    <td :if={@writable} class="py-1.5 text-right text-xs">
+                    <td class="py-1.5 text-right text-xs whitespace-nowrap">
+                      <%!-- History is a read: available without the write role. --%>
                       <button
+                        phx-click="check_history_open"
+                        phx-value-id={m.id}
+                        title="Recorded state transitions of this monitor"
+                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                      >
+                        History
+                      </button>
+                      <button
+                        :if={@writable}
                         phx-click="conn_open"
                         phx-value-id={m.id}
-                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                       >
                         Edit
                       </button>
@@ -2231,6 +2271,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             busy={@conn_test_busy}
             result={@conn_test}
           />
+          <.check_history_dialog history={@check_history} />
         </div>
 
         <%!-- IPsec (IPsecSection parity): live SA table with phase-2 expand and
@@ -3291,6 +3332,17 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp p2_monitor(monitors, child_name) do
     Enum.find(monitors, &(&1.child_name == to_string(child_name || "")))
+  end
+
+  # The history lane's right edge: the monitor's CURRENT state, taken from the
+  # same evaluation the four check surfaces use rather than re-derived here.
+  defp ping_check_state(nil), do: nil
+
+  defp ping_check_state(result) do
+    case Orbit.Checks.Evaluate.connectivity_checks([result]) do
+      [%{state: state} | _] -> state
+      _ -> nil
+    end
   end
 
   defp ping_state_color("ok"), do: "text-primary"

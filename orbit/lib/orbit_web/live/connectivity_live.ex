@@ -13,11 +13,13 @@ defmodule OrbitWeb.ConnectivityLive do
   import OrbitWeb.Components.ListKit
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
+  import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
 
   alias Orbit.Auth.Scope
   alias OrbitWeb.Components.CommentEditor
 
   alias Orbit.Checks.Evaluate
+  alias Orbit.Checks.History
   alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
   alias Orbit.Instances
@@ -39,7 +41,8 @@ defmodule OrbitWeb.ConnectivityLive do
        writable: socket.assigns.current_user.role in ~w(admin user),
        conn_editor: nil,
        conn_test: nil,
-       conn_test_busy: false
+       conn_test_busy: false,
+       check_history: nil
      )
      |> load()}
   end
@@ -180,6 +183,31 @@ defmodule OrbitWeb.ConnectivityLive do
       _ -> {:noreply, socket}
     end
   end
+
+  # Read-only, so no write-role gate — but the same id discipline as conn_open
+  # above: the instance id comes from the DOM and is re-resolved through
+  # Scope.get_instance/2, and the monitor id is only ever used as part of a
+  # check key filtered by that resolved instance_id.
+  def handle_event("check_history_open", %{"iid" => raw_iid, "id" => raw_id}, socket) do
+    with {iid, ""} <- Integer.parse(raw_iid),
+         inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user),
+         row when not is_nil(row) <- Enum.find(socket.assigns.rows, &row_match(&1, iid, raw_id)) do
+      {:noreply,
+       assign(socket,
+         check_history: %{
+           instance_name: inst.name,
+           label: monitor_label(row),
+           live_state: row.check.state,
+           events: History.read(iid, to_string(row.check.key))
+         }
+       )}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("check_history_close", _params, socket),
+    do: {:noreply, assign(socket, check_history: nil)}
 
   def handle_event("comment_save", params, socket),
     do: {:noreply, socket |> CommentEditor.save(params) |> load()}
@@ -345,7 +373,7 @@ defmodule OrbitWeb.ConnectivityLive do
                 <th class="py-2 pr-4 font-medium">Monitor</th>
                 <th class="py-2 pr-4 text-right font-medium">RTT</th>
                 <th class="py-2 pr-4 text-right font-medium">Loss</th>
-                <th :if={@writable} class="py-2 font-medium"></th>
+                <th class="py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -381,12 +409,23 @@ defmodule OrbitWeb.ConnectivityLive do
                 </td>
                 <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
                 <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
-                <td :if={@writable} class="py-2 text-right">
+                <td class="py-2 text-right whitespace-nowrap">
+                  <%!-- History is a read: no write role required, unlike Edit. --%>
                   <button
+                    phx-click="check_history_open"
+                    phx-value-iid={r.instance_id}
+                    phx-value-id={r.monitor_id}
+                    title="Recorded state transitions of this monitor"
+                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                  >
+                    History
+                  </button>
+                  <button
+                    :if={@writable}
                     phx-click="conn_open"
                     phx-value-iid={r.instance_id}
                     phx-value-id={r.monitor_id}
-                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     Edit
                   </button>
@@ -401,9 +440,22 @@ defmodule OrbitWeb.ConnectivityLive do
           busy={@conn_test_busy}
           result={@conn_test}
         />
+        <.check_history_dialog history={@check_history} />
       </section>
     </main>
     """
+  end
+
+  defp row_match(row, iid, raw_id), do: row.instance_id == iid and row.monitor_id == raw_id
+
+  # The Monitor column's text, minus the trailing live verdict — the dialog
+  # shows the state itself in the lane, so repeating it in the title would go
+  # stale the moment the monitor changes.
+  defp monitor_label(row) do
+    row.check.summary
+    |> to_string()
+    |> String.replace_prefix("Connectivity ", "")
+    |> String.replace(~r/ ping (ok|FAILED.*|error.*)$/, "")
   end
 
   defp rtt_text(nil), do: "—"
