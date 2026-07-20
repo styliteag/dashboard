@@ -493,7 +493,13 @@ defmodule OrbitWeb.SettingsLive do
         </button>
       </div>
 
-      <form :if={@row.type != :bool} phx-submit="save" class="flex shrink-0 items-center gap-2">
+      <form
+        :if={@row.type != :bool}
+        phx-submit="save"
+        id={"set-#{@row.key}"}
+        phx-hook="DirtySave"
+        class="flex shrink-0 items-center gap-2"
+      >
         <input type="hidden" name="key" value={@row.key} />
         <select
           :if={@row.type == :str and @row.options not in [nil, []]}
@@ -528,9 +534,14 @@ defmodule OrbitWeb.SettingsLive do
             "rounded border border-base-content/20 bg-base-100 px-2 py-1 text-sm text-base-content focus:border-primary focus:outline-none"
           ]}
         />
+        <%!-- Starts disabled; the DirtySave hook enables it once the field
+             differs from the rendered value (no-JS fallback: the hook never
+             runs, the button stays inert — the bool rows and the reset
+             button still work, and a hard reload re-reads the server truth). --%>
         <button
           type="submit"
-          class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
+          disabled
+          class="rounded bg-primary px-2 py-1 text-xs text-primary-content opacity-40 hover:bg-primary/80 disabled:cursor-not-allowed"
         >
           Save
         </button>

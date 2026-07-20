@@ -18,7 +18,7 @@ defmodule OrbitWeb.SessionController do
   plug :put_layout, false
 
   def new(conn, _params) do
-    render(conn, :new, error: nil)
+    render(conn, :new, error: nil, page_title: "Sign in")
   end
 
   def create(conn, %{"username" => username, "password" => password}) do
@@ -54,7 +54,7 @@ defmodule OrbitWeb.SessionController do
         audit_login(conn, "error", nil)
         # invalid_credentials and account_disabled share one message — no
         # account-state oracle on the login form.
-        render(conn, :new, error: "Invalid credentials.")
+        render(conn, :new, error: "Invalid credentials.", page_title: "Sign in")
     end
   end
 
@@ -65,7 +65,13 @@ defmodule OrbitWeb.SessionController do
 
       user ->
         factors = Accounts.factor_state(user)
-        render(conn, :totp, error: nil, totp: factors.totp, webauthn: factors.webauthn)
+
+        render(conn, :totp,
+          error: nil,
+          totp: factors.totp,
+          webauthn: factors.webauthn,
+          page_title: "Two-factor"
+        )
     end
   end
 
@@ -92,7 +98,8 @@ defmodule OrbitWeb.SessionController do
           render(conn, :totp,
             error: "Invalid code.",
             totp: factors.totp,
-            webauthn: factors.webauthn
+            webauthn: factors.webauthn,
+            page_title: "Two-factor"
           )
         end
     end
@@ -169,7 +176,7 @@ defmodule OrbitWeb.SessionController do
 
       user ->
         {secret, uri} = Orbit.Accounts.begin_totp_enrollment(user)
-        render(conn, :enroll, secret: secret, uri: uri, error: nil)
+        render(conn, :enroll, secret: secret, uri: uri, error: nil, page_title: "Set up 2FA")
     end
   end
 
@@ -194,7 +201,13 @@ defmodule OrbitWeb.SessionController do
             LoginLimiter.record_failure(client_ip(conn))
             audit_login(conn, "error", user.id, %{"reason" => "invalid_code"})
             {secret, uri} = current_pending_secret(user)
-            render(conn, :enroll, secret: secret, uri: uri, error: "Invalid code — try again.")
+
+            render(conn, :enroll,
+              secret: secret,
+              uri: uri,
+              error: "Invalid code — try again.",
+              page_title: "Set up 2FA"
+            )
         end
     end
   end
@@ -214,7 +227,7 @@ defmodule OrbitWeb.SessionController do
   # not LiveView: the session cookie must be re-issued with the bumped
   # password_version so THIS client survives while every other session dies.
   def password_form(conn, _params) do
-    render(conn, :password, error: nil)
+    render(conn, :password, error: nil, page_title: "Change password")
   end
 
   def password_change(conn, %{"old_password" => old, "new_password" => new} = params) do
@@ -226,10 +239,13 @@ defmodule OrbitWeb.SessionController do
         conn |> put_status(400) |> render(:password, error: "Old password is incorrect.")
 
       String.length(new) < 8 ->
-        render(conn, :password, error: "New password needs at least 8 characters.")
+        render(conn, :password,
+          error: "New password needs at least 8 characters.",
+          page_title: "Change password"
+        )
 
       new != params["confirm_password"] ->
-        render(conn, :password, error: "Passwords do not match.")
+        render(conn, :password, error: "Passwords do not match.", page_title: "Change password")
 
       true ->
         {:ok, updated} =

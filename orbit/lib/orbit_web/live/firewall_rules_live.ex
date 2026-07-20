@@ -446,105 +446,107 @@ defmodule OrbitWeb.FirewallRulesLive do
           </div>
         </form>
 
-        <table class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-3 font-medium">On</th>
-              <th class="py-2 pr-3 font-medium">Action</th>
-              <th class="py-2 pr-3 font-medium">Proto</th>
-              <th class="py-2 pr-3 font-medium">Source</th>
-              <th class="py-2 pr-3 font-medium">Destination</th>
-              <th class="py-2 pr-3 font-medium">Description</th>
-              <th class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for {r, idx} <- Enum.with_index(@visible) do %>
-              <% prev = if idx > 0, do: Enum.at(@visible, idx - 1) %>
-              <% next = Enum.at(@visible, idx + 1) %>
-              <tr class="border-b border-base-300/50">
-                <td class="py-1.5 pr-3">
-                  <button
-                    :if={r.editable}
-                    phx-click="toggle"
-                    phx-value-uuid={r.uuid}
-                    phx-value-enabled={to_string(r.enabled)}
-                    class={[
-                      "rounded px-1.5 py-0.5 text-xs",
-                      if(r.enabled,
-                        do: "bg-primary/20 text-primary",
-                        else: "bg-neutral text-base-content/70"
-                      )
-                    ]}
-                  >
-                    {if r.enabled, do: "on", else: "off"}
-                  </button>
-                  <span :if={not r.editable} class="text-xs text-base-content/40">
-                    {if r.enabled, do: "on", else: "off"}
-                  </span>
-                </td>
-                <td class="py-1.5 pr-3 text-base-content/80">{r.action}</td>
-                <td class="py-1.5 pr-3 text-base-content/70">{r.protocol}</td>
-                <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
-                  {r.source}{if r.source_port != "", do: ":#{r.source_port}"}
-                </td>
-                <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
-                  {r.destination}{if r.destination_port != "", do: ":#{r.destination_port}"}
-                </td>
-                <td class="py-1.5 pr-3 text-base-content/80">{r.description}</td>
-                <td class="py-1.5 text-right text-xs">
-                  <button
-                    :if={r.editable and prev != nil and prev.editable}
-                    phx-click="move_before"
-                    phx-value-uuid={r.uuid}
-                    phx-value-target={prev.uuid}
-                    title="Move up"
-                    class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    :if={r.editable and next != nil and next.editable}
-                    phx-click="move_before"
-                    phx-value-uuid={next.uuid}
-                    phx-value-target={r.uuid}
-                    title="Move down"
-                    class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    :if={r.editable}
-                    phx-click="edit_rule"
-                    phx-value-uuid={r.uuid}
-                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                  >
-                    edit
-                  </button>
-                  <button
-                    :if={r.editable}
-                    phx-click="clone_rule"
-                    phx-value-uuid={r.uuid}
-                    title="Clone into a new rule"
-                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                  >
-                    clone
-                  </button>
-                  <button
-                    :if={r.editable}
-                    phx-click="delete"
-                    phx-value-uuid={r.uuid}
-                    data-confirm="Delete this rule? (apply to activate)"
-                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
-                  >
-                    delete
-                  </button>
-                  <span :if={not r.editable} class="text-xs text-base-content/40">legacy</span>
-                </td>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-3 font-medium">On</th>
+                <th class="py-2 pr-3 font-medium">Action</th>
+                <th class="py-2 pr-3 font-medium">Proto</th>
+                <th class="py-2 pr-3 font-medium">Source</th>
+                <th class="py-2 pr-3 font-medium">Destination</th>
+                <th class="py-2 pr-3 font-medium">Description</th>
+                <th class="py-2 font-medium"></th>
               </tr>
-            <% end %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <%= for {r, idx} <- Enum.with_index(@visible) do %>
+                <% prev = if idx > 0, do: Enum.at(@visible, idx - 1) %>
+                <% next = Enum.at(@visible, idx + 1) %>
+                <tr class="border-b border-base-300/50">
+                  <td class="py-1.5 pr-3">
+                    <button
+                      :if={r.editable}
+                      phx-click="toggle"
+                      phx-value-uuid={r.uuid}
+                      phx-value-enabled={to_string(r.enabled)}
+                      class={[
+                        "rounded px-1.5 py-0.5 text-xs",
+                        if(r.enabled,
+                          do: "bg-primary/20 text-primary",
+                          else: "bg-neutral text-base-content/70"
+                        )
+                      ]}
+                    >
+                      {if r.enabled, do: "on", else: "off"}
+                    </button>
+                    <span :if={not r.editable} class="text-xs text-base-content/40">
+                      {if r.enabled, do: "on", else: "off"}
+                    </span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-base-content/80">{r.action}</td>
+                  <td class="py-1.5 pr-3 text-base-content/70">{r.protocol}</td>
+                  <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
+                    {r.source}{if r.source_port != "", do: ":#{r.source_port}"}
+                  </td>
+                  <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
+                    {r.destination}{if r.destination_port != "", do: ":#{r.destination_port}"}
+                  </td>
+                  <td class="py-1.5 pr-3 text-base-content/80">{r.description}</td>
+                  <td class="py-1.5 text-right text-xs">
+                    <button
+                      :if={r.editable and prev != nil and prev.editable}
+                      phx-click="move_before"
+                      phx-value-uuid={r.uuid}
+                      phx-value-target={prev.uuid}
+                      title="Move up"
+                      class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      :if={r.editable and next != nil and next.editable}
+                      phx-click="move_before"
+                      phx-value-uuid={next.uuid}
+                      phx-value-target={r.uuid}
+                      title="Move down"
+                      class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      :if={r.editable}
+                      phx-click="edit_rule"
+                      phx-value-uuid={r.uuid}
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                    >
+                      edit
+                    </button>
+                    <button
+                      :if={r.editable}
+                      phx-click="clone_rule"
+                      phx-value-uuid={r.uuid}
+                      title="Clone into a new rule"
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                    >
+                      clone
+                    </button>
+                    <button
+                      :if={r.editable}
+                      phx-click="delete"
+                      phx-value-uuid={r.uuid}
+                      data-confirm="Delete this rule? (apply to activate)"
+                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
+                    >
+                      delete
+                    </button>
+                    <span :if={not r.editable} class="text-xs text-base-content/40">legacy</span>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
         <div :if={@visible == [] and is_nil(@error)} class="py-4 text-sm text-base-content/60">
           {if @rules == [], do: "No rules on this interface.", else: "No matches."}
         </div>

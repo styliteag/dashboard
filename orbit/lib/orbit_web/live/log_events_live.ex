@@ -217,46 +217,49 @@ defmodule OrbitWeb.LogEventsLive do
           </span>
         </div>
 
-        <div :if={@rows == []} class="text-sm text-base-content/60">
-          No critical log events in your scope.
-        </div>
+        <.empty_state :if={@rows == []} title="No log events at or above the severity floor.">
+          Agents push their logfiles about once an hour and only warning-or-worse lines are
+          kept — a quiet fleet legitimately shows nothing here.
+        </.empty_state>
         <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
-        <table :if={@visible_rows != []} class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">Sev</th>
-              <th class="py-2 pr-4 font-medium">Instance</th>
-              <th class="py-2 pr-4 font-medium">Program</th>
-              <th class="py-2 pr-4 font-medium">Pattern</th>
-              <th class="py-2 pr-4 text-right font-medium">Count</th>
-              <th class="py-2 pr-4 font-medium">Last seen</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
-              <td class="py-2 pr-4">
-                <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
-                  {sev_label(r.event.severity)}
-                </span>
-              </td>
-              <td class="py-2 pr-4">
-                <a
-                  href={~p"/instances/#{r.instance.id}"}
-                  class="text-base-content hover:text-primary"
-                >
-                  {r.instance.name}
-                </a>
-              </td>
-              <td class="py-2 pr-4 text-base-content/70">{r.event.program}</td>
-              <td class="py-2 pr-4 text-base-content/80">{r.event.pattern}</td>
-              <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
-              <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">Sev</th>
+                <th class="py-2 pr-4 font-medium">Instance</th>
+                <th class="py-2 pr-4 font-medium">Program</th>
+                <th class="py-2 pr-4 font-medium">Pattern</th>
+                <th class="py-2 pr-4 text-right font-medium">Count</th>
+                <th class="py-2 pr-4 font-medium">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
+                <td class="py-2 pr-4">
+                  <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
+                    {sev_label(r.event.severity)}
+                  </span>
+                </td>
+                <td class="py-2 pr-4">
+                  <a
+                    href={~p"/instances/#{r.instance.id}"}
+                    class="text-base-content hover:text-primary"
+                  >
+                    {r.instance.name}
+                  </a>
+                </td>
+                <td class="py-2 pr-4 text-base-content/70">{r.event.program}</td>
+                <td class="py-2 pr-4 text-base-content/80">{r.event.pattern}</td>
+                <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
+                <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

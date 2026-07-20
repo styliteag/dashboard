@@ -280,11 +280,78 @@ const CommentPop = {
   },
 }
 
+// Metric charts: a crosshair plus a readout that follows the pointer. The
+// SVG already carries one <title> per sample dot, but a native tooltip only
+// appears after a hover delay and only exactly on the dot — on a 720-point
+// series that is effectively undiscoverable. Values are read from the dots'
+// own titles, so the server stays the single source of the numbers.
+const ChartHover = {
+  mounted() { this.wire() },
+  updated() { this.wire() },
+  wire() {
+    const svg = this.el.querySelector("svg")
+    const line = this.el.querySelector("[data-crosshair]")
+    const out = this.el.querySelector("[data-readout]")
+    if (!svg || !line || !out) return
+    this._dots = [...svg.querySelectorAll("circle")].map(c => ({
+      x: parseFloat(c.getAttribute("cx")),
+      label: c.querySelector("title")?.textContent || "",
+    }))
+    if (this._bound) return
+    this._bound = true
+    const move = e => {
+      if (!this._dots.length) return
+      const r = svg.getBoundingClientRect()
+      const pct = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100))
+      let best = this._dots[0]
+      for (const d of this._dots) {
+        if (Math.abs(d.x - pct) < Math.abs(best.x - pct)) best = d
+      }
+      line.setAttribute("x1", best.x)
+      line.setAttribute("x2", best.x)
+      line.style.opacity = "0.5"
+      out.textContent = best.label
+    }
+    const leave = () => { line.style.opacity = "0"; out.textContent = "" }
+    svg.addEventListener("pointermove", move)
+    svg.addEventListener("pointerleave", leave)
+  },
+}
+
+// Settings rows: keep the Save button inert until the field actually
+// differs from what the server rendered. Twenty always-green Save buttons
+// read as twenty pending changes. Deliberately a JS hook and not
+// phx-change: a keystroke-per-roundtrip on every settings row is real
+// traffic for what is a purely local "has this input been touched" fact.
+const DirtySave = {
+  mounted() { this.wire() },
+  updated() { this.wire() },
+  wire() {
+    const field = this.el.querySelector("input[name=value], select[name=value]")
+    const save = this.el.querySelector("button[type=submit]")
+    if (!field || !save) return
+    // Secrets render blank with a placeholder — any typing is a real change.
+    this._initial = field.value
+    const sync = () => {
+      const dirty = field.value !== this._initial
+      save.disabled = !dirty
+      save.classList.toggle("opacity-40", !dirty)
+      save.classList.toggle("cursor-not-allowed", !dirty)
+    }
+    if (!this._bound) {
+      field.addEventListener("input", sync)
+      field.addEventListener("change", sync)
+      this._bound = true
+    }
+    sync()
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it
@@ -349,10 +416,15 @@ if (process.env.NODE_ENV === "development") {
 const markThemeChoices = () => {
   const theme = document.documentElement.getAttribute("data-theme") || ""
   const [design, mode] = theme.split("-")
+  const mark = (el, on) => {
+    el.classList.toggle("text-primary", on)
+    el.classList.toggle("border-primary", on)
+    el.classList.toggle("bg-primary/10", on)
+  }
   document.querySelectorAll("[data-theme-design]").forEach(b =>
-    b.classList.toggle("text-primary", b.dataset.themeDesign === design))
+    mark(b, b.dataset.themeDesign === design))
   document.querySelectorAll("[data-theme-mode]").forEach(b =>
-    b.classList.toggle("text-primary", b.dataset.themeMode === mode))
+    mark(b, b.dataset.themeMode === mode))
 }
 markThemeChoices()
 window.addEventListener("phx:page-loading-stop", markThemeChoices)

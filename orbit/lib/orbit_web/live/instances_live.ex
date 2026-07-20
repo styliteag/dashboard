@@ -452,7 +452,8 @@ defmodule OrbitWeb.InstancesLive do
             )
           ]}
         >
-          🛠️ {@maintenance_count} in maintenance{if @maintenance_only, do: " — showing only these"}
+          <Icons.icon name={:maintenance} class="mr-1 inline h-3.5 w-3.5" />{@maintenance_count} in maintenance{if @maintenance_only,
+            do: " — showing only these"}
         </button>
 
         <%!-- Update-all banner (agents behind the served package). --%>
@@ -606,7 +607,7 @@ defmodule OrbitWeb.InstancesLive do
         <div :if={@view == "grid" and @rows != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div
             :for={i <- @rows}
-            class="rounded-lg border border-base-300 bg-base-200 p-4"
+            class="rounded-lg border border-base-300 bg-base-200 p-4 transition-colors hover:border-base-content/20"
           >
             <div class="flex items-center gap-2">
               <input
@@ -681,7 +682,7 @@ defmodule OrbitWeb.InstancesLive do
           :if={@view == "list" and @rows != []}
           class="overflow-x-auto rounded-lg border border-base-300"
         >
-          <table class="w-full text-left text-sm">
+          <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <th :if={@writable} class="px-3 py-2">
@@ -699,7 +700,12 @@ defmodule OrbitWeb.InstancesLive do
                 <.sort_th col="location" label="Location" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="mode" label="Agent / Mode" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="tags" label="Tags" sort_col={@sort_col} sort_dir={@sort_dir} />
-                <.sort_th col="last_poll" label="Last poll" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="last_poll"
+                  label="Last poll"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
                 <th :if={@writable} class="px-3 py-2 font-medium">Actions</th>
               </tr>
             </thead>
@@ -849,7 +855,10 @@ defmodule OrbitWeb.InstancesLive do
       ]}>
         <span class={["inline-block h-2 w-2 rounded-full", dot_class(@row.bucket)]}></span>
         {@row.bucket}
-        <span :if={@row.maintenance} title="In maintenance — alerts capped at WARN">🛠️</span>
+        <span :if={@row.maintenance} title="In maintenance — alerts capped at WARN">
+          <Icons.icon name={:maintenance} class="inline h-3 w-3" />
+          <span class="sr-only">in maintenance</span>
+        </span>
       </span>
       <a
         :if={@row.alerts.crit > 0 or @row.alerts.warn > 0}

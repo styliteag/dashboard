@@ -40,10 +40,19 @@ defmodule OrbitWeb.Components.MetricChart do
       )
 
     ~H"""
-    <div class="rounded-xl border border-base-300 bg-base-200/60 p-4">
-      <div class="mb-3 flex items-baseline justify-between">
+    <%!-- No phx-update="ignore": the metrics timer re-renders this chart and
+         the hook's updated/0 re-reads the new sample dots. --%>
+    <div
+      id={"chart-#{@grad_id}"}
+      phx-hook="ChartHover"
+      class="rounded-xl border border-base-300 bg-base-200/60 p-4"
+    >
+      <div class="mb-3 flex items-baseline justify-between gap-3">
         <h3 class="text-xs text-base-content/60">{@label}</h3>
-        <span :if={@values != []} class="text-xs text-base-content/70">
+        <%!-- Readout is filled by the ChartHover hook on pointer move and
+             cleared on leave; the last value stays visible when idle. --%>
+        <span data-readout class="truncate text-xs text-base-content/70"></span>
+        <span :if={@values != []} class="shrink-0 text-xs text-base-content/70">
           {fmt_val(List.last(@values))}{@unit}
         </span>
       </div>
@@ -90,6 +99,18 @@ defmodule OrbitWeb.Components.MetricChart do
             stroke-dasharray="2 2"
             stroke-opacity="0.7"
             vector-effect="non-scaling-stroke"
+          />
+          <line
+            data-crosshair
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="40"
+            stroke="currentColor"
+            stroke-opacity="0.45"
+            stroke-width="0.4"
+            vector-effect="non-scaling-stroke"
+            style="opacity:0"
           />
           <circle :for={d <- @dots} cx={d.x} cy={d.y} r="1.6" fill="transparent">
             <title>{d.title}</title>

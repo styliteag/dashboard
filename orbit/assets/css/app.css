@@ -275,3 +275,13 @@
     background-color: color-mix(in oklab, var(--color-base-300) 45%, transparent);
   }
 }
+
+/* Form fields carry `focus:outline-none` so the accent border reads as the
+   focus cue on mouse. That utility is a class selector and beats the
+   :focus-visible outline in @layer base, which left keyboard users with only
+   a border tint. box-shadow is not `outline`, so it survives the utility. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 65%, transparent);
+}

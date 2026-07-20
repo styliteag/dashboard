@@ -25,8 +25,11 @@ defmodule OrbitWeb.Components.Nav do
 
   def top_nav(assigns) do
     ~H"""
-    <header class="flex items-center justify-between border-b border-base-300 bg-base-200 px-6 py-3">
-      <div class="flex items-center gap-4">
+    <%!-- flex-wrap on the header itself plus min-w-0 on both groups: without
+         them the right-hand group (user, theme, sign out) pushed the page
+         604px wide at a 390px viewport and every page scrolled sideways. --%>
+    <header class="flex flex-wrap items-center justify-between gap-y-2 border-b border-base-300 bg-base-200 px-6 py-3">
+      <div class="flex min-w-0 flex-wrap items-center gap-4">
         <a href={~p"/"} class="flex items-center gap-2 font-semibold text-base-content">
           <.nav_icon name={:brand} class="h-5 w-5 text-primary" /> STYLiTE Orbit
         </a>
@@ -127,35 +130,138 @@ defmodule OrbitWeb.Components.Nav do
           />
         </nav>
       </div>
-      <div class="flex items-center gap-3 text-sm">
-        <.nav_link active={@active} key={:security} href={~p"/security"} label="Security" />
-        <a
-          href={~p"/password"}
-          class="flex items-center gap-1.5 text-base-content/70 hover:text-base-content"
-          title="Change password"
-        >
-          <.nav_icon name={:password} class="h-3.5 w-3.5" />
-          {@current_user.username}
-        </a>
-        <.theme_switcher />
-        <form action={~p"/logout"} method="post">
-          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-          <button
-            type="submit"
-            class="flex items-center gap-1.5 rounded-md border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
-          >
-            <.nav_icon name={:signout} class="h-3.5 w-3.5" /> Sign out
-          </button>
-        </form>
-        <%!-- Version tag (VersionFooter parity, compacted into the nav —
-             every page shares this header, no separate footer needed). --%>
-        <span class="text-xs text-base-content/40" title="Orbit version">v{app_version()}</span>
-      </div>
+      <.account_menu current_user={@current_user} active={@active} />
     </header>
     """
   end
 
+  @doc """
+  Account menu: everything that is about the *operator* rather than the
+  fleet — profile, security, theme, sign out — behind one trigger on the
+  right. Four loose controls competed with the page nav for attention and
+  were what pushed the header past a phone-width viewport.
+
+  Same `<details>` mechanics as the theme switcher (server-rendered, no
+  LiveView state, closes on outside click via the data-popover handler in
+  app.js), so it works on the login page too, where no LiveView is mounted.
+  """
+  attr :current_user, :map, required: true
+  attr :active, :atom, default: nil
+
+  def account_menu(assigns) do
+    ~H"""
+    <details data-popover class="relative text-sm">
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded-md border border-base-content/20 px-2 py-1 text-base-content/80 hover:bg-base-300 hover:text-base-content">
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-primary">
+          {String.first(@current_user.username)}
+        </span>
+        <span class="max-w-[10rem] truncate">{@current_user.username}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+        </svg>
+      </summary>
+
+      <div class="absolute right-0 top-10 z-50 w-60 overflow-hidden rounded-lg border border-base-300 bg-base-200 shadow-xl">
+        <div class="border-b border-base-300 px-3 py-2">
+          <p class="truncate text-sm font-medium text-base-content">{@current_user.username}</p>
+          <p class="text-xs text-base-content/50">{role_label(@current_user)}</p>
+        </div>
+
+        <nav class="py-1">
+          <a href={~p"/security"} class={menu_item(@active == :security)}>
+            <.nav_icon name={:security} class="h-4 w-4 opacity-70" /> Security &amp; 2FA
+          </a>
+          <a href={~p"/password"} class={menu_item(false)}>
+            <.nav_icon name={:password} class="h-4 w-4 opacity-70" /> Change password
+          </a>
+        </nav>
+
+        <div class="border-t border-base-300 px-3 py-2">
+          <p class="mb-1.5 text-[10px] uppercase tracking-wide text-base-content/50">Appearance</p>
+          <.theme_controls />
+        </div>
+
+        <div class="border-t border-base-300 p-2">
+          <form action={~p"/logout"} method="post">
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <button
+              type="submit"
+              class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-error hover:bg-error/10"
+            >
+              <.nav_icon name={:signout} class="h-4 w-4" /> Sign out
+            </button>
+          </form>
+        </div>
+
+        <div class="border-t border-base-300 px-3 py-1.5 text-[11px] text-base-content/40">
+          STYLiTE Orbit v{app_version()}
+        </div>
+      </div>
+    </details>
+    """
+  end
+
+  defp menu_item(active?) do
+    [
+      "flex items-center gap-2 px-3 py-1.5 text-sm",
+      if(active?,
+        do: "bg-base-300 text-primary",
+        else: "text-base-content/80 hover:bg-base-300 hover:text-base-content"
+      )
+    ]
+  end
+
+  defp role_label(%{is_superadmin: true}), do: "Superadmin · rights management"
+  defp role_label(%{role: "admin"}), do: "Administrator"
+  defp role_label(%{role: "user"}), do: "Operator"
+  defp role_label(_), do: "Read-only"
+
   defp app_version, do: Application.spec(:orbit, :vsn) |> to_string()
+
+  @doc """
+  The design/mode buttons themselves, without a trigger — embedded in the
+  account menu in-app and in the standalone switcher on the login page.
+  """
+  def theme_controls(assigns) do
+    ~H"""
+    <div class="text-xs">
+      <div class="grid grid-cols-3 gap-1">
+        <form :for={d <- OrbitWeb.Design.all()} action="/design" method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <input type="hidden" name="design" value={d} />
+          <button
+            data-theme-design={d}
+            class="w-full rounded border border-base-content/15 px-2 py-1 hover:bg-base-300 data-[active]:border-primary"
+          >
+            {OrbitWeb.Design.name(d)}
+          </button>
+        </form>
+      </div>
+      <div class="mt-1.5 grid grid-cols-3 gap-1">
+        <form :for={m <- OrbitWeb.Design.modes()} action="/design/mode" method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <input type="hidden" name="mode" value={m} />
+          <button
+            data-theme-mode={m}
+            class="w-full rounded border border-base-content/15 px-2 py-1 hover:bg-base-300"
+          >
+            {OrbitWeb.Design.mode_name(m)}
+          </button>
+        </form>
+        <form action="/design/mode" method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <input type="hidden" name="mode" value="" />
+          <button
+            class="w-full rounded border border-base-content/15 px-2 py-1 hover:bg-base-300"
+            title="Use the design's native mode"
+          >
+            Auto
+          </button>
+        </form>
+      </div>
+    </div>
+    """
+  end
 
   @doc """
   Design/mode switcher (OrbitWeb.Design): plain POST forms, server-side
@@ -167,45 +273,13 @@ defmodule OrbitWeb.Components.Nav do
     ~H"""
     <details data-popover class="relative text-xs">
       <summary
-        class="cursor-pointer rounded-md border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
+        class="cursor-pointer list-none rounded-md border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
         title="Theme"
       >
         Theme
       </summary>
-      <div class="absolute right-0 top-8 z-50 w-44 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl">
-        <p class="mb-1 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Design</p>
-        <form :for={d <- OrbitWeb.Design.all()} action="/design" method="post">
-          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-          <input type="hidden" name="design" value={d} />
-          <button data-theme-design={d} class="w-full rounded px-2 py-1 text-left hover:bg-base-300">
-            {OrbitWeb.Design.name(d)}
-          </button>
-        </form>
-        <p class="mb-1 mt-2 px-1 text-[10px] uppercase tracking-wide text-base-content/50">Mode</p>
-        <div class="flex gap-1">
-          <form
-            :for={m <- OrbitWeb.Design.modes()}
-            action="/design/mode"
-            method="post"
-            class="flex-1"
-          >
-            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-            <input type="hidden" name="mode" value={m} />
-            <button data-theme-mode={m} class="w-full rounded px-2 py-1 hover:bg-base-300">
-              {OrbitWeb.Design.mode_name(m)}
-            </button>
-          </form>
-          <form action="/design/mode" method="post" class="flex-1">
-            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-            <input type="hidden" name="mode" value="" />
-            <button
-              class="w-full rounded px-2 py-1 hover:bg-base-300"
-              title="Use the design's native mode"
-            >
-              Auto
-            </button>
-          </form>
-        </div>
+      <div class="absolute right-0 top-8 z-50 w-52 rounded-lg border border-base-300 bg-base-200 p-3 shadow-xl">
+        <.theme_controls />
       </div>
     </details>
     """

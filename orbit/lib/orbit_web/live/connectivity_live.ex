@@ -328,70 +328,73 @@ defmodule OrbitWeb.ConnectivityLive do
           />
         </form>
 
-        <div :if={@rows == []} class="text-sm text-base-content/60">
-          No connectivity monitors reported in your scope.
-        </div>
+        <.empty_state :if={@rows == []} title="No connectivity monitors reported.">
+          Monitors are configured per instance (Instance → Connectivity) and run on the box
+          itself, so results appear here after the next agent push.
+        </.empty_state>
         <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
-        <table :if={@visible_rows != []} class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">State</th>
-              <th class="py-2 pr-4 font-medium">Instance</th>
-              <th class="py-2 pr-4 font-medium">Monitor</th>
-              <th class="py-2 pr-4 text-right font-medium">RTT</th>
-              <th class="py-2 pr-4 text-right font-medium">Loss</th>
-              <th :if={@writable} class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
-              <td class="py-2 pr-4">
-                <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
-                  {state_label(r.check.state)}
-                </span>
-              </td>
-              <td class="py-2 pr-4">
-                <a
-                  href={~p"/instances/#{r.instance_id}"}
-                  class="text-base-content hover:text-primary"
-                >
-                  {r.instance_name}
-                </a>
-                <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
-                <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
-              </td>
-              <td class="py-2 pr-4 text-base-content/80">
-                <%!-- Display-only strip: every summary starts with the word
+        <div class="overflow-x-auto">
+          <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">State</th>
+                <th class="py-2 pr-4 font-medium">Instance</th>
+                <th class="py-2 pr-4 font-medium">Monitor</th>
+                <th class="py-2 pr-4 text-right font-medium">RTT</th>
+                <th class="py-2 pr-4 text-right font-medium">Loss</th>
+                <th :if={@writable} class="py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
+                <td class="py-2 pr-4">
+                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
+                    {state_label(r.check.state)}
+                  </span>
+                </td>
+                <td class="py-2 pr-4">
+                  <a
+                    href={~p"/instances/#{r.instance_id}"}
+                    class="text-base-content hover:text-primary"
+                  >
+                    {r.instance_name}
+                  </a>
+                  <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
+                  <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
+                </td>
+                <td class="py-2 pr-4 text-base-content/80">
+                  <%!-- Display-only strip: every summary starts with the word
                      "Connectivity", redundant under this page's Monitor
                      column. The check engine's summary itself is untouched
                      (the four check surfaces keep their identical text). --%>
-                {String.replace_prefix(r.check.summary || "", "Connectivity ", "")}
-                <.comment_editor
-                  text={CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)}
-                  writable={@writable}
-                  instance_id={r.instance_id}
-                  kind="connectivity"
-                  entity_key={r.monitor_id}
-                />
-              </td>
-              <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
-              <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
-              <td :if={@writable} class="py-2 text-right">
-                <button
-                  phx-click="conn_open"
-                  phx-value-iid={r.instance_id}
-                  phx-value-id={r.monitor_id}
-                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
-                >
-                  Edit
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  {String.replace_prefix(r.check.summary || "", "Connectivity ", "")}
+                  <.comment_editor
+                    text={CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)}
+                    writable={@writable}
+                    instance_id={r.instance_id}
+                    kind="connectivity"
+                    entity_key={r.monitor_id}
+                  />
+                </td>
+                <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
+                <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
+                <td :if={@writable} class="py-2 text-right">
+                  <button
+                    phx-click="conn_open"
+                    phx-value-iid={r.instance_id}
+                    phx-value-id={r.monitor_id}
+                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <.connectivity_monitor_dialog
           editor={@conn_editor}

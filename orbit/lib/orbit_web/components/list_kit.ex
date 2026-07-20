@@ -40,6 +40,26 @@ defmodule OrbitWeb.Components.ListKit do
   end
 
   @doc """
+  Empty state for "this list has no rows at all" — a bordered card instead
+  of one grey sentence floating in white space, with room for the reason
+  and the next step. Filter misses ("No matches.") deliberately stay plain
+  text: they are transient feedback, not a state the operator must act on.
+  """
+  attr :title, :string, required: true
+  slot :inner_block, doc: "one line on why it is empty / what to do next"
+
+  def empty_state(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-dashed border-base-300 bg-base-200/40 px-4 py-8 text-center">
+      <p class="text-sm text-base-content/70">{@title}</p>
+      <p :if={@inner_block != []} class="mx-auto mt-1 max-w-lg text-xs text-base-content/50">
+        {render_slot(@inner_block)}
+      </p>
+    </div>
+    """
+  end
+
+  @doc """
   Non-interactive tally chip ("opnsense ×2") for the aggregate row above a
   table — the shape of the data before the first row is read.
   """

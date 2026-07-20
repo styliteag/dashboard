@@ -215,15 +215,16 @@ defmodule OrbitWeb.FirmwareLive do
           </div>
         </div>
 
-        <div :if={@rows == []} class="text-sm text-base-content/60">
-          No push instances in your scope.
-        </div>
+        <.empty_state :if={@rows == []} title="No push instances in your scope.">
+          Firmware state is reported by the on-box agent; direct-API polled devices are not
+          listed here.
+        </.empty_state>
         <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
         <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-base-300">
-          <table class="w-full text-left text-sm">
+          <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />

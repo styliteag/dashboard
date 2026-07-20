@@ -253,36 +253,38 @@ defmodule OrbitWeb.CaptureLive do
             />
           </form>
           <div class="max-h-96 overflow-y-auto">
-            <table class="w-full text-left font-mono text-xs">
-              <thead class="sticky top-0 bg-base-100 text-base-content/60">
-                <tr>
-                  <th class="py-1 pr-3 font-medium">#</th>
-                  <th class="py-1 pr-3 font-medium">Proto</th>
-                  <th class="py-1 pr-3 font-medium">Source</th>
-                  <th class="py-1 pr-3 font-medium">Destination</th>
-                  <th class="py-1 pr-3 font-medium">Len</th>
-                  <th class="py-1 font-medium">Info</th>
-                </tr>
-              </thead>
-              <tbody>
-                <%= for p <- visible_packets(@snap_packets, @snap_filter) do %>
-                  <tr class="border-t border-base-300/50 align-top">
-                    <td class="py-0.5 pr-3 text-base-content/40">{p.idx}</td>
-                    <td class="py-0.5 pr-3 text-base-content/80">{p.proto}</td>
-                    <td class="py-0.5 pr-3 text-base-content/70">{p.src}</td>
-                    <td class="py-0.5 pr-3 text-base-content/70">{p.dst}</td>
-                    <td class="py-0.5 pr-3 text-base-content/60">{p.len}</td>
-                    <td class="py-0.5 text-base-content/70">
-                      <details :if={p.hex != ""}>
-                        <summary class="cursor-pointer">{p.info}</summary>
-                        <div class="mt-1 break-all text-[10px] text-base-content/40">{p.hex}</div>
-                      </details>
-                      <span :if={p.hex == ""}>{p.info}</span>
-                    </td>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[46rem] text-left font-mono text-xs">
+                <thead class="sticky top-0 bg-base-100 text-base-content/60">
+                  <tr>
+                    <th class="py-1 pr-3 font-medium">#</th>
+                    <th class="py-1 pr-3 font-medium">Proto</th>
+                    <th class="py-1 pr-3 font-medium">Source</th>
+                    <th class="py-1 pr-3 font-medium">Destination</th>
+                    <th class="py-1 pr-3 font-medium">Len</th>
+                    <th class="py-1 font-medium">Info</th>
                   </tr>
-                <% end %>
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <%= for p <- visible_packets(@snap_packets, @snap_filter) do %>
+                    <tr class="border-t border-base-300/50 align-top">
+                      <td class="py-0.5 pr-3 text-base-content/40">{p.idx}</td>
+                      <td class="py-0.5 pr-3 text-base-content/80">{p.proto}</td>
+                      <td class="py-0.5 pr-3 text-base-content/70">{p.src}</td>
+                      <td class="py-0.5 pr-3 text-base-content/70">{p.dst}</td>
+                      <td class="py-0.5 pr-3 text-base-content/60">{p.len}</td>
+                      <td class="py-0.5 text-base-content/70">
+                        <details :if={p.hex != ""}>
+                          <summary class="cursor-pointer">{p.info}</summary>
+                          <div class="mt-1 break-all text-[10px] text-base-content/40">{p.hex}</div>
+                        </details>
+                        <span :if={p.hex == ""}>{p.info}</span>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 

@@ -1340,7 +1340,9 @@ defmodule OrbitWeb.InstanceDetailLive do
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
-        <div class="mb-6 flex items-center gap-3">
+        <%!-- Wraps: the five action buttons pushed the page ~190px wide on a
+             phone-width viewport (every page then scrolled sideways). --%>
+        <div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
             <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> {@instance.name}
           </h1>
@@ -1355,30 +1357,30 @@ defmodule OrbitWeb.InstanceDetailLive do
             href={~p"/instances/#{@instance.id}/terminal"}
             target="_blank"
             rel="noopener"
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+            class="inline-flex items-center gap-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
-            Terminal
+            <Icons.icon name={:terminal} class="h-3 w-3" /> Terminal
           </a>
           <button
             :if={@writable and @gui_openable}
             phx-click="gui_open"
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+            class="inline-flex items-center gap-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
-            Open GUI
+            <Icons.icon name={:external} class="h-3 w-3" /> Open GUI
           </button>
           <a
             :if={@writable}
             href={~p"/instances/#{@instance.id}/capture"}
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+            class="inline-flex items-center gap-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
-            Capture
+            <Icons.icon name={:capture} class="h-3 w-3" /> Capture
           </a>
           <a
             :if={@writable and @instance.device_type == "opnsense"}
             href={~p"/instances/#{@instance.id}/firewall"}
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+            class="inline-flex items-center gap-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
           >
-            Firewall
+            <Icons.icon name={:firewall} class="h-3 w-3" /> Firewall
           </a>
           <a
             :if={@writable}
@@ -1427,7 +1429,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         </nav>
 
         <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Instance</h2>
             <dl class="space-y-1 text-sm">
               <.kv label="Type" value={@instance.device_type} />
@@ -1437,7 +1439,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Live</h2>
             <div :if={not @connected and @system == %{}} class="text-sm text-base-content/60">
               No live data — agent not pushing.
@@ -1468,7 +1470,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              (ConfigSection parity). Sections the box never reported stay
              hidden (no-data ⇒ no tile, never a fake 0). --%>
         <div :if={@tab == "overview"} class="mt-6 grid gap-6 md:grid-cols-2">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">System health</h2>
             <dl class="space-y-1 text-sm">
               <.kv
@@ -1502,10 +1504,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           <%!-- Inside the overview-only grid — a stray tab=="config" gate here
                meant this card rendered on NO tab at all and left a hole next
                to System health. --%>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Config revision</h2>
             <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
-              <.kv label="Last change" value={@config_rev["revision_time"] || "—"} />
+              <.kv label="Last change" value={rev_time(@config_rev["revision_time"])} />
               <.kv label="Description" value={@config_rev["revision_description"] || "—"} />
               <.kv label="By" value={@config_rev["revision_user"] || "—"} />
             </dl>
@@ -1522,42 +1524,46 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Checks <span class="text-base-content/60">({length(@checks)})</span>
           </h2>
-          <table class="w-full text-left text-sm">
-            <tbody>
-              <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
-                <td class="w-16 py-1.5 pr-4 align-top">
-                  <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
-                    {state_label(c.state)}
-                  </span>
-                </td>
-                <td class="whitespace-nowrap py-1.5 pr-4 align-top text-base-content/70">{c.key}</td>
-                <td class="py-1.5 align-top text-base-content/80">{c.summary}</td>
-                <td :if={@writable} class="whitespace-nowrap py-1.5 pl-2 text-right align-top">
-                  <button
-                    :for={consumer <- Orbit.Selection.consumers()}
-                    :if={Orbit.Selection.valid_selector?(consumer, c.key)}
-                    phx-click="check_toggle"
-                    phx-value-consumer={consumer}
-                    phx-value-key={c.key}
-                    aria-pressed={
-                      to_string(Orbit.Selection.is_on_live(consumer, c.key, @instance.id))
-                    }
-                    title={"Export to #{consumer}: #{if Orbit.Selection.is_on_live(consumer, c.key, @instance.id), do: "ON", else: "OFF"} — #{if MapSet.member?(@check_rules, {consumer, c.key}), do: "instance override, click to clear back to the global rule", else: "global rule, click to override for this box"}"}
-                    class={[
-                      "ml-1 rounded px-2 py-0.5 text-[11px]",
-                      if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
-                        do: "bg-primary/20 text-primary",
-                        else: "bg-base-300 text-base-content/60"
-                      ),
-                      MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-primary"
-                    ]}
-                  >
-                    {consumer_tag(consumer)}
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <tbody>
+                <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
+                  <td class="w-16 py-1.5 pr-4 align-top">
+                    <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
+                      {state_label(c.state)}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap py-1.5 pr-4 align-top text-base-content/70">
+                    {c.key}
+                  </td>
+                  <td class="py-1.5 align-top text-base-content/80">{c.summary}</td>
+                  <td :if={@writable} class="whitespace-nowrap py-1.5 pl-2 text-right align-top">
+                    <button
+                      :for={consumer <- Orbit.Selection.consumers()}
+                      :if={Orbit.Selection.valid_selector?(consumer, c.key)}
+                      phx-click="check_toggle"
+                      phx-value-consumer={consumer}
+                      phx-value-key={c.key}
+                      aria-pressed={
+                        to_string(Orbit.Selection.is_on_live(consumer, c.key, @instance.id))
+                      }
+                      title={"Export to #{consumer}: #{if Orbit.Selection.is_on_live(consumer, c.key, @instance.id), do: "ON", else: "OFF"} — #{if MapSet.member?(@check_rules, {consumer, c.key}), do: "instance override, click to clear back to the global rule", else: "global rule, click to override for this box"}"}
+                      class={[
+                        "ml-1 rounded px-2 py-0.5 text-[11px]",
+                        if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
+                          do: "bg-primary/20 text-primary",
+                          else: "bg-base-300 text-base-content/60"
+                        ),
+                        MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-primary"
+                      ]}
+                    >
+                      {consumer_tag(consumer)}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <%!-- Metric history (InstanceDetailPage Metrics parity): six fixed
@@ -1952,60 +1958,62 @@ defmodule OrbitWeb.InstanceDetailLive do
             {@conn_error}
           </div>
 
-          <table :if={@conn_monitors != []} class="w-full text-left text-sm">
-            <thead class="text-xs text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-1 pr-3 font-medium">Monitor</th>
-                <th class="py-1 pr-3 font-medium">Source → Destination</th>
-                <th class="py-1 pr-3 font-medium">State</th>
-                <th class="py-1 pr-3 font-medium">RTT / Loss</th>
-                <th :if={@writable} class="py-1 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for m <- @conn_monitors do %>
-                <% result = Enum.find(@connectivity, &(&1["id"] == m.id)) %>
-                <tr class="border-b border-base-300/50 last:border-0">
-                  <td class="py-1.5 pr-3 text-base-content/80">
-                    {m.name}
-                    <span :if={not m.enabled} class="ml-1 text-xs text-base-content/40">(disabled)</span>
-                    <.comment_editor
-                      text={
-                        CommentEditor.text(@comments, @instance.id, "connectivity", to_string(m.id))
-                      }
-                      writable={@writable}
-                      instance_id={@instance.id}
-                      kind="connectivity"
-                      entity_key={to_string(m.id)}
-                    />
-                  </td>
-                  <td class="py-1.5 pr-3 text-base-content/70">
-                    {if m.source == "", do: "default", else: m.source} → {m.destination}
-                  </td>
-                  <td class={["py-1.5 pr-3", ping_state_color(result && result["ping_state"])]}>
-                    {(result && result["ping_state"]) || "no data yet"}
-                  </td>
-                  <td class="py-1.5 pr-3 text-base-content/70">
-                    <span :if={result && is_number(result["ping_rtt_ms"])}>
-                      {result["ping_rtt_ms"]} ms
-                    </span>
-                    <span :if={result && is_number(result["ping_loss_pct"])}>
-                      · {result["ping_loss_pct"]}%
-                    </span>
-                  </td>
-                  <td :if={@writable} class="py-1.5 text-right text-xs">
-                    <button
-                      phx-click="conn_open"
-                      phx-value-id={m.id}
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                    >
-                      Edit
-                    </button>
-                  </td>
+          <div class="overflow-x-auto">
+            <table :if={@conn_monitors != []} class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="text-xs text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-1 pr-3 font-medium">Monitor</th>
+                  <th class="py-1 pr-3 font-medium">Source → Destination</th>
+                  <th class="py-1 pr-3 font-medium">State</th>
+                  <th class="py-1 pr-3 font-medium">RTT / Loss</th>
+                  <th :if={@writable} class="py-1 font-medium"></th>
                 </tr>
-              <% end %>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <%= for m <- @conn_monitors do %>
+                  <% result = Enum.find(@connectivity, &(&1["id"] == m.id)) %>
+                  <tr class="border-b border-base-300/50 last:border-0">
+                    <td class="py-1.5 pr-3 text-base-content/80">
+                      {m.name}
+                      <span :if={not m.enabled} class="ml-1 text-xs text-base-content/40">(disabled)</span>
+                      <.comment_editor
+                        text={
+                          CommentEditor.text(@comments, @instance.id, "connectivity", to_string(m.id))
+                        }
+                        writable={@writable}
+                        instance_id={@instance.id}
+                        kind="connectivity"
+                        entity_key={to_string(m.id)}
+                      />
+                    </td>
+                    <td class="py-1.5 pr-3 text-base-content/70">
+                      {if m.source == "", do: "default", else: m.source} → {m.destination}
+                    </td>
+                    <td class={["py-1.5 pr-3", ping_state_color(result && result["ping_state"])]}>
+                      {(result && result["ping_state"]) || "no data yet"}
+                    </td>
+                    <td class="py-1.5 pr-3 text-base-content/70">
+                      <span :if={result && is_number(result["ping_rtt_ms"])}>
+                        {result["ping_rtt_ms"]} ms
+                      </span>
+                      <span :if={result && is_number(result["ping_loss_pct"])}>
+                        · {result["ping_loss_pct"]}%
+                      </span>
+                    </td>
+                    <td :if={@writable} class="py-1.5 text-right text-xs">
+                      <button
+                        phx-click="conn_open"
+                        phx-value-id={m.id}
+                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
 
           <p :if={@conn_monitors == []} class="text-sm text-base-content/60">
             No monitors configured — the box pings each (source, destination) pair
@@ -2089,144 +2097,146 @@ defmodule OrbitWeb.InstanceDetailLive do
             {elem(@ipsec_msg, 1)}
           </div>
 
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-1 pr-3 font-medium">Tunnel</th>
-                <th class="py-1 pr-3 font-medium">Remote</th>
-                <th class="py-1 pr-3 font-medium">Status</th>
-                <th class="py-1 pr-3 font-medium">Phase 2</th>
-                <th class="py-1 pr-3 font-medium">Uptime</th>
-                <th class="py-1 pr-3 font-medium">In / Out</th>
-                <th
-                  :if={@writable and Instance.monitors_runnable?(@instance)}
-                  class="py-1 font-medium"
-                >
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for t <- @ipsec do %>
-                <% id = to_string(t["id"] || t["description"] || "tunnel") %>
-                <tr class="border-b border-base-300/50 last:border-0">
-                  <td class="py-1.5 pr-3">
-                    <button
-                      :if={(t["children"] || []) != []}
-                      phx-click="ipsec_toggle"
-                      phx-value-id={id}
-                      class="mr-1 text-base-content/60 hover:text-base-content/80"
-                    >
-                      {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
-                    </button>
-                    <span class="text-base-content/80">{t["description"] || id}</span>
-                    <.comment_editor
-                      text={CommentEditor.text(@comments, @instance.id, "ipsec", id)}
-                      writable={@writable}
-                      instance_id={@instance.id}
-                      kind="ipsec"
-                      entity_key={id}
-                    />
-                  </td>
-                  <td class="py-1.5 pr-3 text-base-content/70">{t["remote"] || "—"}</td>
-                  <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
-                  <td class="py-1.5 pr-3 text-base-content/70">
-                    <span :if={num0(t["phase2_total"]) > 0}>
-                      {num0(t["phase2_up"])}/{num0(t["phase2_total"])} up
-                    </span>
-                    <span :if={num0(t["phase2_total"]) == 0}>—</span>
-                  </td>
-                  <td class="py-1.5 pr-3 text-base-content/70">
-                    {fmt_duration(t["seconds_established"])}
-                  </td>
-                  <td class="py-1.5 pr-3 text-base-content/70">
-                    {fmt_bytes(t["bytes_in"])} / {fmt_bytes(t["bytes_out"])}
-                  </td>
-                  <td
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="text-xs text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-1 pr-3 font-medium">Tunnel</th>
+                  <th class="py-1 pr-3 font-medium">Remote</th>
+                  <th class="py-1 pr-3 font-medium">Status</th>
+                  <th class="py-1 pr-3 font-medium">Phase 2</th>
+                  <th class="py-1 pr-3 font-medium">Uptime</th>
+                  <th class="py-1 pr-3 font-medium">In / Out</th>
+                  <th
                     :if={@writable and Instance.monitors_runnable?(@instance)}
-                    class="py-1.5 text-right text-xs"
+                    class="py-1 font-medium"
                   >
-                    <button
-                      phx-click="ipsec_diagnose"
-                      phx-value-id={id}
-                      disabled={@diagnosis_busy != nil or not @connected}
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
-                    </button>
-                    <button
-                      phx-click="ipsec_reconnect"
-                      phx-value-id={id}
-                      phx-value-uid={t["unique_id"] || ""}
-                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
-                    </button>
-                    <button
-                      :if={tunnel_up?(t["status"])}
-                      phx-click="ipsec_disconnect"
-                      phx-value-id={id}
-                      phx-value-uid={t["unique_id"] || ""}
-                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Disconnect
-                    </button>
-                    <button
-                      :if={not tunnel_up?(t["status"])}
-                      phx-click="ipsec_connect"
-                      phx-value-id={id}
-                      phx-value-uid={t["unique_id"] || ""}
-                      disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Connect
-                    </button>
-                  </td>
+                  </th>
                 </tr>
-                <tr
-                  :for={ch <- t["children"] || []}
-                  :if={MapSet.member?(@ipsec_expanded, id)}
-                  class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
-                >
-                  <td class="py-1 pl-6 pr-3 text-base-content/60">{ch["name"] || "child"}</td>
-                  <td class="py-1 pr-3 text-base-content/60" colspan="2">
-                    {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
-                  </td>
-                  <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
-                  <td class="py-1 pr-3 text-base-content/60" colspan="3">
-                    <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
-                    <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
-                      ping {ch["ping_state"]}
-                    </span>
-                    <span
-                      :if={ch["phase2_dup_persistent"] == true}
-                      title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
-                      class="mr-2 text-warning"
+              </thead>
+              <tbody>
+                <%= for t <- @ipsec do %>
+                  <% id = to_string(t["id"] || t["description"] || "tunnel") %>
+                  <tr class="border-b border-base-300/50 last:border-0">
+                    <td class="py-1.5 pr-3">
+                      <button
+                        :if={(t["children"] || []) != []}
+                        phx-click="ipsec_toggle"
+                        phx-value-id={id}
+                        class="mr-1 text-base-content/60 hover:text-base-content/80"
+                      >
+                        {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
+                      </button>
+                      <span class="text-base-content/80">{t["description"] || id}</span>
+                      <.comment_editor
+                        text={CommentEditor.text(@comments, @instance.id, "ipsec", id)}
+                        writable={@writable}
+                        instance_id={@instance.id}
+                        kind="ipsec"
+                        entity_key={id}
+                      />
+                    </td>
+                    <td class="py-1.5 pr-3 text-base-content/70">{t["remote"] || "—"}</td>
+                    <td class={["py-1.5 pr-3", tunnel_color(t["status"])]}>{t["status"] || "?"}</td>
+                    <td class="py-1.5 pr-3 text-base-content/70">
+                      <span :if={num0(t["phase2_total"]) > 0}>
+                        {num0(t["phase2_up"])}/{num0(t["phase2_total"])} up
+                      </span>
+                      <span :if={num0(t["phase2_total"]) == 0}>—</span>
+                    </td>
+                    <td class="py-1.5 pr-3 text-base-content/70">
+                      {fmt_duration(t["seconds_established"])}
+                    </td>
+                    <td class="py-1.5 pr-3 text-base-content/70">
+                      {fmt_bytes(t["bytes_in"])} / {fmt_bytes(t["bytes_out"])}
+                    </td>
+                    <td
+                      :if={@writable and Instance.monitors_runnable?(@instance)}
+                      class="py-1.5 text-right text-xs"
                     >
-                      ⚠ {ch["dup_count"] || 2}× SAs
-                    </span>
-                    <span :if={mon} class="text-base-content/40">
-                      monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
-                      <span :if={not mon.enabled} class="text-base-content/30">(disabled)</span>
-                    </span>
-                    <button
-                      :if={@writable}
-                      phx-click="p2mon_open"
-                      phx-value-tunnel={id}
-                      phx-value-child={ch["name"] || ""}
-                      phx-value-lts={ch["local_ts"] || ""}
-                      phx-value-rts={ch["remote_ts"] || ""}
-                      phx-value-suggested={ch["suggested_source"] || ""}
-                      class="ml-1 rounded border border-base-content/20 px-1.5 py-0.5 text-[10px] text-base-content/70 hover:bg-base-300"
-                    >
-                      {if mon, do: "edit monitor", else: "add monitor"}
-                    </button>
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
+                      <button
+                        phx-click="ipsec_diagnose"
+                        phx-value-id={id}
+                        disabled={@diagnosis_busy != nil or not @connected}
+                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
+                      </button>
+                      <button
+                        phx-click="ipsec_reconnect"
+                        phx-value-id={id}
+                        phx-value-uid={t["unique_id"] || ""}
+                        disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
+                      </button>
+                      <button
+                        :if={tunnel_up?(t["status"])}
+                        phx-click="ipsec_disconnect"
+                        phx-value-id={id}
+                        phx-value-uid={t["unique_id"] || ""}
+                        disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Disconnect
+                      </button>
+                      <button
+                        :if={not tunnel_up?(t["status"])}
+                        phx-click="ipsec_connect"
+                        phx-value-id={id}
+                        phx-value-uid={t["unique_id"] || ""}
+                        disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
+                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Connect
+                      </button>
+                    </td>
+                  </tr>
+                  <tr
+                    :for={ch <- t["children"] || []}
+                    :if={MapSet.member?(@ipsec_expanded, id)}
+                    class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
+                  >
+                    <td class="py-1 pl-6 pr-3 text-base-content/60">{ch["name"] || "child"}</td>
+                    <td class="py-1 pr-3 text-base-content/60" colspan="2">
+                      {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
+                    </td>
+                    <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
+                    <td class="py-1 pr-3 text-base-content/60" colspan="3">
+                      <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
+                      <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
+                        ping {ch["ping_state"]}
+                      </span>
+                      <span
+                        :if={ch["phase2_dup_persistent"] == true}
+                        title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
+                        class="mr-2 text-warning"
+                      >
+                        ⚠ {ch["dup_count"] || 2}× SAs
+                      </span>
+                      <span :if={mon} class="text-base-content/40">
+                        monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
+                        <span :if={not mon.enabled} class="text-base-content/30">(disabled)</span>
+                      </span>
+                      <button
+                        :if={@writable}
+                        phx-click="p2mon_open"
+                        phx-value-tunnel={id}
+                        phx-value-child={ch["name"] || ""}
+                        phx-value-lts={ch["local_ts"] || ""}
+                        phx-value-rts={ch["remote_ts"] || ""}
+                        phx-value-suggested={ch["suggested_source"] || ""}
+                        class="ml-1 rounded border border-base-content/20 px-1.5 py-0.5 text-[10px] text-base-content/70 hover:bg-base-300"
+                      >
+                        {if mon, do: "edit monitor", else: "add monitor"}
+                      </button>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
 
           <.ping_monitor_dialog
             editor={@ping_editor}
@@ -2265,30 +2275,32 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Gateways</h2>
-          <table class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-1 pr-4 font-medium">Name</th>
-                <th class="py-1 pr-4 font-medium">Address</th>
-                <th class="py-1 pr-4 font-medium">Status</th>
-                <th class="py-1 pr-4 font-medium">Delay</th>
-                <th class="py-1 font-medium">Loss</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={g <- @gateways} class="border-b border-base-300/50 last:border-0">
-                <td class="py-1.5 pr-4 text-base-content/80">{g["name"]}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
-                  {g["address"] || "—"}
-                </td>
-                <td class="py-1.5 pr-4">
-                  <span class={gw_color(g["status"])}>{g["status"] || "?"}</span>
-                </td>
-                <td class="py-1.5 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
-                <td class="py-1.5 text-base-content/70">{g["loss"] || "—"}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-1 pr-4 font-medium">Name</th>
+                  <th class="py-1 pr-4 font-medium">Address</th>
+                  <th class="py-1 pr-4 font-medium">Status</th>
+                  <th class="py-1 pr-4 font-medium">Delay</th>
+                  <th class="py-1 font-medium">Loss</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={g <- @gateways} class="border-b border-base-300/50 last:border-0">
+                  <td class="py-1.5 pr-4 text-base-content/80">{g["name"]}</td>
+                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                    {g["address"] || "—"}
+                  </td>
+                  <td class="py-1.5 pr-4">
+                    <span class={gw_color(g["status"])}>{g["status"] || "?"}</span>
+                  </td>
+                  <td class="py-1.5 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
+                  <td class="py-1.5 text-base-content/70">{g["loss"] || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div
@@ -2296,44 +2308,46 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Interfaces</h2>
-          <table class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-1 pr-4 font-medium">Name</th>
-                <th class="py-1 pr-4 font-medium">Address</th>
-                <th class="py-1 pr-4 font-medium">Status</th>
-                <th class="py-1 pr-4 font-medium">RX/s</th>
-                <th class="py-1 pr-4 font-medium">TX/s</th>
-                <th class="py-1 font-medium">Errors in/out</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={i <- @interfaces} class="border-b border-base-300/50 last:border-0">
-                <td class="py-1.5 pr-4 text-base-content/80">{i["name"]}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
-                  {i["address"] || "—"}
-                </td>
-                <td class="py-1.5 pr-4">
-                  <span class={
-                    if(i["status"] == "up", do: "text-primary", else: "text-base-content/60")
-                  }>
-                    {i["status"] || "?"}
-                  </span>
-                </td>
-                <td class="py-1.5 pr-4 text-base-content/70">{rate(i["rx_rate"])}</td>
-                <td class="py-1.5 pr-4 text-base-content/70">{rate(i["tx_rate"])}</td>
-                <td class="py-1.5 text-base-content/70">
-                  {i["in_errors"] || 0}/{i["out_errors"] || 0}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-1 pr-4 font-medium">Name</th>
+                  <th class="py-1 pr-4 font-medium">Address</th>
+                  <th class="py-1 pr-4 font-medium">Status</th>
+                  <th class="py-1 pr-4 font-medium">RX/s</th>
+                  <th class="py-1 pr-4 font-medium">TX/s</th>
+                  <th class="py-1 font-medium">Errors in/out</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={i <- @interfaces} class="border-b border-base-300/50 last:border-0">
+                  <td class="py-1.5 pr-4 text-base-content/80">{i["name"]}</td>
+                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                    {i["address"] || "—"}
+                  </td>
+                  <td class="py-1.5 pr-4">
+                    <span class={
+                      if(i["status"] == "up", do: "text-primary", else: "text-base-content/60")
+                    }>
+                      {i["status"] || "?"}
+                    </span>
+                  </td>
+                  <td class="py-1.5 pr-4 text-base-content/70">{rate(i["rx_rate"])}</td>
+                  <td class="py-1.5 pr-4 text-base-content/70">{rate(i["tx_rate"])}</td>
+                  <td class="py-1.5 text-base-content/70">
+                    {i["in_errors"] || 0}/{i["out_errors"] || 0}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div :if={@tab in ["overview", "network"]} class="mt-6 grid items-start gap-6 md:grid-cols-2">
           <div
             :if={@tab == "overview" and @services != []}
-            class="rounded-lg border border-base-300 bg-base-200 p-4"
+            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Services</h2>
             <ul class="space-y-1 text-sm">
@@ -2351,7 +2365,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={@tab == "overview" and @disks != []}
-            class="rounded-lg border border-base-300 bg-base-200 p-4"
+            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Disks</h2>
             <ul class="space-y-1 text-sm">
@@ -2364,7 +2378,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={@tab == "network" and @external_ip != %{}}
-            class="rounded-lg border border-base-300 bg-base-200 p-4"
+            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-base-content/70">External IP</h2>
             <dl class="space-y-1 text-sm">
@@ -2415,7 +2429,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={(@pf_top["top_flows"] || []) != []}
             class="mt-4 overflow-x-auto rounded-lg border border-base-300"
           >
-            <table class="w-full text-sm">
+            <table class="w-full min-w-[46rem] text-sm">
               <thead class="bg-base-100 text-left text-xs text-base-content/60">
                 <tr>
                   <th class="px-3 py-2">Source</th>
@@ -2452,7 +2466,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Certificates</h2>
           <div class="overflow-x-auto rounded-lg border border-base-300">
-            <table class="w-full text-sm">
+            <table class="w-full min-w-[46rem] text-sm">
               <thead class="bg-base-100 text-left text-xs text-base-content/60">
                 <tr>
                   <th class="px-3 py-2">Name</th>
@@ -2508,25 +2522,27 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Check history</h2>
-          <table class="w-full text-left text-sm">
-            <tbody>
-              <tr
-                :for={[ts, key, old, new, summary] <- @check_history}
-                class="border-b border-base-300/50 last:border-0"
-              >
-                <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-base-content/60">
-                  {cb_ts(ts)}
-                </td>
-                <td class="py-1.5 pr-3 align-top">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(new)]}>
-                    {state_label(old)} → {state_label(new)}
-                  </span>
-                </td>
-                <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
-                <td class="py-1.5 text-base-content/80">{summary}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <tbody>
+                <tr
+                  :for={[ts, key, old, new, summary] <- @check_history}
+                  class="border-b border-base-300/50 last:border-0"
+                >
+                  <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-base-content/60">
+                    {cb_ts(ts)}
+                  </td>
+                  <td class="py-1.5 pr-3 align-top">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", state_class(new)]}>
+                      {state_label(old)} → {state_label(new)}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
+                  <td class="py-1.5 text-base-content/80">{summary}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div
@@ -2534,23 +2550,25 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Firewall log (latest)</h2>
-          <table class="w-full text-left text-sm">
-            <tbody>
-              <tr :for={l <- @firewall_log} class="border-b border-base-300/50 last:border-0">
-                <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-base-content/60">
-                  {l["__timestamp__"]}
-                </td>
-                <td class="py-1 pr-3">
-                  <span class={fw_action_color(l["action"])}>{l["action"]}</span>
-                </td>
-                <td class="py-1 pr-3 text-base-content/70">{l["interface"]}</td>
-                <td class="py-1 pr-3 text-base-content/70">{l["protoname"] || l["proto"]}</td>
-                <td class="py-1 font-mono text-xs text-base-content/80">
-                  {l["src"] || l["srcip"]} → {l["dst"] || l["dstip"]}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <tbody>
+                <tr :for={l <- @firewall_log} class="border-b border-base-300/50 last:border-0">
+                  <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-base-content/60">
+                    {l["__timestamp__"]}
+                  </td>
+                  <td class="py-1 pr-3">
+                    <span class={fw_action_color(l["action"])}>{l["action"]}</span>
+                  </td>
+                  <td class="py-1 pr-3 text-base-content/70">{l["interface"]}</td>
+                  <td class="py-1 pr-3 text-base-content/70">{l["protoname"] || l["proto"]}</td>
+                  <td class="py-1 font-mono text-xs text-base-content/80">
+                    {l["src"] || l["srcip"]} → {l["dst"] || l["dstip"]}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div
@@ -2573,25 +2591,29 @@ defmodule OrbitWeb.InstanceDetailLive do
             </a>
             <span :for={lf <- @logfiles} :if={not @admin}>{lf.name} · {lf.bytes} chars</span>
           </div>
-          <table :if={@log_events != []} class="w-full text-left text-sm">
-            <tbody>
-              <tr
-                :for={e <- Enum.take(@log_events, 15)}
-                class="border-b border-base-300/50 last:border-0"
-              >
-                <td class="w-14 py-1.5 pr-3 align-top">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(e.severity)]}>
-                    {sev_label(e.severity)}
-                  </span>
-                </td>
-                <td class="whitespace-nowrap py-1.5 pr-3 align-top text-base-content/70">
-                  {e.program}
-                </td>
-                <td class="py-1.5 align-top text-base-content/80">{e.pattern}</td>
-                <td class="w-10 py-1.5 pl-3 text-right align-top text-base-content/70">{e.count}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table :if={@log_events != []} class="w-full min-w-[46rem] text-left text-sm">
+              <tbody>
+                <tr
+                  :for={e <- Enum.take(@log_events, 15)}
+                  class="border-b border-base-300/50 last:border-0"
+                >
+                  <td class="w-14 py-1.5 pr-3 align-top">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(e.severity)]}>
+                      {sev_label(e.severity)}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap py-1.5 pr-3 align-top text-base-content/70">
+                    {e.program}
+                  </td>
+                  <td class="py-1.5 align-top text-base-content/80">{e.pattern}</td>
+                  <td class="w-10 py-1.5 pl-3 text-right align-top text-base-content/70">
+                    {e.count}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div :if={@log_events == [] and @logfiles != []} class="text-xs text-base-content/60">
             No critical events in the latest snapshots.
           </div>
@@ -2634,38 +2656,40 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Config backups <span class="text-base-content/60">({length(@config_backups)})</span>
           </h2>
-          <table class="w-full text-left text-sm">
-            <tbody>
-              <tr
-                :for={cb <- @config_backups}
-                class="border-b border-base-300/50 last:border-0"
-              >
-                <td class="py-1.5 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
-                <td class="py-1.5 pr-4 font-mono text-xs text-base-content/60">
-                  {String.slice(cb.sha256, 0, 12)}
-                </td>
-                <td class="py-1.5 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
-                <td class="py-1.5 text-right">
-                  <a
-                    :if={@admin}
-                    href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/diff"}
-                    target="_blank"
-                    class="mr-3 text-xs text-base-content/70 hover:text-primary"
-                  >
-                    diff
-                  </a>
-                  <a
-                    :if={@admin}
-                    href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/raw"}
-                    target="_blank"
-                    class="text-xs text-primary hover:text-primary"
-                  >
-                    download
-                  </a>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <tbody>
+                <tr
+                  :for={cb <- @config_backups}
+                  class="border-b border-base-300/50 last:border-0"
+                >
+                  <td class="py-1.5 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
+                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/60">
+                    {String.slice(cb.sha256, 0, 12)}
+                  </td>
+                  <td class="py-1.5 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
+                  <td class="py-1.5 text-right">
+                    <a
+                      :if={@admin}
+                      href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/diff"}
+                      target="_blank"
+                      class="mr-3 text-xs text-base-content/70 hover:text-primary"
+                    >
+                      diff
+                    </a>
+                    <a
+                      :if={@admin}
+                      href={~p"/api/instances/#{@instance.id}/config-backups/#{cb.id}/raw"}
+                      target="_blank"
+                      class="text-xs text-primary hover:text-primary"
+                    >
+                      download
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <%!-- Inline two-version diff (ConfigBackupsSection parity):
               +/- coloured, bounded by the store's diff caps. Admin-only,
@@ -2816,9 +2840,12 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp kv(assigns) do
     ~H"""
-    <div class="flex justify-between">
-      <dt class="text-base-content/60">{@label}</dt>
-      <dd class="text-base-content">{@value}</dd>
+    <%!-- min-w-0 + break-words: unbreakable values (a config-revision path,
+         a long base URL) used to push the whole card past the viewport on a
+         narrow screen instead of wrapping inside it. --%>
+    <div class="flex justify-between gap-3">
+      <dt class="shrink-0 text-base-content/60">{@label}</dt>
+      <dd class="min-w-0 break-words text-right text-base-content">{@value}</dd>
     </div>
     """
   end
@@ -2830,7 +2857,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp talker_table(assigns) do
     ~H"""
     <div class="overflow-x-auto rounded-lg border border-base-300">
-      <table class="w-full text-sm">
+      <table class="w-full min-w-[46rem] text-sm">
         <thead class="bg-base-100 text-left text-xs text-base-content/60">
           <tr>
             <th class="px-3 py-2">{@title}</th>
@@ -3005,6 +3032,24 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     Enum.join([synced] ++ stratum_part ++ offset_part, " · ")
   end
+
+  # The box reports its config revision as a raw ISO-8601 string
+  # ("2026-07-15T23:54:15.630000+00:00") — unreadable in a two-column card.
+  # Anything unparseable is passed through untouched rather than hidden.
+  defp rev_time(nil), do: "—"
+  defp rev_time(""), do: "—"
+
+  defp rev_time(raw) when is_binary(raw) do
+    case DateTime.from_iso8601(raw) do
+      {:ok, dt, _offset} ->
+        Calendar.strftime(DateTime.shift_zone!(dt, "Etc/UTC"), "%Y-%m-%d %H:%M UTC")
+
+      _ ->
+        raw
+    end
+  end
+
+  defp rev_time(other), do: to_string(other)
 
   defp consumer_tag("checkmk"), do: "cmk"
   defp consumer_tag("mattermost"), do: "mm"

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Account menu in the top right.** Username, Security & 2FA, Change
+  password, the design/mode switcher and Sign out now live behind one
+  trigger showing the signed-in account and its role, instead of four
+  loose controls competing with the fleet navigation.
+- **Charts follow the pointer.** Moving across a metric chart draws a
+  crosshair and prints the timestamp and value for the nearest sample.
+  Previously the values existed only as native tooltips on invisible dots
+  — effectively undiscoverable on a 720-point series.
+
 ### Changed
 
 - **Relative timestamps are English now.** The instance list said "vor 14s" /
@@ -48,6 +59,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Instance overview layout**: Services and Disks sit side by side instead of
   a half-empty row and a full-width two-line card. A stopped service reads as
   neutral grey, not alarm red — the check engine decides what stopped means.
+- **Settings Save buttons stay inert until you change something.** Twenty
+  always-green Save buttons read as twenty pending changes; each one now
+  lights up only when its field differs from the stored value.
+- **The dashboard fits a phone screen.** Every page scrolled sideways at
+  phone width — the header, the instance action bar, long config values and
+  wide tables each pushed past the viewport. Tables now scroll inside their
+  own box with the rest of the page holding still; verified at 390, 768 and
+  1024 px across fourteen pages.
+- **Empty lists explain themselves** instead of showing one grey sentence:
+  Connectivity, Certificates, Firmware, Logs and Hub say why they are empty
+  and what would fill them. Long tables keep their header visible while
+  scrolling, and the maintenance marker is an icon rather than an emoji.
+- **Smaller polish**: the instance header actions carry icons, the VPN row
+  buttons became icons with tooltips (Reconnect stays a labelled button),
+  the config revision timestamp is formatted instead of raw ISO, form fields
+  show a visible keyboard focus ring, and Edit/Create/Access-control are
+  left-aligned like every other page.
 - **Consistency sweep**: buttons and chips use theme color pairs instead of
   hardcoded white text (fixes contrast on light themes), UNKNOWN/neutral state
   chips match the pastel chip family, the Connectivity fleet table drops the

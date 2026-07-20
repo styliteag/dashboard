@@ -277,32 +277,34 @@ defmodule OrbitWeb.AuditLive do
               </option>
             </select>
           </form>
-          <table class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Time (UTC)</th>
-                <th class="py-2 pr-4 font-medium">Action</th>
-                <th class="py-2 pr-4 font-medium">Result</th>
-                <th class="py-2 pr-4 font-medium">User</th>
-                <th class="py-2 pr-4 font-medium">Target</th>
-                <th class="py-2 pr-4 font-medium">IP</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={r <- @rows} class="border-b border-base-300/50">
-                <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(r.ts)}</td>
-                <td class="py-2 pr-4 text-base-content/80">{r.action}</td>
-                <td class="py-2 pr-4">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", result_class(r.result)]}>
-                    {r.result}
-                  </span>
-                </td>
-                <td class="py-2 pr-4 text-base-content/70">{r.user}</td>
-                <td class="py-2 pr-4 text-base-content/70">{r.target}</td>
-                <td class="py-2 pr-4 text-base-content/60">{r.ip || "—"}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-2 pr-4 font-medium">Time (UTC)</th>
+                  <th class="py-2 pr-4 font-medium">Action</th>
+                  <th class="py-2 pr-4 font-medium">Result</th>
+                  <th class="py-2 pr-4 font-medium">User</th>
+                  <th class="py-2 pr-4 font-medium">Target</th>
+                  <th class="py-2 pr-4 font-medium">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={r <- @rows} class="border-b border-base-300/50">
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(r.ts)}</td>
+                  <td class="py-2 pr-4 text-base-content/80">{r.action}</td>
+                  <td class="py-2 pr-4">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", result_class(r.result)]}>
+                      {r.result}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/70">{r.user}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{r.target}</td>
+                  <td class="py-2 pr-4 text-base-content/60">{r.ip || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <button
             :if={length(@rows) >= @action_limit}
             phx-click="action_more"
@@ -393,58 +395,62 @@ defmodule OrbitWeb.AuditLive do
             </form>
           </div>
 
-          <table :if={@grouped} class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Count</th>
-                <th class="py-2 pr-4 font-medium">Type</th>
-                <th class="py-2 pr-4 font-medium">Who</th>
-                <th class="py-2 pr-4 font-medium">Event (numbers masked)</th>
-                <th class="py-2 font-medium">Last seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={g <- @grouped_rows} class="border-b border-base-300/50">
-                <td class="py-1.5 pr-4 text-right text-base-content/80">{g.count}</td>
-                <td class="py-1.5 pr-4">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", type_class(g.type)]}>
-                    {type_label(g.type)}
-                  </span>
-                </td>
-                <td class="py-1.5 pr-4 text-base-content/80">{g.who}</td>
-                <td class="py-1.5 pr-4 text-base-content/70">{g.text}</td>
-                <td class="py-1.5 font-mono text-xs text-base-content/60">{fmt_ts(g.last_ts)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table :if={@grouped} class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-2 pr-4 font-medium">Count</th>
+                  <th class="py-2 pr-4 font-medium">Type</th>
+                  <th class="py-2 pr-4 font-medium">Who</th>
+                  <th class="py-2 pr-4 font-medium">Event (numbers masked)</th>
+                  <th class="py-2 font-medium">Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={g <- @grouped_rows} class="border-b border-base-300/50">
+                  <td class="py-1.5 pr-4 text-right text-base-content/80">{g.count}</td>
+                  <td class="py-1.5 pr-4">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", type_class(g.type)]}>
+                      {type_label(g.type)}
+                    </span>
+                  </td>
+                  <td class="py-1.5 pr-4 text-base-content/80">{g.who}</td>
+                  <td class="py-1.5 pr-4 text-base-content/70">{g.text}</td>
+                  <td class="py-1.5 font-mono text-xs text-base-content/60">{fmt_ts(g.last_ts)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-base-content/60">
             No events for the selected filters.
           </div>
 
-          <table :if={not @grouped} class="w-full text-left text-sm">
-            <thead class="text-base-content/60">
-              <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Time (UTC)</th>
-                <th class="py-2 pr-4 font-medium">Type</th>
-                <th class="py-2 pr-4 font-medium">Who</th>
-                <th class="py-2 pr-4 font-medium">IP</th>
-                <th class="py-2 pr-4 font-medium">Event</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={e <- @timeline} class="border-b border-base-300/50">
-                <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(e.ts)}</td>
-                <td class="py-2 pr-4">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", type_class(e.type)]}>
-                    {type_label(e.type)}
-                  </span>
-                </td>
-                <td class="py-2 pr-4 text-base-content/80">{e.who}</td>
-                <td class="py-2 pr-4 text-base-content/60">{e.ip || "—"}</td>
-                <td class="py-2 pr-4 text-base-content/70">{e.text}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table :if={not @grouped} class="w-full min-w-[46rem] text-left text-sm">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+                <tr class="border-b border-base-300">
+                  <th class="py-2 pr-4 font-medium">Time (UTC)</th>
+                  <th class="py-2 pr-4 font-medium">Type</th>
+                  <th class="py-2 pr-4 font-medium">Who</th>
+                  <th class="py-2 pr-4 font-medium">IP</th>
+                  <th class="py-2 pr-4 font-medium">Event</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={e <- @timeline} class="border-b border-base-300/50">
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(e.ts)}</td>
+                  <td class="py-2 pr-4">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", type_class(e.type)]}>
+                      {type_label(e.type)}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/80">{e.who}</td>
+                  <td class="py-2 pr-4 text-base-content/60">{e.ip || "—"}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{e.text}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-base-content/60">
             No events for the selected types.
           </div>

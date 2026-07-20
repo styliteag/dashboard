@@ -310,48 +310,51 @@ defmodule OrbitWeb.HubStatusLive do
           />
         </div>
 
-        <div :if={@agents == []} class="text-sm text-base-content/60">
-          No agents connected in your scope.
-        </div>
+        <.empty_state :if={@agents == []} title="No agents connected in your scope.">
+          Push-mode boxes appear here once their WebSocket is up; direct-API polled devices
+          never do. The Instances page is the authority on reachability.
+        </.empty_state>
 
-        <table :if={@agents != []} class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">Instance</th>
-              <th class="py-2 pr-4 font-medium">Platform</th>
-              <th class="py-2 pr-4 font-medium">Version</th>
-              <th class="py-2 pr-4 font-medium">CPU</th>
-              <th class="py-2 pr-4 font-medium">Pushes</th>
-              <th class="py-2 pr-4 font-medium">Connected since</th>
-              <th class="py-2 pr-4 font-medium">Last push</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={a <- @agents} class="border-b border-base-300/50">
-              <td class="py-2 pr-4">
-                <a
-                  href={~p"/instances/#{a.instance_id}"}
-                  class="text-base-content hover:text-primary"
-                >
-                  {a.instance_name}
-                </a>
-                <.webui_link instance_id={a.instance_id} openable={a.gui_openable} />
-                <.shell_link instance_id={a.instance_id} shell_enabled={a.shell_enabled} />
-              </td>
-              <td class="py-2 pr-4 text-base-content/70">{a.platform}</td>
-              <td class="py-2 pr-4 text-base-content/70">
-                {a.version}
-                <span :if={a.update_error} class="ml-1 text-warning" title={a.update_error}>
-                  ⚠
-                </span>
-              </td>
-              <td class="py-2 pr-4 text-base-content/80">{cpu_text(a.cpu)}</td>
-              <td class="py-2 pr-4 text-base-content/70">{a.pushes}</td>
-              <td class="py-2 pr-4 text-base-content/60">{push_text(a.connected_at)}</td>
-              <td class="py-2 pr-4 text-base-content/60">{push_text(a.last_push_at)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table :if={@agents != []} class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">Instance</th>
+                <th class="py-2 pr-4 font-medium">Platform</th>
+                <th class="py-2 pr-4 font-medium">Version</th>
+                <th class="py-2 pr-4 font-medium">CPU</th>
+                <th class="py-2 pr-4 font-medium">Pushes</th>
+                <th class="py-2 pr-4 font-medium">Connected since</th>
+                <th class="py-2 pr-4 font-medium">Last push</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={a <- @agents} class="border-b border-base-300/50">
+                <td class="py-2 pr-4">
+                  <a
+                    href={~p"/instances/#{a.instance_id}"}
+                    class="text-base-content hover:text-primary"
+                  >
+                    {a.instance_name}
+                  </a>
+                  <.webui_link instance_id={a.instance_id} openable={a.gui_openable} />
+                  <.shell_link instance_id={a.instance_id} shell_enabled={a.shell_enabled} />
+                </td>
+                <td class="py-2 pr-4 text-base-content/70">{a.platform}</td>
+                <td class="py-2 pr-4 text-base-content/70">
+                  {a.version}
+                  <span :if={a.update_error} class="ml-1 text-warning" title={a.update_error}>
+                    ⚠
+                  </span>
+                </td>
+                <td class="py-2 pr-4 text-base-content/80">{cpu_text(a.cpu)}</td>
+                <td class="py-2 pr-4 text-base-content/70">{a.pushes}</td>
+                <td class="py-2 pr-4 text-base-content/60">{push_text(a.connected_at)}</td>
+                <td class="py-2 pr-4 text-base-content/60">{push_text(a.last_push_at)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

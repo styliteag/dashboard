@@ -214,94 +214,96 @@ defmodule OrbitWeb.GroupsLive do
           </button>
         </form>
 
-        <table class="w-full max-w-2xl text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">Group</th>
-              <th class="py-2 pr-4 text-right font-medium">Members</th>
-              <th class="py-2 pr-4 text-right font-medium">Instances</th>
-              <th class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for g <- @groups do %>
-              <tr class="border-b border-base-300/50">
-                <td class="py-2 pr-4 text-base-content">{g.name}</td>
-                <td class="py-2 pr-4 text-right text-base-content/80">{g.user_count}</td>
-                <td class="py-2 pr-4 text-right text-base-content/80">{g.instance_count}</td>
-                <td class="py-2 text-right">
-                  <button
-                    phx-click="channels_toggle"
-                    phx-value-group_id={g.id}
-                    title="Per-group notification channels"
-                    class={[
-                      "rounded border border-base-content/20 px-2 py-0.5 text-xs hover:bg-base-300",
-                      if(@channels_for == g.id, do: "text-primary", else: "text-base-content/70")
-                    ]}
-                  >
-                    channels
-                  </button>
-                  <button
-                    phx-click="rename_toggle"
-                    phx-value-group_id={g.id}
-                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
-                  >
-                    rename
-                  </button>
-                  <button
-                    phx-click="delete_group"
-                    phx-value-group_id={g.id}
-                    data-confirm={"Delete group #{g.name}?"}
-                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
-                  >
-                    delete
-                  </button>
-                </td>
+        <div class="overflow-x-auto">
+          <table class="w-full max-w-2xl text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">Group</th>
+                <th class="py-2 pr-4 text-right font-medium">Members</th>
+                <th class="py-2 pr-4 text-right font-medium">Instances</th>
+                <th class="py-2 font-medium"></th>
               </tr>
-              <tr :if={@renaming == g.id} class="border-b border-base-300/50 bg-base-200/60">
-                <td colspan="4" class="p-3">
-                  <form phx-submit="rename_group" class="flex items-center gap-2">
-                    <input type="hidden" name="group_id" value={g.id} />
-                    <input
-                      name="group[name]"
-                      value={g.name}
-                      required
-                      class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
-                    />
+            </thead>
+            <tbody>
+              <%= for g <- @groups do %>
+                <tr class="border-b border-base-300/50">
+                  <td class="py-2 pr-4 text-base-content">{g.name}</td>
+                  <td class="py-2 pr-4 text-right text-base-content/80">{g.user_count}</td>
+                  <td class="py-2 pr-4 text-right text-base-content/80">{g.instance_count}</td>
+                  <td class="py-2 text-right">
                     <button
-                      type="submit"
-                      class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+                      phx-click="channels_toggle"
+                      phx-value-group_id={g.id}
+                      title="Per-group notification channels"
+                      class={[
+                        "rounded border border-base-content/20 px-2 py-0.5 text-xs hover:bg-base-300",
+                        if(@channels_for == g.id, do: "text-primary", else: "text-base-content/70")
+                      ]}
                     >
-                      Save
+                      channels
                     </button>
-                  </form>
-                </td>
-              </tr>
-              <tr :if={@channels_for == g.id} class="border-b border-base-300/50 bg-base-200/60">
-                <td colspan="4" class="p-3">
-                  <p class="mb-2 text-xs text-base-content/60">
-                    A configured channel replaces the global target for this group's
-                    instances; removing it falls back to the global channel.
-                  </p>
-                  <div
-                    :if={@channel_error}
-                    class="mb-2 rounded border border-error/40 bg-error/10 p-2 text-xs text-error"
-                  >
-                    {@channel_error}
-                  </div>
-                  <div class="grid gap-3 lg:grid-cols-3">
-                    <.channel_card
-                      :for={channel <- Channels.channels()}
-                      group_id={g.id}
-                      channel={channel}
-                      configured={@group_channels[channel]}
-                    />
-                  </div>
-                </td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
+                    <button
+                      phx-click="rename_toggle"
+                      phx-value-group_id={g.id}
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                    >
+                      rename
+                    </button>
+                    <button
+                      phx-click="delete_group"
+                      phx-value-group_id={g.id}
+                      data-confirm={"Delete group #{g.name}?"}
+                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
+                    >
+                      delete
+                    </button>
+                  </td>
+                </tr>
+                <tr :if={@renaming == g.id} class="border-b border-base-300/50 bg-base-200/60">
+                  <td colspan="4" class="p-3">
+                    <form phx-submit="rename_group" class="flex items-center gap-2">
+                      <input type="hidden" name="group_id" value={g.id} />
+                      <input
+                        name="group[name]"
+                        value={g.name}
+                        required
+                        class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
+                      />
+                      <button
+                        type="submit"
+                        class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+                      >
+                        Save
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                <tr :if={@channels_for == g.id} class="border-b border-base-300/50 bg-base-200/60">
+                  <td colspan="4" class="p-3">
+                    <p class="mb-2 text-xs text-base-content/60">
+                      A configured channel replaces the global target for this group's
+                      instances; removing it falls back to the global channel.
+                    </p>
+                    <div
+                      :if={@channel_error}
+                      class="mb-2 rounded border border-error/40 bg-error/10 p-2 text-xs text-error"
+                    >
+                      {@channel_error}
+                    </div>
+                    <div class="grid gap-3 lg:grid-cols-3">
+                      <.channel_card
+                        :for={channel <- Channels.channels()}
+                        group_id={g.id}
+                        channel={channel}
+                        configured={@group_channels[channel]}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
 
         <%!-- Instance assignment (GroupsPage parity) — the one place to move
              instances between groups; the move applies immediately. --%>

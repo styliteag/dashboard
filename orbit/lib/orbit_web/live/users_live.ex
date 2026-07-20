@@ -199,133 +199,135 @@ defmodule OrbitWeb.UsersLive do
           </button>
         </form>
 
-        <table class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">User</th>
-              <th class="py-2 pr-4 font-medium">Role</th>
-              <th class="py-2 pr-4 font-medium">2FA</th>
-              <th class="py-2 pr-4 font-medium">Groups</th>
-              <th class="py-2 pr-4 font-medium">Status</th>
-              <th class="py-2 pr-4 font-medium">Last login</th>
-              <th class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for u <- @users do %>
-              <tr class="border-b border-base-300/50">
-                <td class="py-2 pr-4">
-                  <span class="text-base-content">{u.username}</span>
-                  <span
-                    :if={u.is_superadmin}
-                    class="ml-2 rounded bg-indigo-900/50 px-1.5 py-0.5 text-xs text-indigo-300"
-                  >
-                    superadmin
-                  </span>
-                  <span
-                    :if={u.is_bootstrap}
-                    class="ml-2 rounded bg-base-300 px-1.5 py-0.5 text-xs text-base-content/70"
-                  >
-                    bootstrap
-                  </span>
-                </td>
-                <td class="py-2 pr-4 text-base-content/80">{u.role}</td>
-                <td class="py-2 pr-4">
-                  <span class={twofa_class(u.totp_enabled)}>
-                    {if u.totp_enabled, do: "on", else: "off"}
-                  </span>
-                </td>
-                <td class="py-2 pr-4 text-base-content/70">{groups_text(u.groups)}</td>
-                <td class="py-2 pr-4">
-                  <span
-                    :if={u.disabled}
-                    class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
-                  >
-                    disabled
-                  </span>
-                  <span :if={not u.disabled} class="text-base-content/60">active</span>
-                </td>
-                <td class="py-2 pr-4 text-base-content/70">{last_login_text(u)}</td>
-                <td class="py-2 text-right">
-                  <button
-                    phx-click="edit"
-                    phx-value-id={u.id}
-                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
-                  >
-                    {if @editing == u.id, do: "close", else: "edit"}
-                  </button>
-                </td>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">User</th>
+                <th class="py-2 pr-4 font-medium">Role</th>
+                <th class="py-2 pr-4 font-medium">2FA</th>
+                <th class="py-2 pr-4 font-medium">Groups</th>
+                <th class="py-2 pr-4 font-medium">Status</th>
+                <th class="py-2 pr-4 font-medium">Last login</th>
+                <th class="py-2 font-medium"></th>
               </tr>
-              <tr :if={@editing == u.id} class="border-b border-base-300/50 bg-base-200/60">
-                <td colspan="7" class="p-4">
-                  <form phx-submit="update_user" class="space-y-3">
-                    <input type="hidden" name="user_id" value={u.id} />
-                    <div class="flex flex-wrap items-end gap-4 text-sm">
-                      <label class="block">
-                        <span class="mb-1 block text-xs text-base-content/60">Role</span>
-                        <select name="user[role]" class={input_cls()}>
-                          <option :for={r <- Admin.roles()} value={r} selected={u.role == r}>
-                            {r}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="flex items-center gap-2 pb-1 text-base-content/80">
-                        <input type="hidden" name="user[is_superadmin]" value="false" />
-                        <input
-                          type="checkbox"
-                          name="user[is_superadmin]"
-                          value="true"
-                          checked={u.is_superadmin}
-                          class="accent-indigo-600"
-                        /> superadmin
-                      </label>
-                      <label class="block">
-                        <span class="mb-1 block text-xs text-base-content/60">
-                          New password (blank = keep)
-                        </span>
-                        <input
-                          name="user[new_password]"
-                          type="password"
-                          autocomplete="new-password"
-                          class={input_cls()}
-                        />
-                      </label>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-4 text-sm text-base-content/80">
-                      <.group_checks groups={@groups} member_ids={MapSet.new(u.groups, & &1.id)} />
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <button
-                        type="submit"
-                        class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        phx-click="reset_2fa"
-                        phx-value-id={u.id}
-                        data-confirm={"Reset 2FA for #{u.username}? TOTP and passkeys are wiped; their sessions die."}
-                        class="rounded border border-warning/40 px-2 py-1 text-xs text-warning hover:bg-warning/10"
-                      >
-                        Reset 2FA
-                      </button>
-                      <button
-                        type="button"
-                        phx-click="delete_user"
-                        phx-value-id={u.id}
-                        data-confirm={"Delete user #{u.username}?"}
-                        class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </form>
-                </td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <%= for u <- @users do %>
+                <tr class="border-b border-base-300/50">
+                  <td class="py-2 pr-4">
+                    <span class="text-base-content">{u.username}</span>
+                    <span
+                      :if={u.is_superadmin}
+                      class="ml-2 rounded bg-indigo-900/50 px-1.5 py-0.5 text-xs text-indigo-300"
+                    >
+                      superadmin
+                    </span>
+                    <span
+                      :if={u.is_bootstrap}
+                      class="ml-2 rounded bg-base-300 px-1.5 py-0.5 text-xs text-base-content/70"
+                    >
+                      bootstrap
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/80">{u.role}</td>
+                  <td class="py-2 pr-4">
+                    <span class={twofa_class(u.totp_enabled)}>
+                      {if u.totp_enabled, do: "on", else: "off"}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/70">{groups_text(u.groups)}</td>
+                  <td class="py-2 pr-4">
+                    <span
+                      :if={u.disabled}
+                      class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
+                    >
+                      disabled
+                    </span>
+                    <span :if={not u.disabled} class="text-base-content/60">active</span>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/70">{last_login_text(u)}</td>
+                  <td class="py-2 text-right">
+                    <button
+                      phx-click="edit"
+                      phx-value-id={u.id}
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                    >
+                      {if @editing == u.id, do: "close", else: "edit"}
+                    </button>
+                  </td>
+                </tr>
+                <tr :if={@editing == u.id} class="border-b border-base-300/50 bg-base-200/60">
+                  <td colspan="7" class="p-4">
+                    <form phx-submit="update_user" class="space-y-3">
+                      <input type="hidden" name="user_id" value={u.id} />
+                      <div class="flex flex-wrap items-end gap-4 text-sm">
+                        <label class="block">
+                          <span class="mb-1 block text-xs text-base-content/60">Role</span>
+                          <select name="user[role]" class={input_cls()}>
+                            <option :for={r <- Admin.roles()} value={r} selected={u.role == r}>
+                              {r}
+                            </option>
+                          </select>
+                        </label>
+                        <label class="flex items-center gap-2 pb-1 text-base-content/80">
+                          <input type="hidden" name="user[is_superadmin]" value="false" />
+                          <input
+                            type="checkbox"
+                            name="user[is_superadmin]"
+                            value="true"
+                            checked={u.is_superadmin}
+                            class="accent-indigo-600"
+                          /> superadmin
+                        </label>
+                        <label class="block">
+                          <span class="mb-1 block text-xs text-base-content/60">
+                            New password (blank = keep)
+                          </span>
+                          <input
+                            name="user[new_password]"
+                            type="password"
+                            autocomplete="new-password"
+                            class={input_cls()}
+                          />
+                        </label>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-4 text-sm text-base-content/80">
+                        <.group_checks groups={@groups} member_ids={MapSet.new(u.groups, & &1.id)} />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          phx-click="reset_2fa"
+                          phx-value-id={u.id}
+                          data-confirm={"Reset 2FA for #{u.username}? TOTP and passkeys are wiped; their sessions die."}
+                          class="rounded border border-warning/40 px-2 py-1 text-xs text-warning hover:bg-warning/10"
+                        >
+                          Reset 2FA
+                        </button>
+                        <button
+                          type="button"
+                          phx-click="delete_user"
+                          phx-value-id={u.id}
+                          data-confirm={"Delete user #{u.username}?"}
+                          class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

@@ -542,7 +542,7 @@ defmodule OrbitWeb.VpnLive do
         </div>
 
         <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-base-300">
-          <table class="w-full text-left text-sm">
+          <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -623,9 +623,11 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-label={t.label}
                       phx-value-up={to_string(t.up)}
                       phx-value-mode="graph"
-                      class="mr-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                      title="Uptime graph"
+                      aria-label="Uptime graph"
+                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
                     >
-                      Graph
+                      <Icons.icon name={:chart} class="h-3.5 w-3.5" />
                     </button>
                     <button
                       phx-click="history_open"
@@ -634,9 +636,11 @@ defmodule OrbitWeb.VpnLive do
                       phx-value-label={t.label}
                       phx-value-up={to_string(t.up)}
                       phx-value-mode="history"
-                      class="mr-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+                      title="Transition history"
+                      aria-label="Transition history"
+                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
                     >
-                      History
+                      <Icons.icon name={:audit} class="h-3.5 w-3.5" />
                     </button>
                     <button
                       phx-click="reconnect"

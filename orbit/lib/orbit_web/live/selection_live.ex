@@ -100,7 +100,12 @@ defmodule OrbitWeb.SelectionLive do
             <Icons.icon name={:list_checks} class="h-5 w-5 text-base-content/60" /> Selection rules
             <span class="ml-2 text-sm text-base-content/60">({length(@rules)})</span>
           </h1>
-          <a href={~p"/settings"} class="text-xs text-base-content/60 hover:text-base-content/80">settings</a>
+          <a
+            href={~p"/settings"}
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300 hover:text-base-content"
+          >
+            ← Settings
+          </a>
         </div>
 
         <p class="mb-4 max-w-3xl text-xs text-base-content/60">
@@ -158,47 +163,49 @@ defmodule OrbitWeb.SelectionLive do
           </button>
         </form>
 
-        <table class="w-full max-w-4xl text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">Consumer</th>
-              <th class="py-2 pr-4 font-medium">Selector</th>
-              <th class="py-2 pr-4 font-medium">Scope</th>
-              <th class="py-2 pr-4 font-medium">Mode</th>
-              <th class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={r <- @rules} class="border-b border-base-300/50">
-              <td class="py-2 pr-4 text-base-content/80">{r.consumer}</td>
-              <td class="py-2 pr-4 font-mono text-xs text-base-content/80">{r.selector}</td>
-              <td class="py-2 pr-4 text-base-content/70">
-                {r.instance_name || (r.instance_id && "##{r.instance_id}") || "global"}
-              </td>
-              <td class="py-2 pr-4">
-                <span class={
-                  if(r.mode == "include",
-                    do: "text-primary",
-                    else: "text-error"
-                  )
-                }>
-                  {r.mode}
-                </span>
-              </td>
-              <td class="py-2 text-right">
-                <button
-                  phx-click="delete_rule"
-                  phx-value-consumer={r.consumer}
-                  phx-value-selector={r.selector}
-                  phx-value-instance_id={r.instance_id}
-                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
-                >
-                  remove
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full max-w-4xl text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">Consumer</th>
+                <th class="py-2 pr-4 font-medium">Selector</th>
+                <th class="py-2 pr-4 font-medium">Scope</th>
+                <th class="py-2 pr-4 font-medium">Mode</th>
+                <th class="py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={r <- @rules} class="border-b border-base-300/50">
+                <td class="py-2 pr-4 text-base-content/80">{r.consumer}</td>
+                <td class="py-2 pr-4 font-mono text-xs text-base-content/80">{r.selector}</td>
+                <td class="py-2 pr-4 text-base-content/70">
+                  {r.instance_name || (r.instance_id && "##{r.instance_id}") || "global"}
+                </td>
+                <td class="py-2 pr-4">
+                  <span class={
+                    if(r.mode == "include",
+                      do: "text-primary",
+                      else: "text-error"
+                    )
+                  }>
+                    {r.mode}
+                  </span>
+                </td>
+                <td class="py-2 text-right">
+                  <button
+                    phx-click="delete_rule"
+                    phx-value-consumer={r.consumer}
+                    phx-value-selector={r.selector}
+                    phx-value-instance_id={r.instance_id}
+                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                  >
+                    remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

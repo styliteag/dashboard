@@ -213,69 +213,71 @@ defmodule OrbitWeb.ApiKeysLive do
           </button>
         </form>
 
-        <table class="w-full max-w-4xl text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">Key</th>
-              <th class="py-2 pr-4 font-medium">Groups</th>
-              <th class="py-2 pr-4 font-medium">Last used</th>
-              <th class="py-2 pr-4 font-medium">Status</th>
-              <th class="py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={k <- @keys} class="border-b border-base-300/50">
-              <td class="py-2 pr-4">
-                <span class="font-mono text-xs text-base-content/80">{k.prefix}…</span>
-                <span class="ml-2 text-base-content">{k.name}</span>
-                <span :if={k.purpose} class="ml-2 text-xs text-base-content/60">({k.purpose})</span>
-              </td>
-              <td class="py-2 pr-4 text-base-content/70">
-                {if k.groups == [],
-                  do: "GLOBAL",
-                  else: k.groups |> Enum.map(& &1.name) |> Enum.join(", ")}
-              </td>
-              <td class="py-2 pr-4 text-base-content/70">{ts(k.last_used_at)}</td>
-              <td class="py-2 pr-4">
-                <span
-                  :if={k.revoked_at}
-                  class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
-                >
-                  revoked
-                </span>
-                <span :if={is_nil(k.revoked_at)} class="text-primary">active</span>
-              </td>
-              <td class="py-2 text-right">
-                <button
-                  :if={is_nil(k.revoked_at) and k.revealable}
-                  phx-click="reveal"
-                  phx-value-id={k.id}
-                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
-                >
-                  reveal
-                </button>
-                <button
-                  :if={is_nil(k.revoked_at)}
-                  phx-click="revoke"
-                  phx-value-id={k.id}
-                  data-confirm={"Revoke key #{k.name}? Scrapes using it stop working."}
-                  class="ml-1 rounded border border-warning/40 px-2 py-0.5 text-xs text-warning hover:bg-warning/10"
-                >
-                  revoke
-                </button>
-                <button
-                  :if={k.revoked_at}
-                  phx-click="purge"
-                  phx-value-id={k.id}
-                  data-confirm={"Purge key #{k.name} permanently?"}
-                  class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
-                >
-                  purge
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full max-w-4xl text-left text-sm">
+            <thead class="text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">Key</th>
+                <th class="py-2 pr-4 font-medium">Groups</th>
+                <th class="py-2 pr-4 font-medium">Last used</th>
+                <th class="py-2 pr-4 font-medium">Status</th>
+                <th class="py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={k <- @keys} class="border-b border-base-300/50">
+                <td class="py-2 pr-4">
+                  <span class="font-mono text-xs text-base-content/80">{k.prefix}…</span>
+                  <span class="ml-2 text-base-content">{k.name}</span>
+                  <span :if={k.purpose} class="ml-2 text-xs text-base-content/60">({k.purpose})</span>
+                </td>
+                <td class="py-2 pr-4 text-base-content/70">
+                  {if k.groups == [],
+                    do: "GLOBAL",
+                    else: k.groups |> Enum.map(& &1.name) |> Enum.join(", ")}
+                </td>
+                <td class="py-2 pr-4 text-base-content/70">{ts(k.last_used_at)}</td>
+                <td class="py-2 pr-4">
+                  <span
+                    :if={k.revoked_at}
+                    class="rounded bg-error/20 px-1.5 py-0.5 text-xs text-error"
+                  >
+                    revoked
+                  </span>
+                  <span :if={is_nil(k.revoked_at)} class="text-primary">active</span>
+                </td>
+                <td class="py-2 text-right">
+                  <button
+                    :if={is_nil(k.revoked_at) and k.revealable}
+                    phx-click="reveal"
+                    phx-value-id={k.id}
+                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                  >
+                    reveal
+                  </button>
+                  <button
+                    :if={is_nil(k.revoked_at)}
+                    phx-click="revoke"
+                    phx-value-id={k.id}
+                    data-confirm={"Revoke key #{k.name}? Scrapes using it stop working."}
+                    class="ml-1 rounded border border-warning/40 px-2 py-0.5 text-xs text-warning hover:bg-warning/10"
+                  >
+                    revoke
+                  </button>
+                  <button
+                    :if={k.revoked_at}
+                    phx-click="purge"
+                    phx-value-id={k.id}
+                    data-confirm={"Purge key #{k.name} permanently?"}
+                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
+                  >
+                    purge
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

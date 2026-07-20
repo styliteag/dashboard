@@ -268,39 +268,41 @@ defmodule OrbitWeb.AlertsLive do
           No matches.
         </div>
 
-        <table :if={@rows != []} class="w-full text-left text-sm">
-          <thead class="text-base-content/60">
-            <tr class="border-b border-base-300">
-              <th class="py-2 pr-4 font-medium">State</th>
-              <th class="py-2 pr-4 font-medium">Instance</th>
-              <th class="py-2 pr-4 font-medium">Check</th>
-              <th class="py-2 pr-4 font-medium">Summary</th>
-              <th class="py-2 pr-4 font-medium">Checkmk</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={a <- @rows} class="border-b border-base-300/50">
-              <td class="py-2 pr-4">
-                <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(a.check.state)]}>
-                  {state_label(a.check.state)}
-                </span>
-              </td>
-              <td class="py-2 pr-4">
-                <a href={~p"/instances/#{a.inst.id}"} class="text-base-content hover:text-primary">
-                  {a.inst.name}
-                </a>
-                <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
-                <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
-              </td>
-              <td class="py-2 pr-4 text-base-content/70">{a.check.key}</td>
-              <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
-              <td class="py-2 pr-4 text-xs">
-                <span :if={a.exported} class="text-primary">exported</span>
-                <span :if={not a.exported} class="text-base-content/40">excluded</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table :if={@rows != []} class="w-full min-w-[46rem] text-left text-sm">
+            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+              <tr class="border-b border-base-300">
+                <th class="py-2 pr-4 font-medium">State</th>
+                <th class="py-2 pr-4 font-medium">Instance</th>
+                <th class="py-2 pr-4 font-medium">Check</th>
+                <th class="py-2 pr-4 font-medium">Summary</th>
+                <th class="py-2 pr-4 font-medium">Checkmk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={a <- @rows} class="border-b border-base-300/50">
+                <td class="py-2 pr-4">
+                  <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(a.check.state)]}>
+                    {state_label(a.check.state)}
+                  </span>
+                </td>
+                <td class="py-2 pr-4">
+                  <a href={~p"/instances/#{a.inst.id}"} class="text-base-content hover:text-primary">
+                    {a.inst.name}
+                  </a>
+                  <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
+                  <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
+                </td>
+                <td class="py-2 pr-4 text-base-content/70">{a.check.key}</td>
+                <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
+                <td class="py-2 pr-4 text-xs">
+                  <span :if={a.exported} class="text-primary">exported</span>
+                  <span :if={not a.exported} class="text-base-content/40">excluded</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     """

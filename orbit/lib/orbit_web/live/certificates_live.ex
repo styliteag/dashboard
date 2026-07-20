@@ -198,15 +198,16 @@ defmodule OrbitWeb.CertificatesLive do
           />
         </form>
 
-        <div :if={@rows == []} class="text-sm text-base-content/60">
-          No certificates reported in your scope.
-        </div>
+        <.empty_state :if={@rows == []} title="No certificates reported.">
+          Certificates come from the boxes themselves — a firewall that has not pushed yet, or
+          one outside your groups, shows nothing here.
+        </.empty_state>
         <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>
 
         <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-base-300">
-          <table class="w-full text-left text-sm">
+          <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
