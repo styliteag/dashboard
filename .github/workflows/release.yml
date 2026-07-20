@@ -79,7 +79,16 @@ jobs:
           # (no 10 GB GHA-cache limit); combined with copying VERSION *after*
           # mix deps.compile, a version-only bump reuses the dependency layer.
           cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=max
+          # zstd on the EXPORT only: newly built layers (the expensive
+          # deps.compile output) get zstd, base-image layers keep the gzip they
+          # already had — no force-compression, recompressing those would cost
+          # time for nothing. Measured on a hit, the cached deps layer costs
+          # ~15s to pull back from the registry, so transfer size is what is
+          # left to win here; the compute saving already works.
+          # ignore-error: a cache export must never fail a release. Before this,
+          # a GHCR hiccup while writing the cache would have failed the build
+          # that had already produced a good image.
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=max,compression=zstd,ignore-error=true
           outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
