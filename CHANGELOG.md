@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Opening a root terminal or a live packet capture is audited again.** Both
+  are the most privileged actions the dashboard offers, and neither left any
+  trace — only the snapshot-capture path was recorded. Successful opens and
+  refusals are now written to the audit trail with the operator, the box and
+  the source IP. The capture entry records the interface but deliberately not
+  the BPF filter, which can contain third-party addresses.
+- **An abandoned root shell no longer stays open forever.** Sessions close
+  after 30 minutes without operator input, and after 8 hours regardless.
+  Output from the box does not count as activity, so a running `tail -f`
+  cannot hold a forgotten session open.
+- **The audit-detail allowlist is enforced where the row is written**, not
+  left to each caller. It previously governed only the mirrored log line
+  while the database kept whatever the caller passed — one new mutation route
+  handing over a raw params map would have written secrets into a table that
+  admins and superadmins can read.
+
 ### Fixed
 
 - **Linux nodes reported nothing at all.** A generic Linux server ships one

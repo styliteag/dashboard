@@ -31,12 +31,53 @@ defmodule OrbitWeb.ShellWSController do
          %Instance{} = inst <- Scope.get_instance(id, user),
          :ok <- opt_in(inst),
          {:ok, transport} <- transport(inst) do
+      # Opening a root PTY on a customer firewall is the most privileged
+      # thing this dashboard can do; it left no trace at all until now. The
+      # snapshot-capture path was audited, the interactive ones were not.
+      audit_open(conn, "shell.open", "ok", user.id, id, %{"kind" => to_string(transport)})
       %{instance_id: id, user_id: user.id, transport: transport}
     else
-      {:error, code} -> %{auth_error: code}
+      {:error, code} ->
+        audit_denied(conn, raw_id, code)
+        %{auth_error: code}
+
       # out-of-scope / missing instance / not push-connected: 4403 like the
       # python shell route (get_instance None → close 4403).
-      _ -> %{auth_error: 4403}
+      _ ->
+        audit_denied(conn, raw_id, 4403)
+        %{auth_error: 4403}
+    end
+  end
+
+  # Refusals are audited too (CLAUDE.md: audit denied/error paths). The user
+  # may be unknown at this point — an unauthenticated attempt still belongs
+  # in the trail, keyed by source IP.
+  defp audit_denied(conn, raw_id, code) do
+    # The session may not have resolved (that can be the very reason for the
+    # refusal) — nil user_id is fine, the source IP carries the trail.
+    user_id = conn.assigns[:current_user] && conn.assigns.current_user.id
+
+    audit_open(conn, "shell.open", "denied", user_id, parse_id(raw_id), %{
+      "reason" => "close_#{code}"
+    })
+  end
+
+  defp audit_open(conn, action, result, user_id, instance_id, detail) do
+    Orbit.Audit.write(
+      action: action,
+      result: result,
+      user_id: user_id,
+      target_type: "instance",
+      target_id: instance_id,
+      source_ip: Orbit.Net.client_ip(conn),
+      detail: detail
+    )
+  end
+
+  defp parse_id(raw) do
+    case Integer.parse(to_string(raw)) do
+      {id, ""} -> id
+      _ -> nil
     end
   end
 

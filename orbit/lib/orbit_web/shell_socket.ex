@@ -20,9 +20,25 @@ defmodule OrbitWeb.ShellSocket do
   alias Orbit.Hub
 
   @ping_interval_ms 25_000
+  # An abandoned root shell used to stay open forever: the browser tab dying
+  # is noticed, a walked-away-from tab is not. Idle = no keystroke from the
+  # operator (agent output does NOT count — a `tail -f` must not hold a
+  # session open). The lifetime cap is the backstop for a session that is
+  # busy but forgotten.
+  @idle_timeout_ms 30 * 60_000
+  @max_lifetime_ms 8 * 60 * 60_000
+  @sweep_interval_ms 60_000
 
   # transport: :agent (tunnel via the hub) or :ssh (direct PTY, Securepoint).
-  defstruct [:instance_id, :stream, :transport, :ssh_conn, :ssh_chan]
+  defstruct [
+    :instance_id,
+    :stream,
+    :transport,
+    :ssh_conn,
+    :ssh_chan,
+    :opened_at,
+    :last_input_at
+  ]
 
   @impl true
   def init(%{auth_error: code}) do
@@ -48,7 +64,16 @@ defmodule OrbitWeb.ShellSocket do
     case Hub.open_tunnel(instance_id, %{"kind" => "shell", "rows" => 24, "cols" => 80}) do
       {:ok, stream} ->
         schedule_ping()
-        {:ok, %__MODULE__{instance_id: instance_id, stream: stream, transport: :agent}}
+        schedule_sweep()
+
+        {:ok,
+         %__MODULE__{
+           instance_id: instance_id,
+           stream: stream,
+           transport: :agent,
+           opened_at: now_ms(),
+           last_input_at: now_ms()
+         }}
 
       {:error, :not_connected} ->
         # Agent dropped between the controller check and the upgrade.
@@ -64,9 +89,17 @@ defmodule OrbitWeb.ShellSocket do
          {:ok, cfg} <- Orbit.Securepoint.SSH.config_for(inst),
          {:ok, conn, chan} <- Orbit.Securepoint.SSH.open_interactive(cfg, 24, 80) do
       schedule_ping()
+      schedule_sweep()
 
       {:ok,
-       %__MODULE__{instance_id: instance_id, transport: :ssh, ssh_conn: conn, ssh_chan: chan}}
+       %__MODULE__{
+         instance_id: instance_id,
+         transport: :ssh,
+         ssh_conn: conn,
+         ssh_chan: chan,
+         opened_at: now_ms(),
+         last_input_at: now_ms()
+       }}
     else
       _ -> {:stop, :normal, {4404, "ssh shell unavailable"}, %__MODULE__{}}
     end
@@ -75,13 +108,13 @@ defmodule OrbitWeb.ShellSocket do
   @impl true
   def handle_in({data, [opcode: :binary]}, %{transport: :ssh} = state) do
     Orbit.Securepoint.SSH.send_data(state.ssh_conn, state.ssh_chan, data)
-    {:ok, state}
+    {:ok, touch(state)}
   end
 
   def handle_in({data, [opcode: :binary]}, state) do
     # Keystrokes → tunnel data to the agent PTY.
     Hub.tunnel_send(state.stream, data)
-    {:ok, state}
+    {:ok, touch(state)}
   end
 
   def handle_in({text, [opcode: :text]}, state) do
@@ -92,7 +125,7 @@ defmodule OrbitWeb.ShellSocket do
           _ -> Hub.tunnel_resize(state.stream, rows, cols)
         end
 
-        {:ok, state}
+        {:ok, touch(state)}
 
       _ ->
         {:ok, state}
@@ -139,6 +172,29 @@ defmodule OrbitWeb.ShellSocket do
     {:push, {:text, Jason.encode!(%{"type" => "ping"})}, state}
   end
 
+  # Idle / lifetime sweep. 4009 is our own code — the client maps unknown
+  # codes to a readable note, and the terminate/2 clauses below still kill
+  # the PTY on the box, so no login is stranded.
+  def handle_info(:sweep, state) do
+    now = now_ms()
+    idle = now - (state.last_input_at || now)
+    age = now - (state.opened_at || now)
+
+    cond do
+      idle >= @idle_timeout_ms ->
+        {:stop, :normal, {4009, "session idle for #{div(@idle_timeout_ms, 60_000)} minutes"},
+         state}
+
+      age >= @max_lifetime_ms ->
+        {:stop, :normal, {4009, "session reached its #{div(@max_lifetime_ms, 3_600_000)}h limit"},
+         state}
+
+      true ->
+        schedule_sweep()
+        {:ok, state}
+    end
+  end
+
   def handle_info(_msg, state), do: {:ok, state}
 
   @impl true
@@ -158,5 +214,11 @@ defmodule OrbitWeb.ShellSocket do
     :ok
   end
 
+  # Operator activity only — deliberately NOT called on agent/SSH output, so
+  # a long-running `tail -f` cannot keep an abandoned session alive.
+  defp touch(state), do: %{state | last_input_at: now_ms()}
+
   defp schedule_ping, do: Process.send_after(self(), :ping, @ping_interval_ms)
+  defp schedule_sweep, do: Process.send_after(self(), :sweep, @sweep_interval_ms)
+  defp now_ms, do: System.monotonic_time(:millisecond)
 end

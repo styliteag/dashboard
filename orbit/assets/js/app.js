@@ -36,6 +36,9 @@ const SHELL_CLOSE = {
   // (a Securepoint needs SSH enabled with a key and a pinned host key).
   4404: "No shell available — the agent is not connected, or SSH is not configured for this box.",
   4008: "Too many terminal sessions — close one and retry.",
+  // Idle timeout / max session lifetime — an abandoned root shell is closed
+  // rather than left open on the box.
+  4009: "Session closed — idle too long, or it hit the maximum session time.",
 }
 
 // Terminal hook: a real xterm.js terminal wired to a root PTY on the box over

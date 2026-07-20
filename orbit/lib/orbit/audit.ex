@@ -18,7 +18,12 @@ defmodule Orbit.Audit do
   alias Orbit.Repo
 
   # Safe-to-log detail keys (mirror of audit/log.py _DETAIL_KEYS).
-  @detail_keys ~w(reason username stage lock_triggered name role mode kind entity_key comment)
+  # The allowlist. Extend it for new SAFE fields — never widen it to a
+  # denylist, and never add anything that could carry key material, a
+  # password, a token or raw command output (invariant 3).
+  @detail_keys ~w(reason username stage lock_triggered name role mode kind entity_key comment
+    capture_id channel consumer country from_group_id to_group_id interface seconds selector
+    uuid version why)
 
   @doc """
   Insert an audit row + emit the mirrored log line. Fields: :action + :result
@@ -52,10 +57,45 @@ defmodule Orbit.Audit do
       request_id:
         fields[:request_id] || Base.encode16(:crypto.strong_rand_bytes(16), case: :lower),
       result: fetch!(fields, :result),
-      detail: fields[:detail],
+      detail: safe_detail(fields[:detail]),
       source_ip: fields[:source_ip]
     }
   end
+
+  @doc """
+  Reduce a detail map to the allowlisted keys.
+
+  Enforced HERE, not left to each caller. Invariant 3 says audit detail is
+  built from an allowlist, but until this filter existed that held only by
+  caller discipline: `write/1` persisted whatever map it was handed, and the
+  allowlist governed only the mirrored log line. One new mutation route
+  passing a raw changeset (or a params map carrying `api_secret`,
+  `agent_token`, `ssh_private_key`) would have written secrets into a table
+  that admins and superadmins can read.
+
+  Anything not on the list is dropped silently — an audit row with a missing
+  field is a cosmetic loss; an audit row with a secret is an incident.
+  """
+  @spec safe_detail(map() | nil) :: map() | nil
+  def safe_detail(nil), do: nil
+
+  def safe_detail(detail) when is_map(detail) do
+    filtered = Map.take(detail, @detail_keys)
+
+    dropped = map_size(detail) - map_size(filtered)
+
+    if dropped > 0 do
+      Logger.debug(
+        "audit.detail_filtered dropped=#{dropped} keys=#{inspect(Map.keys(detail) -- @detail_keys)}"
+      )
+    end
+
+    if map_size(filtered) == 0, do: nil, else: filtered
+  end
+
+  # A non-map detail (a bare string from an old caller) carries no key names
+  # to check — keep the shape the DB column expects and drop it.
+  def safe_detail(_other), do: nil
 
   defp insert_sql do
     "INSERT INTO audit_log " <>
