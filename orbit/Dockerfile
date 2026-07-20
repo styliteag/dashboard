@@ -81,5 +81,11 @@ USER nobody
 # Bandit listens on 4000 (PORT env); TLS terminates at nginx upstream.
 EXPOSE 4000
 ENV PHX_SERVER=true
+# No erl_crash.dump. In a container the file lands in a layer nobody keeps and
+# writing it delays the restart; the orchestrator's restart IS the recovery
+# mechanism. Its only appearance so far was a startup race against the database
+# (now waited out in Orbit.Repo.Migrator), where it was pure noise on top of an
+# already clear error.
+ENV ERL_CRASH_DUMP_SECONDS=0
 
 CMD ["/app/bin/orbit", "start"]

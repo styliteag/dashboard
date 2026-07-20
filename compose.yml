@@ -74,6 +74,9 @@ services:
       # and the passkey defaults below. Set to your real domain.
       PHX_HOST: ${DASH_PUBLIC_HOST:-localhost}
       POOL_SIZE: ${ORBIT_POOL_SIZE:-10}
+      # Swarm/K8s have no depends_on: orbit polls for the database instead of
+      # crash-looping. Bounded, so a wrong DATABASE_URL still surfaces.
+      DASH_DB_WAIT_SECONDS: ${DASH_DB_WAIT_SECONDS:-60}
       # Trust exactly this many rightmost X-Forwarded-For entries (the nginx
       # service adds one). Too high = clients can spoof the IP behind login rate
       # limits, the audit log and the geo gate. See .env.example.

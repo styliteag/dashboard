@@ -46,6 +46,9 @@ services:
       DB_NAME: ${DB_NAME:-dash}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
       ORBIT_DB_HOST: db
+      # Boot-time wait for the database (Orbit.Repo.Migrator). Dev has
+      # depends_on, so this only matters when the db container is slow.
+      DASH_DB_WAIT_SECONDS: ${DASH_DB_WAIT_SECONDS:-60}
       # Served agent code for self-update relay (mounted read-only below).
       AGENT_DIR: /app/agent
       # Fernet key for the *_enc columns (same key the python backend used —

@@ -37,6 +37,14 @@ config :orbit,
        :geoip_db_path,
        System.get_env("DASH_GEOIP_DB_PATH", "/data/geoip/GeoLite2-Country.mmdb")
 
+# How long to wait for the database at boot before giving up (Swarm/K8s have
+# no depends_on, so orbit regularly starts first). Bounded on purpose: an
+# unreachable database must surface rather than hide behind a starting
+# container. See Orbit.Repo.Migrator.
+config :orbit,
+       :db_wait_seconds,
+       String.to_integer(System.get_env("DASH_DB_WAIT_SECONDS", "60"))
+
 config :orbit,
        :trusted_proxy_hops,
        String.to_integer(System.get_env("DASH_TRUSTED_PROXY_HOPS", "0"))

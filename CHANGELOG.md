@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Starting before the database no longer crashes the app.** Swarm and
+  Kubernetes have no `depends_on`, so orbit routinely comes up first — and it
+  died on the spot, writing an `erl_crash.dump`, for a race that resolves
+  itself seconds later. It now polls for the database and then migrates,
+  logging that it is waiting. The wait is bounded (`DASH_DB_WAIT_SECONDS`,
+  default 60) so a wrong `DATABASE_URL` still fails loudly instead of hiding
+  behind a container that looks like it is starting. Crash dumps are switched
+  off in the image as well: in a container the file lands in a layer nobody
+  keeps and only delays the restart.
+
 ### Changed
 
 - **Documented what a reverse proxy in front of the dashboard has to do**, with
