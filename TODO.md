@@ -1,6 +1,7 @@
 # New Features to implement
-- Require second factor agian if WebUI or Terminal is accessed
+- Require second factor again if WebUI or Terminal is accessed
 - Connectivity (ping) Graph wit ping response time
+- If its slinux dont call update "firmware" in the UI and Checkmk call it "updates"
 
 # New things we maybe implement in the future:
 - Monitor ZFS host explicit with lesons we learned
