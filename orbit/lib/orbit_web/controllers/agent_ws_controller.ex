@@ -27,8 +27,8 @@ defmodule OrbitWeb.AgentWSController do
             %Instance{} = instance ->
               # The address the fleet reaches us from — shown as "Connects
               # from" next to the box's own public IP. Via Orbit.Net, never
-              # conn.remote_ip: in prod the hub sits behind Caddy, so the
-              # raw peer is the proxy and every box would look identical.
+              # conn.remote_ip: in prod the hub sits behind a reverse proxy,
+              # so the raw peer is that proxy and every box would look identical.
               %{instance: instance, source_ip: Orbit.Net.client_ip(conn)}
 
             nil ->

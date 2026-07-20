@@ -1,17 +1,16 @@
 # Example config for your EXTERNAL Traefik to expose the optional firewall GUI
 # proxy. Traefik does only two things here: terminate TLS for the wildcard and
-# forward everything to Orbit's `gui-proxy` Caddy (over HTTP). Caddy does the
-# per-firewall host-matching (gui-<slug>), the auth gate, and the tunnel proxying —
-# so Traefik needs NO per-instance config. See README "Firewall GUI proxy" and §18.
+# forward everything to orbit (over HTTP). Orbit itself does the per-firewall
+# host-matching (gui-<slug>), the auth gate and the tunnel proxying, in
+# OrbitWeb.GuiProxy — so Traefik needs NO per-instance config, and there is no
+# proxy sidecar to run. See README "Firewall GUI proxy" and §18.
 #
-# This is the FILE-PROVIDER form (load it via Traefik's file provider). If your
-# Traefik uses the Docker/Swarm provider instead, use the equivalent LABEL form
-# in the commented `deploy.labels` block on the gui-proxy service in compose.yml.
-# Use one or the other, not both.
+# This is the FILE-PROVIDER form (load it via Traefik's file provider). With the
+# Docker/Swarm provider, express the same router as labels on the orbit service.
 #
-# Prereqs: Orbit's `gui-proxy` service reachable on Traefik's network (e.g. attach
-# it to the Traefik network), a wildcard cert for *.gui.example.com (DNS-01), and
-# the dashboard set with DASH_GUI_PROXY_ENABLED=true and
+# Prereqs: orbit reachable on Traefik's network, a wildcard cert for
+# *.gui.example.com (DNS-01), and the dashboard set with
+# DASH_GUI_PROXY_ENABLED=true and
 # DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com.
 
 http:
@@ -32,10 +31,12 @@ http:
   services:
     orbit-gui:
       loadBalancer:
-        # Orbit's gui-proxy Caddy (HTTP). Traefik must be able to resolve it —
-        # attach gui-proxy to Traefik's docker network, or use its IP:80.
+        # Orbit's own port. Traefik must be able to resolve it — attach orbit to
+        # Traefik's docker network, or use its IP:4000.
         servers:
-          - url: "http://gui-proxy:80"
-        # Pass the original Host through so Caddy can match gui-<slug> (Traefik also
-        # sets X-Forwarded-Host, which the auth check reads).
+          - url: "http://orbit:4000"
+        # Pass the original Host through: it is what orbit host-matches on. Without
+        # this, every GUI origin collapses to the app's own host and the proxy never
+        # engages. Traefik also sets X-Forwarded-Proto, which orbit reads to mark the
+        # GUI cookie Secure (it speaks plain HTTP to orbit behind your TLS).
         passHostHeader: true

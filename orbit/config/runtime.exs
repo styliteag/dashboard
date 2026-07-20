@@ -70,11 +70,10 @@ config :orbit,
        |> Enum.map(&String.trim/1)
        |> Enum.reject(&(&1 == ""))
 
-# GUI proxy (§18): Caddy sidecar fronts a per-instance TCP forwarder. Off
-# unless the admin URL is set; the domain shapes the gui-<slug> vhosts.
+# GUI proxy (§18): orbit host-matches the per-instance origin itself
+# (OrbitWeb.GuiProxy) and reverse-proxies over an internal TCP forwarder —
+# no sidecar. Off unless explicitly enabled.
 config :orbit, :gui_proxy_enabled, System.get_env("DASH_GUI_PROXY_ENABLED") in ~w(1 true yes on)
-config :orbit, :gui_caddy_admin_url, System.get_env("DASH_GUI_CADDY_ADMIN_URL", "")
-config :orbit, :gui_domain, System.get_env("ORBIT_GUI_DOMAIN", "")
 # Per-instance GUI origin template; {slug}/{id} substituted. Empty → the
 # dev host convention http://<slug>.localhost:<gui_dev_port>, host-matched
 # and reverse-proxied by OrbitWeb.GuiProxy on the app port.

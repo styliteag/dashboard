@@ -128,12 +128,6 @@ defmodule Orbit.Instances do
             Orbit.Hub.send_config(updated.id, %{"push_interval" => interval})
           end
 
-          # Only on a slug change: the vhost host is gui-<slug>, so anything
-          # else leaves the proxy config identical. update_instance/2 is also
-          # what saves an operator comment, and re-pushing the whole Caddyfile
-          # on every comment would be absurd.
-          if Map.has_key?(changes, :slug), do: Orbit.GUI.Caddy.reconcile_async()
-
           {:ok, updated}
 
         {:error, changeset} ->
@@ -277,8 +271,6 @@ defmodule Orbit.Instances do
       |> Repo.insert()
       |> case do
         {:ok, inst} ->
-          # New box, new gui-<slug> vhost.
-          Orbit.GUI.Caddy.reconcile_async()
           {:ok, inst}
 
         {:error, _changeset} ->
@@ -355,10 +347,6 @@ defmodule Orbit.Instances do
     |> Repo.update()
     |> case do
       {:ok, deleted} ->
-        # Drop the vhost, or the proxy keeps a route to a deleted box's
-        # forwarder — and the slug is free for reuse, so the next instance
-        # to take it would inherit the stale binding.
-        Orbit.GUI.Caddy.reconcile_async()
         {:ok, deleted}
 
       other ->

@@ -1,7 +1,7 @@
 defmodule OrbitWeb.GuiProxy do
   @moduledoc """
-  Host-matched GUI reverse proxy on the SAME port as the app (§18, orbit-
-  native — no Caddy). A request whose Host is a GUI origin
+  Host-matched GUI reverse proxy on the SAME port as the app (§18) — the
+  whole GUI proxy, in dev and in prod. A request whose Host is a GUI origin
   (`<slug>.localhost` in dev, `gui-<slug>.<domain>` in prod) is handled
   here, before the router:
 
@@ -62,7 +62,7 @@ defmodule OrbitWeb.GuiProxy do
       conn
       |> put_resp_cookie(@cookie, Auth.sign(id, 8 * 3600),
         http_only: true,
-        secure: conn.scheme == :https,
+        secure: https?(conn),
         same_site: "Lax",
         path: "/"
       )
@@ -84,11 +84,23 @@ defmodule OrbitWeb.GuiProxy do
     Enum.reduce(SessionStash.pop(token), conn, fn {name, value}, acc ->
       put_resp_cookie(acc, name, value,
         http_only: true,
-        secure: conn.scheme == :https,
+        secure: https?(conn),
         same_site: "Lax",
         path: "/"
       )
     end)
+  end
+
+  # In prod the TLS terminator (Traefik/nginx) speaks plain HTTP to orbit, so
+  # conn.scheme is :http even though the browser origin is https — taking it
+  # at face value would hand an https GUI origin a cookie WITHOUT Secure,
+  # which the browser then also sends over http. The retired Caddy path did
+  # not have this problem: its own handoff controller hardcoded secure: true.
+  # Spoofing the header cannot weaken anything (a forged "https" only adds
+  # Secure, which a plain-http origin then refuses to store).
+  defp https?(conn) do
+    conn.scheme == :https or
+      List.first(get_req_header(conn, "x-forwarded-proto")) == "https"
   end
 
   defp gated_proxy(conn, id) do

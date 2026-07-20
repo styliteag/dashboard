@@ -226,21 +226,6 @@ defmodule OrbitWeb.Router do
     get "/agent/checkmk", AgentApiController, :download_checkmk
   end
 
-  # GUI-proxy subrequests: reached container-to-container from the reverse
-  # proxy (handoff sets the cookie, authcheck gates every asset). No session
-  # auth — the orbit_gui HMAC cookie is the credential. Geo-exempt (the
-  # client IP here is the proxy container, not the operator — §18 Nachtrag).
-  pipeline :gui_public do
-    plug :fetch_cookies
-  end
-
-  scope "/api/gui", OrbitWeb do
-    pipe_through :gui_public
-
-    get "/handoff", GuiController, :handoff
-    get "/authcheck", GuiController, :authcheck
-  end
-
   # Machine exports: read_principal (session OR orbit_ read-only api key).
   # No :accepts plug — prometheus serves text/plain to */* scrapers.
   pipeline :read_api do

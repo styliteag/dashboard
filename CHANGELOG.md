@@ -87,8 +87,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   visible in a long window, and the dialog says plainly that failures are
   debounced over three polls, so a brief blip may leave no trace.
 
+### Changed
+
+- **The firewall GUI proxy no longer needs a Caddy sidecar.** Orbit already
+  served the whole thing itself — host-matching the per-instance origin on its
+  own port, the handoff, the cookie gate and the tunnel proxying — and dev has
+  run that way since the Elixir cutover. The `gui-proxy` service, its
+  Caddyfiles, `DASH_GUI_CADDY_ADMIN_URL` and `ORBIT_GUI_DOMAIN` are gone. In
+  production you now only add a wildcard route on the reverse proxy you already
+  run, pointing at orbit itself: pass the original `Host` through and set
+  `X-Forwarded-Proto: https`. Nothing to regenerate when instances change, no
+  extra compose profile, no admin API to keep off the network.
+  **Upgrading:** drop `--profile gui` and the two variables; repoint your
+  wildcard router from `gui-proxy:80` to `orbit:4000`
+  (`docker/traefik-gui.example.yml` shows the new shape).
+
 ### Fixed
 
+- **The GUI cookie is marked `Secure` again behind a TLS-terminating proxy.**
+  The reverse proxy speaks plain HTTP to orbit, so the origin scheme read as
+  http and the `orbit_gui` cookie went out without the flag on an https origin
+  — meaning the browser would also have sent it over http. It now reads
+  `X-Forwarded-Proto`. Only reachable on the path that replaced the retired
+  Caddy sidecar, whose own handoff route hardcoded the flag.
 - **The Audit page survives a database it cannot read, and says so.** Its own
   queries had no guard at all, so a stressed connection pool killed the page
   on its 30-second refresh — exactly when an operator opens it. It now keeps

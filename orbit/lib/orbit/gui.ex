@@ -27,13 +27,12 @@ defmodule Orbit.GUI do
 
   @doc """
   The open flow shared by the controller and the LiveView button: ensure
-  the forwarder + Caddy vhost, mint a 60s handoff token, opt-in replay the
-  firewall login and stash its cookies, and return the handoff URL.
+  the forwarder, mint a 60s handoff token, opt-in replay the firewall login
+  and stash its cookies, and return the handoff URL.
   Callers own scoping + the agent.gui_open audit.
   """
   def open_flow(%Instance{} = inst, path) do
     Orbit.GUI.TunnelManager.ensure(inst.id)
-    Orbit.GUI.Caddy.reconcile()
     token = Auth.sign(inst.id, 60)
     maybe_stash_login(inst, token)
     handoff_url(inst, token, path)
@@ -77,7 +76,7 @@ defmodule Orbit.GUI do
   behind TLS termination), {slug}/{id} are substituted. Without one (dev),
   the origin is `http://<slug>.localhost:<port>` — the browser hits orbit,
   which host-matches, gates and reverse-proxies to the firewall over the
-  internal forwarder. No Caddy, no per-instance ports.
+  internal forwarder. No proxy sidecar, no per-instance published ports.
   """
   def base_url(%Instance{} = inst) do
     case Application.get_env(:orbit, :gui_base_template, "") do
@@ -93,15 +92,13 @@ defmodule Orbit.GUI do
   end
 
   @doc """
-  The URL the browser opens for the GUI.
+  The URL the browser opens for the GUI: the handoff — `/__orbit/auth?t=`.
 
-  With a reverse proxy in front (gui_base_template set: prod), it is the
-  handoff URL — /__orbit/auth?t=<token> — so the proxy sets the orbit_gui
-  cookie and gates every asset. Without one (dev, no proxy), the browser
-  reaches the transparent TCP forwarder DIRECTLY on its published port
-  (14400 + id): the firewall terminates its own TLS end to end and serves
-  its own login, so no handoff/cookie layer is possible — nor needed, the
-  forwarder is localhost-only in dev.
+  Same shape in dev and prod, because the same code answers it: the request
+  lands on orbit's own port, `OrbitWeb.GuiProxy` host-matches the origin,
+  exchanges the token for the `orbit_gui` cookie and gates every asset from
+  there. Only the host differs (`<slug>.localhost:<port>` vs the configured
+  `gui-<slug>.<domain>`).
   """
   def handoff_url(inst, token, path) do
     base = base_url(inst)

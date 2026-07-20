@@ -110,16 +110,12 @@ services:
       DASH_CROWDSEC_DISABLE: ${DASH_CROWDSEC_DISABLE:-false}
       DASH_CROWDSEC_LAPI_URL: ${DASH_CROWDSEC_LAPI_URL:-http://crowdsec:8080}
       DASH_CROWDSEC_API_KEY: ${DASH_CROWDSEC_API_KEY:-}
-      # Firewall GUI proxy (OPTIONAL — off by default). Needs the `gui-proxy`
-      # service below + an external reverse proxy routing the wildcard. See
-      # README "Firewall GUI proxy".
+      # Firewall GUI proxy (OPTIONAL — off by default). No sidecar: orbit
+      # host-matches gui-<slug>.<domain> on its own port and reverse-proxies
+      # over an internal forwarder. All you add is a wildcard route on your
+      # existing reverse proxy. See README "Firewall GUI proxy".
       DASH_GUI_PROXY_ENABLED: ${DASH_GUI_PROXY_ENABLED:-false}
       DASH_GUI_BASE_TEMPLATE: ${DASH_GUI_BASE_TEMPLATE:-}
-      ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:-}
-      # Caddy admin endpoint orbit hot-loads the per-slug vhost map to
-      # (gui-proxy:2019 on the internal network — NOT published). REQUIRED when
-      # the proxy is enabled, else the push silently no-ops.
-      DASH_GUI_CADDY_ADMIN_URL: ${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}
       DASH_GUI_IDLE_MINUTES: ${DASH_GUI_IDLE_MINUTES:-15}
       TZ: ${TZ:-UTC}
     depends_on:
@@ -151,75 +147,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # Firewall GUI proxy (OPTIONAL). Your EXTERNAL Traefik terminates TLS and routes
-  # Host(*.${ORBIT_GUI_DOMAIN}) to THIS Caddy (over HTTP); it host-matches gui-<slug>,
-  # gates on the orbit_gui cookie (forward_auth), and proxies to that firewall's
-  # forwarder (orbit:14400+id). Opt-in: `docker compose --profile gui up -d`.
-  # The mounted Caddyfile is only a BOOTSTRAP (admin API + empty wildcard); orbit
-  # regenerates the per-slug vhost map and hot-loads it via Caddy's admin API
-  # (gui-proxy:2019) on every instance create/slug-change/delete and at startup.
-  # Regenerate the bootstrap only if its global block changes:
-  #   docker compose -f compose-dev.yml run --rm orbit \
-  #     mix run -e 'IO.puts Orbit.Gui.Caddy.bootstrap_caddyfile()' > docker/Caddyfile.gui-prod
-  # Wire your Traefik to reach it (shared network + a router *.<domain> → gui-proxy:80).
-  # Two equivalent ways to add that router:
-  #   A) file provider  — docker/traefik-gui.example.yml (dynamic config file)
-  #   B) Traefik labels — the commented `deploy.labels` block below
-  # Pick one, not both.
-  gui-proxy:
-    image: caddy:2
-    restart: unless-stopped
-    profiles: [gui]
-    environment:
-      ORBIT_GUI_DOMAIN: ${ORBIT_GUI_DOMAIN:?set this to your gui wildcard base, e.g. gui.example.com}
-      # authcheck subrequests + per-instance forwarders both live in the orbit
-      # release now (was the python `app` container pre-cutover).
-      ORBIT_GUI_APP: orbit:4000
-      ORBIT_GUI_FWD_HOST: orbit
-    volumes:
-      - ./docker/Caddyfile.gui-prod:/etc/caddy/Caddyfile:ro
-    depends_on:
-      - orbit
-    # --- Option B: wire Traefik via LABELS (instead of the file provider in A). ---
-    # Uncomment and replace `gui.example.com` with your ORBIT_GUI_DOMAIN. Traefik
-    # only terminates TLS and forwards HTTP here; Caddy does the host-match + auth.
-    #
-    # WHERE THE LABELS GO depends on your Traefik provider:
-    #   - Docker SWARM provider (`docker stack deploy`): keep them under `deploy.labels`
-    #     as shown — the swarm provider reads ONLY `deploy.labels`.
-    #   - Plain Docker provider (`docker compose up`): move them to a top-level
-    #     `labels:` on this service — `deploy.labels` is ignored there.
-    #
-    # deploy:
-    #   labels:
-    #     - traefik.enable=true
-    #     # Swarm can't infer the target port — declare it explicitly:
-    #     - traefik.http.services.orbit-gui.loadbalancer.server.port=80
-    #
-    #     # HTTP: redirect every gui-<slug> host to HTTPS.
-    #     # Rule shown in Traefik v2 syntax: HostRegexp uses a named group {name:regexp},
-    #     # literal text outside it, no ^$ anchors. For Traefik v3 use a raw Go regexp:
-    #     #   HostRegexp(`^gui-[a-z0-9-]+\.gui\.example\.com$`)
-    #     - traefik.http.routers.orbit-gui-web.rule=HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)
-    #     - traefik.http.routers.orbit-gui-web.entrypoints=web
-    #     - traefik.http.routers.orbit-gui-web.middlewares=orbit-gui-redirect
-    #     - traefik.http.middlewares.orbit-gui-redirect.redirectscheme.scheme=https
-    #     - traefik.http.middlewares.orbit-gui-redirect.redirectscheme.permanent=true
-    #
-    #     # HTTPS: terminate TLS at Traefik, forward HTTP to this Caddy:80 (SAME rule).
-    #     - traefik.http.routers.orbit-gui.rule=HostRegexp(`{subdomain:gui-[a-z0-9-]+}.gui.example.com`)
-    #     - traefik.http.routers.orbit-gui.entrypoints=websecure
-    #     - traefik.http.routers.orbit-gui.tls=true
-    #     # If Traefik already serves a *.gui.example.com wildcard cert, `tls=true`
-    #     # alone is enough (it's picked by SNI). Otherwise request one via DNS-01:
-    #     #- traefik.http.routers.orbit-gui.tls.certresolver=letsencrypt
-    #     #- traefik.http.routers.orbit-gui.tls.domains[0].main=gui.example.com
-    #     #- traefik.http.routers.orbit-gui.tls.domains[0].sans=*.gui.example.com
-    #
-    #     # gui-proxy must share a network with Traefik. If it's attached to more
-    #     # than one, tell Traefik which to use (else it may route to the wrong IP):
-    #     #- traefik.docker.network=traefik
 
   # CrowdSec LAPI sidecar (OPTIONAL, DR-G8). Opt-in: `docker compose --profile
   # crowdsec up -d`. Out of the box it serves the community blocklists (CAPI);

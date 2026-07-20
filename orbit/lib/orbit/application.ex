@@ -43,13 +43,6 @@ defmodule Orbit.Application do
       # Settings-driven log level/format — after the Settings table exists.
       Orbit.Logging.apply()
 
-      # Caddy holds its config in memory: a restarted sidecar comes back with
-      # only the bootstrap file and serves no instance vhost until something
-      # pushes. Nothing did — the whole "and at boot" half of Caddy's own
-      # moduledoc was never wired. Async and best-effort; Caddy may still be
-      # starting, and the next instance change re-pushes anyway.
-      Orbit.GUI.Caddy.reconcile_async()
-
       {:ok, pid}
     end
   end

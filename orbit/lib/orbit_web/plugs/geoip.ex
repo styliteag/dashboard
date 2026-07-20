@@ -32,12 +32,13 @@ defmodule OrbitWeb.Plugs.GeoIP do
   @exempt_prefixes [
     "/api/ws/agent",
     "/api/agent/enroll",
-    "/api/health",
-    # GUI-proxy subrequests arrive container-to-container (the proxy's IP,
-    # not the operator's) — geo-checking them only misfires (§18 Nachtrag,
-    # prod incident 2026-07-14). gui/open runs on the geo-checked session.
-    "/api/gui/authcheck",
-    "/api/gui/handoff"
+    "/api/health"
+    # No GUI-proxy exemptions: the handoff and the per-asset gate moved into
+    # OrbitWeb.GuiProxy, an endpoint plug that halts before the router, so
+    # this gate never sees them. They used to be /api/gui/{handoff,authcheck}
+    # HTTP subrequests from the Caddy sidecar, arriving with the proxy
+    # container's IP — geo-checking those only misfired (§18 Nachtrag, prod
+    # incident 2026-07-14). gui/open still runs on the geo-checked session.
   ]
 
   @deny_text "access restricted from your location"

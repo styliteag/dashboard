@@ -192,55 +192,33 @@ DASH_GUI_IDLE_MINUTES=15                               # close idle forwarders
 With it on, instance pages show an **Open GUI** button (→ new tab). Leave it `false`
 and the button is hidden — no wildcard/DNS needed.
 
-- **Dev** (ports, no wildcard): `just dev` runs Caddy ([`docker/Caddyfile.dev`](docker/Caddyfile.dev))
-  mapping `https://localhost:900<id>` → instance `<id>`'s forwarder. Already enabled
-  in `compose-dev.yml`. Accept Caddy's internal-CA cert once.
-- **Prod, behind Traefik** (wildcard subdomain): Orbit ships its own `gui-proxy`
-  Caddy (in `compose.yml`, `--profile gui`). Your **external Traefik** terminates TLS
-  for `*.gui.example.com` (DNS-01 wildcard cert) and forwards the wildcard to that
-  Caddy over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
-  Caddy host-matches `gui-<slug>`, runs the `forwardAuth` gate, and proxies to that
-  firewall's forwarder (`orbit:14400+id`), so Traefik needs **no per-instance config**.
-  Set `ORBIT_GUI_DOMAIN=gui.example.com`, `DASH_GUI_PROXY_ENABLED=true`,
-  `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`,
-  `DASH_GUI_CADDY_ADMIN_URL=http://gui-proxy:2019/load`, attach `gui-proxy` to
-  Traefik's network, then `docker compose --profile gui up -d`.
+- **Dev** (no wildcard, no certs): already enabled in `compose-dev.yml`. The button
+  opens `http://<slug>.localhost:8000` — every `*.localhost` name resolves to
+  127.0.0.1 in modern browsers, so nothing needs configuring.
+- **Prod, behind your existing reverse proxy** (wildcard subdomain): terminate TLS
+  for `*.gui.example.com` (DNS-01 wildcard cert) and forward the whole wildcard to
+  orbit over HTTP — see [`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml).
+  Set `DASH_GUI_PROXY_ENABLED=true` and
+  `DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com`. That's the whole
+  setup: **no sidecar, no extra compose profile, no per-instance config.**
 
-  > **`DASH_GUI_CADDY_ADMIN_URL` is required** — it's how orbit pushes the
-  > vhost map to Caddy. The bundled `compose.yml` defaults it for you
-  > (`${DASH_GUI_CADDY_ADMIN_URL:-http://gui-proxy:2019/load}`), but a **hand-written
-  > compose / Swarm stack has no such default** — you must set it explicitly. If it's
-  > unset while the proxy is enabled, the hot-load **silently no-ops**: Caddy stays on
-  > the empty bootstrap and every `gui-<slug>` host returns a blank `200`. Orbit
-  > logs `gui_caddy.admin_url_unset` at startup when this happens.
+  Orbit host-matches `gui-<slug>` itself (`OrbitWeb.GuiProxy`, an endpoint plug),
+  exchanges the one-shot handoff token for an origin-scoped `orbit_gui` cookie,
+  gates every subsequent asset on it, and reverse-proxies to that firewall's
+  internal forwarder (`127.0.0.1:14400+id` → agent tunnel). Each instance gets a
+  **persistent, URL-safe `slug`** (auto-derived from its name — "Firewall Büro Süd"
+  → `firewall-buero-sued`, editable, unique), and the host→instance lookup is a DB
+  read, so there is no `gui-N` cap and nothing to regenerate when instances change.
 
-  Each instance gets a **persistent, URL-safe `slug`** (auto-derived from its name —
-  "Firewall Büro Süd" → `firewall-buero-sued`, editable, unique). Because the host is
-  now a slug (not arithmetic from the id), the host→port binding lives in the DB: the
-  mounted Caddyfile is just a **bootstrap** (admin API + empty wildcard), and the
-  orbit regenerates the per-slug vhost map and **hot-loads it through Caddy's admin
-  API** (`gui-proxy:2019`, internal network only — never publish it) on every instance
-  create/slug-change/delete and at startup. No per-instance file editing, no `gui-N`
-  cap. Regenerate the bootstrap only if its global block changes:
-  ```bash
-  docker compose -f compose-dev.yml run --rm orbit \
-    mix run -e 'IO.puts Orbit.Gui.Caddy.bootstrap_caddyfile()' > docker/Caddyfile.gui-prod
-  ```
+  Two things your proxy must do: pass the original `Host` through
+  (`passHostHeader: true` — it is what orbit matches on) and set
+  `X-Forwarded-Proto: https` (orbit speaks plain HTTP behind you and reads that
+  header to mark the GUI cookie `Secure`).
 
-  Wire the Traefik router either via the **file provider**
-  ([`docker/traefik-gui.example.yml`](docker/traefik-gui.example.yml)) or, if your
-  Traefik uses the **Docker/Swarm provider**, via **labels** — see the commented
-  `deploy.labels` block on the `gui-proxy` service in `compose.yml`. Either way the
-  router is a single wildcard rule → `gui-proxy:80` — `HostRegexp(`{subdomain:gui-[a-z0-9-]+}.<domain>`)`
-  in Traefik **v2** (named group, no anchors), or the raw Go regexp
-  `HostRegexp(^gui-[a-z0-9-]+\.<domain>$)` in **v3**.
-  Traefik needs no per-instance config. Two gotchas: `deploy.labels` is read only by
-  Traefik's **Swarm** provider (plain compose → use top-level `labels:`), and `gui-proxy`
-  must share a network with Traefik (set `traefik.docker.network` if it's on several).
-
-> Security: each origin fronts a firewall **admin** GUI — the `forwardAuth` gate is
-> what keeps it closed. Don't remove it, and keep the forwarder ports off the public
-> internet (reachable only by your reverse proxy).
+> Security: each origin fronts a firewall **admin** GUI — the `orbit_gui` cookie gate
+> is what keeps it closed. The cookie is bound to one instance id, so a session for
+> one firewall cannot satisfy another's gate. The forwarders bind loopback inside the
+> orbit container and are never published.
 
 ## Layout
 
@@ -248,7 +226,7 @@ and the button is hidden — no wildcard/DNS needed.
 orbit/                  Elixir/Phoenix LiveView app + orbit/Dockerfile (prod release image)
 compose.yml             production stack (MariaDB + orbit + nginx front door)
 compose-dev.yml         dev stack (db + orbit dev container, src bind-mounted)
-docker/                 nginx.orbit.conf (front-door vhost → orbit:4000), Caddyfiles
+docker/                 nginx.orbit.conf (front-door vhost → orbit:4000), proxy examples
 agent/                  stdlib push agent for OPNsense/pfSense + install.sh + rc.d
 checkmk/                Checkmk special-agent plugin (pulls /api/export/checkmk)
 scripts/                sign_agent.py — Ed25519 signing for agent self-update

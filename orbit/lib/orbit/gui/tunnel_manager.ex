@@ -4,10 +4,11 @@ defmodule Orbit.GUI.TunnelManager do
   `ensure/1` binds a stable per-instance port (14400 + id, never reused →
   a per-origin cookie can't leak across firewalls) on demand and returns
   it; each accepted socket is bridged to the firewall's GUI port through
-  the instance's agent over the hub tunnel (Orbit.Hub.open_tunnel). A
-  Caddy vhost fronts it with a per-instance origin + TLS.
+  the instance's agent over the hub tunnel (Orbit.Hub.open_tunnel).
+  OrbitWeb.GuiProxy fronts it with a per-instance origin.
 
-  The listener is internal and gated by forward_auth, so idle reaping is
+  The listener is loopback-internal and gated by the proxy's cookie check,
+  so idle reaping is
   housekeeping, not a security boundary: a forwarder with no active
   connections is closed after `gui_idle_minutes`; the next Open GUI
   re-opens it.

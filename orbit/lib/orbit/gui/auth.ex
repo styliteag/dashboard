@@ -8,7 +8,7 @@ defmodule Orbit.GUI.Auth do
   The GUI origin (gui-<id> subdomain / dev port) is cross-origin from the
   dashboard, so the session cookie can't gate it. The dashboard mints a
   short-lived handoff token; the GUI origin exchanges it for an `orbit_gui`
-  cookie; Caddy forward_auth verifies that cookie on every request.
+  cookie; OrbitWeb.GuiProxy verifies that cookie on every request.
 
   Verification is zero-I/O (HMAC only, no DB/hub), and the token binds
   instance_id so a cookie for one firewall can't satisfy another's gate
