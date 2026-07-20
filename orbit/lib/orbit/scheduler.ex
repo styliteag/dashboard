@@ -23,6 +23,9 @@ defmodule Orbit.Scheduler do
     {:metrics_prune, :timer.hours(1), &Orbit.Maintenance.Prune.prune_metrics/0},
     {:ipsec_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_ipsec_events/0},
     {:check_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_check_events/0},
+    # Terminal recordings are files, not rows, so no DB prune covered them —
+    # with recording enabled the volume grew forever. No-op when off.
+    {:shell_recording_prune, :timer.hours(24), &Orbit.Shell.Recorder.prune/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
     {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
     # Out-of-band reachability (ICMP + HTTP) measured BY the dashboard. Runs on

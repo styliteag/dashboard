@@ -37,6 +37,65 @@ defmodule Orbit.Shell.Recorder do
 
   @type t :: %__MODULE__{} | nil
 
+  @doc """
+  Delete recordings older than the configured retention, and report how many.
+
+  Recordings are the only thing orbit writes that is not a database row, so
+  nothing pruned them: a busy fleet with recording enabled filled its volume
+  with .cast files forever. Deliberately conservative about WHAT it deletes —
+  only files matching the name this module writes, only inside the configured
+  directory, and it never follows the directory anywhere else.
+
+  Returns `{deleted, failed}`. Never raises: a scheduled cleanup that cannot
+  read a directory logs and moves on.
+  """
+  @spec prune() :: {non_neg_integer(), non_neg_integer()}
+  def prune do
+    with recdir when is_binary(recdir) <- dir(),
+         {:ok, names} <- File.ls(recdir) do
+      days = Orbit.Settings.effective("shell_recording_retention_days")
+      cutoff = System.os_time(:second) - days * 86_400
+
+      {deleted, failed} =
+        names
+        |> Enum.filter(&recording?/1)
+        |> Enum.reduce({0, 0}, fn name, {ok, bad} ->
+          path = Path.join(recdir, name)
+
+          case stale?(path, cutoff) and File.rm(path) == :ok do
+            true -> {ok + 1, bad}
+            false -> {ok, bad}
+          end
+        end)
+
+      if deleted > 0, do: Logger.info("shell.recordings_pruned deleted=#{deleted} days=#{days}")
+      {deleted, failed}
+    else
+      nil ->
+        {0, 0}
+
+      {:error, reason} ->
+        Logger.warning("shell.recording_prune_failed error=#{inspect(reason)}")
+        {0, 0}
+    end
+  rescue
+    error ->
+      Logger.warning("shell.recording_prune_failed error=#{Exception.message(error)}")
+      {0, 0}
+  end
+
+  # Only our own files: a misconfigured directory pointing at something else
+  # must not turn a retention job into a delete-everything job.
+  defp recording?(name),
+    do: String.starts_with?(name, "orbit-") and String.ends_with?(name, ".cast")
+
+  defp stale?(path, cutoff) do
+    case File.stat(path, time: :posix) do
+      {:ok, %{mtime: mtime}} -> mtime < cutoff
+      _ -> false
+    end
+  end
+
   @doc "Configured recording directory, or nil when the feature is off."
   @spec dir() :: String.t() | nil
   def dir do

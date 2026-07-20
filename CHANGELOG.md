@@ -104,6 +104,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields are back on the list, and the rotated-secret names with them. Operator
   notes stay off it — free text can contain anything somebody pasted, which is
   what the allowlist is for.
+- **A database under stress no longer kills long-lived processes or whole
+  pages.** Nineteen more places that are written to degrade when the database
+  is unavailable caught only exceptions, while a connection-pool checkout
+  exits — so it went straight through them. The worst of these took down
+  things that are supposed to survive anything: the agent socket's metrics
+  path (an outage would have dropped every agent at once and reported the
+  fleet offline), the job scheduler and with it every periodic task, the
+  settings cache, the geo-access gate, and the hub's boot-time cache load.
+  The rest turned a failed side panel into a dead page — instance charts,
+  monitor lists, comments, audit lookups. Left alone on purpose: the
+  "already exists" converters, where treating an outage as a name clash would
+  be a worse lie than the crash.
+- **A failed instance read no longer tears down every firewall GUI vhost.**
+  The proxy config is rebuilt from the instance list, and an unreadable list
+  fell back to "no instances" — which renders a valid config with zero vhosts
+  and pushes it successfully. Now nothing is pushed and the last good config
+  stays loaded. This got sharper when the rebuild started riding create,
+  delete and boot, earlier in this same block.
+- **A failed read no longer wipes a group's stored notification credentials.**
+  Saving a channel reads the current config so that a masked secret submitted
+  unchanged keeps its value; a read failure looked exactly like "the operator
+  cleared it". The save is now refused with a message instead.
+- **Terminal recordings are pruned** (Settings → Retention, 30 days by
+  default) and the bundled compose file mounts a volume for them. They were
+  the only thing orbit writes that is not a database row, so nothing ever
+  cleaned them up — and without a volume they vanished on the next container
+  rebuild, which is the opposite of why recording gets switched on. Only
+  files orbit itself wrote are ever deleted.
 - **The Connectivity tab crashed on any box with recorded check transitions**
   (introduced with the monitor timeline, earlier in this same unreleased
   block). The new dialog reused an assign name the instance page already used

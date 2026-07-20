@@ -75,4 +75,44 @@ defmodule Orbit.Shell.RecorderTest do
     Application.put_env(:orbit, :shell_record_dir, "/proc/orbit-cannot-write-here")
     assert Recorder.open(7, 3, "agent") == nil
   end
+
+  describe "prune/0" do
+    defp aged(dir, name, days_old) do
+      path = Path.join(dir, name)
+      File.write!(path, "x")
+      old = System.os_time(:second) - days_old * 86_400
+      File.touch!(path, old)
+      path
+    end
+
+    test "deletes recordings past the retention and keeps the rest", %{dir: dir} do
+      File.mkdir_p!(dir)
+      stale = aged(dir, "orbit-agent-i1-u1-20260101T000000Z.cast", 90)
+      fresh = aged(dir, "orbit-agent-i1-u1-20260720T000000Z.cast", 1)
+
+      assert {1, 0} = Recorder.prune()
+      refute File.exists?(stale)
+      assert File.exists?(fresh)
+    end
+
+    test "never touches files it did not write", %{dir: dir} do
+      File.mkdir_p!(dir)
+      # A directory pointed somewhere shared must not turn a retention job
+      # into a delete-everything job.
+      foreign = aged(dir, "important.tar.gz", 400)
+      also = aged(dir, "orbit-notes.txt", 400)
+
+      assert {0, 0} = Recorder.prune()
+      assert File.exists?(foreign)
+      assert File.exists?(also)
+    end
+
+    test "off, missing directory and unreadable directory are all no-ops" do
+      Application.put_env(:orbit, :shell_record_dir, "")
+      assert Recorder.prune() == {0, 0}
+
+      Application.put_env(:orbit, :shell_record_dir, "/nonexistent/orbit-rec")
+      assert Recorder.prune() == {0, 0}
+    end
+  end
 end

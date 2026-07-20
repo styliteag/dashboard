@@ -204,6 +204,14 @@ defmodule Orbit.Settings.Registry do
       is_secret: true
     },
     %Def{
+      key: "shell_recording_retention_days",
+      type: :int,
+      env: "DASH_SHELL_RECORDING_RETENTION_DAYS",
+      default: "30",
+      min: 1,
+      max: 3650
+    },
+    %Def{
       key: "check_event_retention_days",
       type: :int,
       env: "DASH_CHECK_EVENT_RETENTION_DAYS",
@@ -294,6 +302,13 @@ defmodule Orbit.Settings.Registry do
       group: "Retention",
       label: "Check event retention",
       help: "Service-check state-change history kept this many days.",
+      restart: false
+    },
+    "shell_recording_retention_days" => %{
+      group: "Retention",
+      label: "Terminal recording retention",
+      help:
+        "Recorded terminal sessions are deleted after this many days. Only applies when session recording is switched on (DASH_SHELL_RECORD_DIR).",
       restart: false
     },
     "access_events_retention_days" => %{

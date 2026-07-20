@@ -58,6 +58,11 @@ services:
       # container recreation (or drop your own mmdb in here manually). Orbit is
       # now the sole updater (GeoLite2-City); set the MaxMind creds below.
       - geoip_data:/data/geoip
+      # Terminal session recordings, when DASH_SHELL_RECORD_DIR is set to this
+      # path. Volume-backed because the files are the record — without it they
+      # die with the container, which is the opposite of why you enable it.
+      # Pruned daily (Settings → Retention → Terminal recording retention).
+      - shell_recordings:/data/shell-recordings
     environment:
       # Same DB + Fernet key as the retired python stack — the schema and the
       # *_enc secret columns are shared/compatible.
@@ -89,8 +94,8 @@ services:
       # Browser terminal (root shell on the firewall — docs §22). Global gate;
       # each instance additionally needs its per-instance "Terminal" opt-in.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
-      # Empty = no session recording. Set to a path under a mounted volume,
-      # or the .cast files die with the container.
+      # Empty = no session recording. /data/shell-recordings is the mounted
+      # volume above; anything else is your own to make persistent.
       DASH_SHELL_RECORD_DIR: ${DASH_SHELL_RECORD_DIR:-}
       # Extra allowed WS Origin hosts (comma-separated) beyond PHX_HOST/localhost.
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
@@ -236,5 +241,6 @@ services:
 volumes:
   db_data:
   geoip_data:
+  shell_recordings:
   crowdsec_config:
   crowdsec_data:
