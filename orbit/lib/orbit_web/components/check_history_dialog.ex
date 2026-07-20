@@ -21,12 +21,19 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
 
   alias Orbit.Checks.History
 
-  attr :history, :map, default: nil, doc: "nil = closed; see ConnectivityLive.history_open/2"
+  attr :history, :map,
+    default: nil,
+    doc: "nil = closed; see ConnectivityLive.monitor_history_open/2"
 
   def check_history_dialog(assigns) do
     ~H"""
+    <%!-- is_map, not truthiness: `attr :map` is a compile-time hint that
+         checks nothing at runtime, and this component was first wired to an
+         assign name the detail page already used for a LIST of check-event
+         rows. A non-empty list is truthy, so the dialog opened and died on
+         the first field access, taking the whole Connectivity tab with it. --%>
     <div
-      :if={@history}
+      :if={is_map(@history)}
       class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
     >
       <div class="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-base-content/20 bg-base-200 p-5">
@@ -36,7 +43,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
             <span class="ml-1 text-xs text-base-content/60">{@history.instance_name}</span>
           </h3>
           <button
-            phx-click="check_history_close"
+            phx-click="monitor_history_close"
             class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
           >
             Close

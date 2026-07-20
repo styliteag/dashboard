@@ -104,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields are back on the list, and the rotated-secret names with them. Operator
   notes stay off it — free text can contain anything somebody pasted, which is
   what the allowlist is for.
+- **The Connectivity tab crashed on any box with recorded check transitions**
+  (introduced with the monitor timeline, earlier in this same unreleased
+  block). The new dialog reused an assign name the instance page already used
+  for the last 20 check-event rows, and a non-empty list is truthy — so the
+  dialog opened by itself on page load and died on its first field access. The
+  dialog now has its own name, and only opens on an actual dialog value.
 - **A stressed database no longer turns handled failures into crashes.** Four
   places that are written to degrade gracefully when the database is
   unavailable — the geo-block deny path, the per-group notification channel

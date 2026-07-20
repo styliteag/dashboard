@@ -42,7 +42,7 @@ defmodule OrbitWeb.ConnectivityLive do
        conn_editor: nil,
        conn_test: nil,
        conn_test_busy: false,
-       check_history: nil
+       monitor_history: nil
      )
      |> load()}
   end
@@ -188,13 +188,13 @@ defmodule OrbitWeb.ConnectivityLive do
   # above: the instance id comes from the DOM and is re-resolved through
   # Scope.get_instance/2, and the monitor id is only ever used as part of a
   # check key filtered by that resolved instance_id.
-  def handle_event("check_history_open", %{"iid" => raw_iid, "id" => raw_id}, socket) do
+  def handle_event("monitor_history_open", %{"iid" => raw_iid, "id" => raw_id}, socket) do
     with {iid, ""} <- Integer.parse(raw_iid),
          inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user),
          row when not is_nil(row) <- Enum.find(socket.assigns.rows, &row_match(&1, iid, raw_id)) do
       {:noreply,
        assign(socket,
-         check_history: %{
+         monitor_history: %{
            instance_name: inst.name,
            label: monitor_label(row),
            live_state: row.check.state,
@@ -206,8 +206,8 @@ defmodule OrbitWeb.ConnectivityLive do
     end
   end
 
-  def handle_event("check_history_close", _params, socket),
-    do: {:noreply, assign(socket, check_history: nil)}
+  def handle_event("monitor_history_close", _params, socket),
+    do: {:noreply, assign(socket, monitor_history: nil)}
 
   def handle_event("comment_save", params, socket),
     do: {:noreply, socket |> CommentEditor.save(params) |> load()}
@@ -412,7 +412,7 @@ defmodule OrbitWeb.ConnectivityLive do
                 <td class="py-2 text-right whitespace-nowrap">
                   <%!-- History is a read: no write role required, unlike Edit. --%>
                   <button
-                    phx-click="check_history_open"
+                    phx-click="monitor_history_open"
                     phx-value-iid={r.instance_id}
                     phx-value-id={r.monitor_id}
                     title="Recorded state transitions of this monitor"
@@ -440,7 +440,7 @@ defmodule OrbitWeb.ConnectivityLive do
           busy={@conn_test_busy}
           result={@conn_test}
         />
-        <.check_history_dialog history={@check_history} />
+        <.check_history_dialog history={@monitor_history} />
       </section>
     </main>
     """

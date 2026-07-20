@@ -51,6 +51,43 @@ defmodule Orbit.Checks.HistoryTest do
     assert lane.window_start == DateTime.add(@now, -3600)
   end
 
+  describe "the dialog only opens on a map" do
+    import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
+
+    defp dialog(history) do
+      %{history: history}
+      |> OrbitWeb.Components.CheckHistoryDialog.check_history_dialog()
+      |> rendered_to_string()
+    end
+
+    test "a list of check-event rows renders nothing instead of crashing" do
+      # Regression: this dialog was wired to `check_history`, an assign the
+      # instance page already used for a LIST of the last 20 check-event rows.
+      # A non-empty list is truthy, so the dialog opened and blew up on the
+      # first field access — BadMapError on every visit to the Connectivity
+      # tab, not just when somebody clicked History.
+      rows = [[~N[2026-07-20 13:26:05], "ipsec.tunnel_ping:broken", 0, 2, "ping FAILED"]]
+
+      assert dialog(rows) == ""
+      assert dialog([]) == ""
+    end
+
+    test "nil is closed, a map opens" do
+      assert dialog(nil) == ""
+
+      html =
+        dialog(%{
+          instance_name: "opn1",
+          label: "google → 8.8.8.8",
+          live_state: 0,
+          events: []
+        })
+
+      assert html =~ "Monitor history"
+      assert html =~ "google → 8.8.8.8"
+    end
+  end
+
   test "WARN is its own colour, and UNKNOWN is not a failure" do
     assert History.state_of(0) == :up
     assert History.state_of(1) == :partial

@@ -97,7 +97,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           diag_ai_result: nil,
           diag_ai_error: nil,
           history: nil,
-          check_history: nil,
+          monitor_history: nil,
           upgrade_confirm: "",
           upgrade_confirm_open: false
         )
@@ -302,7 +302,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Monitor timeline. The instance is already scoped by mount, so only the
   # monitor id comes off the DOM — and it is used solely to name a check key
   # read under this instance's id, never to reach another box's rows.
-  def handle_event("check_history_open", %{"id" => raw_id}, socket) do
+  def handle_event("monitor_history_open", %{"id" => raw_id}, socket) do
     inst = socket.assigns.instance
     mon = Enum.find(socket.assigns.conn_monitors || [], &(to_string(&1.id) == to_string(raw_id)))
 
@@ -311,7 +311,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
       {:noreply,
        assign(socket,
-         check_history: %{
+         monitor_history: %{
            instance_name: inst.name,
            label: mon.name,
            live_state: ping_check_state(result),
@@ -323,8 +323,8 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
-  def handle_event("check_history_close", _params, socket) do
-    {:noreply, assign(socket, check_history: nil)}
+  def handle_event("monitor_history_close", _params, socket) do
+    {:noreply, assign(socket, monitor_history: nil)}
   end
 
   # "Analyse with AI" on the IPsec bundle (DiagnoseDialog parity). The old
@@ -2323,7 +2323,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     <td class="py-1.5 text-right text-xs whitespace-nowrap">
                       <%!-- History is a read: available without the write role. --%>
                       <button
-                        phx-click="check_history_open"
+                        phx-click="monitor_history_open"
                         phx-value-id={m.id}
                         title="Recorded state transitions of this monitor"
                         class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
@@ -2365,7 +2365,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             busy={@conn_test_busy}
             result={@conn_test}
           />
-          <.check_history_dialog history={@check_history} />
+          <.check_history_dialog history={@monitor_history} />
         </div>
 
         <%!-- IPsec (IPsecSection parity): live SA table with phase-2 expand and
