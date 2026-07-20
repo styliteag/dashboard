@@ -23,6 +23,17 @@ defmodule Orbit.MetricsTest do
     end
   end
 
+  describe "read/3" do
+    test "an unreachable database yields no points instead of killing the caller" do
+      # No DB connection is checked out here, so the pool checkout fails
+      # exactly as it would against a stressed one — and it EXITS rather
+      # than raising, which is why `rescue` alone was not enough. The guard
+      # used to live only in the detail LiveView, leaving every other caller
+      # (hub, exports, anything added later) unprotected.
+      assert Metrics.read(7, "cpu.total", "24h") == []
+    end
+  end
+
   describe "build_query/3" do
     test "raw query (bucket 0) selects ordered rows without grouping" do
       {sql, params} = Metrics.build_query(7, "cpu.total", 0)

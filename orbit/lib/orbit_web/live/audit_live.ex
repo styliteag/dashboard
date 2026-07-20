@@ -16,10 +16,15 @@ defmodule OrbitWeb.AuditLive do
 
   use OrbitWeb, :live_view
 
+  require Logger
+
   alias Orbit.Access
 
   @limit 100
   @refresh_ms 30_000
+
+  # Shape the Access header renders; used only when the reads fail.
+  @empty_summary %{online: [], logins_24h: %{ok: 0, failed: 0}, blocks: [], principals_24h: []}
 
   @timeline_types [
     {:auth, "Logins"},
@@ -106,7 +111,35 @@ defmodule OrbitWeb.AuditLive do
     {:noreply, load(socket)}
   end
 
-  defp load(%{assigns: %{tab: :access}} = socket) do
+  # Every read on this page is a raw Repo query, and a pool checkout EXITS
+  # rather than raising — so the fine-grained `rescue`es on the lookup
+  # helpers below never protected the page's own queries. Audit is the page
+  # an operator opens WHILE the system is unhappy; dying on the 30s refresh
+  # timer is the worst possible moment. It degrades instead, and says so:
+  # an empty audit table that silently means "could not read" would read as
+  # "nothing happened", which on an oversight surface is a false negative.
+  # assign_new keeps the last good data when a refresh (not the first load)
+  # is what failed.
+  defp load(socket) do
+    socket |> do_load() |> assign(read_error: false)
+  rescue
+    error -> read_failed(socket, Exception.message(error))
+  catch
+    kind, reason -> read_failed(socket, "#{kind} #{inspect(reason)}")
+  end
+
+  defp read_failed(socket, message) do
+    Logger.warning("audit.read_failed error=#{message}")
+
+    socket
+    |> assign(read_error: true)
+    |> assign_new(:rows, fn -> [] end)
+    |> assign_new(:summary, fn -> @empty_summary end)
+    |> assign_new(:timeline, fn -> [] end)
+    |> assign_new(:grouped_rows, fn -> [] end)
+  end
+
+  defp do_load(%{assigns: %{tab: :access}} = socket) do
     types = MapSet.to_list(socket.assigns.types)
     opts = [q: socket.assigns.q, hours: socket.assigns.hours]
 
@@ -119,7 +152,7 @@ defmodule OrbitWeb.AuditLive do
     end
   end
 
-  defp load(socket) do
+  defp do_load(socket) do
     a = socket.assigns
 
     assign(socket,
@@ -260,6 +293,14 @@ defmodule OrbitWeb.AuditLive do
           >
             Refresh
           </button>
+        </div>
+
+        <div
+          :if={@read_error}
+          class="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+        >
+          Could not read the audit log — the list below is stale or incomplete.
+          This is a read failure, not an empty trail.
         </div>
 
         <div :if={@tab == :actions}>

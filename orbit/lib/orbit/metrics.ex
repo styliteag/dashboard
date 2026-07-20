@@ -33,6 +33,14 @@ defmodule Orbit.Metrics do
 
     Orbit.Repo.query!(sql, params).rows
     |> Enum.map(fn [ts, value] -> %{ts: as_utc(ts), value: to_float(value)} end)
+  rescue
+    _ -> []
+  catch
+    # Guarded HERE, not only in the caller: a chart with no points is always
+    # a better answer than a crash, and leaving that to each caller means the
+    # next one silently inherits an unguarded query. A pool checkout exits
+    # rather than raising, so `rescue` alone would not have covered it.
+    _kind, _reason -> []
   end
 
   @doc """

@@ -89,6 +89,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Audit page survives a database it cannot read, and says so.** Its own
+  queries had no guard at all, so a stressed connection pool killed the page
+  on its 30-second refresh — exactly when an operator opens it. It now keeps
+  the last rows it had and shows a warning that this is a read failure, not an
+  empty trail: "no audit events" and "could not read the audit log" must never
+  look the same.
+- **An unreadable metrics table can no longer take a page down.** Charts fell
+  back to empty only because the one caller happened to guard the read; the
+  guard now lives with the query, so every consumer gets an empty series
+  instead of a crash.
 - **The GUI proxy config is rebuilt when instances change, and at boot.** It
   was only ever rebuilt when somebody opened a Web UI session for some box, so
   a renamed instance kept serving its old `gui-<slug>` address, a deleted one
