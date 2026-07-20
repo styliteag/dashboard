@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the fleet already uses — the one place where a spelling drifts apart from the
   filter chips. Both forms now share one picker, so a fix or a change of
   behaviour lands on both at once.
+- **Creating an agent-mode instance mints its enroll code right away** and
+  opens on the agent tab with the install snippet ready. Before, every new box
+  needed the same three clicks — open the detail page, find the agent card,
+  press "Mint enroll code" — before anything could be installed on it.
 
 ## [4.0.10] - 2026-07-20
 

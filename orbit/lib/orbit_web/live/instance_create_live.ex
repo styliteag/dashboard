@@ -4,8 +4,9 @@ defmodule OrbitWeb.InstanceCreateLive do
   at mount AND re-checked on submit. Group targeting mirrors
   _resolve_create_group: exactly-one-membership is implied, superadmins
   may target any group, others only their own. Push-only device types
-  (linux) reject a base_url (DR-9). After creation the user lands on the
-  detail page, where the agent card mints the enroll code.
+  (linux) reject a base_url (DR-9). After creation an agent-mode box lands on
+  its agent tab with a freshly minted enroll code (`after_create_path/1`); a
+  polled one just lands on the detail page.
   """
 
   use OrbitWeb, :live_view
@@ -14,6 +15,7 @@ defmodule OrbitWeb.InstanceCreateLive do
 
   alias Orbit.Audit
   alias Orbit.Instances
+  alias Orbit.Instances.Instance
   alias OrbitWeb.Components.TagPicker
 
   @write_roles ~w(admin user)
@@ -60,7 +62,7 @@ defmodule OrbitWeb.InstanceCreateLive do
         detail: %{"name" => inst.name}
       )
 
-      {:noreply, push_navigate(socket, to: ~p"/instances/#{inst.id}")}
+      {:noreply, push_navigate(socket, to: after_create_path(inst))}
     else
       false -> {:noreply, socket}
       {:error, reason} -> {:noreply, assign(socket, error: error_text(reason))}
@@ -73,6 +75,22 @@ defmodule OrbitWeb.InstanceCreateLive do
   # errors here.
   def handle_event("tag_" <> _ = event, params, socket) do
     {:noreply, TagPicker.on_event(event, params, socket)}
+  end
+
+  @doc """
+  Where a freshly created instance lands.
+
+  An agent-mode box is useless until the agent enrolls, and the very next
+  thing anyone does is mint a code and paste the install snippet — so it opens
+  on the agent tab with `enroll=1`, which the detail page reads as "mint one
+  now" (the flag, never the code: a secret in a URL lands in history and
+  logs). A polled box has no agent, so it just opens.
+  """
+  @spec after_create_path(Instance.t()) :: String.t()
+  def after_create_path(%Instance{} = inst) do
+    if Instance.agent_mode?(inst),
+      do: ~p"/instances/#{inst.id}?tab=agent&enroll=1",
+      else: ~p"/instances/#{inst.id}"
   end
 
   defp error_text(:name_required), do: "name is required"

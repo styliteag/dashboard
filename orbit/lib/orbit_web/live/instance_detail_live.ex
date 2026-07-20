@@ -124,7 +124,21 @@ defmodule OrbitWeb.InstanceDetailLive do
       for {key, _label, :tab} <- tabs_for(socket.assigns.instance), do: key
 
     tab = if params["tab"] in valid, do: params["tab"], else: "overview"
-    {:noreply, assign(socket, tab: tab)}
+    socket = assign(socket, tab: tab)
+
+    # `?enroll=1` is how the create form says "this box was just made, it needs
+    # a code" — an intent flag, never the code itself: a secret in a URL lands
+    # in history, logs and referrers. Minted once (guarded on the assign) and
+    # the flag is patched out, so a reload does not mint a second code.
+    if params["enroll"] == "1" and is_nil(socket.assigns.enroll_code) and
+         socket.assigns.writable and Instance.agent_mode?(socket.assigns.instance) do
+      {:noreply,
+       socket
+       |> mint_enroll_code()
+       |> push_patch(to: ~p"/instances/#{socket.assigns.instance.id}?tab=agent", replace: true)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -456,18 +470,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   # Agent enrollment + self-update (AgentSection parity; write-gated).
   def handle_event("mint_enroll", _params, %{assigns: %{writable: true}} = socket) do
-    inst = socket.assigns.instance
-    {code, expires_at} = Orbit.Enrollment.create_code(inst.id)
-
-    Audit.write(
-      action: "agent.enroll_code",
-      result: "ok",
-      user_id: socket.assigns.current_user.id,
-      target_type: "instance",
-      target_id: inst.id
-    )
-
-    {:noreply, assign(socket, enroll_code: {code, expires_at})}
+    {:noreply, mint_enroll_code(socket)}
   end
 
   def handle_event("mint_enroll", _params, socket), do: {:noreply, socket}
@@ -996,6 +999,23 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp install_start_cmd(_inst) do
     "sysrc orbit_agent_enable=YES\nservice orbit_agent start"
+  end
+
+  # One place for both ways a code is minted: the agent card's button and the
+  # automatic mint right after an agent-mode instance is created.
+  defp mint_enroll_code(socket) do
+    inst = socket.assigns.instance
+    {code, expires_at} = Orbit.Enrollment.create_code(inst.id)
+
+    Audit.write(
+      action: "agent.enroll_code",
+      result: "ok",
+      user_id: socket.assigns.current_user.id,
+      target_type: "instance",
+      target_id: inst.id
+    )
+
+    assign(socket, enroll_code: {code, expires_at})
   end
 
   defp audit_agent(socket, action, result) do
