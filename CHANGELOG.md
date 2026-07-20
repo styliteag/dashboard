@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.9] - 2026-07-20
+
 ### Fixed
 
 - **Starting before the database no longer crashes the app.** Swarm and
