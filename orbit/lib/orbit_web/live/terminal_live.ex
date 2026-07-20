@@ -13,6 +13,8 @@ defmodule OrbitWeb.TerminalLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1]
+
   alias Orbit.Auth.Scope
 
   @impl true
@@ -39,6 +41,11 @@ defmodule OrbitWeb.TerminalLive do
           Terminal — {@instance.name}
           <span class="ml-2 rounded bg-error/20 px-2 py-0.5 text-xs text-error">root</span>
         </h1>
+
+        <%!-- Terminal opens in its own browser tab and is not one of the
+             instance tabs, so nothing is marked active — the bar is here to
+             give a way back into the box, which this page had none of. --%>
+        <.instance_tabs instance={@instance} active="" />
 
         <div :if={not @shell_enabled} class="text-sm text-warning">
           The terminal is not enabled for this instance (Edit instance → Terminal).

@@ -15,6 +15,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
+  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1, tabs_for: 1]
   import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
@@ -119,29 +120,6 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     tab = if params["tab"] in valid, do: params["tab"], else: "overview"
     {:noreply, assign(socket, tab: tab)}
-  end
-
-  # Tab visibility mirrors the react device-capability filter: Securepoint
-  # is pull-only (no agent tabs), the rule editor is OPNsense-specific,
-  # linux nodes have no config.xml / VPN.
-  defp tabs_for(inst) do
-    agent = Instance.agent_mode?(inst)
-    linux = inst.device_type == "linux"
-
-    [
-      {"overview", "Overview", :tab},
-      unless(linux, do: {"config", "Config", :tab}),
-      {"checks", "Checks", :tab},
-      {"network", "Network", :tab},
-      if(agent, do: {"capture", "Capture", :link}),
-      if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
-      unless(linux, do: {"security", "VPN", :tab}),
-      if(Instance.monitors_runnable?(inst), do: {"connectivity", "Connectivity", :tab}),
-      {"log", "Log", :tab},
-      {"firmware", "Firmware", :tab},
-      unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
-    ]
-    |> Enum.reject(&is_nil/1)
   end
 
   @impl true
@@ -1621,42 +1599,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </a>
         </div>
 
-        <%!-- Tab bar (InstanceDetailPage TABS parity): patch links keep the
-             LiveView (and its timers/state) mounted; Capture/Firewall are
-             sub-pages and navigate. --%>
-        <nav class="mb-6 flex flex-wrap gap-1 border-b border-base-300 pb-2">
-          <%= for {key, label, kind} <- tabs_for(@instance) do %>
-            <.link
-              :if={kind == :tab}
-              patch={
-                if key == "overview",
-                  do: ~p"/instances/#{@instance.id}",
-                  else: ~p"/instances/#{@instance.id}/#{key}"
-              }
-              class={[
-                "rounded-md px-3 py-1 text-sm",
-                if(@tab == key,
-                  do: "bg-base-300 text-base-content",
-                  else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
-                )
-              ]}
-            >
-              {label}
-            </.link>
-            <.link
-              :if={kind == :link}
-              navigate={
-                if(key == "capture",
-                  do: ~p"/instances/#{@instance.id}/capture",
-                  else: ~p"/instances/#{@instance.id}/firewall"
-                )
-              }
-              class="rounded-md px-3 py-1 text-sm text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
-            >
-              {label}
-            </.link>
-          <% end %>
-        </nav>
+        <.instance_tabs instance={@instance} active={@tab} patch?={true} />
 
         <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
           <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">

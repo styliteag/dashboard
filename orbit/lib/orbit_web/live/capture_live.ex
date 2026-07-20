@@ -15,6 +15,8 @@ defmodule OrbitWeb.CaptureLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1]
+
   alias Orbit.Auth.Scope
   alias Orbit.Capture.Snapshots
 
@@ -169,6 +171,8 @@ defmodule OrbitWeb.CaptureLive do
             back to detail
           </a>
         </div>
+
+        <.instance_tabs instance={@instance} active="capture" />
 
         <%!-- Two modes, and they were two unlabelled forms stacked on top of
              each other with the same field names — impossible to tell apart.

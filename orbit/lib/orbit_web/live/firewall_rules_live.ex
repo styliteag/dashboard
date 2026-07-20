@@ -11,6 +11,8 @@ defmodule OrbitWeb.FirewallRulesLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1]
+
   alias Orbit.Auth.Scope
   alias Orbit.Firewall
 
@@ -259,6 +261,11 @@ defmodule OrbitWeb.FirewallRulesLive do
           >
             back to detail
           </a>
+        </div>
+
+        <.instance_tabs instance={@instance} active="firewall" />
+
+        <div class="mb-4 flex flex-wrap items-center gap-3">
           <%!-- Interface TABS, not a dropdown: switching interface is the
                single most frequent action on this page, and a select hides
                which interfaces even exist behind a click. --%>

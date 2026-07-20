@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Agent tab crashed on Linux nodes.** Hiding the relay API test there
   compared the hub's agent record as if it were a boolean, which raises while
   rendering — the tab died on every open.
+- **The instance tab bar follows you into the sub-pages.** Capture, Firewall
+  and Terminal are their own pages, and they rendered without the tabs — so
+  opening one dropped you out of the box entirely, with a single "back to
+  detail" link as the only way anywhere. The bar now travels with them and
+  marks the page you are on; the Terminal, which had no way back at all,
+  gets it too.
 - **The packet-capture page explains its two modes.** Live stream and
   snapshot were two unlabelled forms stacked on each other with identical
   field names; each is now its own card saying what it does with the result.
