@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Documented what a reverse proxy in front of the dashboard has to do**, with
+  a `scripts/ws_idle_probe.py` that names the offending layer in two minutes and
+  needs no login. Every long-lived feature here is a websocket that is
+  legitimately idle at times, and the common defaults are hostile — HAProxy's
+  `timeout tunnel` has no default at all, so a `mode tcp` load balancer cuts
+  every websocket at its 30s `timeout client`. README "Reverse proxy
+  requirements".
+
 ## [4.0.8] - 2026-07-20
+
+### Fixed
+
+- **The GUI cookie's `Secure` flag no longer depends on the endpoint's
+  scheme rewrite.** It is derived from `X-Forwarded-Proto` directly. In
+  production this changes nothing — `force_ssl` already rewrites the scheme
+  before any endpoint plug runs — but it removes a silent dependency between
+  a cookie's security flag and a setting three layers away.
+- **The browser no longer drops its live connection mid-form behind a proxy
+  with a 30-second idle timeout.** Phoenix's client heartbeat defaults to 30
+  seconds — exactly the idle timeout many reverse proxies and load balancers
+  ship with — so every heartbeat raced the proxy's timer and losing one round
+  killed the socket, discarding whatever was typed into an open form. The
+  heartbeat is 20 seconds now, the same interval the agent has always used.
+  Measured in a customer deployment: idle connections were cut at 30.0s, a 25s
+  heartbeat survived indefinitely, a 30s one died immediately.
+- **A too-short `SECRET_KEY_BASE` now refuses to boot instead of serving a
+  broken dashboard.** Plug's cookie store requires at least 64 bytes and
+  raises per request when it is shorter — so the release booted, migrated,
+  reported healthy (the health endpoint holds no session and answered `200`
+  all day) and then failed every actual page with "cookie store expects
+  conn.secret_key_base to be at least 64 bytes". The length is checked at
+  startup now, with the fix in the message. Reported from a Swarm deploy.
 
 ## [4.0.7] - 2026-07-20
 
@@ -104,11 +137,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extra compose profile, no admin API to keep off the network.
   **Upgrading:** drop `--profile gui` and the two variables; repoint your
   wildcard router from `gui-proxy:80` to `orbit:4000`.
-- **The GUI cookie's `Secure` flag no longer depends on the endpoint's
-  scheme rewrite.** It is derived from `X-Forwarded-Proto` directly. In
-  production this changes nothing — `force_ssl` already rewrites the scheme
-  before any endpoint plug runs — but it removes a silent dependency between
-  a cookie's security flag and a setting three layers away.
 - **Two ready-made Traefik examples for the GUI proxy, both covering v2 and
   v3.** `docker/compose.traefik-gui.example.yml` is a compose overlay for the
   Docker provider (add it with a second `-f`, labels and network wiring
@@ -120,28 +148,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Documented what a reverse proxy in front of the dashboard has to do**, with
-  a `scripts/ws_idle_probe.py` that names the offending layer in two minutes and
-  needs no login. Every long-lived feature here is a websocket that is
-  legitimately idle at times, and the common defaults are hostile — HAProxy's
-  `timeout tunnel` has no default at all, so a `mode tcp` load balancer cuts
-  every websocket at its 30s `timeout client`. README "Reverse proxy
-  requirements".
-- **The browser no longer drops its live connection mid-form behind a proxy
-  with a 30-second idle timeout.** Phoenix's client heartbeat defaults to 30
-  seconds — exactly the idle timeout many reverse proxies and load balancers
-  ship with — so every heartbeat raced the proxy's timer and losing one round
-  killed the socket, discarding whatever was typed into an open form. The
-  heartbeat is 20 seconds now, the same interval the agent has always used.
-  Measured in a customer deployment: idle connections were cut at 30.0s, a 25s
-  heartbeat survived indefinitely, a 30s one died immediately.
-- **A too-short `SECRET_KEY_BASE` now refuses to boot instead of serving a
-  broken dashboard.** Plug's cookie store requires at least 64 bytes and
-  raises per request when it is shorter — so the release booted, migrated,
-  reported healthy (the health endpoint holds no session and answered `200`
-  all day) and then failed every actual page with "cookie store expects
-  conn.secret_key_base to be at least 64 bytes". The length is checked at
-  startup now, with the fix in the message. Reported from a Swarm deploy.
 - **The Audit page survives a database it cannot read, and says so.** Its own
   queries had no guard at all, so a stressed connection pool killed the page
   on its 30-second refresh — exactly when an operator opens it. It now keeps
