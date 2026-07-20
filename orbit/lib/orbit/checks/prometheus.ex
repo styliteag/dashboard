@@ -114,6 +114,11 @@ defmodule Orbit.Checks.Prometheus do
   rescue
     # A denial-stats read must never break the checks export.
     _ -> ""
+  catch
+    # …and "never" has to include a pool checkout, which exits rather than
+    # raising. An exit turned the scrape into a 500, so monitoring went blind
+    # exactly when the database was the thing degrading.
+    _kind, _reason -> ""
   end
 
   defp counter_block(_name, _label, map) when map_size(map) == 0, do: []

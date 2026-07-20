@@ -130,6 +130,15 @@ defmodule Orbit.Availability do
     error ->
       Logger.warning("agent.stamp_failed error=#{Exception.message(error)}")
       :ok
+  catch
+    # A pool checkout EXITS rather than raising, so the rescue above does not
+    # cover a stressed or restarting database — and this runs on the agent
+    # socket's own metrics-push path. An exit would kill every agent
+    # connection at once and hand the stale sweep a fleet of false offlines,
+    # which is the exact opposite of "the socket must survive any DB hiccup".
+    kind, reason ->
+      Logger.warning("agent.stamp_failed error=#{kind} #{inspect(reason)}")
+      :ok
   end
 
   # -- poll-path: stamp + both edges (poller/scheduler._poll_instance) -------

@@ -268,6 +268,14 @@ defmodule Orbit.Hub do
     error ->
       Logger.warning("hub.cache_hydrate_failed error=#{inspect(error)}")
       %{}
+  catch
+    # This runs in Hub.init/1, at boot, which is precisely when the pool may
+    # not be up — and a checkout exits rather than raising. "Never fatal"
+    # only held for exceptions; an exit crash-looped the hub every agent
+    # socket and every fleet page depends on.
+    kind, reason ->
+      Logger.warning("hub.cache_hydrate_failed error=#{kind} #{inspect(reason)}")
+      %{}
   end
 
   # JSON has no datetime: the snapshot writes `last_metrics_ts` as an ISO

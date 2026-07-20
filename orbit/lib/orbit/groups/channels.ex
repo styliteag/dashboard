@@ -59,6 +59,10 @@ defmodule Orbit.Groups.Channels do
     e ->
       Logger.warning("group_channels.list_failed group_id=#{group_id} #{Exception.message(e)}")
       %{}
+  catch
+    kind, reason ->
+      Logger.warning("group_channels.list_failed group_id=#{group_id} #{kind} #{inspect(reason)}")
+      %{}
   end
 
   @doc """
@@ -122,23 +126,43 @@ defmodule Orbit.Groups.Channels do
 
   defp check_ssrf(_channel, _config, _opts), do: :ok
 
-  @doc "Decrypted config for one (group, channel), %{} when absent."
+  @doc """
+  Decrypted config for one (group, channel): `{:ok, config}` — `%{}` when the
+  row is absent — or `:error` when it could not be read.
+
+  Deliberately NOT collapsing the failure into `%{}`. `upsert/5` feeds this to
+  `validate/4` so that a masked secret submitted unchanged keeps its stored
+  value; an empty map there means "the operator cleared it", so a read failure
+  would have silently wiped the group's stored credentials on the next save.
+  A pool checkout exits rather than raising, so the old rescue did not even
+  cover the likeliest failure.
+  """
   def existing_config(group_id, channel) do
     case Orbit.Repo.query!(
            "SELECT config_enc FROM group_channels WHERE group_id = ? AND channel = ?",
            [group_id, channel]
          ).rows do
-      [[config_enc]] -> config_enc |> Orbit.Crypto.decrypt() |> Jason.decode!()
-      [] -> %{}
+      [[config_enc]] -> {:ok, config_enc |> Orbit.Crypto.decrypt() |> Jason.decode!()}
+      [] -> {:ok, %{}}
     end
   rescue
-    _ -> %{}
+    e ->
+      Logger.warning("group_channels.existing_config_failed group_id=#{group_id} #{inspect(e)}")
+      :error
+  catch
+    kind, reason ->
+      Logger.warning(
+        "group_channels.existing_config_failed group_id=#{group_id} #{kind} #{inspect(reason)}"
+      )
+
+      :error
   end
 
   @doc "Validate + persist one channel config. `{:ok, masked} | {:error, msg}`."
   def upsert(group_id, channel, incoming, user, opts \\ []) do
     with true <- channel in @channels || {:error, "unknown channel"},
-         {:ok, config} <- validate(channel, incoming, existing_config(group_id, channel), opts) do
+         {:ok, existing} <- existing_config(group_id, channel),
+         {:ok, config} <- validate(channel, incoming, existing, opts) do
       blob = config |> Jason.encode!() |> Orbit.Crypto.encrypt()
 
       Orbit.Repo.query!(
@@ -165,6 +189,15 @@ defmodule Orbit.Groups.Channels do
       )
 
       {:ok, masked(channel, config)}
+    else
+      # Refuse rather than save against an unknown baseline — writing here
+      # would blank whatever masked secrets the form did not resend. The
+      # caller's else only knows nil and {:error, msg}, so translate.
+      :error ->
+        {:error, "could not read the current configuration — nothing was saved"}
+
+      other ->
+        other
     end
   end
 

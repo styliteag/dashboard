@@ -1383,6 +1383,11 @@ defmodule OrbitWeb.InstanceDetailLive do
     # A missing/unreachable metrics table (throwaway test DB) renders the
     # empty state instead of crashing the whole detail view.
     _ -> assign(socket, chart_points: %{})
+  catch
+    # "unreachable" includes a pool checkout, which exits rather than raising
+    # — and this runs on a repeating timer, so one blip crashed the detail
+    # view for every operator with it open, not just on load.
+    _kind, _reason -> assign(socket, chart_points: %{})
   end
 
   defp load_monitors(socket) do
@@ -1498,6 +1503,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     |> MapSet.new(&{&1.consumer, &1.selector})
   rescue
     _ -> MapSet.new()
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> MapSet.new()
   end
 
   # Recent check transitions (CheckHistorySection parity) — shared table,
@@ -1510,6 +1519,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     ).rows
   rescue
     _ -> []
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> []
   end
 
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports

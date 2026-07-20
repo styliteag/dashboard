@@ -68,6 +68,10 @@ defmodule OrbitWeb.AccessControlLive do
     end
   rescue
     _ -> ""
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> ""
   end
 
   defp blocks_by_reason do
@@ -77,6 +81,10 @@ defmodule OrbitWeb.AccessControlLive do
     |> Enum.map(fn [reason, n] -> {reason, decimal_to_int(n)} end)
   rescue
     _ -> []
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> []
   end
 
   defp decimal_to_int(%Decimal{} = d), do: Decimal.to_integer(d)

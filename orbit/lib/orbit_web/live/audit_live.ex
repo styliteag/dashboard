@@ -190,6 +190,10 @@ defmodule OrbitWeb.AuditLive do
     |> Map.new(fn [id, name] -> {id, name} end)
   rescue
     _ -> %{}
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> %{}
   end
 
   # Names only for instances the viewer's groups allow (stricter than the
@@ -201,6 +205,10 @@ defmodule OrbitWeb.AuditLive do
     |> Map.new(&{&1.id, &1.name})
   rescue
     _ -> %{}
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> %{}
   end
 
   defp target(nil, _, _), do: "—"

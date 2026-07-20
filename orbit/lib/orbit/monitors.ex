@@ -39,6 +39,10 @@ defmodule Orbit.Monitors do
     end)
   rescue
     _ -> []
+  catch
+    # A pool checkout exits rather than raising; same empty fallback, or the
+    # page that only wanted a monitor list goes down with the database.
+    _kind, _reason -> []
   end
 
   @doc "Create a standalone monitor. {:ok, id} | {:error, msg}."
@@ -164,6 +168,10 @@ defmodule Orbit.Monitors do
     end)
   rescue
     _ -> []
+  catch
+    # A pool checkout exits rather than raising; same empty fallback, or the
+    # page that only wanted a monitor list goes down with the database.
+    _kind, _reason -> []
   end
 
   @doc """
@@ -276,6 +284,8 @@ defmodule Orbit.Monitors do
     end
   rescue
     _ -> %{}
+  catch
+    _kind, _reason -> %{}
   end
 
   # ---- agent config push -----------------------------------------------------

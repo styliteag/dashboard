@@ -70,6 +70,14 @@ defmodule Orbit.Scheduler do
       fun.()
     rescue
       e -> Logger.warning("scheduler.job_failed id=#{id} #{Exception.message(e)}")
+    catch
+      # Jobs run inline in this process and several of them touch the
+      # database. A pool checkout exits rather than raising, so without this
+      # a DB blip killed the scheduler and took every periodic job with it —
+      # including the stale sweep, exactly while the database is the thing
+      # under stress.
+      kind, reason ->
+        Logger.warning("scheduler.job_failed id=#{id} #{kind} #{inspect(reason)}")
     end
 
     Process.send_after(self(), {:run, id}, next_interval(id, interval))

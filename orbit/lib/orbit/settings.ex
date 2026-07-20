@@ -149,6 +149,11 @@ defmodule Orbit.Settings do
     # DB not up yet / transient failure: keep serving previous cache + env
     # defaults; next refresh retries.
     e -> Logger.warning("settings.load_failed #{Exception.message(e)}")
+  catch
+    # "DB not up yet" most often arrives as a pool checkout EXIT, which the
+    # rescue never saw: it failed startup from init/1, or killed the server
+    # from the refresh timer and restarted it into a cold cache.
+    kind, reason -> Logger.warning("settings.load_failed #{kind} #{inspect(reason)}")
   end
 
   defp decode_row(key, value, is_secret) do

@@ -43,20 +43,24 @@ defmodule Orbit.GUI.CaddyTest do
       refute Caddy.reconcile()
     end
 
-    test "a configured proxy posts a caddyfile to the admin api" do
+    test "an unreadable instance list pushes NOTHING, not an empty caddyfile" do
+      # The instance read used to fall back to [] on any failure, which
+      # renders the bootstrap file — no vhosts at all — and pushes it
+      # successfully, tearing down every GUI vhost in the fleet. Doing
+      # nothing leaves the last good config loaded. This test has no DB
+      # connection checked out, so the read fails exactly as it would
+      # against a stressed pool.
       Application.put_env(:orbit, :gui_proxy_enabled, true)
       Application.put_env(:orbit, :gui_caddy_admin_url, "http://caddy:2019/load")
       test_pid = self()
 
       plug = fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        send(test_pid, {:pushed, body, Plug.Conn.get_req_header(conn, "content-type")})
+        send(test_pid, :pushed)
         Plug.Conn.resp(conn, 200, "")
       end
 
-      assert Caddy.reconcile(req_plug: plug)
-      assert_received {:pushed, body, ["text/caddyfile"]}
-      assert body =~ "admin 0.0.0.0:2019"
+      refute Caddy.reconcile(req_plug: plug)
+      refute_received :pushed
     end
   end
 

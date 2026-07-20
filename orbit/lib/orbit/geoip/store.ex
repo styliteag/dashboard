@@ -131,5 +131,11 @@ defmodule Orbit.GeoIP.Store do
     error ->
       Logger.error("geoip.config_load_failed error=#{Exception.message(error)}")
       :error
+  catch
+    # "DB down" is a pool checkout EXIT, not an exception — it went straight
+    # through the rescue above and crashed the very gate that must not crash.
+    kind, reason ->
+      Logger.error("geoip.config_load_failed error=#{kind} #{inspect(reason)}")
+      :error
   end
 end

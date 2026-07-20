@@ -65,12 +65,18 @@ defmodule Orbit.GUI.Caddy do
 
   @doc "Rebuild from live instances + hot-load. No-op/false when off or unset."
   def reconcile(opts \\ []) do
-    if enabled?() do
+    with true <- enabled?(),
+         {:ok, instances} <- live_instances() do
       url = Application.get_env(:orbit, :gui_caddy_admin_url, "")
-      config = build_caddyfile(live_instances())
-      push(url, config, opts)
+      push(url, build_caddyfile(instances), opts)
     else
-      false
+      # A failed read must NOT be treated as "no instances": that renders the
+      # bootstrap file, which pushes successfully and tears down every GUI
+      # vhost in the fleet. Doing nothing leaves the last good config loaded,
+      # and the next instance change re-pushes. This got sharper when
+      # reconcile started riding create/update/delete and boot — the read now
+      # happens far more often than it used to.
+      _ -> false
     end
   end
 
@@ -134,17 +140,26 @@ defmodule Orbit.GUI.Caddy do
     end
   end
 
+  # `{:ok, pairs}` or :error — never a bare list, so a caller cannot mistake
+  # "could not read" for "there are none" (see reconcile/1).
   defp live_instances do
     import Ecto.Query
 
-    Orbit.Repo.all(
-      from(i in Orbit.Instances.Instance,
-        where: is_nil(i.deleted_at),
-        order_by: i.id,
-        select: {i.slug, i.id}
-      )
-    )
+    {:ok,
+     Orbit.Repo.all(
+       from(i in Orbit.Instances.Instance,
+         where: is_nil(i.deleted_at),
+         order_by: i.id,
+         select: {i.slug, i.id}
+       )
+     )}
   rescue
-    _ -> []
+    error ->
+      Logger.warning("gui_caddy.instances_read_failed error=#{Exception.message(error)}")
+      :error
+  catch
+    kind, reason ->
+      Logger.warning("gui_caddy.instances_read_failed error=#{kind} #{inspect(reason)}")
+      :error
   end
 end

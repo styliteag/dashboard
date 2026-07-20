@@ -151,6 +151,10 @@ defmodule OrbitWeb.Components.CommentEditor do
     end)
   rescue
     _ -> %{}
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> %{}
   end
 
   @doc """
