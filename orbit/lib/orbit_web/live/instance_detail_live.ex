@@ -251,6 +251,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
+  def handle_event("fw_log_dismiss", _params, socket) do
+    {:noreply, assign(socket, upgrade_log: [], upgrade_started: nil)}
+  end
+
   def handle_event("ipsec_diagnose_close", _params, socket) do
     {:noreply, assign(socket, diagnosis: nil)}
   end
@@ -2050,8 +2054,26 @@ defmodule OrbitWeb.InstanceDetailLive do
             {elem(@fw_msg, 1)}
           </div>
 
-          <div :if={@upgrading} class="mt-3">
-            <div class="mb-1 text-xs text-warning">Update running…</div>
+          <%!-- The log used to be gated on @upgrading alone, so it vanished
+               the moment tracking stopped — exactly when the operator wants
+               to read the boot-environment name and the final lines. It now
+               stays until dismissed. --%>
+          <div :if={@upgrading or @upgrade_log != []} class="mt-3">
+            <div class="mb-1 flex items-center justify-between">
+              <span class={[
+                "text-xs",
+                if(@upgrading, do: "text-warning", else: "text-base-content/60")
+              ]}>
+                {if @upgrading, do: "Update running…", else: "Update finished — log kept for review"}
+              </span>
+              <button
+                :if={not @upgrading and @upgrade_log != []}
+                phx-click="fw_log_dismiss"
+                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+              >
+                Dismiss
+              </button>
+            </div>
             <pre
               :if={@upgrade_log != []}
               class="max-h-48 overflow-y-auto rounded bg-base-100 p-2 text-xs text-base-content/70"

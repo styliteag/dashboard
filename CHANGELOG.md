@@ -70,6 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tags can finally be edited.** The field existed on every instance and the
+  fleet page filtered by it, but no form ever wrote one — the filter chips
+  could never be populated. Comma-separated on the instance edit form.
+- **Series upgrade in bulk.** The bulk runner already supported it (skipping
+  firmware-locked boxes, refusing agent-less ones); it just had no entry in
+  the actions menu, so a fleet had to be upgraded box by box.
 - **An `agent.collect` check.** The detail page has always drawn the agent's
   collect-cycle duration against a 10 s line, but a cycle creeping toward the
   push interval — a hanging collector, so the box's data goes stale while the
@@ -137,6 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Instance overview layout**: Services and Disks sit side by side instead of
   a half-empty row and a full-width two-line card. A stopped service reads as
   neutral grey, not alarm red — the check engine decides what stopped means.
+- **The firmware upgrade log survives the upgrade.** It was tied to the
+  live-tracking flag and disappeared the moment tracking ended — taking the
+  boot-environment name and the final lines with it, exactly when they are
+  needed. It now stays until dismissed.
 - **Problems-first defaults are back**: the fleet VPN page opens on the down
   tunnels and the Logs page on error-level events, instead of an unfiltered
   list you have to narrow yourself. (Alerts deliberately keeps showing

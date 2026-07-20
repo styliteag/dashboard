@@ -200,6 +200,18 @@ defmodule OrbitWeb.InstanceEditLive do
               <.field label="Notes">
                 <input name="instance[notes]" value={@instance.notes} class={input_cls()} />
               </.field>
+              <%!-- The schema carried tags and the fleet page filters by
+                   them, but no form ever wrote one — the filter chips could
+                   never be populated. Comma-separated, parsed in the
+                   context. --%>
+              <.field label="Tags (comma-separated)">
+                <input
+                  name="instance[tags]"
+                  value={Enum.join(@instance.tags || [], ", ")}
+                  placeholder="LAB, customer-x"
+                  class={input_cls()}
+                />
+              </.field>
             </div>
           </div>
 

@@ -103,7 +103,7 @@ defmodule Orbit.Instances do
 
   # -- mutations (instances/service.py port) ---------------------------------
 
-  @editable_fields ~w(name base_url location notes ping_url ssl_verify gui_login_enabled
+  @editable_fields ~w(name base_url location notes ping_url tags ssl_verify gui_login_enabled
     shell_enabled ssh_enabled ssh_port ssh_user maintenance firmware_locked)a
 
   @doc """
@@ -154,19 +154,6 @@ defmodule Orbit.Instances do
     end
   end
 
-  @device_types ~w(opnsense pfsense proxmox truenas qnap securepoint linux)
-  # Push-only device types have no direct API — base_url must stay empty (DR-9).
-  @push_only_types ~w(linux)
-
-  def device_types, do: @device_types
-  def push_only_type?(device_type), do: device_type in @push_only_types
-
-  @doc """
-  Create an instance (service.create_instance port): agent-mode gets
-  encrypted placeholder credentials (NOT NULL columns), transport defaults
-  from the mode, a name-derived slug auto-suffixes -2/-3… while an explicit
-  one must be free.
-  """
   @doc """
   Correct a wrong `device_type` from what the agent reports about itself.
 
@@ -212,6 +199,20 @@ defmodule Orbit.Instances do
   end
 
   def heal_device_type(_instance_id, _platform), do: :ok
+
+  @device_types ~w(opnsense pfsense proxmox truenas qnap securepoint linux)
+  # Push-only device types have no direct API — base_url must stay empty (DR-9).
+  @push_only_types ~w(linux)
+
+  def device_types, do: @device_types
+  def push_only_type?(device_type), do: device_type in @push_only_types
+
+  @doc """
+  Create an instance (service.create_instance port): agent-mode gets
+  encrypted placeholder credentials (NOT NULL columns), transport defaults
+  from the mode, a name-derived slug auto-suffixes -2/-3… while an explicit
+  one must be free.
+  """
 
   def create_instance(params, group_id) do
     transport =
@@ -374,6 +375,21 @@ defmodule Orbit.Instances do
   defp coerce(f, value) when f in @bool_fields, do: value in [true, "true", "on"]
   defp coerce(:ssh_port, value), do: parse_int(value) || 22
   defp coerce(f, value) when f in [:location, :notes, :ping_url], do: presence(value)
+
+  # Tags arrive as one comma-separated string from the form and are stored as
+  # an array. Trimmed, blanks dropped, de-duplicated — the fleet page filters
+  # on exact matches, so " LAB" and "LAB" must not become two chips.
+  defp coerce(:tags, value) when is_binary(value) do
+    value
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp coerce(:tags, value) when is_list(value), do: value
+  defp coerce(:tags, _value), do: []
+
   defp coerce(_f, value), do: value
 
   defp merge_intervals(changes, params) do

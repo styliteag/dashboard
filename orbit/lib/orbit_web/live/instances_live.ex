@@ -38,6 +38,9 @@ defmodule OrbitWeb.InstancesLive do
   @bulk_actions [
     {"firmware_check", "Check updates"},
     {"firmware_update", "Update firmware"},
+    # Bulk.run/3 has supported this all along (locked boxes skipped,
+    # agent-less refused) — it simply had no entry in the menu.
+    {"firmware_upgrade", "Series upgrade"},
     {"ipsec_restart", "Restart IPsec"},
     {"reboot", "Reboot"}
   ]
