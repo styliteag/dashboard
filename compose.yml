@@ -89,6 +89,9 @@ services:
       # Browser terminal (root shell on the firewall — docs §22). Global gate;
       # each instance additionally needs its per-instance "Terminal" opt-in.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # Empty = no session recording. Set to a path under a mounted volume,
+      # or the .cast files die with the container.
+      DASH_SHELL_RECORD_DIR: ${DASH_SHELL_RECORD_DIR:-}
       # Extra allowed WS Origin hosts (comma-separated) beyond PHX_HOST/localhost.
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
       # GeoIP access restriction (docs/geoip-access-restriction.md).

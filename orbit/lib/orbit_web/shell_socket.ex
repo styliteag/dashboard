@@ -18,6 +18,7 @@ defmodule OrbitWeb.ShellSocket do
   @behaviour WebSock
 
   alias Orbit.Hub
+  alias Orbit.Shell.Recorder
 
   @ping_interval_ms 25_000
   # An abandoned root shell used to stay open forever: the browser tab dying
@@ -37,7 +38,8 @@ defmodule OrbitWeb.ShellSocket do
     :ssh_conn,
     :ssh_chan,
     :opened_at,
-    :last_input_at
+    :last_input_at,
+    :recorder
   ]
 
   @impl true
@@ -56,11 +58,11 @@ defmodule OrbitWeb.ShellSocket do
         {:stop, :normal, {4008, "too many sessions"}, %__MODULE__{}}
 
       :ok ->
-        open(transport, instance_id)
+        open(transport, instance_id, user_id)
     end
   end
 
-  defp open(:agent, instance_id) do
+  defp open(:agent, instance_id, user_id) do
     case Hub.open_tunnel(instance_id, %{"kind" => "shell", "rows" => 24, "cols" => 80}) do
       {:ok, stream} ->
         schedule_ping()
@@ -72,7 +74,8 @@ defmodule OrbitWeb.ShellSocket do
            stream: stream,
            transport: :agent,
            opened_at: now_ms(),
-           last_input_at: now_ms()
+           last_input_at: now_ms(),
+           recorder: Recorder.open(instance_id, user_id, "agent")
          }}
 
       {:error, :not_connected} ->
@@ -83,7 +86,7 @@ defmodule OrbitWeb.ShellSocket do
 
   # Securepoint: no agent to attach to, so the PTY comes straight over SSH. The
   # channel is opened from THIS process so :ssh delivers its output here.
-  defp open(:ssh, instance_id) do
+  defp open(:ssh, instance_id, user_id) do
     with %Orbit.Instances.Instance{} = inst <-
            Orbit.Repo.get(Orbit.Instances.Instance, instance_id),
          {:ok, cfg} <- Orbit.Securepoint.SSH.config_for(inst),
@@ -98,7 +101,8 @@ defmodule OrbitWeb.ShellSocket do
          ssh_conn: conn,
          ssh_chan: chan,
          opened_at: now_ms(),
-         last_input_at: now_ms()
+         last_input_at: now_ms(),
+         recorder: Recorder.open(instance_id, user_id, "ssh")
        }}
     else
       _ -> {:stop, :normal, {4404, "ssh shell unavailable"}, %__MODULE__{}}
@@ -139,7 +143,7 @@ defmodule OrbitWeb.ShellSocket do
         {:ssh_cm, conn, {:data, chan, _type, bytes}},
         %{ssh_conn: conn, ssh_chan: chan} = state
       ) do
-    {:push, {:binary, bytes}, state}
+    {:push, {:binary, bytes}, record(state, bytes)}
   end
 
   def handle_info({:ssh_cm, conn, {:closed, chan}}, %{ssh_conn: conn, ssh_chan: chan} = state) do
@@ -155,7 +159,7 @@ defmodule OrbitWeb.ShellSocket do
   # Agent PTY output → binary frame to the browser.
   def handle_info({:tunnel, _stream, "data", frame}, state) do
     case Base.decode64(frame["data"] || "") do
-      {:ok, bytes} -> {:push, {:binary, bytes}, state}
+      {:ok, bytes} -> {:push, {:binary, bytes}, record(state, bytes)}
       :error -> {:ok, state}
     end
   end
@@ -201,18 +205,27 @@ defmodule OrbitWeb.ShellSocket do
   # Closing the channel then the connection is what kills the root shell on the
   # box; leaving it would strand a live login there.
   def terminate(_reason, %__MODULE__{transport: :ssh} = state) do
+    Recorder.close(state.recorder)
     Orbit.Securepoint.SSH.close_interactive(state.ssh_conn, state.ssh_chan)
     :ok
   end
 
-  def terminate(_reason, %__MODULE__{stream: nil}), do: :ok
+  def terminate(_reason, %__MODULE__{stream: nil} = state) do
+    Recorder.close(state.recorder)
+    :ok
+  end
 
   def terminate(_reason, state) do
+    Recorder.close(state.recorder)
     # Closing our end drops the hub stream (which tells the agent to kill the
     # PTY); the slot frees when this process dies (Shell.Slots monitors it).
     Hub.close_tunnel(state.stream)
     :ok
   end
+
+  # PTY output only. Keystrokes are deliberately never recorded — they carry
+  # the passwords the terminal does not echo (see Orbit.Shell.Recorder).
+  defp record(state, bytes), do: %{state | recorder: Recorder.write(state.recorder, bytes)}
 
   # Operator activity only — deliberately NOT called on agent/SSH output, so
   # a long-running `tail -f` cannot keep an abandoned session alive.

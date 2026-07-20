@@ -85,6 +85,10 @@ config :orbit,
        :gui_idle_minutes,
        String.to_integer(System.get_env("DASH_GUI_IDLE_MINUTES", "15"))
 
+# Root-terminal session recording (asciicast v2). Off unless a directory is
+# set. PTY OUTPUT only — never keystrokes; see Orbit.Shell.Recorder.
+config :orbit, :shell_record_dir, System.get_env("DASH_SHELL_RECORD_DIR", "")
+
 # Bootstrap-seed force flags (auth/bootstrap.py _resolve_mode): "0"/"false"
 # keeps the seed enabled and skips auto-retirement on rights changes.
 config :orbit, :admin_disabled_raw, System.get_env("DASH_ADMIN_DISABLED", "auto")

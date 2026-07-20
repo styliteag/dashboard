@@ -59,6 +59,9 @@ services:
       DASH_SUPERADMIN_DISABLED: ${DASH_SUPERADMIN_DISABLED:-auto}
       # Interactive shell gate + WS origin allowlist.
       DASH_SHELL_ENABLED: ${DASH_SHELL_ENABLED:-false}
+      # Empty = no session recording (the default). Set it in your shell to
+      # try it: DASH_SHELL_RECORD_DIR=/tmp/rec just dev-up
+      DASH_SHELL_RECORD_DIR: ${DASH_SHELL_RECORD_DIR:-}
       # Passkeys: rp_id is the shared host; the origin is orbit's OWN (dev :8000),
       # not the python UI's :5173 — ORBIT_WEBAUTHN_ORIGIN keeps them from
       # clobbering each other. Comma-separated accepts both (lab boxes reach :8000,

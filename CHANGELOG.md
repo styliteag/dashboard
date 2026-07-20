@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Terminal sessions can be recorded again** (`DASH_SHELL_RECORD_DIR`, empty by
+  default). Every root shell writes one asciicast file, replayable with
+  `asciinema play`. The retired dashboard had this; orbit did not, so the
+  variable had been a dead name since the cutover. Recorded is the box's
+  output only, never keystrokes — those carry the passwords the terminal does
+  not echo, and writing them would put a plaintext password log on the
+  dashboard host. 8 MB per session, after which the file closes with a note
+  and the session continues unrecorded; a failing or full disk never touches
+  the session. Works for agent and Securepoint SSH terminals alike.
 - **Connectivity monitors have a History button.** Orbit has been recording
   every check state change since the cutover, but nothing read those rows per
   monitor, so "has this link been flapping all week, or did it just drop?" had
