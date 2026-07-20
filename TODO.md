@@ -2,6 +2,7 @@
 - Require second factor again if WebUI or Terminal is accessed
 - Connectivity (ping) Graph wit ping response time
 - If its slinux dont call update "firmware" in the UI and Checkmk call it "updates"
+- ASCIcinema: cann man die dateien runterladen oder ansehen?
 
 # New things we maybe implement in the future:
 - Monitor ZFS host explicit with lesons we learned
