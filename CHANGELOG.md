@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-07-20
+
 ### Added
 
 - **The edit form has the same tag picker as the new-instance form.** Editing
