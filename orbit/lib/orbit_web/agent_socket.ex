@@ -39,6 +39,35 @@ defmodule OrbitWeb.AgentSocket do
      }}
   end
 
+  # Linux nodes only: no other platform runs the vendored script.
+  defp maybe_refresh_checkmk(instance_id, "linux", reported_sha) do
+    served = Orbit.Agent.Package.checkmk_sha256()
+
+    cond do
+      is_nil(served) ->
+        :ok
+
+      to_string(reported_sha) == served ->
+        :ok
+
+      true ->
+        case Orbit.Agent.Package.checkmk_update_params() do
+          {:ok, params} ->
+            result = Orbit.Hub.send_command(instance_id, "checkmk.update", params, 60_000)
+
+            Logger.info(
+              "checkmk.update instance_id=#{instance_id} served=#{String.slice(served, 0, 12)} " <>
+                "result=#{inspect(Map.get(result, "output", result))}"
+            )
+
+          {:error, :unavailable} ->
+            :ok
+        end
+    end
+  end
+
+  defp maybe_refresh_checkmk(_instance_id, _platform, _sha), do: :ok
+
   @impl true
   def handle_in({text, [opcode: :text]}, state) do
     case Jason.decode(text) do
@@ -71,6 +100,17 @@ defmodule OrbitWeb.AgentSocket do
     # session.
     Task.start(fn ->
       Orbit.Instances.heal_device_type(state.instance_id, hello["platform"])
+    end)
+
+    # The vendored check_mk_agent is what produces every metric on a Linux
+    # node, and the agent has reported its sha256 in the hello frame all
+    # along — nothing ever read it, so bumping the vendored script never
+    # reached the fleet. Push a refresh when they differ. Off the connect
+    # path and best-effort: the agent verifies sha256 AND the Ed25519
+    # signature before writing, so a failure here costs one cycle, nothing
+    # more.
+    Task.start(fn ->
+      maybe_refresh_checkmk(state.instance_id, hello["platform"], hello["checkmk_sha256"])
     end)
 
     welcome = %{

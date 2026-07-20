@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The bundled Checkmk agent script updates itself on Linux nodes again.**
+  The agent has reported the script's checksum on every connect all along and
+  nothing ever read it, so bumping the vendored copy never reached the fleet
+  — a fixed collector stayed unfixed on every box. Orbit now compares the
+  checksums when a Linux node connects and pushes a refresh when they differ,
+  through the same trust chain as an agent self-update (checksum plus the
+  Ed25519 signature, verified on the box before anything is written).
+
 - **The firewall rule editor stopped being a memory test.** Source,
   Destination and both port fields now suggest the box's own aliases (with
   their descriptions) plus the values OPNsense's own GUI offers — typed from
