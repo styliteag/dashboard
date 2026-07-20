@@ -91,11 +91,14 @@ defmodule OrbitWeb.GuiProxy do
     end)
   end
 
-  # In prod the TLS terminator (Traefik/nginx) speaks plain HTTP to orbit, so
-  # conn.scheme is :http even though the browser origin is https — taking it
-  # at face value would hand an https GUI origin a cookie WITHOUT Secure,
-  # which the browser then also sends over http. The retired Caddy path did
-  # not have this problem: its own handoff controller hardcoded secure: true.
+  # Read the forwarded scheme directly instead of trusting conn.scheme. In
+  # prod conn.scheme is ALREADY :https here — prod.exs sets force_ssl with
+  # rewrite_on: [:x_forwarded_proto], and Plug.SSL is the endpoint's first
+  # plug, ahead of this one — so this is belt-and-braces, not a live fix.
+  # It exists because a cookie's Secure flag should not silently depend on
+  # an endpoint setting three layers away: drop force_ssl (or run this plug
+  # in a config without it) and an https GUI origin would otherwise get a
+  # cookie without Secure, which the browser then also sends over http.
   # Spoofing the header cannot weaken anything (a forged "https" only adds
   # Secure, which a plain-http origin then refuses to store).
   defp https?(conn) do

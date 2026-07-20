@@ -102,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extra compose profile, no admin API to keep off the network.
   **Upgrading:** drop `--profile gui` and the two variables; repoint your
   wildcard router from `gui-proxy:80` to `orbit:4000`.
+- **The GUI cookie's `Secure` flag no longer depends on the endpoint's
+  scheme rewrite.** It is derived from `X-Forwarded-Proto` directly. In
+  production this changes nothing — `force_ssl` already rewrites the scheme
+  before any endpoint plug runs — but it removes a silent dependency between
+  a cookie's security flag and a setting three layers away.
 - **Two ready-made Traefik examples for the GUI proxy, both covering v2 and
   v3.** `docker/compose.traefik-gui.example.yml` is a compose overlay for the
   Docker provider (add it with a second `-f`, labels and network wiring
@@ -113,12 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The GUI cookie is marked `Secure` again behind a TLS-terminating proxy.**
-  The reverse proxy speaks plain HTTP to orbit, so the origin scheme read as
-  http and the `orbit_gui` cookie went out without the flag on an https origin
-  — meaning the browser would also have sent it over http. It now reads
-  `X-Forwarded-Proto`. Only reachable on the path that replaced the retired
-  Caddy sidecar, whose own handoff route hardcoded the flag.
 - **The Audit page survives a database it cannot read, and says so.** Its own
   queries had no guard at all, so a stressed connection pool killed the page
   on its 30-second refresh — exactly when an operator opens it. It now keeps
