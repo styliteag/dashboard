@@ -118,6 +118,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The browser no longer drops its live connection mid-form behind a proxy
+  with a 30-second idle timeout.** Phoenix's client heartbeat defaults to 30
+  seconds — exactly the idle timeout many reverse proxies and load balancers
+  ship with — so every heartbeat raced the proxy's timer and losing one round
+  killed the socket, discarding whatever was typed into an open form. The
+  heartbeat is 20 seconds now, the same interval the agent has always used.
+  Measured in a customer deployment: idle connections were cut at 30.0s, a 25s
+  heartbeat survived indefinitely, a 30s one died immediately.
 - **A too-short `SECRET_KEY_BASE` now refuses to boot instead of serving a
   broken dashboard.** Plug's cookie store requires at least 64 bytes and
   raises per request when it is shorter — so the release booted, migrated,

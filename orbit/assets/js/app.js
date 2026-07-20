@@ -379,6 +379,15 @@ const DirtySave = {
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
+  // phoenix.js defaults to 30s, which is exactly the idle timeout a lot of
+  // reverse proxies and load balancers ship with — so every heartbeat becomes
+  // a race against the proxy's timer, and losing one drops the socket mid-form
+  // (measured in a customer swarm: a 30s idle cut, heartbeats at 25s always
+  // survived, at 30s died immediately). The agent picked 20s for the same
+  // reason (_PING_INTERVAL in orbit_agent.py); the browser now matches it.
+  // This is resilience, not a fix for a broken proxy — it just stops us from
+  // sitting on the single worst possible interval.
+  heartbeatIntervalMs: 20000,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue, RuleReorder},
 })
