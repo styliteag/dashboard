@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Browser tabs are distinguishable again.** Every page shipped with the
+  Phoenix scaffold title ("Orbit · Phoenix Framework"), so five open dashboard
+  tabs were five identical labels and history was useless. Each LiveView now
+  titles its tab ("Alerts · Orbit", "opn1 · Orbit" on an instance page).
+- **Metric charts no longer draw near-black gridlines on the light designs.**
+  The grid used a hardcoded dark-slate hex from the old dark-only UI; it now
+  follows the active theme at 12% opacity in both modes.
+- **The "Config revision" card is back on the instance overview.** A stray
+  tab gate made it render on no tab at all — the overview showed an empty hole
+  next to System health, and the last-change info was unreachable.
+- **Audit targets show the instance name.** Rows read "instance:5"; they now
+  read "bensheim (#5)" for instances in the viewer's groups (out-of-scope
+  targets keep the raw id on purpose).
+
+### Changed
+
+- **Hub page layout**: the six stat tiles share one row on wide screens (was a
+  ragged 4+2), the fleet push chart spans the full width, and the error
+  counters no longer stretch three huge tiles across the page.
+- **Instance overview layout**: Services and Disks sit side by side instead of
+  a half-empty row and a full-width two-line card. A stopped service reads as
+  neutral grey, not alarm red — the check engine decides what stopped means.
+- **Consistency sweep**: buttons and chips use theme color pairs instead of
+  hardcoded white text (fixes contrast on light themes), UNKNOWN/neutral state
+  chips match the pastel chip family, the Connectivity fleet table drops the
+  redundant "Connectivity" prefix per row, the Security page is left-aligned
+  like every other page, and the theme popover closes on outside click.
+
 ## [4.0.6] - 2026-07-19
 
 ### Fixed

@@ -152,7 +152,7 @@ defmodule OrbitWeb.SelectionLive do
           </label>
           <button
             type="submit"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             Set rule
           </button>

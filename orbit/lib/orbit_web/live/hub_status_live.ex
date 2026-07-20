@@ -187,7 +187,7 @@ defmodule OrbitWeb.HubStatusLive do
           chart are hub-wide totals across the whole fleet, so they can exceed what you see here.
         </p>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           <.stat_tile label="Connected" value={length(@agents)} color="text-primary">
             <:hint>agents in your scope, right now</:hint>
           </.stat_tile>
@@ -227,7 +227,7 @@ defmodule OrbitWeb.HubStatusLive do
         <%!-- Fleet push activity (HubStatusPage rate-chart parity): pushes
              per minute-bucket over the last 6h, counted from the metric
              rows every push writes. --%>
-        <div class="mb-4 max-w-xl">
+        <div class="mb-4">
           <.metric_chart
             label="Pushes / min (fleet, 6h)"
             points={@push_rate}
@@ -256,7 +256,7 @@ defmodule OrbitWeb.HubStatusLive do
           means an agent (or something posing as one) is talking to the hub wrongly — these do
           not clear on their own, only on a backend restart.
         </.data_note>
-        <div class="mb-4 grid gap-3 sm:grid-cols-3">
+        <div class="mb-4 grid max-w-3xl gap-3 sm:grid-cols-3">
           <div
             :for={{key, label} <- error_counters()}
             class="rounded-xl border border-base-300 bg-base-200/60 px-4 py-3"

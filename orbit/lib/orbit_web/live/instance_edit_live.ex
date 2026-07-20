@@ -358,7 +358,7 @@ defmodule OrbitWeb.InstanceEditLive do
           <div class="flex items-center gap-3">
             <button
               type="submit"
-              class="rounded bg-primary px-4 py-1.5 text-sm text-white hover:bg-primary/80"
+              class="rounded bg-primary px-4 py-1.5 text-sm text-primary-content hover:bg-primary/80"
             >
               Save
             </button>

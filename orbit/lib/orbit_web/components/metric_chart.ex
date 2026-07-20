@@ -51,20 +51,23 @@ defmodule OrbitWeb.Components.MetricChart do
         No data for this range.
       </p>
       <div :if={@line != nil}>
-        <svg viewBox="0 0 100 40" preserveAspectRatio="none" class="h-40 w-full">
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" class="h-40 w-full text-base-content">
           <defs>
             <linearGradient id={@grad_id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stop-color={@color} stop-opacity="0.3" />
               <stop offset="95%" stop-color={@color} stop-opacity="0" />
             </linearGradient>
           </defs>
+          <%!-- Gridlines follow the theme via currentColor — a hardcoded
+               slate hex read near-black on the light designs. --%>
           <line
             :for={y <- [10, 20, 30]}
             x1="0"
             y1={y}
             x2="100"
             y2={y}
-            stroke="#1e293b"
+            stroke="currentColor"
+            stroke-opacity="0.12"
             stroke-width="0.3"
             stroke-dasharray="1.5 1.5"
           />

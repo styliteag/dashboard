@@ -50,6 +50,8 @@ defmodule OrbitWeb do
     quote do
       use Phoenix.LiveView
 
+      on_mount OrbitWeb.PageTitle
+
       unquote(html_helpers())
     end
   end

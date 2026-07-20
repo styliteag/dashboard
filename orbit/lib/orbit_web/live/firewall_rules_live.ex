@@ -250,14 +250,14 @@ defmodule OrbitWeb.FirewallRulesLive do
           </form>
           <button
             phx-click="new_rule"
-            class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
           >
             New rule
           </button>
           <button
             phx-click="apply"
             data-confirm="Apply staged firewall changes on the box?"
-            class="rounded bg-warning px-3 py-1 text-xs text-white hover:bg-warning/80"
+            class="rounded bg-warning px-3 py-1 text-xs text-warning-content hover:bg-warning/80"
           >
             Apply changes
           </button>
@@ -438,7 +438,7 @@ defmodule OrbitWeb.FirewallRulesLive do
               </button>
               <button
                 type="submit"
-                class="rounded bg-primary px-3 py-1 text-white hover:bg-primary/80"
+                class="rounded bg-primary px-3 py-1 text-primary-content hover:bg-primary/80"
               >
                 Save rule
               </button>

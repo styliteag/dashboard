@@ -113,7 +113,9 @@ defmodule OrbitWeb.SecurityLive do
     <main class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:security} current_user={@current_user} />
 
-      <section class="mx-auto max-w-2xl p-6">
+      <%!-- Left-aligned like every other page (was mx-auto-centered, the
+           only page that floated mid-screen). --%>
+      <section class="max-w-2xl p-6">
         <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
           <Icons.icon name={:security} class="h-5 w-5 text-base-content/60" /> Security
         </h1>
@@ -152,7 +154,7 @@ defmodule OrbitWeb.SecurityLive do
               id="passkey-add"
               type="button"
               phx-hook="Passkey"
-              class="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary disabled:opacity-50"
+              class="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-content hover:bg-primary/85 disabled:opacity-50"
             >
               Add passkey
             </button>

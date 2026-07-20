@@ -313,6 +313,6 @@ defmodule OrbitWeb.AlertsLive do
 
   defp state_class(2), do: "bg-error/20 text-error"
   defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-neutral text-base-content/80"
+  defp state_class(3), do: "bg-base-300 text-base-content/70"
   defp state_class(_), do: "bg-primary/20 text-primary"
 end

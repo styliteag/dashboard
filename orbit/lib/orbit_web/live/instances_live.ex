@@ -396,7 +396,7 @@ defmodule OrbitWeb.InstancesLive do
           <a
             :if={@writable}
             href={~p"/instances/new"}
-            class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
+            class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
           >
             New instance
           </a>
@@ -469,7 +469,7 @@ defmodule OrbitWeb.InstancesLive do
             phx-click="update_all"
             data-confirm={"Push agent #{@served_version} to #{@outdated_count} box(es)? Agents restart."}
             disabled={@update_busy}
-            class="ml-auto rounded-lg bg-warning px-3 py-1.5 text-sm font-medium text-white hover:bg-warning/80 disabled:opacity-50"
+            class="ml-auto rounded-lg bg-warning px-3 py-1.5 text-sm font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
           >
             {if @update_busy, do: "Updating…", else: "Update all agents"}
           </button>
@@ -879,7 +879,7 @@ defmodule OrbitWeb.InstancesLive do
   defp dot_class("degraded"), do: "bg-warning"
   defp dot_class(_), do: "bg-error"
 
-  defp chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-white"
+  defp chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
 
   defp chip(false),
     do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"

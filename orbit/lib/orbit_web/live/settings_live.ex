@@ -351,10 +351,10 @@ defmodule OrbitWeb.SettingsLive do
               phx-click="restart_backend"
               disabled={@restarting}
               class={[
-                "shrink-0 rounded px-3 py-1.5 text-sm text-white disabled:opacity-40",
+                "shrink-0 rounded px-3 py-1.5 text-sm disabled:opacity-40",
                 if(@restart_armed,
-                  do: "bg-error hover:bg-error/80",
-                  else: "bg-neutral hover:bg-neutral/80"
+                  do: "bg-error text-error-content hover:bg-error/80",
+                  else: "bg-neutral text-neutral-content hover:bg-neutral/80"
                 )
               ]}
             >
@@ -530,7 +530,7 @@ defmodule OrbitWeb.SettingsLive do
         />
         <button
           type="submit"
-          class="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/80"
+          class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
         >
           Save
         </button>

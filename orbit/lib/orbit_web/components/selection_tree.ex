@@ -252,7 +252,7 @@ defmodule OrbitWeb.Components.SelectionTree do
           phx-click="send_test"
           phx-target={@myself}
           disabled={@test_busy}
-          class="flex items-center gap-1.5 rounded-lg bg-neutral px-3 py-1.5 text-sm text-white hover:bg-neutral/80 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded-lg bg-neutral px-3 py-1.5 text-sm text-neutral-content hover:bg-neutral/80 disabled:opacity-50"
         >
           <Icons.icon name={:bell} class="h-3.5 w-3.5" />
           {if @test_busy, do: "Sending…", else: "Send test"}

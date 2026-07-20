@@ -124,7 +124,7 @@ defmodule OrbitWeb.Components.ListKit do
   end
 
   @doc "Filter chip class (active/emerald vs idle/slate)."
-  def chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-white"
+  def chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
 
   def chip(false),
     do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"

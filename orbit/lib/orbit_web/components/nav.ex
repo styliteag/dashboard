@@ -165,7 +165,7 @@ defmodule OrbitWeb.Components.Nav do
   """
   def theme_switcher(assigns) do
     ~H"""
-    <details class="relative text-xs">
+    <details data-popover class="relative text-xs">
       <summary
         class="cursor-pointer rounded-md border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
         title="Theme"

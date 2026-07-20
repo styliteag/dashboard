@@ -356,3 +356,12 @@ const markThemeChoices = () => {
 }
 markThemeChoices()
 window.addEventListener("phx:page-loading-stop", markThemeChoices)
+
+// Close the <details> theme switcher on any click outside it — native
+// details stays open until its own summary is clicked again, which reads
+// as a stuck popover next to every other dismiss-on-blur menu.
+document.addEventListener("click", e => {
+  document.querySelectorAll("details[data-popover]").forEach(d => {
+    if (d.open && !d.contains(e.target)) d.open = false
+  })
+})

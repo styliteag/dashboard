@@ -186,7 +186,7 @@ defmodule OrbitWeb.CaptureLive do
           </label>
           <button
             type="submit"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-white hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             {if @capturing, do: "Restart", else: "Start capture"}
           </button>
@@ -221,7 +221,7 @@ defmodule OrbitWeb.CaptureLive do
           <button
             type="submit"
             disabled={@snap_busy}
-            class="rounded bg-info px-3 py-1.5 text-xs text-white hover:bg-info/80 disabled:opacity-50"
+            class="rounded bg-info px-3 py-1.5 text-xs text-info-content hover:bg-info/80 disabled:opacity-50"
           >
             {if @snap_busy, do: "Capturing…", else: "Snapshot capture"}
           </button>

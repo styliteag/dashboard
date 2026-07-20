@@ -123,13 +123,19 @@ defmodule OrbitWeb.AuditLive do
     a = socket.assigns
 
     assign(socket,
-      rows: load_rows(a[:action_q] || "", a[:action_hours], a[:action_limit] || @limit)
+      rows:
+        load_rows(
+          a[:action_q] || "",
+          a[:action_hours],
+          a[:action_limit] || @limit,
+          a.current_user
+        )
     )
   end
 
   # Actions-tab filters (AuditPage parity): free-text on action/target,
   # hours window, load-more pagination; user_id resolves to the username.
-  defp load_rows(q, hours, limit) do
+  defp load_rows(q, hours, limit, current_user) do
     {where, params} =
       []
       |> then(fn acc ->
@@ -164,6 +170,7 @@ defmodule OrbitWeb.AuditLive do
       )
 
     usernames = usernames_by_id()
+    instance_names = instance_names(current_user)
 
     for [ts, action, result, user_id, ttype, tid, ip] <- rows do
       %{
@@ -171,7 +178,7 @@ defmodule OrbitWeb.AuditLive do
         action: action,
         result: result,
         user: usernames[user_id] || (user_id && "##{user_id}") || "—",
-        target: target(ttype, tid),
+        target: target(ttype, tid, instance_names),
         ip: ip
       }
     end
@@ -184,9 +191,32 @@ defmodule OrbitWeb.AuditLive do
     _ -> %{}
   end
 
-  defp target(nil, _), do: "—"
-  defp target(t, nil), do: t
-  defp target(t, id), do: "#{t}:#{id}"
+  # Names only for instances the viewer's groups allow (stricter than the
+  # page gate on purpose): out-of-scope targets keep the raw "instance:N".
+  defp instance_names(user) do
+    Orbit.Instances.Instance
+    |> Orbit.Auth.Scope.scope(user)
+    |> Orbit.Repo.all()
+    |> Map.new(&{&1.id, &1.name})
+  rescue
+    _ -> %{}
+  end
+
+  defp target(nil, _, _), do: "—"
+  defp target(t, nil, _), do: t
+
+  # target_id is stored as a string (Audit.write to_string's it) — parse
+  # before the integer-keyed name lookup or nothing ever matches.
+  defp target("instance", id, names) do
+    with {n, ""} <- Integer.parse(to_string(id)),
+         name when is_binary(name) <- names[n] do
+      "#{name} (##{id})"
+    else
+      _ -> "instance:#{id}"
+    end
+  end
+
+  defp target(t, id, _), do: "#{t}:#{id}"
 
   @impl true
   def render(assigns) do
@@ -429,7 +459,7 @@ defmodule OrbitWeb.AuditLive do
   defp fmt_ts(other), do: to_string(other)
 
   defp result_class("ok"), do: "bg-primary/20 text-primary"
-  defp result_class("pending"), do: "bg-neutral text-base-content/80"
+  defp result_class("pending"), do: "bg-base-300 text-base-content/70"
   defp result_class("denied"), do: "bg-error/20 text-error"
   defp result_class(_), do: "bg-warning/20 text-warning"
 

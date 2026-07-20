@@ -61,6 +61,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         socket
         |> assign(
           instance: inst,
+          page_title: inst.name,
           writable: user.role in @write_roles,
           admin: user.role == "admin",
           fw_busy: nil,
@@ -1493,7 +1494,10 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div :if={@tab == "config"} class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <%!-- Inside the overview-only grid — a stray tab=="config" gate here
+               meant this card rendered on NO tab at all and left a hole next
+               to System health. --%>
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Config revision</h2>
             <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
               <.kv label="Last change" value={@config_rev["revision_time"] || "—"} />
@@ -1563,7 +1567,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 class={[
                   "rounded-md px-2 py-1 text-xs",
                   if(@chart_range == r,
-                    do: "bg-primary text-white",
+                    do: "bg-primary text-primary-content",
                     else: "text-base-content/70 hover:bg-base-300"
                   )
                 ]}
@@ -1642,7 +1646,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="agent_update"
               data-confirm={"Push agent #{@served_agent_version} to #{@instance.name}? The agent restarts (canary: one box at a time)."}
               disabled={@agent_busy}
-              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @agent_busy,
                 do: "Pushing…",
@@ -1753,7 +1757,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </p>
           <button
             phx-click="agent_enable"
-            class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
           >
             Enable agent mode
           </button>
@@ -1887,7 +1891,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="fw_update"
               data-confirm={"Start the firmware update on #{@instance.name}? The box may reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "update", do: "Starting…", else: "Start update"}
             </button>
@@ -1899,7 +1903,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="fw_upgrade"
               data-confirm={"Start the SERIES upgrade to #{@firmware["upgrade_major_version"]} on #{@instance.name}? This is a major version jump; the box will reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-warning px-3 py-1 text-xs text-white hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-warning px-3 py-1 text-xs text-warning-content hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "upgrade",
                 do: "Starting…",
@@ -1925,19 +1929,6 @@ defmodule OrbitWeb.InstanceDetailLive do
               class="max-h-48 overflow-y-auto rounded bg-base-100 p-2 text-xs text-base-content/70"
             >{Enum.join(Enum.take(@upgrade_log, -20), "\n")}</pre>
           </div>
-        </div>
-
-        <div
-          :if={@tab == "overview" and @disks != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
-        >
-          <h2 class="mb-3 text-sm font-medium text-base-content/70">Disks</h2>
-          <ul class="space-y-1 text-sm">
-            <li :for={d <- @disks} class="flex justify-between text-base-content/80">
-              <span class="text-base-content/70">{d["mountpoint"] || d["device"]}</span>
-              <span>{pct(d["used_pct"])}</span>
-            </li>
-          </ul>
         </div>
 
         <%!-- Standalone connectivity monitors (ConnectivitySection parity):
@@ -2331,7 +2322,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </table>
         </div>
 
-        <div :if={@tab in ["overview", "network"]} class="mt-6 grid gap-6 md:grid-cols-2">
+        <div :if={@tab in ["overview", "network"]} class="mt-6 grid items-start gap-6 md:grid-cols-2">
           <div
             :if={@tab == "overview" and @services != []}
             class="rounded-lg border border-base-300 bg-base-200 p-4"
@@ -2340,9 +2331,25 @@ defmodule OrbitWeb.InstanceDetailLive do
             <ul class="space-y-1 text-sm">
               <li :for={s <- @services} class="flex justify-between text-base-content/80">
                 <span class="text-base-content/70">{s["description"] || s["name"]}</span>
-                <span class={if(s["running"], do: "text-primary", else: "text-error")}>
+                <%!-- "stopped" is not an alarm — plenty of services are off on
+                     purpose (iperf, ddclient). The check engine decides what a
+                     stopped service means; this list only reports state. --%>
+                <span class={if(s["running"], do: "text-primary", else: "text-base-content/50")}>
                   {if s["running"], do: "running", else: "stopped"}
                 </span>
+              </li>
+            </ul>
+          </div>
+
+          <div
+            :if={@tab == "overview" and @disks != []}
+            class="rounded-lg border border-base-300 bg-base-200 p-4"
+          >
+            <h2 class="mb-3 text-sm font-medium text-base-content/70">Disks</h2>
+            <ul class="space-y-1 text-sm">
+              <li :for={d <- @disks} class="flex justify-between text-base-content/80">
+                <span class="text-base-content/70">{d["mountpoint"] || d["device"]}</span>
+                <span>{pct(d["used_pct"])}</span>
               </li>
             </ul>
           </div>
@@ -2758,7 +2765,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             ></textarea>
             <button
               type="submit"
-              class="rounded bg-primary px-3 py-1 text-xs text-white hover:bg-primary/80"
+              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
             >
               Add note
             </button>
@@ -3043,7 +3050,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp state_class(2), do: "bg-error/20 text-error"
   defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-neutral text-base-content/80"
+  defp state_class(3), do: "bg-base-300 text-base-content/70"
   defp state_class(_), do: "bg-primary/20 text-primary"
 
   defp cb_ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")

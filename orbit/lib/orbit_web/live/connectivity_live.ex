@@ -364,7 +364,11 @@ defmodule OrbitWeb.ConnectivityLive do
                 <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
               </td>
               <td class="py-2 pr-4 text-base-content/80">
-                {r.check.summary}
+                <%!-- Display-only strip: every summary starts with the word
+                     "Connectivity", redundant under this page's Monitor
+                     column. The check engine's summary itself is untouched
+                     (the four check surfaces keep their identical text). --%>
+                {String.replace_prefix(r.check.summary || "", "Connectivity ", "")}
                 <.comment_editor
                   text={CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)}
                   writable={@writable}
@@ -413,5 +417,5 @@ defmodule OrbitWeb.ConnectivityLive do
   defp state_class(0), do: "bg-primary/20 text-primary"
   defp state_class(1), do: "bg-warning/20 text-warning"
   defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(_), do: "bg-neutral text-base-content/80"
+  defp state_class(_), do: "bg-base-300 text-base-content/70"
 end
