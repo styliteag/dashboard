@@ -120,6 +120,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Documented what a reverse proxy in front of the dashboard has to do**, with
+  a `scripts/ws_idle_probe.py` that names the offending layer in two minutes and
+  needs no login. Every long-lived feature here is a websocket that is
+  legitimately idle at times, and the common defaults are hostile — HAProxy's
+  `timeout tunnel` has no default at all, so a `mode tcp` load balancer cuts
+  every websocket at its 30s `timeout client`. README "Reverse proxy
+  requirements".
 - **The browser no longer drops its live connection mid-form behind a proxy
   with a 30-second idle timeout.** Phoenix's client heartbeat defaults to 30
   seconds — exactly the idle timeout many reverse proxies and load balancers

@@ -16,6 +16,12 @@
 # there is NO per-instance router, and nothing to change when instances come and
 # go. See README "Firewall GUI proxy" and docs §18.
 #
+# IDLE TIMEOUTS: Traefik's own idleTimeout (180s) is fine, but a load balancer in
+# front of it is easy to miss — HAProxy in `mode tcp` has NO default for
+# `timeout tunnel`, so it cuts every websocket at its `timeout client` (commonly
+# 30s), and the dashboard's live UI, terminal and packet capture die with it.
+# See README "Reverse proxy requirements" and scripts/ws_idle_probe.py.
+#
 # Prerequisites:
 #   1. .env:  DASH_GUI_PROXY_ENABLED=true
 #             DASH_GUI_BASE_TEMPLATE=https://gui-{slug}.gui.example.com

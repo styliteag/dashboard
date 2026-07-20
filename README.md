@@ -155,6 +155,59 @@ under the old stack keep working — no re-seed.
 To pull a published image instead of building locally, edit `compose.yml` — swap the
 `build:` block under `orbit` for `image: ghcr.io/styliteag/dashboard:latest`.
 
+## Reverse proxy requirements
+
+Everything long-lived in this dashboard is a websocket: the LiveView UI, the
+agent hub (`/api/ws/agent`), the browser terminal and packet capture. All of
+them are legitimately **idle for stretches** — an operator reads a terminal, a
+quiet interface produces no packets. A proxy that closes idle connections cuts
+them, and the symptom points at the wrong layer: the UI drops what you typed
+mid-form, agents flap offline, a terminal dies while you read it. The dashboard
+logs only a fresh connect, because from its side nothing failed.
+
+Whatever terminates TLS in front of orbit must therefore:
+
+| Requirement | Why |
+|---|---|
+| Allow the websocket upgrade on `/live` and `/api/ws/` | Without it the UI silently falls back to long-polling and agents cannot connect at all |
+| **Idle timeout well above 20s** (60s+; 180s is a good default) | The client heartbeat is 20s. A timeout near it turns every heartbeat into a race |
+| Pass the original `Host` through | It is the routing key for the optional GUI proxy (`gui-<slug>` origins) |
+| Set `X-Forwarded-Proto: https` | Orbit speaks plain HTTP behind you and reads it to mark cookies `Secure` |
+
+The idle timeout is the one that bites, because the defaults are hostile:
+
+- **HAProxy** — `timeout tunnel` has **no default**: unset, a tunnelled
+  connection is governed by `timeout client`/`timeout server`, which are
+  commonly 30s. In `mode tcp` that silently cuts every websocket.
+  ```
+  defaults
+      timeout tunnel      180s   # supersedes client/server once tunnelled
+      timeout client-fin   30s   # else half-closed sockets pile up in FIN_WAIT
+  ```
+- **Traefik** — `entryPoints.<name>.transport.respondingTimeouts.idleTimeout`
+  defaults to `180s`, which is fine. Do not lower it. (v3 also defaults
+  `readTimeout` to `60s`; that one applies to reading a request, not to an
+  established tunnel.)
+- **nginx** — `proxy_read_timeout` defaults to `60s`; raise it to `180s` on the
+  websocket locations, and set `proxy_http_version 1.1` plus the `Upgrade` /
+  `Connection` headers or the upgrade never happens.
+
+Note that a **chain** of proxies is only as permissive as its strictest link,
+and a load balancer in `mode tcp` in front of Traefik is easy to forget —
+`send-proxy` / PROXY protocol in your config is the tell that one is there.
+
+**Diagnosing it takes two minutes**, and does not need a login:
+
+```bash
+python3 scripts/ws_idle_probe.py dash.example.com              # find the cut
+python3 scripts/ws_idle_probe.py dash.example.com --heartbeat 20   # confirm the fix
+```
+
+It reports *how* the connection ended, which identifies the layer: a websocket
+close frame with code `1002` after ~60s is orbit's own idle timeout and means
+the path is clean, while a bare TCP `eof` at any other time is a proxy — and
+the time it happened is that proxy's idle timeout.
+
 ## Connecting a firewall via the push agent
 
 On the OPNsense/pfSense box (FreeBSD):

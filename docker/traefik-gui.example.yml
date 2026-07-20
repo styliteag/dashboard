@@ -9,6 +9,12 @@
 # Docker/Swarm provider, use the label form instead:
 # docker/compose.traefik-gui.example.yml. Use one or the other, never both.
 #
+# IDLE TIMEOUTS: Traefik's own idleTimeout (180s) is fine, but a load balancer in
+# front of it is easy to miss — HAProxy in `mode tcp` has NO default for
+# `timeout tunnel`, so it cuts every websocket at its `timeout client` (commonly
+# 30s), and the dashboard's live UI, terminal and packet capture die with it.
+# See README "Reverse proxy requirements" and scripts/ws_idle_probe.py.
+#
 # Prereqs: orbit reachable on Traefik's network, a wildcard cert for
 # *.gui.example.com (DNS-01), and the dashboard set with
 # DASH_GUI_PROXY_ENABLED=true and
