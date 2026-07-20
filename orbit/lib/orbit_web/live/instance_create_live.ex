@@ -85,8 +85,13 @@ defmodule OrbitWeb.InstanceCreateLive do
       "Escape" ->
         {:noreply, assign(socket, tag_open: false)}
 
-      "Backspace" when value == "" ->
-        {:noreply, assign(socket, tags: TagPicker.drop_last(socket.assigns.tags))}
+      "Backspace" ->
+        {:noreply,
+         assign(socket,
+           tags: TagPicker.backspace(socket.assigns.tags, socket.assigns.tag_query),
+           tag_query: value,
+           tag_open: true
+         )}
 
       _ ->
         {:noreply, assign(socket, tag_query: value, tag_open: true)}

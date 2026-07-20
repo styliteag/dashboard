@@ -39,6 +39,17 @@ defmodule OrbitWeb.Components.TagPickerTest do
       assert TagPicker.drop_last(["a", "b"]) == ["a"]
       assert TagPicker.drop_last([]) == []
     end
+
+    test "backspace in an empty field eats the last chip" do
+      assert TagPicker.backspace(["a", "b"], "") == ["a"]
+    end
+
+    test "backspace that only clears typed text leaves the chips alone" do
+      # phx-keyup reports the value AFTER the key, so deleting the last
+      # character looks exactly like backspace on an empty field. Judged on
+      # the previous query, this one was still "x" — no chip may be lost.
+      assert TagPicker.backspace(["a", "b"], "x") == ["a", "b"]
+    end
   end
 
   describe "options/3" do

@@ -140,6 +140,19 @@ defmodule OrbitWeb.Components.TagPicker do
   def drop_last(tags), do: Enum.drop(tags, -1)
 
   @doc """
+  Chips after a Backspace, decided on the query as it was BEFORE the keystroke.
+
+  phx-keyup reports the value the field has once the key has done its work, so
+  deleting the last character of typed text and pressing Backspace in an
+  already-empty field both arrive as `value: ""`. Reading only that, clearing
+  a half-typed tag would eat the chip in front of it — the previous query is
+  what tells the two apart.
+  """
+  @spec backspace([String.t()], String.t()) :: [String.t()]
+  def backspace(tags, ""), do: drop_last(tags)
+  def backspace(tags, _previous_query), do: tags
+
+  @doc """
   Dropdown entries for the typed text: known tags not already picked, filtered
   by substring, plus a `:create` entry when the text matches no known tag.
   """
