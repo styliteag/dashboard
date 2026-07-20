@@ -58,6 +58,10 @@ defmodule OrbitWeb.VpnLive do
        ping_test: nil,
        ping_test_busy: false,
        history: nil,
+       fleet_graph: false,
+       fleet_window: "7d",
+       fleet_events: %{},
+       fleet_cap: 40,
        writable: socket.assigns.current_user.role in @write_roles
      )
      |> load()}
@@ -146,23 +150,25 @@ defmodule OrbitWeb.VpnLive do
   def handle_event("history_open", %{"iid" => iid, "tunnel" => tunnel_id} = params, socket) do
     with {nid, ""} <- Integer.parse(iid),
          inst when not is_nil(inst) <- Scope.get_instance(nid, socket.assigns.current_user) do
-      events = Orbit.Ipsec.History.read(inst.id, tunnel_id, 100)
-
       live =
         Enum.find(socket.assigns.tunnels, &(&1.instance_id == inst.id and &1.id == tunnel_id))
 
       {:noreply,
        assign(socket,
-         history: %{
-           mode: if(params["mode"] == "graph", do: :graph, else: :history),
-           instance_name: inst.name,
-           tunnel_id: tunnel_id,
-           label: params["label"] || tunnel_id,
-           up: params["up"] == "true",
-           phase2_up: (live && live.phase2_up) || 0,
-           phase2_total: (live && live.phase2_total) || 0,
-           events: events
-         }
+         history:
+           history_assign(
+             %{
+               mode: if(params["mode"] == "graph", do: :graph, else: :history),
+               instance_id: inst.id,
+               instance_name: inst.name,
+               tunnel_id: tunnel_id,
+               label: params["label"] || tunnel_id,
+               up: params["up"] == "true",
+               phase2_up: (live && live.phase2_up) || 0,
+               phase2_total: (live && live.phase2_total) || 0
+             },
+             "7d"
+           )
        )}
     else
       _ -> {:noreply, socket}
@@ -171,6 +177,29 @@ defmodule OrbitWeb.VpnLive do
 
   def handle_event("history_close", _params, socket) do
     {:noreply, assign(socket, history: nil)}
+  end
+
+  # Re-reads rather than filtering what is loaded: a wider window needs rows
+  # the first query never fetched.
+  def handle_event("history_window", %{"window" => window}, socket) do
+    case socket.assigns.history do
+      nil -> {:noreply, socket}
+      h -> {:noreply, assign(socket, history: history_assign(h, window))}
+    end
+  end
+
+  # Loaded on demand, not on mount: it is one query over every visible box and
+  # most visits to this page never open the graph.
+  def handle_event("fleet_graph", _params, socket) do
+    if socket.assigns.fleet_graph do
+      {:noreply, assign(socket, fleet_graph: false, fleet_events: %{})}
+    else
+      {:noreply, socket |> assign(fleet_graph: true) |> load_fleet_events()}
+    end
+  end
+
+  def handle_event("fleet_window", %{"window" => window}, socket) when window in ~w(24h 7d 30d) do
+    {:noreply, socket |> assign(fleet_window: window) |> load_fleet_events()}
   end
 
   def handle_event("p2mon_cancel", _params, socket) do
@@ -333,7 +362,38 @@ defmodule OrbitWeb.VpnLive do
     end
   end
 
+  # Ask the box for fresh tunnel status instead of waiting for the next push.
+  # The instance page has had this since the section was written; from the
+  # fleet page — where an operator watches a tunnel they just reconnected —
+  # the only option was to sit through the refresh interval.
+  def handle_event("recheck", %{"iid" => iid}, socket) do
+    key = "recheck:#{iid}"
+
+    with true <- not MapSet.member?(socket.assigns.busy, key),
+         {nid, ""} <- Integer.parse(iid),
+         inst when not is_nil(inst) <- Scope.get_instance(nid, socket.assigns.current_user) do
+      {:noreply,
+       socket
+       |> assign(busy: MapSet.put(socket.assigns.busy, key))
+       |> start_async({:recheck, key}, fn ->
+         Hub.send_command(inst.id, "status.refresh", %{}, 20_000)
+         :ok
+       end)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   @impl true
+  def handle_async({:recheck, key}, _result, socket) do
+    # Whatever the box answered, re-read the cache: a refresh that timed out
+    # may still have landed, and a stale table is the thing being fixed.
+    {:noreply,
+     socket
+     |> assign(busy: MapSet.delete(socket.assigns.busy, key))
+     |> load()}
+  end
+
   def handle_async(:ping_test, {:ok, result}, socket) do
     outcome =
       if result["success"] do
@@ -368,6 +428,57 @@ defmodule OrbitWeb.VpnLive do
        busy: MapSet.delete(socket.assigns.busy, key),
        msg: {:error, "action crashed"}
      )}
+  end
+
+  # Default 7d rather than everything: the fleet has tunnels with a year of
+  # transitions, and "all" squeezes last night's outage into one pixel.
+  # Cap the drawn rows, and say so in the UI when it bites.
+  @fleet_cap 40
+
+  defp load_fleet_events(socket) do
+    # `rows` is derived in render/1, not an assign — read the source list, and
+    # fetch for every visible instance so changing the filter needs no reload.
+    ids = socket.assigns.tunnels |> Enum.map(& &1.instance_id) |> Enum.uniq()
+    since = Orbit.Ipsec.History.window_start(socket.assigns.fleet_window, DateTime.utc_now())
+
+    assign(socket,
+      fleet_events: Orbit.Ipsec.History.read_many(ids, since),
+      fleet_cap: @fleet_cap
+    )
+  end
+
+  # One phase-1 lane per row over the shared window, so the lanes line up
+  # vertically and a fleet-wide event reads as a vertical stripe.
+  defp fleet_lanes(rows, events, window) do
+    now = DateTime.utc_now()
+    start = Orbit.Ipsec.History.window_start(window, now)
+
+    rows
+    |> Enum.take(@fleet_cap)
+    |> Enum.map(fn row ->
+      lanes =
+        Orbit.Ipsec.History.lanes(
+          Map.get(events, {row.instance_id, row.id}, []),
+          %{up: row.up, phase2_up: row.phase2_up, phase2_total: row.phase2_total},
+          now,
+          start
+        )
+
+      %{label: "#{row.instance_name} · #{row.label}", segments: lanes.phase1}
+    end)
+  end
+
+  defp history_assign(history, window) do
+    now = DateTime.utc_now()
+    start = Orbit.Ipsec.History.window_start(window, now)
+
+    history
+    |> Map.put(:window, window)
+    |> Map.put(:window_start, start)
+    |> Map.put(
+      :events,
+      Orbit.Ipsec.History.read(history.instance_id, history.tunnel_id, 200, start)
+    )
   end
 
   defp load(socket) do
@@ -551,6 +662,75 @@ defmodule OrbitWeb.VpnLive do
           No matches.
         </div>
 
+        <%!-- Fleet graph: one lane per tunnel over a shared window. The
+             per-tunnel dialog answers "what did THIS tunnel do"; the question
+             this answers is "did they all drop at 03:12, or is it just the
+             one?" — which no single-tunnel view can. --%>
+        <div :if={@rows != []} class="mb-3 flex items-center gap-2">
+          <button
+            phx-click="fleet_graph"
+            class={[
+              "rounded border border-base-content/20 px-2 py-0.5 text-xs",
+              if(@fleet_graph,
+                do: "bg-base-300 text-base-content",
+                else: "text-base-content/70 hover:bg-base-300"
+              )
+            ]}
+          >
+            Fleet graph
+          </button>
+          <div :if={@fleet_graph} class="flex items-center gap-1">
+            <button
+              :for={key <- ~w(24h 7d 30d)}
+              phx-click="fleet_window"
+              phx-value-window={key}
+              class={[
+                "rounded px-2 py-0.5 text-[10px]",
+                if(@fleet_window == key,
+                  do: "bg-base-300 text-base-content",
+                  else: "text-base-content/60 hover:bg-base-300/60"
+                )
+              ]}
+            >
+              {key}
+            </button>
+          </div>
+        </div>
+
+        <div
+          :if={@fleet_graph and @rows != []}
+          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4"
+        >
+          <div :for={row <- fleet_lanes(@rows, @fleet_events, @fleet_window)} class="mb-1.5">
+            <div class="flex items-center gap-2">
+              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/60">
+                {row.label}
+              </span>
+              <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
+                <div
+                  :for={seg <- row.segments}
+                  class={[
+                    "absolute h-full",
+                    OrbitWeb.Components.TunnelHistoryDialog.lane_color(seg.state)
+                  ]}
+                  style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
+                >
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/40">
+            <span>{@fleet_window} ago</span>
+            <span>now</span>
+          </div>
+          <%!-- Never silently truncate: an operator reading "all quiet" off a
+               graph that dropped rows would be reading a lie. --%>
+          <p :if={length(@rows) > @fleet_cap} class="mt-2 text-[10px] text-warning">
+            Showing the first {@fleet_cap} of {length(@rows)} tunnels — narrow the filter
+            to see the rest.
+          </p>
+        </div>
+
         <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-base-300">
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
@@ -562,7 +742,7 @@ defmodule OrbitWeb.VpnLive do
                 <th class="px-3 py-2 font-medium">Phase 2</th>
                 <.sort_th col="uptime" label="Uptime" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <th class="px-3 py-2 font-medium">In / Out</th>
-                <th :if={@writable} class="px-3 py-2 font-medium"></th>
+                <th class="px-3 py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -635,7 +815,19 @@ defmodule OrbitWeb.VpnLive do
                   <td class="px-3 py-2 text-base-content/70">
                     {bytes(t.bytes_in)} / {bytes(t.bytes_out)}
                   </td>
-                  <td :if={@writable} class="px-3 py-2 text-right text-xs">
+                  <td class="px-3 py-2 text-right text-xs whitespace-nowrap">
+                    <%!-- Reads, so no write role required — unlike the
+                         reconnect beside them. --%>
+                    <button
+                      phx-click="recheck"
+                      phx-value-iid={t.instance_id}
+                      disabled={MapSet.member?(@busy, "recheck:#{t.instance_id}")}
+                      title="Ask the box for fresh tunnel status now"
+                      aria-label="Recheck tunnel status"
+                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300 disabled:opacity-40"
+                    >
+                      <Icons.icon name={:refresh} class="h-3.5 w-3.5" />
+                    </button>
                     <button
                       phx-click="history_open"
                       phx-value-iid={t.instance_id}
@@ -663,6 +855,7 @@ defmodule OrbitWeb.VpnLive do
                       <Icons.icon name={:audit} class="h-3.5 w-3.5" />
                     </button>
                     <button
+                      :if={@writable}
                       phx-click="reconnect"
                       phx-value-iid={t.instance_id}
                       phx-value-id={t.id}

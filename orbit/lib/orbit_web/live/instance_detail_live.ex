@@ -257,7 +257,6 @@ defmodule OrbitWeb.InstanceDetailLive do
   # into the transition timeline at all.
   def handle_event("history_open", %{"tunnel" => tunnel_id} = params, socket) do
     inst = socket.assigns.instance
-    events = Orbit.Ipsec.History.read(inst.id, tunnel_id, 100)
 
     # @ipsec is the tunnel LIST here (the fleet page keeps a struct list) —
     # reading it as a map crashed the LiveView on the first click.
@@ -270,17 +269,30 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     {:noreply,
      assign(socket,
-       history: %{
-         mode: if(params["mode"] == "graph", do: :graph, else: :history),
-         instance_name: inst.name,
-         tunnel_id: tunnel_id,
-         label: params["label"] || tunnel_id,
-         up: params["up"] == "true",
-         phase2_up: (live && live["phase2_up"]) || 0,
-         phase2_total: (live && live["phase2_total"]) || 0,
-         events: events
-       }
+       history:
+         history_assign(
+           %{
+             mode: if(params["mode"] == "graph", do: :graph, else: :history),
+             instance_id: inst.id,
+             instance_name: inst.name,
+             tunnel_id: tunnel_id,
+             label: params["label"] || tunnel_id,
+             up: params["up"] == "true",
+             phase2_up: (live && live["phase2_up"]) || 0,
+             phase2_total: (live && live["phase2_total"]) || 0
+           },
+           "7d"
+         )
      )}
+  end
+
+  # Same window semantics as the fleet page (Ipsec.History.window_start/2), so
+  # "7d" cannot come to mean two different things on two pages.
+  def handle_event("history_window", %{"window" => window}, socket) do
+    case socket.assigns.history do
+      nil -> {:noreply, socket}
+      h -> {:noreply, assign(socket, history: history_assign(h, window))}
+    end
   end
 
   def handle_event("history_close", _params, socket) do
@@ -410,9 +422,15 @@ defmodule OrbitWeb.InstanceDetailLive do
   # reflexive Enter away, and it looked identical to the ordinary update's
   # confirm right beside it. Typing the box's name makes the operator read
   # WHICH box they are about to jump.
-  def handle_event("fw_upgrade", _params, socket) do
+  # Gated so the dialog does not lie to a read-only operator: fw_start/2 would
+  # refuse them anyway (the role gate is the real one, and the typed name is
+  # friction on top of it), but offering the prompt and then doing nothing is
+  # worse than not offering it.
+  def handle_event("fw_upgrade", _params, %{assigns: %{writable: true}} = socket) do
     {:noreply, assign(socket, upgrade_confirm: "", upgrade_confirm_open: true)}
   end
+
+  def handle_event("fw_upgrade", _params, socket), do: {:noreply, socket}
 
   def handle_event("fw_upgrade_typing", %{"name" => typed}, socket) do
     {:noreply, assign(socket, upgrade_confirm: typed)}
@@ -3408,6 +3426,19 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp p2_monitor(monitors, child_name) do
     Enum.find(monitors, &(&1.child_name == to_string(child_name || "")))
+  end
+
+  defp history_assign(history, window) do
+    now = DateTime.utc_now()
+    start = Orbit.Ipsec.History.window_start(window, now)
+
+    history
+    |> Map.put(:window, window)
+    |> Map.put(:window_start, start)
+    |> Map.put(
+      :events,
+      Orbit.Ipsec.History.read(history.instance_id, history.tunnel_id, 200, start)
+    )
   end
 
   # The history lane's right edge: the monitor's CURRENT state, taken from the

@@ -45,6 +45,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard host. 8 MB per session, after which the file closes with a note
   and the session continues unrecorded; a failing or full disk never touches
   the session. Works for agent and Securepoint SSH terminals alike.
+- **The VPN page can graph the whole fleet at once**, over a 24h/7d/30d
+  window. The per-tunnel graph answers "what did this tunnel do"; the question
+  it could never answer is "did they all drop at 03:12, or is it just this
+  one?" — one lane per tunnel over a shared window makes a fleet-wide event
+  read as a vertical stripe. Loaded only when opened, and it says so when it
+  shows only the first 40 rows rather than quietly truncating.
+- **Tunnel graphs gained a window selector and a Phase-2 count track.** The
+  graph used to span "oldest recorded event → now", so two tunnels drew the
+  same picture at wildly different scales and neither said over what period.
+  Short outages are also no longer rounded away to an invisible sliver — a
+  two-minute drop in a 30-day view was 0.005 % wide. The new numeric track
+  shows how many child SAs of how many were up: the colour lane says
+  "partial" whether one of two dropped or one of eight.
+- **Tunnels can be re-checked from the fleet VPN page.** Asking the box for
+  fresh status without waiting for the next push existed only on the instance
+  page — the fleet page, where you watch a tunnel you just reconnected, made
+  you sit through the refresh interval.
 - **A series upgrade asks you to type the instance name.** It was confirmed by
   a browser dialog identical to the ordinary firmware update's, one reflexive
   Enter away — for a major version jump that reboots a customer's firewall and

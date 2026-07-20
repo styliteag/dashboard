@@ -197,4 +197,88 @@ defmodule Orbit.Ipsec.HistoryTest do
       assert [%{state: :unknown}] = ping
     end
   end
+
+  describe "lanes/4 with a fixed window (the 24h/7d/30d selector)" do
+    @now ~U[2026-07-18 12:00:00Z]
+
+    defp evt(kind, hours_ago, new_value \\ "") do
+      %{
+        ts: DateTime.add(@now, -hours_ago * 3600),
+        event_type: kind,
+        old_value: "",
+        new_value: new_value,
+        child_name: ""
+      }
+    end
+
+    test "the state before the window is carried in, not thrown away" do
+      # A tunnel that went up a week ago and has not changed since must show a
+      # 24h view that is green end to end. Filtering the older event away
+      # would open every window with a grey "no data" stretch.
+      events = [evt("phase1_up", 168)]
+      window = DateTime.add(@now, -24 * 3600)
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 1}, @now, window)
+
+      assert [%{left: +0.0, width: 100.0, state: :up}] = lane
+    end
+
+    test "the window fixes the left edge regardless of the oldest event" do
+      events = [evt("phase1_down", 12)]
+      window = DateTime.add(@now, -24 * 3600)
+
+      %{window_start: start, phase1: lane} =
+        History.lanes(events, %{up: false, phase2_up: 0, phase2_total: 1}, @now, window)
+
+      assert start == window
+      # Half the window before the drop, half after.
+      assert [%{width: w1}, %{width: w2}] = lane
+      assert_in_delta w1, 50.0, 0.1
+      assert_in_delta w2, 50.0, 0.1
+    end
+
+    test "a two-minute drop inside a 30d window stays visible" do
+      # 2 minutes of 43200 is 0.005 % — a 0 %-wide div. The fleet graph exists
+      # to show exactly this, so it must not round the outage away.
+      events = [evt("phase1_down", 240), evt("phase1_up", 239)]
+      window = DateTime.add(@now, -30 * 24 * 3600)
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 1}, @now, window)
+
+      down = Enum.find(lane, &(&1.state == :down))
+      assert down.width >= 0.6
+      # …and painted after the up stretches, so the sliver is on top.
+      assert List.last(lane).state == :down
+    end
+
+    test "window_start/2 is shared so both pages mean the same by \"7d\"" do
+      assert History.window_start("24h", @now) == DateTime.add(@now, -86_400)
+      assert History.window_start("7d", @now) == DateTime.add(@now, -604_800)
+      assert History.window_start("30d", @now) == DateTime.add(@now, -2_592_000)
+      assert History.window_start("all", @now) == nil
+    end
+  end
+
+  describe "phase2_numeric/4" do
+    test "carries the actual counts, ending on the live one" do
+      # The colour lane says "partial" whether one of two child SAs dropped or
+      # one of eight; the operator's next question is how many of how many.
+      events = [
+        evt("phase2_changed", 12, "8/8"),
+        evt("phase2_changed", 6, "7/8")
+      ]
+
+      segs = History.phase2_numeric(events, %{phase2_up: 7, phase2_total: 8}, @now)
+
+      assert Enum.map(segs, & &1.label) == ["8/8", "7/8"]
+      assert Enum.all?(segs, &(&1.width > 0))
+    end
+
+    test "a stretch with no known count is left out rather than labelled zero" do
+      segs = History.phase2_numeric([], %{phase2_up: 2, phase2_total: 2}, @now)
+      assert [%{label: "2/2", left: +0.0, width: 100.0}] = segs
+    end
+  end
 end

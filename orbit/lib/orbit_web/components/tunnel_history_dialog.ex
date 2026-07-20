@@ -38,6 +38,27 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
           </button>
         </div>
 
+        <%!-- Window selector. Without it the graph spanned "oldest recorded
+             event → now", so two tunnels drew the same picture at wildly
+             different scales and neither said over what period. --%>
+        <div class="mt-3 flex items-center gap-1">
+          <span class="mr-1 text-[10px] text-base-content/50">Window</span>
+          <button
+            :for={{key, label} <- [{"24h", "24h"}, {"7d", "7d"}, {"30d", "30d"}, {"all", "all"}]}
+            phx-click="history_window"
+            phx-value-window={key}
+            class={[
+              "rounded px-2 py-0.5 text-[10px]",
+              if(@history.window == key,
+                do: "bg-base-300 text-base-content",
+                else: "text-base-content/60 hover:bg-base-300/60"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+
         <%!-- Three state lanes from the transition log (TunnelGraphDialog
              parity): green up, red down, amber partial, grey no data. --%>
         <% lanes =
@@ -48,7 +69,8 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
               phase2_up: @history.phase2_up,
               phase2_total: @history.phase2_total
             },
-            DateTime.utc_now()
+            DateTime.utc_now(),
+            @history.window_start
           ) %>
         <div class="mt-4 space-y-2">
           <div
@@ -71,6 +93,30 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
                 class={["absolute h-full", lane_color(seg.state)]}
                 style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
               >
+              </div>
+            </div>
+          </div>
+          <%!-- Phase 2 in numbers. "partial" on the colour lane looks the
+               same whether one of two child SAs dropped or one of eight, and
+               that is always the next question. --%>
+          <div class="flex items-center gap-2">
+            <span class="w-16 text-right text-[10px] text-base-content/60">P2 count</span>
+            <div class="relative h-4 flex-1 overflow-hidden rounded bg-base-300/50">
+              <div
+                :for={
+                  seg <-
+                    Orbit.Ipsec.History.phase2_numeric(
+                      @history.events,
+                      %{phase2_up: @history.phase2_up, phase2_total: @history.phase2_total},
+                      DateTime.utc_now(),
+                      @history.window_start
+                    )
+                }
+                title={seg.label}
+                class="absolute flex h-full items-center justify-center overflow-hidden border-r border-base-100/40 text-[9px] text-base-content/70"
+                style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
+              >
+                {seg.label}
               </div>
             </div>
           </div>

@@ -206,17 +206,37 @@ defmodule Orbit.Ipsec.History do
   @doc """
   Three state lanes (phase1 / phase2 / ping) for the graph: each lane is a
   list of `%{left, width, state}` segments (percent of the window, state in
-  :up | :down | :partial | :unknown). Window = oldest event → now; the
-  newest segment takes the tunnel's LIVE state so the right edge is always
-  current. Answers only "was it up?" — dup notes are deliberately not a lane.
+  :up | :down | :partial | :unknown). The newest segment takes the tunnel's
+  LIVE state so the right edge is always current. Answers only "was it up?" —
+  dup notes are deliberately not a lane.
+
+  `window_start` fixes the left edge. Passing it is what makes a 24h/7d/30d
+  selector possible: without it the window is "oldest event → now", so a
+  tunnel that flapped once last month and a tunnel that flapped twice this
+  morning drew the same picture at different scales, and neither said over
+  what period. Omitted (nil) keeps the old derive-from-the-data behaviour.
   """
-  def lanes(events, live, %DateTime{} = now) do
-    sorted = Enum.sort_by(events, & &1.ts, DateTime)
+  def lanes(events, live, now, window_start \\ nil)
+
+  def lanes(events, live, %DateTime{} = now, window_start) do
+    all = Enum.sort_by(events, & &1.ts, DateTime)
+
+    # Events older than the window would place cuts at a negative offset,
+    # which clamp to 0 and stack invisibly on the left edge. They are not
+    # discarded though: the LAST one before the window is what the tunnel was
+    # doing when the window opened. Dropping it would paint the first stretch
+    # of every 7d view as "no data" for a tunnel that was simply up all along.
+    {before, sorted} =
+      case window_start do
+        nil -> {[], all}
+        ws -> Enum.split_with(all, &(DateTime.compare(&1.ts, ws) == :lt))
+      end
 
     window_start =
-      case sorted do
-        [first | _] -> first.ts
-        [] -> DateTime.add(now, -3600)
+      cond do
+        window_start -> window_start
+        sorted != [] -> hd(sorted).ts
+        true -> DateTime.add(now, -3600)
       end
 
     span = max(DateTime.diff(now, window_start), 1)
@@ -224,10 +244,95 @@ defmodule Orbit.Ipsec.History do
 
     %{
       window_start: window_start,
-      phase1: build_lane(sorted, &phase1_state/1, live_up_state(live.up), x),
-      phase2: build_lane(sorted, &phase2_state/1, p2_state(live.phase2_up, live.phase2_total), x),
-      ping: build_lane(sorted, &ping_state/1, nil, x)
+      phase1:
+        build_lane(
+          sorted,
+          &phase1_state/1,
+          live_up_state(live.up),
+          x,
+          carried(before, &phase1_state/1)
+        ),
+      phase2:
+        build_lane(
+          sorted,
+          &phase2_state/1,
+          p2_state(live.phase2_up, live.phase2_total),
+          x,
+          carried(before, &phase2_state/1)
+        ),
+      ping: build_lane(sorted, &ping_state/1, nil, x, carried(before, &ping_state/1))
     }
+  end
+
+  @doc """
+  Left edge for a named window, or nil for "all" (derive it from the data).
+
+  Shared by both callers of the dialog so the fleet page and the instance page
+  cannot end up meaning different things by "7d".
+  """
+  @spec window_start(String.t(), DateTime.t()) :: DateTime.t() | nil
+  def window_start("24h", now), do: DateTime.add(now, -24 * 3600)
+  def window_start("7d", now), do: DateTime.add(now, -7 * 24 * 3600)
+  def window_start("30d", now), do: DateTime.add(now, -30 * 24 * 3600)
+  def window_start(_all, _now), do: nil
+
+  @doc """
+  The phase-2 lane as NUMBERS: `%{left, width, label}` segments carrying the
+  actual "up/total" the tunnel reported over that stretch.
+
+  The colour lane answers "was it whole?" — amber for partial. But a tunnel
+  with eight child SAs where one drops looks exactly like one with two where
+  one drops, and the operator's next question is always "how many of how
+  many?". Same geometry as `lanes/4` so the two read as one picture.
+  """
+  def phase2_numeric(events, live, %DateTime{} = now, window_start \\ nil) do
+    all = Enum.sort_by(events, & &1.ts, DateTime)
+
+    {before, within} =
+      case window_start do
+        nil -> {[], all}
+        ws -> Enum.split_with(all, &(DateTime.compare(&1.ts, ws) == :lt))
+      end
+
+    window_start =
+      cond do
+        window_start -> window_start
+        within != [] -> hd(within).ts
+        true -> DateTime.add(now, -3600)
+      end
+
+    span = max(DateTime.diff(now, window_start), 1)
+    x = fn ts -> min(max(DateTime.diff(ts, window_start) / span * 100, 0.0), 100.0) end
+
+    initial =
+      before
+      |> Enum.reverse()
+      |> Enum.find_value(nil, fn e ->
+        if e.event_type == "phase2_changed", do: to_string(e.new_value)
+      end)
+
+    cuts =
+      for e <- within, e.event_type == "phase2_changed", do: {x.(e.ts), to_string(e.new_value)}
+
+    {segments, last_left, _last_label} =
+      Enum.reduce(cuts, {[], 0.0, initial}, fn {cut, label}, {acc, left, cur} ->
+        {[%{left: left, width: cut - left, label: cur} | acc], cut, label}
+      end)
+
+    # The tail is the LIVE count, like every other lane's right edge.
+    live_label = "#{live.phase2_up}/#{live.phase2_total}"
+
+    [%{left: last_left, width: 100.0 - last_left, label: live_label} | segments]
+    |> Enum.reverse()
+    |> Enum.reject(&(&1.width <= 0.0 or is_nil(&1.label)))
+  end
+
+  # The state this lane was in when the window opened: the newest event before
+  # it that says anything about this lane.
+  defp carried(before, state_fn) do
+    before
+    |> Enum.reverse()
+    |> Enum.find_value(:unknown, fn e -> state_fn.(e) end)
   end
 
   defp live_up_state(true), do: :up
@@ -269,12 +374,12 @@ defmodule Orbit.Ipsec.History do
 
   # One lane: fold the mapped events into state cuts; unknown before the
   # first relevant event; live_state (when given) overrides the tail.
-  defp build_lane(sorted_events, state_fn, live_state, x) do
+  defp build_lane(sorted_events, state_fn, live_state, x, initial) do
     cuts =
       for e <- sorted_events, state = state_fn.(e), state != nil, do: {x.(e.ts), state}
 
     {segments, last_left, last_state} =
-      Enum.reduce(cuts, {[], 0.0, :unknown}, fn {cut, state}, {acc, left, cur} ->
+      Enum.reduce(cuts, {[], 0.0, initial}, fn {cut, state}, {acc, left, cur} ->
         {[%{left: left, width: cut - left, state: cur} | acc], cut, state}
       end)
 
@@ -283,16 +388,49 @@ defmodule Orbit.Ipsec.History do
     all =
       Enum.reverse([%{left: last_left, width: 100.0 - last_left, state: tail_state} | segments])
 
-    Enum.reject(all, &(&1.width <= 0.0))
+    all
+    |> Enum.reject(&(&1.width <= 0.0))
+    |> Enum.map(&widen/1)
+    |> Enum.sort_by(&paint_rank/1)
   end
 
-  @doc "Most-recent-first history for one tunnel (capped; ix_ipsec_event_lookup)."
-  def read(instance_id, tunnel_id, limit \\ 100) do
-    Orbit.Repo.query!(
-      "SELECT ts, child_name, event_type, old_value, new_value FROM ipsec_tunnel_events " <>
-        "WHERE instance_id = ? AND tunnel_id = ? ORDER BY ts DESC, id DESC LIMIT #{limit}",
-      [instance_id, tunnel_id]
-    ).rows
+  # A two-minute drop inside a 30d window is 0.005 % wide and rounds away to
+  # nothing — and a fleet graph exists precisely to show that drop. Give every
+  # segment a floor, and paint the non-up ones last so a widened sliver is not
+  # covered by the up stretch it now overlaps.
+  @min_width 0.6
+
+  defp widen(%{width: w} = seg) when w < @min_width, do: %{seg | width: @min_width}
+  defp widen(seg), do: seg
+
+  defp paint_rank(%{state: :up}), do: 0
+  defp paint_rank(%{state: :unknown}), do: 1
+  defp paint_rank(_), do: 2
+
+  @doc """
+  Most-recent-first history for one tunnel (capped; ix_ipsec_event_lookup).
+
+  `since` is fetched one event WIDER than asked for: the newest event before
+  the window is what tells `lanes/4` what the tunnel was doing when the window
+  opened. Without it a 7d view of a tunnel that has been up for a month opens
+  with a grey "no data" stretch.
+  """
+  def read(instance_id, tunnel_id, limit \\ 100, since \\ nil) do
+    {clause, params} =
+      case since do
+        %DateTime{} = ts -> {" AND ts >= ?", [instance_id, tunnel_id, ts]}
+        _ -> {"", [instance_id, tunnel_id]}
+      end
+
+    rows =
+      Orbit.Repo.query!(
+        "SELECT ts, child_name, event_type, old_value, new_value FROM ipsec_tunnel_events " <>
+          "WHERE instance_id = ? AND tunnel_id = ?#{clause} ORDER BY ts DESC, id DESC " <>
+          "LIMIT #{limit}",
+        params
+      ).rows
+
+    (rows ++ preceding(instance_id, tunnel_id, since))
     |> Enum.map(fn [ts, child, kind, old, new] ->
       %{
         ts: DateTime.from_naive!(ts, "Etc/UTC"),
@@ -307,6 +445,92 @@ defmodule Orbit.Ipsec.History do
   catch
     # A pool checkout exits rather than raising; without this an empty
     # timeline would take the whole page down with it.
+    _kind, _reason -> []
+  end
+
+  @doc """
+  Events for MANY tunnels at once, grouped by `{instance_id, tunnel_id}`.
+
+  The fleet graph draws one lane per tunnel, and doing that with the per-tunnel
+  reader would fire one query per row — seventy boxes' worth on one page load.
+  This is a single query over the instance ids, grouped in memory.
+
+  Deliberately window-only (no per-tunnel row cap): a cap here would silently
+  truncate the middle of somebody's timeline, and the window already bounds it.
+
+  The overall `limit` is a runaway guard, not a display choice. If a fleet ever
+  hits it the oldest events of some tunnels drop out and those lanes render as
+  grey "no data" — silent truncation of exactly the kind the drawn-row cap
+  warns about. It logs when that happens so the grey is explainable.
+  """
+  @spec read_many([integer()], DateTime.t() | nil, pos_integer()) :: %{
+          {integer(), String.t()} => [map()]
+        }
+  def read_many(instance_ids, since, limit \\ 5_000)
+
+  def read_many([], _since, _limit), do: %{}
+
+  def read_many(instance_ids, since, limit) do
+    placeholders = Enum.map_join(instance_ids, ", ", fn _ -> "?" end)
+
+    {clause, params} =
+      case since do
+        %DateTime{} = ts -> {" AND ts >= ?", instance_ids ++ [ts]}
+        _ -> {"", instance_ids}
+      end
+
+    Orbit.Repo.query!(
+      "SELECT instance_id, tunnel_id, ts, child_name, event_type, old_value, new_value " <>
+        "FROM ipsec_tunnel_events WHERE instance_id IN (#{placeholders})#{clause} " <>
+        "ORDER BY ts DESC, id DESC LIMIT #{limit}",
+      params
+    ).rows
+    |> tap(fn rows ->
+      if length(rows) >= limit do
+        require Logger
+
+        Logger.warning(
+          "ipsec.history_truncated rows=#{length(rows)} limit=#{limit} " <>
+            "instances=#{length(instance_ids)} — older events dropped, some lanes will read as no-data"
+        )
+      end
+    end)
+    |> Enum.group_by(fn [iid, tid | _] -> {iid, to_string(tid)} end, fn [
+                                                                          _iid,
+                                                                          _tid,
+                                                                          ts,
+                                                                          child,
+                                                                          kind,
+                                                                          old,
+                                                                          new
+                                                                        ] ->
+      %{
+        ts: DateTime.from_naive!(ts, "Etc/UTC"),
+        child_name: child,
+        event_type: kind,
+        old_value: old,
+        new_value: new
+      }
+    end)
+  rescue
+    _ -> %{}
+  catch
+    _kind, _reason -> %{}
+  end
+
+  # One event per lane kind from before the window, so lanes/4 knows the state
+  # the window opened in. Three rows at most, not the whole history.
+  defp preceding(_instance_id, _tunnel_id, nil), do: []
+
+  defp preceding(instance_id, tunnel_id, %DateTime{} = since) do
+    Orbit.Repo.query!(
+      "SELECT ts, child_name, event_type, old_value, new_value FROM ipsec_tunnel_events " <>
+        "WHERE instance_id = ? AND tunnel_id = ? AND ts < ? ORDER BY ts DESC, id DESC LIMIT 12",
+      [instance_id, tunnel_id, since]
+    ).rows
+  rescue
+    _ -> []
+  catch
     _kind, _reason -> []
   end
 end
