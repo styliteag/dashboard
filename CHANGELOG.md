@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.7] - 2026-07-20
+
 ### Security
 
 - **Opening a root terminal or a live packet capture is audited again.** Both
