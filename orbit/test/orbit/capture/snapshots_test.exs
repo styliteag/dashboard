@@ -60,4 +60,40 @@ defmodule Orbit.Capture.SnapshotsTest do
     frames = List.duplicate(eth(ipv4(1, <<8, 0, 0::16>>), 0x0800), 5)
     assert length(Snapshots.parse(pcap(frames), 3)) == 3
   end
+
+  describe "hex dump + flag readings (viewer parity)" do
+    test "the dump is offset / hex / ASCII, not one flat hex string" do
+      # An operator opens a packet to spot a hostname or an HTTP verb; a flat
+      # hex blob makes that impossible.
+      frame = "GET /health HTTP/1.1\r\nHost: fw.example\r\n\r\n"
+      dump = Snapshots.hex_dump(frame)
+      [first | _] = String.split(dump, "\n")
+
+      assert first =~ ~r/^00000000  /
+      # 16 bytes on the first line, split 8+8.
+      assert first =~ "47 45 54 20 2f 68 65 61"
+      # ASCII gutter shows the readable payload.
+      assert first =~ "|GET /health HTTP"
+    end
+
+    test "non-printable bytes become dots, and a short line still aligns" do
+      dump = Snapshots.hex_dump(<<0, 1, 2, 255, ?A>>)
+      assert dump =~ "|....A|"
+      assert dump =~ ~r/^00000000  00 01 02 ff 41/
+    end
+
+    test "flag combinations read in plain language" do
+      assert Snapshots.flag_reading("SYN") == "connection attempt"
+      assert Snapshots.flag_reading("SYN,ACK") == "connection accepted"
+      assert Snapshots.flag_reading("RST") == "connection refused / reset"
+      assert Snapshots.flag_reading("FIN,ACK") == "connection closing"
+      assert Snapshots.flag_reading("PSH,ACK") == "data delivered"
+    end
+
+    test "an unusual combination gets no reading rather than a guess" do
+      assert Snapshots.flag_reading("SYN,FIN,URG") == nil
+      assert Snapshots.flag_reading("") == nil
+      assert Snapshots.flag_reading(nil) == nil
+    end
+  end
 end

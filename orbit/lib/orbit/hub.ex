@@ -236,7 +236,9 @@ defmodule Orbit.Hub do
     {:reply,
      %{
        counters: Map.get(state, :counters, %{}),
-       started_at: Map.get(state, :started_at) || DateTime.utc_now()
+       started_at: Map.get(state, :started_at) || DateTime.utc_now(),
+       push_p95_ms: percentile(Map.get(state, :push_times, []), 0.95),
+       push_samples: length(Map.get(state, :push_times, []))
      }, state}
   end
 
@@ -392,6 +394,7 @@ defmodule Orbit.Hub do
   end
 
   def handle_cast({:ingest_metrics, instance_id, data}, state) do
+    started = System.monotonic_time(:microsecond)
     now = DateTime.utc_now()
     # Duplicate-SA streak (hub.py _annotate_dup_persistence): annotate the
     # push BEFORE it hits the cache and the diff, so both see the debounced
@@ -418,7 +421,8 @@ defmodule Orbit.Hub do
     {:noreply,
      state
      |> Map.put(:cache, cache)
-     |> Map.put(:ipsec_dup, Map.put(dup_state, instance_id, dup_streaks))}
+     |> Map.put(:ipsec_dup, Map.put(dup_state, instance_id, dup_streaks))
+     |> record_push_duration(System.monotonic_time(:microsecond) - started)}
   end
 
   def handle_cast({:tunnel_op, stream, op, fields}, state) do
@@ -506,6 +510,29 @@ defmodule Orbit.Hub do
       nil -> state
       agent -> put_in(state.agents[instance_id], fun.(agent))
     end
+  end
+
+  # Rolling window of hub-side push processing times (µs). Bounded so the
+  # hub never grows memory on a busy fleet; @slow_push_us is what the
+  # "Slow pushes" counter counts, so a degrading hub shows up as a number
+  # rather than as "the dashboard feels laggy".
+  @push_window 500
+  @slow_push_us 250_000
+
+  defp record_push_duration(state, micros) do
+    window = [micros | Map.get(state, :push_times, [])] |> Enum.take(@push_window)
+    state = Map.put(state, :push_times, window)
+
+    if micros >= @slow_push_us, do: bump_counter(state, :slow_pushes), else: state
+  end
+
+  @doc false
+  def percentile([], _p), do: nil
+
+  def percentile(values, p) do
+    sorted = Enum.sort(values)
+    idx = min(round(p * length(sorted)) - 1, length(sorted) - 1) |> max(0)
+    Enum.at(sorted, idx) |> Kernel./(1000) |> Float.round(1)
   end
 
   # Hot-reload-safe: the running state map may predate the :counters key.

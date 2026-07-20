@@ -252,6 +252,16 @@ defmodule OrbitWeb.CaptureLive do
               class="w-full max-w-sm rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content"
             />
           </form>
+          <%!-- TCP flag legend: the packet list shows flag names, and the
+               names are only useful if you know what they mean. --%>
+          <div class="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-base-content/50">
+            <span><span class="font-mono text-base-content/70">SYN</span> connection attempt</span>
+            <span><span class="font-mono text-base-content/70">SYN,ACK</span> accepted</span>
+            <span><span class="font-mono text-base-content/70">RST</span> refused / reset</span>
+            <span><span class="font-mono text-base-content/70">FIN</span> closing</span>
+            <span><span class="font-mono text-base-content/70">PSH,ACK</span> data delivered</span>
+            <span>Click a row for the hex + ASCII dump.</span>
+          </div>
           <div class="max-h-96 overflow-y-auto">
             <div class="overflow-x-auto">
               <table class="w-full min-w-[46rem] text-left font-mono text-xs">
@@ -275,8 +285,18 @@ defmodule OrbitWeb.CaptureLive do
                       <td class="py-0.5 pr-3 text-base-content/60">{p.len}</td>
                       <td class="py-0.5 text-base-content/70">
                         <details :if={p.hex != ""}>
-                          <summary class="cursor-pointer">{p.info}</summary>
-                          <div class="mt-1 break-all text-[10px] text-base-content/40">{p.hex}</div>
+                          <summary class="cursor-pointer">
+                            {p.info}
+                            <%!-- What the flags MEAN, not just their names:
+                                 "SYN" alone is an attempt, "RST" a refusal. --%>
+                            <span
+                              :if={reading = Snapshots.flag_reading(p.info)}
+                              class="ml-1 text-[10px] text-base-content/40"
+                            >
+                              — {reading}
+                            </span>
+                          </summary>
+                          <pre class="mt-1 overflow-x-auto rounded bg-base-100 p-2 text-[10px] leading-relaxed text-base-content/50">{p.hex}</pre>
                         </details>
                         <span :if={p.hex == ""}>{p.info}</span>
                       </td>

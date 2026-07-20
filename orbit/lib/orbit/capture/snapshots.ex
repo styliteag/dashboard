@@ -190,11 +190,68 @@ defmodule Orbit.Capture.Snapshots do
 
   defp rounded(ts), do: Float.round(ts, 6)
 
+  # Classic `hexdump -C` layout: offset, 16 bytes of hex split into two
+  # groups of eight, then the printable-ASCII gutter. A flat hex string (what
+  # this produced before) is unreadable for the one thing an operator opens a
+  # packet for — spotting a hostname, a SNI, an HTTP verb in the payload.
+  @doc false
+  def hex_dump(bin), do: hex(bin)
+
   defp hex(bin) do
     bin
     |> binary_part(0, min(byte_size(bin), 128))
-    |> Base.encode16(case: :lower)
-    |> String.replace(~r/(..)/, "\\1 ")
-    |> String.trim()
+    |> chunk_every_16()
+    |> Enum.with_index()
+    |> Enum.map_join("\n", fn {chunk, i} ->
+      offset = i * 16
+
+      "#{offset |> Integer.to_string(16) |> String.pad_leading(8, "0")}  " <>
+        "#{hex_columns(chunk)}  |#{ascii_gutter(chunk)}|"
+    end)
   end
+
+  defp chunk_every_16(bin),
+    do: for(<<chunk::binary-size(1) <- bin>>, do: chunk) |> Enum.chunk_every(16)
+
+  # Two groups of eight, padded so the ASCII gutter always starts in the same
+  # column even on a short final line.
+  defp hex_columns(bytes) do
+    hex =
+      Enum.map(bytes, fn <<b::8>> -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
+
+    {left, right} = Enum.split(hex, 8)
+
+    left_str = left |> Enum.join(" ") |> String.pad_trailing(23)
+    right_str = right |> Enum.join(" ") |> String.pad_trailing(23)
+    String.downcase(left_str <> "  " <> right_str)
+  end
+
+  # Printable ASCII only; everything else is a dot, as in hexdump/tcpdump.
+  defp ascii_gutter(bytes) do
+    Enum.map_join(bytes, fn <<b::8>> -> if b >= 32 and b < 127, do: <<b>>, else: "." end)
+  end
+
+  @doc """
+  Plain-language reading of a TCP flag combination.
+
+  The flag NAMES survived the rewrite, their meaning did not — and the
+  meaning is the point: "SYN" alone is a connection attempt, "RST" is a
+  refusal, "SYN,ACK" is the box accepting. Returns nil when the combination
+  has no single obvious reading, rather than guessing.
+  """
+  def flag_reading(names) when is_binary(names) do
+    case names |> String.split(",") |> Enum.sort() do
+      ["SYN"] -> "connection attempt"
+      ["ACK", "SYN"] -> "connection accepted"
+      ["RST"] -> "connection refused / reset"
+      ["ACK", "RST"] -> "connection refused / reset"
+      ["FIN"] -> "connection closing"
+      ["ACK", "FIN"] -> "connection closing"
+      ["ACK"] -> "data acknowledged"
+      ["ACK", "PSH"] -> "data delivered"
+      _ -> nil
+    end
+  end
+
+  def flag_reading(_), do: nil
 end

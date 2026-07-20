@@ -35,7 +35,14 @@ defmodule OrbitWeb.ConfigBackupController do
          {id, ""} <- Integer.parse(raw_id),
          inst when not is_nil(inst) <- Scope.get_instance(id, user),
          {bid, ""} <- Integer.parse(raw_bid) do
-      diff_response(conn, Store.diff_against_previous(inst.id, bid))
+      # An explicit ?against=<id> diffs two arbitrary versions ("Tue vs
+      # Thu"); without it the comparison is against the immediately previous
+      # one, which is all the UI could ask for before. Store.diff_between/3
+      # existed and had no caller.
+      case Integer.parse(to_string(conn.params["against"] || "")) do
+        {other, ""} -> diff_response(conn, Store.diff_between(inst.id, other, bid))
+        _ -> diff_response(conn, Store.diff_against_previous(inst.id, bid))
+      end
     else
       false -> conn |> put_status(403) |> json(%{detail: "admin only"})
       _ -> conn |> put_status(404) |> json(%{detail: "not found"})

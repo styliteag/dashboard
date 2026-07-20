@@ -37,6 +37,8 @@ defmodule OrbitWeb.HubStatusLive do
       push_rate: Orbit.Metrics.push_rate("6h"),
       counters: stats.counters,
       started_at: stats.started_at,
+      push_p95_ms: Map.get(stats, :push_p95_ms),
+      push_samples: Map.get(stats, :push_samples, 0),
       crit_tabs: crit_tabs(socket.assigns.current_user)
     )
   end
@@ -221,6 +223,22 @@ defmodule OrbitWeb.HubStatusLive do
           </.stat_tile>
           <.stat_tile label="Served agent" value={@served_version || "—"}>
             <:hint>version this dashboard offers on update</:hint>
+          </.stat_tile>
+          <%!-- Hub-side processing time per push. The number an operator
+               needs when the dashboard starts feeling slow: it separates
+               "a box is slow" (agent collect) from "the hub is saturated". --%>
+          <.stat_tile
+            label="Push p95"
+            value={if @push_p95_ms, do: "#{@push_p95_ms} ms", else: "—"}
+            color={if (@push_p95_ms || 0) >= 250, do: "text-warning", else: "text-base-content"}
+          >
+            <:hint>
+              hub processing time, last {@push_samples} pushes{if Map.get(@counters, :slow_pushes, 0) >
+                                                                    0,
+                                                                  do:
+                                                                    " · #{Map.get(@counters, :slow_pushes)} over 250 ms",
+                                                                  else: ""}
+            </:hint>
           </.stat_tile>
         </div>
 

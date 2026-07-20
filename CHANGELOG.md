@@ -70,6 +70,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The capture viewer reads like `hexdump -C` again**: offset, sixteen bytes
+  of hex in two groups, and the printable-ASCII gutter — so a hostname, an
+  SNI or an HTTP verb in the payload is actually spottable. Packets also
+  carry a plain-language reading of their TCP flags ("SYN" = connection
+  attempt, "RST" = refused), with a legend above the list.
+- **A push-p95 tile on the Hub page**, plus a counter for pushes over 250 ms.
+  It separates "a box is slow to collect" from "the hub is saturated" — the
+  number you want when the dashboard starts feeling laggy.
+- **The config-backup diff endpoint compares arbitrary versions** via
+  `?against=<id>`; the UI could already pick two versions, the API could not.
+
 - **"Renewal overdue" is back on the Certificates page.** A Let's Encrypt (or
   ZeroSSL, Buypass, Google Trust) certificate that is still standing 21 days
   before expiry means the ACME automation has already missed its window —
