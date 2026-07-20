@@ -62,6 +62,7 @@ defmodule Orbit.Checks.Evaluate do
       firmware_check(status["firmware"] || sections["firmware"])
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
+    |> Enum.concat(iface_error_checks(status["interfaces"] || []))
     |> Enum.concat(gateway_checks(status["gateways"] || sections["gateways"] || []))
     |> Enum.concat(ipsec_checks(status["ipsec"] || sections["ipsec"]))
     |> Enum.concat(service_checks(status["services"] || sections["services"] || []))
@@ -205,6 +206,70 @@ defmodule Orbit.Checks.Evaluate do
   end
 
   def ntp_check(_), do: nil
+
+  @iface_err_warn 100
+  @iface_err_crit 1000
+
+  @doc """
+  Per-interface error counters.
+
+  The `iface_errors:*` family was registered everywhere — selection
+  categories, the export tree, the aggregate map, even the flap-debounce
+  prefix list — but nothing ever emitted a check for it, so the entry in the
+  selection tree could never match anything. The counters have always been
+  in the push and on the Network tab.
+
+  Counters are cumulative since boot, so this reports a level, not a rate: a
+  handful of errors on a long-lived link is normal, thousands are not. WARN
+  at #{@iface_err_warn}, CRIT at #{@iface_err_crit}. Interfaces that report
+  no counters at all (Securepoint, some poll paths) emit nothing rather than
+  a fake zero, and an interface that is down is skipped — its errors are a
+  symptom of the outage, not a second incident.
+  """
+  def iface_error_checks(interfaces) when is_list(interfaces) do
+    for iface <- interfaces,
+        is_map(iface),
+        name = presence(iface["name"]),
+        iface["status"] in [nil, "up", "up (not running)"],
+        errors = iface_errors(iface),
+        errors != nil do
+      {state, word} = level(errors * 1.0, @iface_err_warn * 1.0, @iface_err_crit * 1.0)
+
+      %ServiceCheck{
+        key: "iface_errors:#{name}",
+        state: state,
+        summary: "Interface #{name} #{errors} error(s) since boot (#{word})",
+        metrics: [
+          ServiceCheck.metric("iface_errors", errors * 1.0,
+            warn: @iface_err_warn * 1.0,
+            crit: @iface_err_crit * 1.0
+          )
+        ]
+      }
+    end
+  end
+
+  def iface_error_checks(_), do: []
+
+  # Absent counters ⇒ nil (no check). Present-but-zero is a real "no errors".
+  defp iface_errors(iface) do
+    case {iface["in_errors"], iface["out_errors"]} do
+      {nil, nil} -> nil
+      {in_e, out_e} -> num(in_e) + num(out_e)
+    end
+  end
+
+  defp num(v) when is_number(v), do: trunc(v)
+  defp num(_), do: 0
+
+  defp presence(name) when is_binary(name) do
+    case String.trim(name) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp presence(_), do: nil
 
   @collect_warn_ms 10_000
 

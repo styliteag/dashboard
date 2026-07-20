@@ -81,7 +81,8 @@ defmodule OrbitWeb.FirmwareLive do
     rows =
       socket.assigns.current_user
       |> Instances.list_visible()
-      |> Enum.filter(&Instances.Instance.agent_mode?/1)
+      # Firmware state is reported by polled boxes too (Securepoint sends a
+      # version); filtering to agent-mode hid them from the compliance view.
       |> Enum.map(fn inst ->
         fw = Hub.cache_entry(inst.id)["firmware"] || %{}
         check = fw != %{} && Evaluate.firmware_check(fw)

@@ -15,8 +15,10 @@ defmodule OrbitWeb.CertificatesLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
   alias Orbit.Checks.ServiceCheck
+  alias OrbitWeb.Components.CommentEditor
   alias Orbit.Hub
   alias Orbit.Instances
 
@@ -34,7 +36,13 @@ defmodule OrbitWeb.CertificatesLive do
 
     {:ok,
      socket
-     |> assign(search: "", state_filter: "all", sort_col: "state", sort_dir: :asc)
+     |> assign(
+       search: "",
+       state_filter: "all",
+       sort_col: "state",
+       sort_dir: :asc,
+       writable: socket.assigns.current_user.role in ~w(admin user)
+     )
      |> load()}
   end
 
@@ -71,7 +79,9 @@ defmodule OrbitWeb.CertificatesLive do
     rows =
       socket.assigns.current_user
       |> Instances.list_visible()
-      |> Enum.filter(&Instances.Instance.agent_mode?/1)
+      # No agent-mode filter: a polled box reports certificates too, and the
+      # per-instance tab has always shown them (same reasoning as the export
+      # fix — one fleet view, every transport).
       |> Enum.flat_map(fn inst ->
         certs = Hub.cache_entry(inst.id)["certificates"] || []
         gui_openable = Orbit.GUI.openable(inst) == :ok
@@ -83,6 +93,7 @@ defmodule OrbitWeb.CertificatesLive do
             shell_enabled: inst.shell_enabled,
             gui_openable: gui_openable,
             name: c["name"] || c["subject"] || "cert",
+            refid: to_string(c["refid"] || c["name"] || ""),
             issuer: c["issuer"] || "",
             not_after: c["not_after"] || "",
             days: trunc(c["days_remaining"]),
@@ -96,8 +107,17 @@ defmodule OrbitWeb.CertificatesLive do
       end)
       |> Enum.sort_by(fn r -> {-ServiceCheck.severity(r.state), r.instance_name, r.name} end)
 
-    assign(socket, rows: rows)
+    assign(socket,
+      rows: rows,
+      comments: CommentEditor.lookup(Instances.list_visible(socket.assigns.current_user))
+    )
   end
+
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
 
   defp days_state(days) when days < 7, do: 2
   defp days_state(days) when days < 30, do: 1
@@ -237,6 +257,13 @@ defmodule OrbitWeb.CertificatesLive do
                 </td>
                 <td class="px-3 py-2 text-base-content/80">
                   {r.name}
+                  <.comment_editor
+                    text={CommentEditor.text(@comments, r.instance_id, "cert", r.refid)}
+                    writable={@writable}
+                    instance_id={r.instance_id}
+                    kind="cert"
+                    entity_key={r.refid}
+                  />
                   <span
                     :if={r.is_gui}
                     class="ml-1 rounded bg-info/20 px-1 py-0.5 text-[10px] text-info"

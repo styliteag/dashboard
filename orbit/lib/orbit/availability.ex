@@ -66,24 +66,54 @@ defmodule Orbit.Availability do
 
     %{rows: rows} =
       Orbit.Repo.query!(
-        "SELECT name, last_success_at, last_error_at FROM instances WHERE id = ?",
+        "SELECT name, last_success_at, last_error_at, maintenance FROM instances WHERE id = ?",
         [instance_id]
       )
 
     was_offline =
       case rows do
-        [[_name, success, error]] -> not online?(success, error) and (success || error) != nil
-        _ -> false
+        [[_name, success, error, _maint]] ->
+          not online?(success, error) and (success || error) != nil
+
+        _ ->
+          false
       end
+
+    # Maintenance auto-clears the moment the box reports in again (python
+    # hub.py parity): a healthy heartbeat means the planned-down window is
+    # over. Without this the flag stayed set forever — and a box in
+    # maintenance has all its CRITs capped at WARN, so a forgotten flag
+    # silently muted a live firewall.
+    was_maintenance = match?([[_, _, _, m]] when m in [1, true], rows)
 
     Orbit.Repo.query!(
       "UPDATE instances SET agent_last_seen = ?, last_success_at = ?, " <>
-        "last_error_at = NULL, last_error_message = NULL WHERE id = ?",
+        "last_error_at = NULL, last_error_message = NULL, maintenance = 0 WHERE id = ?",
       [naive, naive, instance_id]
     )
 
+    if was_maintenance do
+      [[name, _, _, _]] = rows
+
+      Orbit.Audit.write(
+        action: "instance.maintenance_cleared",
+        result: "ok",
+        target_type: "instance",
+        target_id: instance_id,
+        detail: %{"reason" => "agent_reported_in"}
+      )
+
+      Orbit.Notifier.dispatch_async(
+        "#{name} maintenance ended",
+        "#{name} reported in again — maintenance flag cleared.",
+        instance_id,
+        "info",
+        @availability
+      )
+    end
+
     if was_offline do
-      [[name, _, _]] = rows
+      [[name, _, _, _]] = rows
       record_event(instance_id, naive, true, "#{name} recovered")
 
       Orbit.Notifier.dispatch_async(

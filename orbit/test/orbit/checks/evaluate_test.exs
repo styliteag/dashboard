@@ -374,6 +374,48 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
+  describe "iface_error_checks — the family that was registered but never fired" do
+    test "counters above the levels WARN and CRIT, per interface" do
+      ifaces = [
+        %{"name" => "em0", "status" => "up", "in_errors" => 0, "out_errors" => 0},
+        %{"name" => "em1", "status" => "up", "in_errors" => 90, "out_errors" => 20},
+        %{"name" => "em2", "status" => "up", "in_errors" => 5000, "out_errors" => 0}
+      ]
+
+      by_key = ifaces |> Evaluate.iface_error_checks() |> Map.new(&{&1.key, &1.state})
+
+      assert by_key["iface_errors:em0"] == 0
+      assert by_key["iface_errors:em1"] == 1
+      assert by_key["iface_errors:em2"] == 2
+    end
+
+    test "no counters ⇒ no check (Securepoint and some poll paths)" do
+      # Absent data must never alarm and never fake an OK (c37de13).
+      assert Evaluate.iface_error_checks([%{"name" => "A1", "status" => "up"}]) == []
+    end
+
+    test "a down interface is skipped — its errors are a symptom, not a second incident" do
+      ifaces = [%{"name" => "em3", "status" => "down", "in_errors" => 9999, "out_errors" => 0}]
+      assert Evaluate.iface_error_checks(ifaces) == []
+    end
+
+    test "present-but-zero is a real result, not absent data" do
+      ifaces = [%{"name" => "em0", "status" => "up", "in_errors" => 0, "out_errors" => 0}]
+      assert [%{key: "iface_errors:em0", state: 0}] = Evaluate.iface_error_checks(ifaces)
+    end
+
+    test "the key is a registered selection category" do
+      # A colon-keyed family: category/1 splits on ":" so the rules and the
+      # export tree see "iface_errors".
+      [check] =
+        Evaluate.iface_error_checks([
+          %{"name" => "em0", "status" => "up", "in_errors" => 1, "out_errors" => 0}
+        ])
+
+      assert Orbit.Selection.valid_selector?("checkmk", check.key)
+    end
+  end
+
   describe "collect_check — agent cycle duration" do
     test "a slow cycle WARNs, a quick one is OK" do
       assert %{key: "agent.collect", state: 1} = Evaluate.collect_check(12_500)

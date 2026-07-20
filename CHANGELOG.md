@@ -27,6 +27,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Interface error counters never produced a check.** The `iface_errors`
+  family was registered everywhere — selection categories, the export tree,
+  the aggregate map, even the flap-debounce list — but nothing emitted it, so
+  the entry in the export tree could never match. A link quietly accumulating
+  errors raised nothing. WARN at 100 errors since boot, CRIT at 1000;
+  interfaces that report no counters (Securepoint, some poll paths) and
+  interfaces that are down emit nothing rather than a fake zero.
+- **A forgotten maintenance flag muted a firewall forever.** Maintenance caps
+  every CRIT at WARN, and nothing ever cleared it — only a manual edit did.
+  It now clears the moment the box reports in again (the behaviour the old
+  dashboard documented), with a notification and an audit entry.
+- **Certificates and Firmware hid polled boxes.** Both fleet pages filtered
+  to agent-push instances, so a Securepoint's certificates and firmware
+  version were missing from the compliance views while its own tabs showed
+  them. Certificates also gained the operator comments the other fleet pages
+  already had.
 - **Linux nodes reported nothing at all.** A generic Linux server ships one
   Checkmk-agent dump instead of the per-section numbers a firewall agent
   collects itself — and the hub dropped that section without a word, while
