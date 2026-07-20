@@ -300,17 +300,75 @@ defmodule OrbitWeb.GuiProxy do
 
   # -- host / instance resolution -------------------------------------------
 
-  # dev: "<slug>.localhost" (but not bare "localhost"); prod: "gui-<slug>.<domain>".
-  defp slug_from_host(host) when is_binary(host) do
+  @doc false
+  # dev: "<slug>.localhost" (but not bare "localhost"); prod: whatever
+  # DASH_GUI_BASE_TEMPLATE says.
+  def slug_from_host(host) when is_binary(host) do
     cond do
-      match = Regex.run(~r/^gui-([a-z0-9-]+)\./, host) -> Enum.at(match, 1)
-      host == "localhost" -> nil
-      match = Regex.run(~r/^([a-z0-9-]+)\.localhost$/, host) -> Enum.at(match, 1)
-      true -> nil
+      # A configured template is AUTHORITATIVE: it pins the domain too, so a
+      # gui-prefixed host on some other domain is not a GUI origin. Falling
+      # back to the loose prefix match here would throw that away.
+      regex = host_regex() ->
+        with [_, slug] <- Regex.run(regex, host), do: slug, else: (_ -> nil)
+
+      match = Regex.run(~r/^gui-([a-z0-9-]+)\./, host) ->
+        Enum.at(match, 1)
+
+      host == "localhost" ->
+        nil
+
+      match = Regex.run(~r/^([a-z0-9-]+)\.localhost$/, host) ->
+        Enum.at(match, 1)
+
+      true ->
+        nil
     end
   end
 
-  defp slug_from_host(_), do: nil
+  def slug_from_host(_), do: nil
+
+  # The template is the single source of truth for what a GUI origin looks
+  # like. It used to be ignored here and the prefix was hardcoded to "gui-",
+  # so anyone running a second stack on one domain (gui2-<slug>.…, the case
+  # this was reported from) got a host their proxy routed correctly and orbit
+  # then dropped through to the router — a bare "Not Found" that points at
+  # everything except the actual cause. The "gui-" branch above stays as a
+  # fallback for deployments that never set a template.
+  # Built once per template value and cached: this runs on EVERY request
+  # through the endpoint, and compiling a regex per request would be a tax on
+  # the whole app, not just on GUI traffic.
+  defp host_regex do
+    template = Application.get_env(:orbit, :gui_base_template, "")
+    key = {__MODULE__, :host_regex, template}
+
+    case :persistent_term.get(key, :miss) do
+      :miss ->
+        regex = build_host_regex(template)
+        :persistent_term.put(key, regex)
+        regex
+
+      cached ->
+        cached
+    end
+  end
+
+  defp build_host_regex(template) when is_binary(template) and template != "" do
+    host = template |> URI.parse() |> Map.get(:host) |> to_string()
+    # {id} is the back-compat spelling of {slug} — same position, same shape.
+    host = String.replace(host, "{id}", "{slug}")
+
+    case String.split(host, "{slug}", parts: 2) do
+      [prefix, suffix] when prefix != "" or suffix != "" ->
+        Regex.compile!(
+          "^" <> Regex.escape(prefix) <> "([a-z0-9-]+)" <> Regex.escape(suffix) <> "$"
+        )
+
+      _ ->
+        nil
+    end
+  end
+
+  defp build_host_regex(_), do: nil
 
   defp instance_for(slug) do
     import Ecto.Query

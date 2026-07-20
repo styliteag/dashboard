@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The GUI origin's hostname now follows `DASH_GUI_BASE_TEMPLATE` instead of
+  an assumed `gui-` prefix.** The template was the documented way to name those
+  origins, but the request side ignored it and matched a hardcoded `gui-`, so
+  anyone running a second stack on one domain (`gui2-<slug>.example.com`) got a
+  host the reverse proxy routed correctly and orbit then dropped through to the
+  router — a bare "Not Found" that points at everything except the cause. A
+  configured template is now authoritative and pins the domain as well, so a
+  `gui-`-prefixed host on some other domain is no longer treated as a GUI
+  origin. Deployments without a template keep the old `gui-<slug>` behaviour.
 - **The dev install snippet points at an address a firewall can actually
   reach.** It was built from `Endpoint.url()`, which in dev fell back to
   `http://localhost:4000` — wrong twice: 4000 is the container-internal port
