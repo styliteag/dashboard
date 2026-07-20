@@ -264,6 +264,14 @@ defmodule Orbit.Instances do
         maintenance: false,
         firmware_locked: false,
         location: presence(params["location"]),
+        # Carried at creation, not edit-only: the retired React modal offered
+        # these four on the add form, and a create-then-edit round trip is easy
+        # to forget — a box then sits untagged and unprobed. Same coercion as
+        # the edit path (comma string -> array, blank interval -> global default).
+        tags: coerce(:tags, params["tags"]),
+        ping_url: presence(params["ping_url"]),
+        notes: presence(params["notes"]),
+        push_interval_seconds: parse_int(params["push_interval_seconds"]),
         # No agent_token at creation — the enrollment redeem mints it (§16 C2).
         created_at: DateTime.utc_now(),
         updated_at: DateTime.utc_now()

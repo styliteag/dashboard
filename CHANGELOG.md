@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tags, ping URL, push interval and notes can be set while creating an
+  instance.** They existed only on the edit form, so every new box had to be
+  saved and then reopened to get its tags — and until someone did, the fleet
+  page's tag filter had nothing to filter on. The four fields now sit on the
+  new-instance form and are written on creation.
+
 ## [4.0.9] - 2026-07-20
 
 ### Fixed

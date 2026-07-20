@@ -140,6 +140,30 @@ defmodule OrbitWeb.InstanceCreateLive do
                 <span class="mb-1 block text-xs text-base-content/60">Slug (optional)</span>
                 <input name="instance[slug]" class={input_cls()} />
               </label>
+              <label class="block text-sm md:col-span-2">
+                <span class="mb-1 block text-xs text-base-content/60">Tags (comma-separated)</span>
+                <input name="instance[tags]" placeholder="LAB, customer-x" class={input_cls()} />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block text-xs text-base-content/60">
+                  Ping URL (availability probe)
+                </span>
+                <input name="instance[ping_url]" class={input_cls()} />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block text-xs text-base-content/60">
+                  Push interval (s) — blank = global default
+                </span>
+                <input
+                  name="instance[push_interval_seconds]"
+                  inputmode="numeric"
+                  class={input_cls()}
+                />
+              </label>
+              <label class="block text-sm md:col-span-2">
+                <span class="mb-1 block text-xs text-base-content/60">Notes</span>
+                <input name="instance[notes]" class={input_cls()} />
+              </label>
             </div>
             <label class="mt-3 flex items-center gap-2 text-sm text-base-content/80">
               <input type="hidden" name="instance[ssl_verify]" value="false" />
