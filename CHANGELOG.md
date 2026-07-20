@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent install instructions are one copyable block, with a copy button.**
+  The three steps sat in three separate code boxes, so getting them onto a box
+  meant three selections and three round trips to a root shell — they are one
+  script and are now rendered as one. Worse, the panel was a native `<details>`
+  on a tab that re-renders on the live agent tier: every refresh dropped the
+  browser's open state and snapped it shut about a second after it was opened,
+  which made it effectively unusable. The open state is held server-side now.
 - **An invalid `DASH_MASTER_KEY` is caught at startup, not on the first
   instance you create.** A key that is not url-safe base64 of 32 bytes used to
   pass boot unnoticed and then crash the LiveView the moment somebody saved an

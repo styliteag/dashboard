@@ -90,6 +90,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           ping_test: nil,
           ping_test_busy: false,
           show_token: false,
+          install_open: false,
           cb_diff: nil,
           diagnosis: nil,
           diagnosis_busy: nil,
@@ -512,6 +513,14 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
+  # Server-held, deliberately not a native <details>: this tab re-renders on the
+  # live agent tier, and a LiveView patch drops the browser's `open` state, so
+  # the panel snapped shut a second after every click — reproduced in dev, the
+  # block was unusable and the copy button unreachable.
+  def handle_event("toggle_install", _params, socket) do
+    {:noreply, assign(socket, install_open: not socket.assigns.install_open)}
+  end
+
   def handle_event("agent_show_token", _params, %{assigns: %{writable: true}} = socket) do
     # The token is a bearer credential to the agent WS — write-gated like
     # the python /agent/token route; never audited into detail (no values).
@@ -918,6 +927,19 @@ defmodule OrbitWeb.InstanceDetailLive do
     uri = URI.parse(dash_url())
     proto = if uri.scheme == "https", do: "wss", else: "ws"
     "#{proto}://#{uri.host}#{if uri.port not in [80, 443], do: ":#{uri.port}"}/api/ws/agent"
+  end
+
+  @doc false
+  # The three install steps as ONE pasteable script. Blank lines between the
+  # steps keep it readable; nothing else separates them, because a root shell
+  # takes the whole thing in one paste.
+  def install_script(%Instance{} = inst, enroll_code) do
+    [
+      install_download_cmds(inst),
+      install_config_cmd(inst, enroll_code),
+      install_start_cmd(inst)
+    ]
+    |> Enum.join("\n\n")
   end
 
   defp install_download_cmds(%Instance{device_type: "linux"}) do
@@ -1990,21 +2012,39 @@ defmodule OrbitWeb.InstanceDetailLive do
           <%!-- Guided install (AgentSection walkthrough parity, condensed to
                the copy-paste essentials; the enroll code above slots into
                the config). tcsh-safe printf, no heredocs. --%>
-          <details :if={@writable} class="mt-3 text-xs">
-            <summary class="cursor-pointer text-base-content/70 hover:text-base-content">
-              Install instructions
-            </summary>
-            <div class="mt-2 space-y-2">
-              <p class="text-base-content/60">
-                Run as root on the box. 1) download, 2) write config {if @enroll_code,
-                  do: "(one-time enroll code baked in)",
-                  else: "(mint an enroll code above, or paste the token)"}, 3) start.
-              </p>
-              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_download_cmds(@instance)}</pre>
-              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_config_cmd(@instance, @enroll_code)}</pre>
-              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_start_cmd(@instance)}</pre>
+          <div :if={@writable} class="mt-3 text-xs">
+            <button
+              type="button"
+              phx-click="toggle_install"
+              class="cursor-pointer text-base-content/70 hover:text-base-content"
+            >
+              {if @install_open, do: "▾", else: "▸"} Install instructions
+            </button>
+            <div :if={@install_open} class="mt-2 space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-base-content/60">
+                  Run as root on the box. 1) download, 2) write config {if @enroll_code,
+                    do: "(one-time enroll code baked in)",
+                    else: "(mint an enroll code above, or paste the token)"}, 3) start.
+                </p>
+                <button
+                  type="button"
+                  id="copy-install-script"
+                  phx-hook="CopyValue"
+                  data-copy={install_script(@instance, @enroll_code)}
+                  title="Copy to clipboard"
+                  aria-label="Copy install instructions"
+                  class="flex shrink-0 items-center gap-1 rounded border border-base-content/20 px-2 py-1 text-base-content/60 hover:bg-base-300 hover:text-base-content"
+                >
+                  <Icons.icon name={:copy} class="h-3.5 w-3.5" /> Copy
+                </button>
+              </div>
+              <%!-- ONE block, not three: the three steps used to sit in
+                   separate <pre>s, so pasting them meant three selections and
+                   three round trips to a root shell. They are one script. --%>
+              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_script(@instance, @enroll_code)}</pre>
             </div>
-          </details>
+          </div>
 
           <div :if={@enroll_code} class="mt-2 text-sm">
             <span class="text-base-content/60">Enroll code: </span>
