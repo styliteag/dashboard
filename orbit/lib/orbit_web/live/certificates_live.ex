@@ -79,6 +79,12 @@ defmodule OrbitWeb.CertificatesLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
   defp load(socket) do
     rows =
       socket.assigns.current_user
@@ -122,12 +128,6 @@ defmodule OrbitWeb.CertificatesLive do
       comments: CommentEditor.lookup(Instances.list_visible(socket.assigns.current_user))
     )
   end
-
-  def handle_event("comment_save", params, socket),
-    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
-
-  def handle_event("comment_clear", params, socket),
-    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
 
   # Issuers whose certs are renewed by ACME automation (python
   # _ACME_ISSUER_MARKERS, verbatim).
