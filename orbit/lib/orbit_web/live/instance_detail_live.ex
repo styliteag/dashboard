@@ -1284,7 +1284,11 @@ defmodule OrbitWeb.InstanceDetailLive do
       gateways: entry["gateways"] || [],
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
-      external_ip: entry["external_ip"] || %{},
+      # Public-IP view, one shape for every transport (Orbit.ExternalIp):
+      # the agent's ipify probe when there is one, otherwise a routable
+      # address off the box's own interfaces — so poll-mode and Securepoint
+      # boxes answer the question too.
+      public_ip: public_ip_view(socket.assigns.instance, entry),
       # Geo of the box's WAN address (City edition; display-only, nil when
       # unknown/private or the mmdb is unloaded).
       external_geo: OrbitWeb.Geo.label(get_in(entry, ["external_ip", "ipv4"])),
@@ -1294,6 +1298,21 @@ defmodule OrbitWeb.InstanceDetailLive do
       check_history: check_history(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance),
       check_rules: instance_rules(socket.assigns.instance.id)
+    )
+  end
+
+  # Public IP + NAT verdict. The agent connection (when there is one) also
+  # supplies the address the hub saw the box connect from; a poll-mode box
+  # never connects to us, so that stays nil by nature rather than by gap.
+  defp public_ip_view(instance, entry) do
+    agent = Hub.get(instance.id)
+
+    # Map.get, not agent.source_ip: on a rolling deploy the hub GenServer
+    # keeps running with Agent structs minted before this field existed, and
+    # every already-connected box would 500 this page until it reconnected.
+    Orbit.ExternalIp.build(entry,
+      source_ip: agent && Map.get(agent, :source_ip),
+      connected: not is_nil(agent)
     )
   end
 
@@ -1331,6 +1350,101 @@ defmodule OrbitWeb.InstanceDetailLive do
     inst
     |> Export.checks_for(DateTime.utc_now())
     |> Enum.sort_by(&{-ServiceCheck.severity(&1.state), &1.key})
+  end
+
+  attr :label, :string, required: true
+  attr :value, :any, required: true
+  attr :tone, :string, default: "text-primary"
+  slot :note
+
+  defp ip_card(assigns) do
+    ~H"""
+    <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+      <div class="flex items-center gap-2 text-xs text-base-content/60">
+        <Icons.icon name={:globe} class={["h-3.5 w-3.5", @tone]} /> {@label}
+      </div>
+      <div class="mt-1 flex items-start gap-2">
+        <span class={[
+          "min-w-0 break-all font-mono text-sm",
+          if(@value, do: "text-base-content", else: "text-base-content/40")
+        ]}>
+          {@value || "—"}
+        </span>
+        <%!-- Copy affordance from the react original; the hook falls back to
+             a hidden textarea where the clipboard API is unavailable. --%>
+        <button
+          :if={@value}
+          type="button"
+          id={"copy-#{@label |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-")}"}
+          phx-hook="CopyValue"
+          data-copy={@value}
+          title="Copy to clipboard"
+          aria-label={"Copy #{@label}"}
+          class="shrink-0 rounded p-1 text-base-content/50 hover:bg-base-300 hover:text-base-content"
+        >
+          <Icons.icon name={:copy} class="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <p :if={@note != []} class="mt-1 text-[11px] text-base-content/50">{render_slot(@note)}</p>
+    </div>
+    """
+  end
+
+  attr :nat, :atom, required: true
+
+  defp nat_badge(assigns) do
+    ~H"""
+    <span
+      :if={@nat != :unknown}
+      title={
+        if @nat == :behind_nat,
+          do:
+            "The box's public IPv4 is not configured on any of its interfaces — an upstream NAT owns the public address.",
+          else: "The box owns its public IPv4 directly on an interface (no upstream NAT)."
+      }
+      class={[
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs",
+        if(@nat == :behind_nat,
+          do: "bg-warning/20 text-warning",
+          else: "bg-primary/20 text-primary"
+        )
+      ]}
+    >
+      {if @nat == :behind_nat, do: "Behind NAT", else: "Direct"}
+    </span>
+    """
+  end
+
+  # One honest line about where the addresses came from — a probe from the
+  # box itself and an address read off its interfaces are different claims.
+  defp source_note(%{source: :probe, checked_at: at}) when is_binary(at) do
+    "Probed by the agent from the box itself · #{rev_time(at)}"
+  end
+
+  defp source_note(%{source: :probe}), do: "Probed by the agent from the box itself."
+
+  defp source_note(%{source: :interface}),
+    do: "Read off the box's own interfaces — no outbound probe runs on this transport."
+
+  defp source_note(_), do: "No public address reported yet."
+
+  # Why this card is empty, per transport. A poll-mode box has no inbound
+  # connection at all, so "unknown" there is the correct final answer, not a
+  # gap — say which of the two it is instead of leaving a bare dash.
+  defp connects_from_note(instance, public_ip) do
+    cond do
+      not Instance.agent_mode?(instance) ->
+        "polled by the dashboard — this box never connects to us"
+
+      not public_ip.connected ->
+        "agent not connected"
+
+      is_nil(public_ip.source_ip) ->
+        "recorded on the agent's next reconnect"
+
+      true ->
+        "address the hub saw on the agent's connect"
+    end
   end
 
   @impl true
@@ -2270,6 +2384,34 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
+        <%!-- Public IP (ExternalIpSection parity, widened to every
+             transport): where this box sits on the internet. Hidden
+             entirely when nothing is known, so a box that has not reported
+             yet shows nothing rather than three dashes. --%>
+        <section :if={@tab == "network" and Orbit.ExternalIp.known?(@public_ip)} class="mt-6">
+          <h2 class="flex flex-wrap items-center gap-2 text-sm font-medium text-base-content/70">
+            <Icons.icon name={:globe} class="h-4 w-4" /> Public IP <.nat_badge nat={@public_ip.nat} />
+          </h2>
+
+          <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <.ip_card label="External IPv4" value={@public_ip.ipv4} tone="text-primary">
+              <:note :if={@external_geo}>{@external_geo}</:note>
+            </.ip_card>
+            <.ip_card label="External IPv6" value={@public_ip.ipv6} tone="text-info" />
+            <.ip_card
+              label="Connects from"
+              value={@public_ip.connected && @public_ip.source_ip}
+              tone="text-secondary"
+            >
+              <:note>{connects_from_note(@instance, @public_ip)}</:note>
+            </.ip_card>
+          </div>
+
+          <p class="mt-2 text-xs text-base-content/50">
+            {source_note(@public_ip)}
+          </p>
+        </section>
+
         <div
           :if={@tab == "network" and @gateways != []}
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
@@ -2374,19 +2516,6 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <span>{pct(d["used_pct"])}</span>
               </li>
             </ul>
-          </div>
-
-          <div
-            :if={@tab == "network" and @external_ip != %{}}
-            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
-          >
-            <h2 class="mb-3 text-sm font-medium text-base-content/70">External IP</h2>
-            <dl class="space-y-1 text-sm">
-              <.kv label="IPv4" value={@external_ip["ipv4"] || "—"} />
-              <.kv label="IPv6" value={@external_ip["ipv6"] || "—"} />
-              <.kv :if={@external_ip["source_ip"]} label="Seen as" value={@external_ip["source_ip"]} />
-              <.kv :if={@external_geo} label="Location" value={@external_geo} />
-            </dl>
           </div>
         </div>
 

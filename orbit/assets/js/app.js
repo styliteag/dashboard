@@ -280,6 +280,32 @@ const CommentPop = {
   },
 }
 
+// Copy a value to the clipboard with a brief confirmation on the button.
+// navigator.clipboard needs a secure context; the textarea path keeps the
+// button working on a plain-http dev host.
+const CopyValue = {
+  mounted() {
+    this.el.addEventListener("click", async () => {
+      const value = this.el.dataset.copy
+      if (!value) return
+      try {
+        await navigator.clipboard.writeText(value)
+      } catch {
+        const ta = document.createElement("textarea")
+        ta.value = value
+        ta.style.cssText = "position:fixed;opacity:0"
+        document.body.appendChild(ta)
+        ta.select()
+        try { document.execCommand("copy") } finally { ta.remove() }
+      }
+      this.el.classList.add("text-primary")
+      clearTimeout(this._t)
+      this._t = setTimeout(() => this.el.classList.remove("text-primary"), 1200)
+    })
+  },
+  destroyed() { clearTimeout(this._t) },
+}
+
 // Metric charts: a crosshair plus a readout that follows the pointer. The
 // SVG already carries one <title> per sample dot, but a native tooltip only
 // appears after a hover delay and only exactly on the dot — on a 720-point
@@ -351,7 +377,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it

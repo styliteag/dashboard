@@ -174,6 +174,82 @@ defmodule Orbit.Poller.OpnsenseClientFetchTest do
       assert Enum.find(ifaces, &(&1["name"] == "[WAN] vmx1"))["status"] == "down"
     end
 
+    test "picks the IP off the address rows, not the MAC off the Link row" do
+      # Regression: OPNsense reports an interface once per address — a
+      # `<Link#n>` row with the MAC and the interface-wide byte counters,
+      # then one row per configured address. Keeping the *first* row put the
+      # MAC in "address", so a direct-polled box showed a MAC where every
+      # other transport shows an IP, and nothing could reason about the
+      # box's addresses (no NAT verdict, no public IP). Payload shape taken
+      # live from opn1 on 2026-07-20.
+      stats = %{
+        "statistics" => %{
+          "[LAN] (vtnet0) / bc:24:20:ad:19:94" => %{
+            "name" => "vtnet0",
+            "network" => "<Link#1>",
+            "address" => "bc:24:20:ad:19:94",
+            "flags" => "0x8843",
+            "received-bytes" => 1_726_513_246,
+            "sent-bytes" => 479_690_267
+          },
+          "[LAN] (vtnet0) / fe80::be24:20ff:fead:1994%vtnet0" => %{
+            "name" => "vtnet0",
+            "network" => "fe80::%vtnet0/64",
+            "address" => "fe80::be24:20ff:fead:1994%vtnet0",
+            "flags" => "0x8843",
+            "received-bytes" => 7_044_087,
+            "sent-bytes" => 6_460_165
+          },
+          "[LAN] (vtnet0) / 10.20.1.198" => %{
+            "name" => "vtnet0",
+            "network" => "10.20.0.0/22",
+            "address" => "10.20.1.198",
+            "flags" => "0x8843",
+            "received-bytes" => 53_349_411,
+            "sent-bytes" => 458_000_857
+          }
+        }
+      }
+
+      [lan] = C.interfaces_from_statistics(stats)
+
+      assert lan["address"] == "10.20.1.198"
+      # Counters must stay the interface total from the Link row — an address
+      # row only carries its own share and would break the metric series.
+      assert lan["bytes_received"] == 1_726_513_246
+      assert lan["bytes_transmitted"] == 479_690_267
+      # Every address is kept for the public-IP/NAT logic downstream.
+      assert "10.20.1.198" in lan["addresses"]
+      assert "fe80::be24:20ff:fead:1994" in lan["addresses"]
+      refute "bc:24:20:ad:19:94" in lan["addresses"]
+    end
+
+    test "a public WAN address on a polled box becomes its external IP" do
+      stats = %{
+        "statistics" => %{
+          "[WAN] (vtnet1) / 00:50:56:be:dd:5c" => %{
+            "name" => "vtnet1",
+            "network" => "<Link#2>",
+            "address" => "00:50:56:be:dd:5c",
+            "flags" => "0x8843"
+          },
+          "[WAN] (vtnet1) / 198.51.100.10" => %{
+            "name" => "vtnet1",
+            "network" => "198.51.100.0/24",
+            "address" => "198.51.100.10",
+            "flags" => "0x8843"
+          }
+        }
+      }
+
+      ifaces = C.interfaces_from_statistics(stats)
+      view = Orbit.ExternalIp.build(%{"status" => %{"interfaces" => ifaces}})
+
+      assert view.ipv4 == "198.51.100.10"
+      assert view.source == :interface
+      assert view.nat == :direct
+    end
+
     test "accepts the bare statistics map and survives junk" do
       assert C.interfaces_from_statistics(%{"em0" => %{"name" => "em0"}}) != []
       assert C.interfaces_from_statistics(nil) == []

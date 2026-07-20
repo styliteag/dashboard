@@ -148,6 +148,16 @@ defmodule OrbitWeb.Components.Icons do
     do:
       ~s(<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 9v6"/><path d="M16 15v6"/><path d="M16 3v6"/><path d="M3 15h18"/><path d="M3 9h18"/><path d="M8 15v6"/><path d="M8 3v6"/>)
 
+  # lucide: globe — public/external addressing.
+  defp paths(:globe),
+    do:
+      ~s(<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>)
+
+  # lucide: copy — copy-to-clipboard affordance.
+  defp paths(:copy),
+    do:
+      ~s(<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>)
+
   # lucide: external-link — opens the firewall's own GUI in a new tab.
   defp paths(:external),
     do:

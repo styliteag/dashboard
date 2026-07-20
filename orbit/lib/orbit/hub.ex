@@ -28,6 +28,7 @@ defmodule Orbit.Hub do
       :agent_version,
       :platform,
       :checkmk_sha256,
+      :source_ip,
       :connected_at,
       :last_update_error,
       :last_update_version,
@@ -258,6 +259,7 @@ defmodule Orbit.Hub do
       agent_version: meta[:agent_version],
       platform: meta[:platform],
       checkmk_sha256: meta[:checkmk_sha256],
+      source_ip: meta[:source_ip],
       connected_at: DateTime.utc_now()
     }
 

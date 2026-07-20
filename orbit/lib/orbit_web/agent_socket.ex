@@ -16,7 +16,7 @@ defmodule OrbitWeb.AgentSocket do
 
   alias Orbit.Hub
 
-  defstruct [:instance_id, :instance_name, :push_interval, hello_seen: false]
+  defstruct [:instance_id, :instance_name, :push_interval, :source_ip, hello_seen: false]
 
   @impl true
   def init(%{auth_error: {code, message}}) do
@@ -26,7 +26,7 @@ defmodule OrbitWeb.AgentSocket do
     {:stop, :normal, {code, message}, [{:text, error}], %__MODULE__{}}
   end
 
-  def init(%{instance: instance}) do
+  def init(%{instance: instance} = arg) do
     push_interval =
       instance.push_interval_seconds || Orbit.Settings.effective("push_interval_seconds")
 
@@ -34,7 +34,8 @@ defmodule OrbitWeb.AgentSocket do
      %__MODULE__{
        instance_id: instance.id,
        instance_name: instance.name,
-       push_interval: push_interval
+       push_interval: push_interval,
+       source_ip: arg[:source_ip]
      }}
   end
 
@@ -57,7 +58,8 @@ defmodule OrbitWeb.AgentSocket do
     Hub.register(state.instance_id, %{
       agent_version: hello["agent_version"],
       platform: hello["platform"],
-      checkmk_sha256: hello["checkmk_sha256"]
+      checkmk_sha256: hello["checkmk_sha256"],
+      source_ip: state.source_ip
     })
 
     Logger.info(

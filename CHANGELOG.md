@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Public IP on the Network tab, for every kind of box.** The old dashboard
+  answered "where does this box sit on the internet?" only for agent-push
+  firewalls, because only the agent runs the outbound probe. It now answers
+  for the whole fleet: agent boxes keep the probe, and a direct-polled
+  OPNsense/pfSense or a Securepoint gets its public address read off its own
+  interfaces. Shown as external IPv4/IPv6 with copy buttons, a **Behind NAT /
+  Direct** badge, the address the hub saw the agent connect from, and a line
+  saying which of the two sources the numbers came from — a probe and an
+  inference are different claims. Nothing is shown at all until something is
+  known, and there is no NAT verdict without a public IPv4 to judge on.
+
 - **Account menu in the top right.** Username, Security & 2FA, Change
   password, the design/mode switcher and Sign out now live behind one
   trigger showing the signed-in account and its role, instead of four
@@ -62,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings Save buttons stay inert until you change something.** Twenty
   always-green Save buttons read as twenty pending changes; each one now
   lights up only when its field differs from the stored value.
+- **Direct-polled OPNsense boxes show interface IPs, not MAC addresses.**
+  OPNsense reports an interface once per configured address — a link row
+  carrying the MAC plus the interface-wide byte counters, then one row per
+  address. The poller kept the first row, so the Network tab printed a MAC
+  where every other transport prints an IP. Counters still come from the
+  link row, so the traffic graphs are unaffected.
 - **The dashboard fits a phone screen.** Every page scrolled sideways at
   phone width — the header, the instance action bar, long config values and
   wide tables each pushed past the viewport. Tables now scroll inside their

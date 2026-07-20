@@ -229,9 +229,17 @@ defmodule Orbit.Poller.OpnsenseClient do
   interface_statistics port).
 
   OPNsense keys the map by a human label and repeats an interface once per
-  address: `"[LAN] (vmx0) / 00:50:56:be:dd:5b" => %{"name" => "vmx0", …}`.
-  Deduplicate on the short BSD name, keeping the first entry, and carry the
-  zone prefix into the display name so the UI still shows "[LAN] vmx0".
+  address: one `<Link#n>` row carrying the MAC and the interface-wide byte
+  counters, then one row per configured address (link-local, IPv4, aliases,
+  IPv6) whose counters are that address's share only.
+
+  Rows are merged per short BSD name: counters and flags come from the Link
+  row (the interface total — an address row would under-report the metric
+  series), the displayed address is the best real IP among the address rows.
+  Keeping the first row instead put the **MAC** in `address`, so the network
+  tab showed a MAC where every other transport shows an IP, and nothing
+  downstream could reason about the box's addresses (verified on opn1,
+  2026-07-20).
 
   Byte counters land in `bytes_received`/`bytes_transmitted` — the same keys
   the agent push uses, so Metrics.rows_for_push writes one continuous
@@ -242,17 +250,10 @@ defmodule Orbit.Poller.OpnsenseClient do
 
   def interfaces_from_statistics(stats) when is_map(stats) do
     stats
-    |> Enum.reduce({[], MapSet.new()}, fn {label, info}, {acc, seen} ->
-      short = iface_short_name(info, label)
-
-      if is_map(info) and not MapSet.member?(seen, short) do
-        {[iface_entry(short, label, info) | acc], MapSet.put(seen, short)}
-      else
-        {acc, seen}
-      end
-    end)
-    |> elem(0)
-    |> Enum.reverse()
+    |> Enum.filter(fn {_label, info} -> is_map(info) end)
+    |> Enum.group_by(fn {label, info} -> iface_short_name(info, label) end)
+    |> Enum.map(fn {short, rows} -> iface_entry(short, rows) end)
+    |> Enum.sort_by(& &1["name"])
   end
 
   def interfaces_from_statistics(_), do: []
@@ -262,15 +263,52 @@ defmodule Orbit.Poller.OpnsenseClient do
 
   defp iface_short_name(_info, label), do: String.slice(to_string(label), 0, 60)
 
-  defp iface_entry(short, label, info) do
+  defp iface_entry(short, rows) do
+    {label, link} = link_row(rows)
+    addresses = for {_l, info} <- rows, addr = ip_address(info["address"]), do: addr
+
     %{
       "name" => display_name(short, label),
-      "status" => iface_status(info["flags"] || info["status"] || ""),
-      "address" => info["address"],
-      "bytes_received" => counter(info["received-bytes"] || info["bytes received"]),
-      "bytes_transmitted" => counter(info["sent-bytes"] || info["bytes transmitted"])
+      "status" => iface_status(link["flags"] || link["status"] || ""),
+      "address" => best_address(addresses),
+      "addresses" => addresses,
+      "bytes_received" => counter(link["received-bytes"] || link["bytes received"]),
+      "bytes_transmitted" => counter(link["sent-bytes"] || link["bytes transmitted"])
     }
   end
+
+  # The `<Link#n>` row holds the interface-wide counters; fall back to the
+  # first row on a box that does not report one.
+  defp link_row(rows) do
+    Enum.find(rows, hd(rows), fn {_label, info} ->
+      String.starts_with?(to_string(info["network"] || ""), "<Link")
+    end)
+  end
+
+  # Address rows carry IPs; the Link row carries a MAC (and IPv6 rows a
+  # "%iface" zone suffix). A MAC is colon-separated exactly like IPv6, so
+  # decide by parsing — Orbit.Net.ip_address?/1 — not by counting colons.
+  defp ip_address(raw) when is_binary(raw) do
+    if Orbit.Net.ip_address?(raw), do: presence(Orbit.Net.bare_address(raw)), else: nil
+  end
+
+  defp ip_address(_), do: nil
+
+  defp presence(""), do: nil
+  defp presence(v), do: v
+
+  # Prefer a routable IPv4, then any IPv4, then a global IPv6 — the address
+  # an operator identifies the interface by.
+  defp best_address([]), do: nil
+
+  defp best_address(addresses) do
+    Enum.find(addresses, &(v4?(&1) and Orbit.Net.public_ip?(&1))) ||
+      Enum.find(addresses, &v4?/1) ||
+      Enum.find(addresses, &Orbit.Net.public_ip?/1) ||
+      hd(addresses)
+  end
+
+  defp v4?(addr), do: not String.contains?(addr, ":")
 
   # "[LAN] (vmx0) / 00:…" → "[LAN] vmx0"; a label without a zone stays bare.
   defp display_name(short, label) do
