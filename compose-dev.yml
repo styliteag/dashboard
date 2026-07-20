@@ -46,6 +46,12 @@ services:
       DB_NAME: ${DB_NAME:-dash}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
       ORBIT_DB_HOST: db
+      # Public address of THIS dev machine, as a firewall would reach it. Feeds
+      # Endpoint.url(), which the agent install snippet is built from — leave it
+      # at localhost and the copied block points an agent at its own loopback.
+      # Set it in .env to your LAN IP (e.g. 10.20.0.24) when enrolling lab boxes.
+      DASH_PUBLIC_HOST: ${DASH_PUBLIC_HOST:-localhost}
+      DASH_PUBLIC_PORT: ${DASH_PUBLIC_PORT:-8000}
       # Boot-time wait for the database (Orbit.Repo.Migrator). Dev has
       # depends_on, so this only matters when the db container is slow.
       DASH_DB_WAIT_SECONDS: ${DASH_DB_WAIT_SECONDS:-60}

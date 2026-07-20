@@ -155,6 +155,22 @@ config :orbit,
        System.get_env("DASH_CROWDSEC_LAPI_URL", "http://crowdsec:8080")
 
 if config_env() == :dev do
+  # The agent install snippet is built from Endpoint.url(), and in dev that
+  # defaulted to http://localhost:4000 — wrong twice over: 4000 is the
+  # container-internal port (dev publishes 8000), and localhost is not an
+  # address a firewall can reach. Copying the block onto a lab box therefore
+  # produced an agent that could never connect. Prod was always right, because
+  # PHX_HOST feeds the same url config there.
+  #
+  # Set DASH_PUBLIC_HOST to this machine's LAN address (the lab agents use
+  # ws://<that>:8000/api/ws/agent) and the block is directly pasteable.
+  config :orbit, OrbitWeb.Endpoint,
+    url: [
+      host: System.get_env("DASH_PUBLIC_HOST", "localhost"),
+      port: String.to_integer(System.get_env("DASH_PUBLIC_PORT", "8000")),
+      scheme: "http"
+    ]
+
   # Reload browser tabs when matching files change.
   config :orbit, OrbitWeb.Endpoint,
     live_reload: [

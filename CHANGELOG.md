@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The dev install snippet points at an address a firewall can actually
+  reach.** It was built from `Endpoint.url()`, which in dev fell back to
+  `http://localhost:4000` — wrong twice: 4000 is the container-internal port
+  (dev publishes 8000) and localhost is not reachable from a box, so a pasted
+  block produced an agent that could never connect. Set `DASH_PUBLIC_HOST` to
+  the dev machine's LAN address and the block is directly pasteable. Production
+  was never affected; `PHX_HOST` already fed the same setting there.
 - **The agent install instructions are one copyable block, with a copy button.**
   The three steps sat in three separate code boxes, so getting them onto a box
   meant three selections and three round trips to a root shell — they are one
