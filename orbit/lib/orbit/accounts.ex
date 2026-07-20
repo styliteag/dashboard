@@ -302,6 +302,13 @@ defmodule Orbit.Accounts do
   def last_factor?(totp_enabled?, count), do: not totp_enabled? and count <= 1
 
   @doc """
+  Pure mirror of `last_factor?/2` for the authenticator: with no passkey
+  enrolled, TOTP is the only second factor and must not be removed.
+  """
+  @spec only_factor_totp?(non_neg_integer()) :: boolean()
+  def only_factor_totp?(passkey_count), do: passkey_count == 0
+
+  @doc """
   Drop the authenticator, keeping the account on its passkeys.
 
   The mirror image of `delete_credential/2`'s guard: 2FA is mandatory, so the
@@ -309,13 +316,6 @@ defmodule Orbit.Accounts do
   authenticator IS that factor. The secret is cleared, not just disabled: a
   retired factor must not leave usable key material behind.
   """
-  @doc """
-  Pure mirror of `last_factor?/2` for the authenticator: with no passkey
-  enrolled, TOTP is the only second factor and must not be removed.
-  """
-  @spec only_factor_totp?(non_neg_integer()) :: boolean()
-  def only_factor_totp?(passkey_count), do: passkey_count == 0
-
   @spec disable_totp(User.t()) :: {:ok, User.t()} | {:error, :not_enrolled | :last_factor}
   def disable_totp(%User{} = user) do
     cond do
