@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A CA bundle can be stored again, and now actually does something.** A
+  firewall's GUI certificate is self-signed, so the only way to poll a box was
+  to switch TLS verification off entirely: the `ca_bundle` column existed and
+  the retired dialog offered the field, but orbit wrote it nowhere and read it
+  nowhere. Paste the CA that signed the box's certificate and verification is
+  checked against it instead of being turned off. Offered on the polling path
+  only — in agent mode the dashboard makes no outbound call to verify. Boxes
+  without a bundle connect exactly as before, and a malformed bundle falls
+  back to that rather than taking the box offline.
 - **Terminal sessions can be recorded again** (`DASH_SHELL_RECORD_DIR`, empty by
   default). Every root shell writes one asciicast file, replayable with
   `asciinema play`. The retired dashboard had this; orbit did not, so the

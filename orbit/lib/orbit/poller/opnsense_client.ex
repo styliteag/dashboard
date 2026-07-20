@@ -18,7 +18,7 @@ defmodule Orbit.Poller.OpnsenseClient do
   @connect_timeout 5_000
   @recv_timeout 15_000
 
-  defstruct [:base_url, :api_key, :api_secret, :ssl_verify]
+  defstruct [:base_url, :api_key, :api_secret, :ssl_verify, :ca_bundle]
 
   @doc "Build a client from an instance (decrypts the api key/secret)."
   @spec new(Instance.t()) :: {:ok, t()} | {:error, term()}
@@ -30,7 +30,8 @@ defmodule Orbit.Poller.OpnsenseClient do
          base_url: Instance.primary_base_url(inst) |> String.trim_trailing("/"),
          api_key: key,
          api_secret: secret,
-         ssl_verify: inst.ssl_verify
+         ssl_verify: inst.ssl_verify,
+         ca_bundle: inst.ca_bundle
        }}
     end
   end
@@ -146,7 +147,7 @@ defmodule Orbit.Poller.OpnsenseClient do
       [
         auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
         json: body || %{},
-        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
         receive_timeout: @recv_timeout,
         retry: false
       ]
@@ -165,7 +166,7 @@ defmodule Orbit.Poller.OpnsenseClient do
       [
         auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
         json: %{},
-        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
         receive_timeout: @recv_timeout,
         retry: false
       ]
@@ -414,7 +415,7 @@ defmodule Orbit.Poller.OpnsenseClient do
     opts =
       [
         auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
-        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c.ssl_verify)],
+        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
         receive_timeout: @recv_timeout,
         retry: false
       ]
@@ -437,8 +438,10 @@ defmodule Orbit.Poller.OpnsenseClient do
     end
   end
 
-  defp tls_opts(false), do: [verify: :verify_none]
-  defp tls_opts(_), do: []
+  # No bundle keeps the previous behaviour exactly: no verify option, so the
+  # HTTP stack's own trust store decides. A stored CA bundle pins to it.
+  defp tls_opts(%__MODULE__{ssl_verify: false}), do: [verify: :verify_none]
+  defp tls_opts(%__MODULE__{ca_bundle: bundle}), do: Orbit.Net.TLS.bundle_opts(bundle) || []
 
   defp mb(frmt, bytes) do
     from_frmt = num_or_zero(frmt)

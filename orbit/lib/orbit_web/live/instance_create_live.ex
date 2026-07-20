@@ -150,6 +150,22 @@ defmodule OrbitWeb.InstanceCreateLive do
                 class="accent-primary"
               /> Verify TLS
             </label>
+            <%!-- Only meaningful on the poll path: in agent mode the box
+                 collects locally and pushes, so the dashboard makes no
+                 outbound HTTPS call to verify (2.1.5 parity). --%>
+            <label class="mt-3 block text-sm">
+              <span class="mb-1 block text-xs text-base-content/60">
+                CA bundle (PEM, direct only) — lets TLS verification succeed against a
+                firewall's own CA instead of turning verification off
+              </span>
+              <textarea
+                name="instance[ca_bundle]"
+                rows="4"
+                spellcheck="false"
+                placeholder="-----BEGIN CERTIFICATE-----"
+                class={[input_cls(), "font-mono text-xs"]}
+              ></textarea>
+            </label>
           </div>
 
           <button

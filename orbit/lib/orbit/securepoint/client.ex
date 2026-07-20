@@ -19,7 +19,7 @@ defmodule Orbit.Securepoint.Client do
   @spcgi_path "/spcgi.cgi"
   @forbidden [{"ipsec", "get"}]
 
-  defstruct [:base_url, :user, :password, :ssl_verify, :sessionid, :req_plug]
+  defstruct [:base_url, :user, :password, :ssl_verify, :ca_bundle, :sessionid, :req_plug]
 
   @type t :: %__MODULE__{}
 
@@ -33,6 +33,7 @@ defmodule Orbit.Securepoint.Client do
          user: user,
          password: password,
          ssl_verify: inst.ssl_verify,
+         ca_bundle: inst.ca_bundle,
          req_plug:
            Keyword.get(opts, :req_plug, Application.get_env(:orbit, :securepoint_req_plug))
        }}
@@ -399,7 +400,7 @@ defmodule Orbit.Securepoint.Client do
       url: c.base_url <> @spcgi_path,
       json: payload,
       headers: [{"accept", "application/json"}],
-      connect_options: [transport_opts: tls_opts(c.ssl_verify)],
+      connect_options: [transport_opts: tls_opts(c)],
       receive_timeout: 10_000,
       retry: false
     ]
@@ -418,6 +419,10 @@ defmodule Orbit.Securepoint.Client do
     end
   end
 
-  defp tls_opts(false), do: [verify: :verify_none]
-  defp tls_opts(_), do: [verify: :verify_peer]
+  # No bundle keeps the previous behaviour exactly (explicit verify_peer);
+  # a stored CA bundle pins verification to it instead.
+  defp tls_opts(%__MODULE__{ssl_verify: false}), do: [verify: :verify_none]
+
+  defp tls_opts(%__MODULE__{ca_bundle: bundle}),
+    do: Orbit.Net.TLS.bundle_opts(bundle) || [verify: :verify_peer]
 end

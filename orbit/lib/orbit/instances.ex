@@ -258,6 +258,7 @@ defmodule Orbit.Instances do
         transport: transport,
         device_type: device_type,
         ssl_verify: params["ssl_verify"] in [true, "true", "on"],
+        ca_bundle: presence(params["ca_bundle"]),
         gui_login_enabled: params["gui_login_enabled"] in [true, "true", "on"],
         # Terminal armed on new instances (2.7.8/3.0.5 behaviour, restored by
         # operator decision 2026-07-20). This is a per-instance opt-in only —
@@ -377,7 +378,9 @@ defmodule Orbit.Instances do
           into: %{},
           do: {key, params[key]}
 
-    rotated = for s <- ~w(api_key api_secret ssh_key), (params[s] || "") != "", do: s
+    # ca_bundle rides the by-name list, never the verbatim one — a PEM in the
+    # audit detail is exactly what the allowlist exists to prevent.
+    rotated = for s <- ~w(api_key api_secret ssh_key ca_bundle), (params[s] || "") != "", do: s
     if rotated == [], do: safe, else: Map.put(safe, "secrets_rotated", rotated)
   end
 
@@ -438,7 +441,20 @@ defmodule Orbit.Instances do
     |> put_secret(:api_key_enc, params["api_key"])
     |> put_secret(:api_secret_enc, params["api_secret"])
     |> put_ssh_key(params["ssh_key"])
+    |> put_ca_bundle(params["ca_bundle"])
   end
+
+  # Public certificate material, so no fernet — but deliberately NOT in
+  # @editable_fields: that list is what safe_audit_detail copies VERBATIM into
+  # the audit row, and a PEM blob has no business there (invariant 3, and the
+  # retired stack's own rule: ca_bundle is recorded by name only).
+  #
+  # Unlike the secrets above it, an empty value CLEARS rather than keeps: the
+  # edit form can show a CA bundle (it is not a secret), so submitting it empty
+  # is a deliberate removal, not the "I did not retype my password" case.
+  defp put_ca_bundle(changes, nil), do: changes
+  defp put_ca_bundle(changes, ""), do: Map.put(changes, :ca_bundle, nil)
+  defp put_ca_bundle(changes, value), do: Map.put(changes, :ca_bundle, value)
 
   defp put_secret(changes, _field, value) when value in [nil, ""], do: changes
   defp put_secret(changes, field, value), do: Map.put(changes, field, Orbit.Crypto.encrypt(value))

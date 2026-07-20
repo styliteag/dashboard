@@ -257,6 +257,19 @@ defmodule OrbitWeb.InstanceEditLive do
                 />
               </.field>
             </div>
+            <%!-- Shown with its value, unlike the credentials above it: a CA
+                 bundle is public certificate material, so hiding it would
+                 only stop an operator checking WHICH CA a box is pinned to.
+                 That also makes submitting it empty a deliberate removal. --%>
+            <.field label="CA bundle (PEM) — blank removes it; verification then falls back to the system trust store">
+              <textarea
+                name="instance[ca_bundle]"
+                rows="4"
+                spellcheck="false"
+                placeholder="-----BEGIN CERTIFICATE-----"
+                class={[input_cls(), "font-mono text-xs"]}
+              >{@instance.ca_bundle}</textarea>
+            </.field>
           </div>
 
           <div class="rounded-lg border border-base-300 bg-base-200 p-4">
