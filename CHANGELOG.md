@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The second-factor page offers a choice instead of demanding a code.** With
+  both factors registered it led with the code field, autofocused, and put the
+  passkey behind a divider below — so a passkey user typed six digits out of
+  habit without noticing the one-click alternative. The passkey now comes
+  first and carries the primary styling, the code form sits under the "or",
+  and nothing grabs focus unless the authenticator is the only factor.
+
 ### Added
 
 - **The 2FA setup page shows a QR code.** It only ever printed the base32

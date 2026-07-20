@@ -2,9 +2,11 @@
   <div class="w-full max-w-sm rounded-xl border border-base-300 bg-base-200 p-8 shadow-xl">
     <h1 class="mb-1 text-xl font-semibold text-base-content">Two-factor authentication</h1>
     <p class="mb-6 text-sm text-base-content/70">
-      {if @totp,
-        do: "Enter the 6-digit code from your authenticator app.",
-        else: "Sign in with your passkey."}
+      {cond do
+        @totp and @webauthn -> "Use your passkey, or enter the code from your authenticator app."
+        @totp -> "Enter the 6-digit code from your authenticator app."
+        true -> "Sign in with your passkey."
+      end}
     </p>
 
     <p
@@ -20,27 +22,17 @@
     >
     </p>
 
-    <form :if={@totp} action={~p"/login/totp"} method="post" class="space-y-4">
-      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-      <input
-        type="text"
-        id="code"
-        name="code"
-        required
-        autofocus
-        inputmode="numeric"
-        pattern="[0-9]{6}"
-        maxlength="6"
-        autocomplete="one-time-code"
-        class="w-full rounded-md border border-base-content/20 bg-base-100 px-3 py-2 text-center text-2xl tracking-[0.5em] text-base-content focus:border-primary focus:outline-none"
-      />
-      <button
-        type="submit"
-        class="w-full rounded-md bg-primary px-4 py-2 font-medium text-primary-content hover:bg-primary/85"
-      >
-        Verify
-      </button>
-    </form>
+    <%!-- The passkey leads when both factors exist: it is one click against
+         six typed digits, and it carries the visual weight to match. --%>
+    <button
+      :if={@webauthn}
+      type="button"
+      id="passkey-login"
+      data-csrf={Plug.CSRFProtection.get_csrf_token()}
+      class="w-full rounded-md bg-primary px-4 py-2 font-medium text-primary-content hover:bg-primary/85 disabled:opacity-50"
+    >
+      Use a passkey
+    </button>
 
     <div
       :if={@totp and @webauthn}
@@ -50,15 +42,32 @@
       or <span class="h-px flex-1 bg-base-300"></span>
     </div>
 
-    <button
-      :if={@webauthn}
-      type="button"
-      id="passkey-login"
-      data-csrf={Plug.CSRFProtection.get_csrf_token()}
-      class="w-full rounded-md border border-base-content/20 bg-base-300 px-4 py-2 font-medium text-base-content hover:bg-neutral disabled:opacity-50"
-    >
-      Use a passkey
-    </button>
+    <form :if={@totp} action={~p"/login/totp"} method="post" class="space-y-4">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <input
+        type="text"
+        id="code"
+        name="code"
+        required
+        autofocus={not @webauthn}
+        inputmode="numeric"
+        pattern="[0-9]{6}"
+        maxlength="6"
+        autocomplete="one-time-code"
+        class="w-full rounded-md border border-base-content/20 bg-base-100 px-3 py-2 text-center text-2xl tracking-[0.5em] text-base-content focus:border-primary focus:outline-none"
+      />
+      <button
+        type="submit"
+        class={[
+          "w-full rounded-md px-4 py-2 font-medium",
+          @webauthn &&
+            "border border-base-content/20 bg-base-300 text-base-content hover:bg-neutral",
+          !@webauthn && "bg-primary text-primary-content hover:bg-primary/85"
+        ]}
+      >
+        Verify
+      </button>
+    </form>
 
     <a
       href={~p"/login"}
