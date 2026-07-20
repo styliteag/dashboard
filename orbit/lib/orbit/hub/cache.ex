@@ -33,10 +33,11 @@ defmodule Orbit.Hub.Cache do
   @doc "Apply one metrics push to the cache map; returns the updated cache."
   @spec ingest(t(), integer(), map(), DateTime.t()) :: t()
   def ingest(cache, instance_id, data, now, cpu_state \\ :unchanged) when is_map(data) do
+    prev = Map.get(cache, instance_id, %{})
+
     entry =
-      cache
-      |> Map.get(instance_id, %{})
-      |> put_status(data, now)
+      prev
+      |> put_status(with_iface_rates(prev, data, now), now)
       |> apply_truthy_guards(data)
       |> apply_presence_guards(data)
       |> put_external_ip(data)
@@ -100,6 +101,51 @@ defmodule Orbit.Hub.Cache do
   @doc "Drop an instance's cache (uninstall/delete)."
   @spec drop(t(), integer()) :: t()
   def drop(cache, instance_id), do: Map.delete(cache, instance_id)
+
+  @doc """
+  Per-interface throughput, derived from the byte counters.
+
+  The counters are cumulative, so a rate needs two pushes: this diffs each
+  interface against its own previous value over the elapsed time. Without it
+  `rx_rate`/`tx_rate` were never produced at all and the Network tab's RX/s
+  and TX/s columns showed "—" forever, on every transport.
+
+  A counter that went backwards (interface reset, agent restart, box reboot)
+  yields no rate rather than a negative or a huge spike, and the very first
+  push after a restart reports none — same honesty rule as the CPU delta.
+  """
+  def with_iface_rates(prev, data, now) do
+    ifaces = data["interfaces"]
+
+    with true <- is_list(ifaces),
+         %DateTime{} = prev_ts <- prev["last_metrics_ts"],
+         seconds when seconds > 0 <- DateTime.diff(now, prev_ts) do
+      previous =
+        prev
+        |> get_in(["status", "interfaces"])
+        |> List.wrap()
+        |> Map.new(fn i -> {i["name"], i} end)
+
+      Map.put(data, "interfaces", Enum.map(ifaces, &rate_for(&1, previous, seconds)))
+    else
+      _ -> data
+    end
+  end
+
+  defp rate_for(iface, previous, seconds) do
+    old = Map.get(previous, iface["name"], %{})
+
+    iface
+    |> put_rate("rx_rate", iface["bytes_received"], old["bytes_received"], seconds)
+    |> put_rate("tx_rate", iface["bytes_transmitted"], old["bytes_transmitted"], seconds)
+  end
+
+  defp put_rate(iface, key, current, previous, seconds)
+       when is_number(current) and is_number(previous) and current >= previous do
+    Map.put(iface, key, Float.round((current - previous) / seconds, 1))
+  end
+
+  defp put_rate(iface, _key, _current, _previous, _seconds), do: iface
 
   defp put_status(entry, data, now) do
     status = Map.take(data, @status_sections)

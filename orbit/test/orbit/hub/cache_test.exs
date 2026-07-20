@@ -110,6 +110,51 @@ defmodule Orbit.Hub.CacheTest do
     assert entry["last_metrics_ts"] == later
   end
 
+  describe "interface throughput" do
+    defp push(bytes) do
+      %{
+        "interfaces" => [
+          %{"name" => "em0", "bytes_received" => bytes, "bytes_transmitted" => bytes * 2}
+        ]
+      }
+    end
+
+    defp em0(cache), do: cache |> Cache.entry(7) |> get_in(["status", "interfaces"]) |> hd()
+
+    test "a rate needs two pushes; the first one reports none" do
+      cache = Cache.ingest(%{}, 7, push(1_000), @now)
+      refute Map.has_key?(em0(cache), "rx_rate")
+
+      # 10_000 - 1_000 bytes over 30 s = 300 B/s; tx doubles.
+      cache = Cache.ingest(cache, 7, push(10_000), DateTime.add(@now, 30, :second))
+      assert em0(cache)["rx_rate"] == 300.0
+      assert em0(cache)["tx_rate"] == 600.0
+    end
+
+    test "a counter that went backwards yields no rate rather than a spike" do
+      cache = Cache.ingest(%{}, 7, push(10_000), @now)
+      # Box rebooted: the counters restart near zero. A naive diff would be a
+      # large negative number, and abs() of it a fictional gigabit burst.
+      cache = Cache.ingest(cache, 7, push(50), DateTime.add(@now, 30, :second))
+      refute Map.has_key?(em0(cache), "rx_rate")
+    end
+
+    test "an interface the previous push did not carry gets no rate" do
+      cache = Cache.ingest(%{}, 7, push(1_000), @now)
+
+      data = %{"interfaces" => [%{"name" => "em9", "bytes_received" => 5_000}]}
+      cache = Cache.ingest(cache, 7, data, DateTime.add(@now, 30, :second))
+
+      refute Map.has_key?(em0(cache), "rx_rate")
+    end
+
+    test "two pushes inside the same second do not divide by zero" do
+      cache = Cache.ingest(%{}, 7, push(1_000), @now)
+      cache = Cache.ingest(cache, 7, push(2_000), @now)
+      refute Map.has_key?(em0(cache), "rx_rate")
+    end
+  end
+
   test "instances are isolated; drop removes one" do
     cache = seeded()
     cache = Cache.ingest(cache, 8, %{"gateways" => [%{"name" => "OTHER"}]}, @now)

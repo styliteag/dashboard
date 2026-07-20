@@ -18,6 +18,8 @@ defmodule Orbit.Hub do
 
   use GenServer
 
+  require Logger
+
   @default_timeout_ms 30_000
 
   defmodule Agent do
@@ -219,16 +221,53 @@ defmodule Orbit.Hub do
   def init(:ok) do
     Process.flag(:trap_exit, false)
 
+    # Rehydrate the section cache from the last persisted snapshot per
+    # instance. Without it a restart leaves every box blank until its next
+    # push — no checks, no status, and the exports report nothing for up to
+    # a poll interval. The old python hub owned this column; that ended at
+    # the 4.0.0 cutover, so orbit owns it now (the "until cutover" note in
+    # cache.ex/transitions.ex is what this replaces).
+    #
+    # Never fatal: a boot that cannot read the column starts cold, exactly
+    # as before. Gated by :write_metrics like the snapshot writer, so hub
+    # unit tests (which have no instances table) start cold too.
     {:ok,
      %{
        agents: %{},
        pending: %{},
-       cache: %{},
+       cache: hydrate_cache(),
        streams: %{},
        ipsec_dup: %{},
        counters: %{},
        started_at: DateTime.utc_now()
      }}
+  end
+
+  defp hydrate_cache do
+    if Application.get_env(:orbit, :write_metrics, true), do: read_snapshots(), else: %{}
+  end
+
+  defp read_snapshots do
+    %{rows: rows} =
+      Orbit.Repo.query!(
+        "SELECT id, status_snapshot FROM instances " <>
+          "WHERE deleted_at IS NULL AND status_snapshot IS NOT NULL"
+      )
+
+    cache =
+      for [id, json] <- rows, into: %{} do
+        case Jason.decode(to_string(json)) do
+          {:ok, entry} when is_map(entry) -> {id, entry}
+          _ -> {id, %{}}
+        end
+      end
+
+    Logger.info("hub.cache_hydrated instances=#{map_size(cache)}")
+    cache
+  rescue
+    error ->
+      Logger.warning("hub.cache_hydrate_failed error=#{inspect(error)}")
+      %{}
   end
 
   @impl true
@@ -416,6 +455,7 @@ defmodule Orbit.Hub do
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)
     maybe_persist_metrics(instance_id, now, data)
+    maybe_persist_snapshot(instance_id, cache)
     maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data)
 
     {:noreply,
@@ -563,6 +603,23 @@ defmodule Orbit.Hub do
   end
 
   defp maybe_persist_config_backup(_instance_id, _data), do: :ok
+
+  # Persist the just-updated cache entry so a restart can rehydrate it
+  # (python hub parity: it wrote status_snapshot in the same push handler).
+  # Fire-and-forget off the hub loop, and disabled in test like the metrics
+  # writer — hub unit tests have no instances table.
+  defp maybe_persist_snapshot(instance_id, cache) do
+    if Application.get_env(:orbit, :write_metrics, true) do
+      entry = Map.get(cache, instance_id, %{})
+
+      Task.start(fn ->
+        Orbit.Repo.query!(
+          "UPDATE instances SET status_snapshot = ? WHERE id = ?",
+          [Jason.encode!(entry), instance_id]
+        )
+      end)
+    end
+  end
 
   # Metric history rows ride every ingest (agent push AND poller bridge —
   # write_poll_metrics parity; without this the charts flatline after

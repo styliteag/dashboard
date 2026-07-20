@@ -27,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Interface throughput was never shown.** The Network tab's RX/s and TX/s
+  columns read "—" on every box and every transport, because nothing ever
+  turned the cumulative byte counters into a rate. They are now derived per
+  push; a counter that went backwards (reboot, interface reset) and the first
+  push after a restart report nothing rather than a fictional burst.
+- **A restart blanked every box until its next push.** The hub wrote each
+  box's last state to `status_snapshot` but never read it back, so after a
+  restart the fleet had no status, no checks, and the Checkmk and Prometheus
+  exports reported nothing until a full poll cycle had passed. The cache is
+  rehydrated at boot; a boot that cannot read the column starts cold, as
+  before.
+- **A tunnel pinned to an address the box no longer has is flagged.** When a
+  tunnel names a public local endpoint that differs from the box's actual
+  public address — it moved behind NAT, or its WAN address changed — phase 1
+  fails with nothing in the tunnel's own status to say why. The VPN views now
+  show a "local IP drift" hint naming both addresses. Informational only: no
+  check, no alert, and private local endpoints are never judged.
 - **The Agent tab crashed on Linux nodes.** Hiding the relay API test there
   compared the hub's agent record as if it were a boolean, which raises while
   rendering — the tab died on every open.

@@ -384,8 +384,11 @@ defmodule OrbitWeb.VpnLive do
 
     tunnels =
       Enum.flat_map(vpn_instances, fn inst ->
-        ipsec = Hub.cache_entry(inst.id)["ipsec"] || %{}
+        entry = Hub.cache_entry(inst.id)
+        ipsec = entry["ipsec"] || %{}
         gui_openable = Orbit.GUI.openable(inst) == :ok
+        # The box's real public address, for the lip-mismatch hint below.
+        public_ip = Orbit.ExternalIp.build(entry)
 
         for t <- ipsec["tunnels"] || [] do
           status = (t["status"] || "") |> to_string() |> String.downcase()
@@ -402,6 +405,9 @@ defmodule OrbitWeb.VpnLive do
             status: t["status"] || "?",
             up: status in @ipsec_up,
             remote: t["remote"] || "",
+            local: to_string(t["local"] || ""),
+            lip_mismatch: Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], public_ip),
+            box_public_ip: public_ip[:ipv4],
             phase2_up: int0(t["phase2_up"]),
             phase2_total: int0(t["phase2_total"]),
             uptime_s: int0(t["seconds_established"]),
@@ -602,6 +608,16 @@ defmodule OrbitWeb.VpnLive do
                   </td>
                   <td class="px-3 py-2 text-base-content/80">
                     {t.label}
+                    <%!-- Configuration drift, not a fault of the tunnel: the
+                         pinned local endpoint is a public address the box no
+                         longer owns. Informational only — no check fires. --%>
+                    <span
+                      :if={t.lip_mismatch}
+                      title={Orbit.Ipsec.LocalEndpoint.hint(t.local, %{ipv4: t.box_public_ip})}
+                      class="ml-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] text-warning"
+                    >
+                      local IP drift
+                    </span>
                     <.comment_editor
                       text={CommentEditor.text(@comments, t.instance_id, "ipsec", t.id)}
                       writable={@writable}
