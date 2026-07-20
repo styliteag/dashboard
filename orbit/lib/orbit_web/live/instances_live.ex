@@ -318,7 +318,17 @@ defmodule OrbitWeb.InstancesLive do
           alerts: alert_counts[inst.id] || %{crit: 0, warn: 0},
           shell_enabled: inst.shell_enabled,
           gui_openable: Orbit.GUI.openable(inst) == :ok,
-          base_url: Instance.primary_base_url(inst)
+          base_url: Instance.primary_base_url(inst),
+          # Fleet policy is NO password on the console menu, so a box that
+          # reports one is the exception worth seeing. The detail page has
+          # said so for a while; from the list there was no way to tell which
+          # boxes deviate without opening each one.
+          console_pw:
+            get_in(Hub.cache_entry(inst.id), [
+              "status",
+              "system",
+              "console_password_protected"
+            ]) == true
         }
       end)
 
@@ -852,17 +862,33 @@ defmodule OrbitWeb.InstancesLive do
   defp status_badge(assigns) do
     ~H"""
     <span class="inline-flex items-center gap-1.5">
-      <span class={[
-        "inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs",
-        badge_class(@row.bucket)
-      ]}>
+      <%!-- The status was the one thing on the row that looked clickable and
+           was not. It goes where the status comes from: the box's own page. --%>
+      <.link
+        navigate={~p"/instances/#{@row.id}"}
+        title={"#{@row.name} is #{@row.bucket} — open the instance"}
+        class={[
+          "inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs hover:brightness-125",
+          badge_class(@row.bucket)
+        ]}
+      >
         <span class={["inline-block h-2 w-2 rounded-full", dot_class(@row.bucket)]}></span>
         {@row.bucket}
         <span :if={@row.maintenance} title="In maintenance — alerts capped at WARN">
           <Icons.icon name={:maintenance} class="inline h-3 w-3" />
           <span class="sr-only">in maintenance</span>
         </span>
-      </span>
+      </.link>
+      <%!-- Deviation from the fleet standard (no console password), so it is
+           a warning, not a capability chip. --%>
+      <a
+        :if={@row.console_pw}
+        href={~p"/instances/#{@row.id}"}
+        title="Console password protection is enabled on this box — fleet standard is no password on the console menu."
+        class="rounded bg-warning/20 px-1.5 py-0.5 text-xs text-warning"
+      >
+        Console PW
+      </a>
       <a
         :if={@row.alerts.crit > 0 or @row.alerts.warn > 0}
         href={~p"/alerts?q=#{@row.name}"}

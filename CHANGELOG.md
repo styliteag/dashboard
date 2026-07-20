@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard host. 8 MB per session, after which the file closes with a note
   and the session continues unrecorded; a failing or full disk never touches
   the session. Works for agent and Securepoint SSH terminals alike.
+- **The instances list flags boxes with a console password**, and its status
+  badge is a link. Fleet standard is no password on the console menu, and the
+  instance page has said so for a while — but from the list there was no way to
+  see which boxes deviate without opening each one. The status badge was also
+  the one thing on a row that looked clickable and was not; it now opens the
+  box it describes.
 - **Connectivity monitors have a History button.** Orbit has been recording
   every check state change since the cutover, but nothing read those rows per
   monitor, so "has this link been flapping all week, or did it just drop?" had
