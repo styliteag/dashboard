@@ -32,7 +32,7 @@ defmodule Orbit.Hub.Cache do
 
   @doc "Apply one metrics push to the cache map; returns the updated cache."
   @spec ingest(t(), integer(), map(), DateTime.t()) :: t()
-  def ingest(cache, instance_id, data, now) when is_map(data) do
+  def ingest(cache, instance_id, data, now, cpu_state \\ :unchanged) when is_map(data) do
     entry =
       cache
       |> Map.get(instance_id, %{})
@@ -40,9 +40,44 @@ defmodule Orbit.Hub.Cache do
       |> apply_truthy_guards(data)
       |> apply_presence_guards(data)
       |> put_external_ip(data)
+      |> put_cpu_state(cpu_state)
 
     Map.put(cache, instance_id, entry)
   end
+
+  @doc """
+  Expand a Linux node's `checkmk_raw` blob into the normal section shapes.
+
+  A generic Linux server ships one gzipped Checkmk-agent dump instead of the
+  per-section numbers a firewall agent collects itself (§25/DR-10). This runs
+  ONCE per push, before the caller feeds both the cache and the metric-history
+  writer — expanding inside `ingest/5` alone left the metric series reading
+  the raw push, so the charts stayed flat while the status view was correct.
+
+  The agent also sends its own zero-filled cpu/memory/loadavg on such a box
+  (its FreeBSD collectors find nothing on Linux), so the parsed values must
+  WIN over what the push carried; taking the push's zeros was exactly the
+  symptom — a healthy Linux node reading 0 % CPU and 0 % RAM forever.
+
+  Returns `{data, cpu_state}`; `cpu_state` is `:unchanged` for every
+  non-Linux push so `ingest/5` leaves the stored baseline alone.
+  """
+  @spec expand(t(), integer(), map()) :: {map(), map() | nil | :unchanged}
+  def expand(cache, instance_id, data) when is_map(data) do
+    case data["checkmk_raw"] do
+      raw when is_map(raw) and map_size(raw) > 0 ->
+        prev = Map.get(cache, instance_id, %{})
+        {parsed, cpu_state} = Orbit.Hub.Checkmk.parse(raw, prev["checkmk_cpu"])
+        {Map.merge(data, parsed), cpu_state}
+
+      _ ->
+        {data, :unchanged}
+    end
+  end
+
+  defp put_cpu_state(entry, :unchanged), do: entry
+  defp put_cpu_state(entry, nil), do: entry
+  defp put_cpu_state(entry, state), do: Map.put(entry, "checkmk_cpu", state)
 
   @doc "The cached entry for an instance (or empty map)."
   @spec entry(t(), integer()) :: map()

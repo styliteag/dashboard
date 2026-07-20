@@ -404,7 +404,12 @@ defmodule Orbit.Hub do
       Orbit.Ipsec.History.annotate_dup(data, Map.get(dup_state, instance_id, %{}))
 
     prev_ipsec = Orbit.Hub.Cache.entry(state.cache, instance_id)["ipsec"]
-    cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now)
+
+    # Linux nodes push one checkmk blob instead of per-section numbers —
+    # expand it here, once, so the cache AND the metric-history writer below
+    # see the same sections (expanding inside ingest left the series flat).
+    {data, cpu_state} = Orbit.Hub.Cache.expand(state.cache, instance_id, data)
+    cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now, cpu_state)
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)
     maybe_persist_metrics(instance_id, now, data)

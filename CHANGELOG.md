@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Linux nodes reported nothing at all.** A generic Linux server ships one
+  Checkmk-agent dump instead of the per-section numbers a firewall agent
+  collects itself — and the hub dropped that section without a word, while
+  storing the agent's own zero-filled placeholders. The node enrolled,
+  connected, reported its hostname, and then showed 0 % CPU, 0 % RAM and no
+  disks forever: indistinguishable from an idle machine rather than from a
+  broken import. The dump is now parsed into the normal sections, so a Linux
+  box gets CPU, memory, swap, disks, interfaces, load, uptime, NTP (chrony)
+  and failed-systemd-unit checks like every other box. CPU needs two pushes
+  by nature (the kernel counters are cumulative) and reports nothing until it
+  has both, rather than inventing a zero.
 - **Direct-polled and Securepoint boxes were invisible to Alerts, Checkmk and
   Prometheus.** Their checks were evaluated and shown on the box's own Checks
   tab, but the fleet-wide export filtered to agent-push instances only — a
