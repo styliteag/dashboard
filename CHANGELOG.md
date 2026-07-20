@@ -83,6 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API-key scrapes appear in the access log.** Checkmk and Prometheus
   scrapers were invisible, so there was no way to tell whether a key was
   still in use before purging it.
+- **New instances arrive with the terminal armed again** (per-instance
+  opt-in, as before the rewrite). The root shell still requires the global
+  shell feature gate, an admin session and the write role, and every open is
+  now audited — a box that must never expose a shell needs the flag cleared
+  after creation.
 - **Tags can finally be edited.** The field existed on every instance and the
   fleet page filtered by it, but no form ever wrote one — the filter chips
   could never be populated. Comma-separated on the instance edit form.
@@ -160,11 +165,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live-tracking flag and disappeared the moment tracking ended — taking the
   boot-environment name and the final lines with it, exactly when they are
   needed. It now stays until dismissed.
-- **Problems-first defaults are back**: the fleet VPN page opens on the down
-  tunnels and the Logs page on error-level events, instead of an unfiltered
-  list you have to narrow yourself. (Alerts deliberately keeps showing
-  everything — selection here is base-OFF, so an exported-only landing page
-  would hide most non-OK checks.)
+- **Problems-first defaults are back**: Alerts opens on the Checkmk-exported
+  set, the fleet VPN page on the down tunnels, and the Logs page on
+  error-level events, instead of unfiltered lists you have to narrow
+  yourself. The KPI tiles keep counting everything, and one click on the
+  "Checkmk-exported" chip shows the full set again.
 - **The Selection rules page is reachable again** — it was routed and
   implemented but linked from nowhere. It now sits next to the export tree it
   overrides, on the Checkmk and Prometheus settings tabs, and the Prometheus

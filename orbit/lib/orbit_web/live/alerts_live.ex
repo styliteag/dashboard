@@ -30,12 +30,12 @@ defmodule OrbitWeb.AlertsLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    # Deliberately "all", NOT the python default of "exported". Selection is
-    # base-OFF here: nothing exports until an include rule matches, so an
-    # exported-first landing page hid 7 CRIT behind a filter on a fleet whose
-    # rules were not curated. Showing every non-OK check and letting the
-    # operator narrow down is the safer default for this model.
-    {:ok, socket |> assign(severity_filter: "all", exported_filter: "all") |> load()}
+    # Opens on the exported set (python parity): those are the checks that
+    # actually page someone. Note the interaction with base-OFF selection —
+    # on a fleet whose include rules are not curated yet this shows few or no
+    # rows even while CRITs exist; the "Checkmk-exported" chip toggles back
+    # to everything.
+    {:ok, socket |> assign(severity_filter: "all", exported_filter: "exported") |> load()}
   end
 
   @impl true

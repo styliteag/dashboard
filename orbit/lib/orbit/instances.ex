@@ -253,7 +253,12 @@ defmodule Orbit.Instances do
         device_type: device_type,
         ssl_verify: params["ssl_verify"] in [true, "true", "on"],
         gui_login_enabled: params["gui_login_enabled"] in [true, "true", "on"],
-        shell_enabled: false,
+        # Terminal armed on new instances (2.7.8/3.0.5 behaviour, restored by
+        # operator decision 2026-07-20). This is a per-instance opt-in only —
+        # the root shell still needs the global DASH_SHELL_ENABLED gate, an
+        # admin session and the write role, and every open is audited. A box
+        # that must never expose a shell has to be edited after creation.
+        shell_enabled: true,
         ssh_enabled: false,
         maintenance: false,
         firmware_locked: false,
