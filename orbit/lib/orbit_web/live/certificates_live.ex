@@ -24,6 +24,9 @@ defmodule OrbitWeb.CertificatesLive do
 
   @refresh_ms 60_000
   @sort_cols ~w(state instance name issuer days)
+  # ACME renews at 30 days by default; a cert still unrenewed at 21 means the
+  # automation has already missed its window (python _CERT_ACME_RENEW_DAYS).
+  @acme_renew_days 21
   # Full runway = a fresh 1-year cert; the bar clamps there.
   @runway_days 365
 
@@ -57,7 +60,8 @@ defmodule OrbitWeb.CertificatesLive do
   @impl true
   def handle_event("search", %{"q" => q}, socket), do: {:noreply, assign(socket, search: q)}
 
-  def handle_event("state_filter", %{"bucket" => b}, socket) when b in ~w(all crit warn ok) do
+  def handle_event("state_filter", %{"bucket" => b}, socket)
+      when b in ~w(all crit warn ok acme) do
     b = if socket.assigns.state_filter == b, do: "all", else: b
     {:noreply, assign(socket, state_filter: b)}
   end
@@ -99,6 +103,12 @@ defmodule OrbitWeb.CertificatesLive do
             days: trunc(c["days_remaining"]),
             is_gui: c["is_gui"] == true,
             is_ca: to_string(c["type"] || "") == "ca",
+            acme: acme?(c["issuer"]),
+            # An ACME cert inside its renew window that has NOT been renewed
+            # means the automation is failing — the strongest "Let's Encrypt
+            # is broken here" signal, and it fires long before the 30-day
+            # expiry warning would.
+            acme_overdue: acme_overdue?(c["issuer"], c["days_remaining"]),
             # Same thresholds as Evaluate.cert_checks (@cert_crit_days 7 /
             # @cert_warn_days 30) — keep in sync, four-surface parity.
             state: days_state(c["days_remaining"])
@@ -119,6 +129,38 @@ defmodule OrbitWeb.CertificatesLive do
   def handle_event("comment_clear", params, socket),
     do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
 
+  # Issuers whose certs are renewed by ACME automation (python
+  # _ACME_ISSUER_MARKERS, verbatim).
+  @acme_markers [
+    "let's encrypt",
+    "lets encrypt",
+    "isrg",
+    "zerossl",
+    "buypass",
+    "google trust services"
+  ]
+
+  @doc false
+  def acme?(issuer) when is_binary(issuer) do
+    lower = String.downcase(issuer)
+    Enum.any?(@acme_markers, &String.contains?(lower, &1))
+  end
+
+  def acme?(_), do: false
+
+  @doc """
+  An ACME certificate that should already have been renewed.
+
+  ACME clients renew at 30 days; one still standing at #{@acme_renew_days}
+  means the automation missed its window — a broken-renewal signal that
+  fires ~3 weeks before the generic expiry warning. Expired certs are NOT
+  "overdue": they read as expired, which is the louder verdict already.
+  """
+  def acme_overdue?(issuer, days) when is_number(days),
+    do: acme?(issuer) and days >= 0 and days < @acme_renew_days
+
+  def acme_overdue?(_issuer, _days), do: false
+
   defp days_state(days) when days < 7, do: 2
   defp days_state(days) when days < 30, do: 1
   defp days_state(_), do: 0
@@ -136,6 +178,7 @@ defmodule OrbitWeb.CertificatesLive do
     |> Enum.filter(fn r ->
       case a.state_filter do
         "all" -> true
+        "acme" -> r.acme_overdue
         "crit" -> r.state == 2
         "warn" -> r.state == 1
         "ok" -> r.state == 0
@@ -160,6 +203,7 @@ defmodule OrbitWeb.CertificatesLive do
         visible_rows: visible(assigns),
         crit: Enum.count(assigns.rows, &(&1.state == 2)),
         warn: Enum.count(assigns.rows, &(&1.state == 1)),
+        acme_overdue: Enum.count(assigns.rows, & &1.acme_overdue),
         ok: Enum.count(assigns.rows, &(&1.state == 0))
       )
 
@@ -196,6 +240,18 @@ defmodule OrbitWeb.CertificatesLive do
             event="state_filter"
             value_name="warn"
             active={@state_filter == "warn"}
+          />
+          <%!-- Renewal overdue: an ACME cert that should already have been
+               renewed. Fires ~3 weeks before the generic expiry warning
+               would, and points at broken automation rather than at a cert
+               someone forgot. --%>
+          <.kpi_tile
+            label="Renewal overdue"
+            value={@acme_overdue}
+            color="text-error"
+            event="state_filter"
+            value_name="acme"
+            active={@state_filter == "acme"}
           />
           <.kpi_tile
             label="Healthy"
@@ -264,6 +320,24 @@ defmodule OrbitWeb.CertificatesLive do
                     kind="cert"
                     entity_key={r.refid}
                   />
+                  <span
+                    :if={r.acme}
+                    title={
+                      if r.acme_overdue,
+                        do:
+                          "ACME certificate past its renewal window — the automation is probably failing.",
+                        else: "Renewed automatically via ACME."
+                    }
+                    class={[
+                      "ml-1 rounded px-1 py-0.5 text-[10px]",
+                      if(r.acme_overdue,
+                        do: "bg-error/20 text-error",
+                        else: "bg-base-300 text-base-content/60"
+                      )
+                    ]}
+                  >
+                    {if r.acme_overdue, do: "ACME overdue", else: "ACME"}
+                  </span>
                   <span
                     :if={r.is_gui}
                     class="ml-1 rounded bg-info/20 px-1 py-0.5 text-[10px] text-info"

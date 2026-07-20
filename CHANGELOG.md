@@ -70,6 +70,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **"Renewal overdue" is back on the Certificates page.** A Let's Encrypt (or
+  ZeroSSL, Buypass, Google Trust) certificate that is still standing 21 days
+  before expiry means the ACME automation has already missed its window —
+  the strongest "renewal is failing here" signal, and it fires about three
+  weeks before the generic expiry warning. Shown as its own KPI filter and a
+  per-row badge. Self-signed firewall certificates are never flagged, since
+  nothing renews them automatically.
+- **GeoIP tags next to audit IPs.** The footer resolved the viewer's own
+  address while the audit rows — where an unfamiliar IP actually matters —
+  showed a bare number.
+- **API-key scrapes appear in the access log.** Checkmk and Prometheus
+  scrapers were invisible, so there was no way to tell whether a key was
+  still in use before purging it.
 - **Tags can finally be edited.** The field existed on every instance and the
   fleet page filtered by it, but no form ever wrote one — the filter chips
   could never be populated. Comma-separated on the instance edit form.
