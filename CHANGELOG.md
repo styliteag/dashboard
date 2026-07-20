@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at all until the next GUI click. The rebuild now rides create, slug change
   and delete, and runs once at startup. It stays fire-and-forget: a slow or
   down proxy cannot block creating or deleting a firewall.
+- **Editing an instance records what changed again.** Enforcing the audit
+  allowlist at the point the row is written (earlier in this same unreleased
+  block) cut the instance-edit entry down to the box's name: the list had been
+  written for the mirrored log line and never carried the edit fields. Every
+  edit since then recorded that something changed but not what. The safe edit
+  fields are back on the list, and the rotated-secret names with them. Operator
+  notes stay off it — free text can contain anything somebody pasted, which is
+  what the allowlist is for.
 - **A stressed database no longer turns handled failures into crashes.** Four
   places that are written to degrade gracefully when the database is
   unavailable — the geo-block deny path, the per-group notification channel

@@ -88,5 +88,39 @@ defmodule Orbit.AuditTest do
 
       assert Orbit.Audit.safe_detail(detail) == detail
     end
+
+    test "an instance edit still records which fields changed" do
+      # The guard above listed only the single-key details, so it stayed green
+      # while instance.update — the richest audit row the app writes — was
+      # reduced to {"name": ...}. Proven against the dev database: rows up to
+      # 2026-07-19 carry every changed field, the row after the filter landed
+      # carries the name alone.
+      detail =
+        Orbit.Instances.safe_audit_detail(%{
+          "name" => "bensheim",
+          "base_url" => "https://sp.example:11115/",
+          "location" => "Bensheim",
+          "ssh_user" => "root",
+          "ssh_port" => "9922",
+          "ssl_verify" => "false",
+          "maintenance" => "false",
+          "ca_bundle" => "-----BEGIN CERTIFICATE-----"
+        })
+
+      filtered = Orbit.Audit.safe_detail(detail)
+
+      assert filtered["base_url"] == "https://sp.example:11115/"
+      assert filtered["ssh_user"] == "root"
+      assert filtered["secrets_rotated"] == ["ca_bundle"]
+      # …and the certificate itself is still nowhere near the row.
+      refute filtered |> inspect() |> String.contains?("BEGIN CERTIFICATE")
+    end
+
+    test "operator free text stays out even though it used to be logged" do
+      # `notes` is whatever somebody chose to paste into a text area, which is
+      # exactly what an allowlist exists to keep out of a table admins read.
+      assert Orbit.Audit.safe_detail(%{"name" => "n", "notes" => "root pw: hunter2"}) ==
+               %{"name" => "n"}
+    end
   end
 end

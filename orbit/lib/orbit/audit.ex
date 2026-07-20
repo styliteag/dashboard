@@ -21,9 +21,23 @@ defmodule Orbit.Audit do
   # The allowlist. Extend it for new SAFE fields — never widen it to a
   # denylist, and never add anything that could carry key material, a
   # password, a token or raw command output (invariant 3).
+  #
+  # The instance-edit fields below were lost when this allowlist started
+  # governing the stored row and not just the mirrored log line: the list was
+  # written for the log line, so an instance.update that used to record every
+  # changed field suddenly recorded only {"name": ...} and the audit trail for
+  # edits became useless. They are safe by construction — `secrets_rotated`
+  # carries the NAMES of rotated secrets and never a value.
+  #
+  # `notes` is deliberately NOT here even though it used to be logged: it is
+  # free operator text that can contain anything somebody chose to paste,
+  # which is exactly what an allowlist exists to keep out.
   @detail_keys ~w(reason username stage lock_triggered name role mode kind entity_key comment
     capture_id channel consumer country from_group_id to_group_id interface seconds selector
-    uuid version why)
+    uuid version why
+    secrets_rotated base_url location ping_url tags slug ssl_verify gui_login_enabled
+    shell_enabled ssh_enabled ssh_port ssh_user maintenance firmware_locked
+    poll_interval_seconds push_interval_seconds)
 
   @doc """
   Insert an audit row + emit the mirrored log line. Fields: :action + :result
