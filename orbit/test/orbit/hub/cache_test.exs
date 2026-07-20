@@ -148,6 +148,15 @@ defmodule Orbit.Hub.CacheTest do
       refute Map.has_key?(em0(cache), "rx_rate")
     end
 
+    test "a gap longer than the window reports nothing rather than an average" do
+      # The cache is rehydrated from a snapshot at boot, so `prev` can be
+      # hours old. Diffing across the outage would label the whole downtime's
+      # average as current throughput.
+      cache = Cache.ingest(%{}, 7, push(1_000), @now)
+      cache = Cache.ingest(cache, 7, push(90_000_000), DateTime.add(@now, 4, :hour))
+      refute Map.has_key?(em0(cache), "rx_rate")
+    end
+
     test "two pushes inside the same second do not divide by zero" do
       cache = Cache.ingest(%{}, 7, push(1_000), @now)
       cache = Cache.ingest(cache, 7, push(2_000), @now)

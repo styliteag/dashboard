@@ -113,13 +113,22 @@ defmodule Orbit.Hub.Cache do
   A counter that went backwards (interface reset, agent restart, box reboot)
   yields no rate rather than a negative or a huge spike, and the very first
   push after a restart reports none — same honesty rule as the CPU delta.
+
+  Gaps longer than `@max_rate_window` yield nothing either: the cache is
+  rehydrated from a persisted snapshot at boot, so the first push after a
+  long outage would otherwise average the whole downtime and label it as
+  current throughput.
   """
+  # 15 min — comfortably above 4× the longest normal push interval.
+  @max_rate_window 900
+
   def with_iface_rates(prev, data, now) do
     ifaces = data["interfaces"]
 
     with true <- is_list(ifaces),
          %DateTime{} = prev_ts <- prev["last_metrics_ts"],
-         seconds when seconds > 0 <- DateTime.diff(now, prev_ts) do
+         seconds when seconds > 0 and seconds <= @max_rate_window <-
+           DateTime.diff(now, prev_ts) do
       previous =
         prev
         |> get_in(["status", "interfaces"])

@@ -257,7 +257,7 @@ defmodule Orbit.Hub do
     cache =
       for [id, json] <- rows, into: %{} do
         case Jason.decode(to_string(json)) do
-          {:ok, entry} when is_map(entry) -> {id, entry}
+          {:ok, entry} when is_map(entry) -> {id, restore_ts(entry)}
           _ -> {id, %{}}
         end
       end
@@ -269,6 +269,20 @@ defmodule Orbit.Hub do
       Logger.warning("hub.cache_hydrate_failed error=#{inspect(error)}")
       %{}
   end
+
+  # JSON has no datetime: the snapshot writes `last_metrics_ts` as an ISO
+  # string, so a plain decode would hand every consumer a string where a
+  # %DateTime{} is expected — the same class of bug as incident 195e9da
+  # ("last seen: in 1h"). Parse it back, and drop the key when it will not
+  # parse rather than leaving a string behind.
+  defp restore_ts(%{"last_metrics_ts" => ts} = entry) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _offset} -> Map.put(entry, "last_metrics_ts", dt)
+      _ -> Map.delete(entry, "last_metrics_ts")
+    end
+  end
+
+  defp restore_ts(entry), do: entry
 
   @impl true
   def handle_call(:stats, _from, state) do
