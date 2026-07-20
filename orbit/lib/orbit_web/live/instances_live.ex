@@ -884,8 +884,9 @@ defmodule OrbitWeb.InstancesLive do
   defp chip(false),
     do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"
 
-  # Relative timestamp, deliberately German (fmtRelative parity — the one
-  # sanctioned non-English surface, ported per plan §M5).
+  # Relative timestamp. English since 2026-07-20 (user decision) — the old
+  # fmtRelative German ("vor 14s") was the React era's one sanctioned
+  # non-English surface and read inconsistent inside the English UI.
   defp ts_rel(nil), do: "—"
 
   defp ts_rel(%DateTime{} = dt) do
@@ -903,9 +904,9 @@ defmodule OrbitWeb.InstancesLive do
       end
 
     cond do
-      a < 5 -> "gerade eben"
+      a < 5 -> "just now"
       stamp == nil -> Calendar.strftime(dt, "%Y-%m-%d")
-      secs >= 0 -> "vor #{stamp}"
+      secs >= 0 -> "#{stamp} ago"
       true -> "in #{stamp}"
     end
   end

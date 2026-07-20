@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Relative timestamps are English now.** The instance list said "vor 14s" /
+  "gerade eben" inside an otherwise English UI — a deliberate carry-over from
+  the React frontend, retired by operator decision. It now reads "14s ago" /
+  "just now".
+- **Instance detail tabs live in the path.** `/instances/7/checks` instead of
+  `/instances/7?tab=checks` — tabs are addressable like the Terminal/Capture/
+  Firewall sub-pages always were, and links to a specific tab survive being
+  pasted into chat. Old `?tab=` bookmarks keep working.
+- **Check export chips are readable.** The per-check consumer toggles were
+  10px cryptic tags ("@" for email); now slightly larger, "mail" spelled out,
+  with a plain-language tooltip ("Export to checkmk: ON — global rule, click
+  to override for this box") and a proper pressed state for screen readers.
+  The VPN tunnel state dot also gained a tooltip and screen-reader text —
+  colour is no longer the only up/down signal.
+
 ### Fixed
 
 - **Browser tabs are distinguishable again.** Every page shipped with the

@@ -86,6 +86,11 @@ defmodule OrbitWeb.Router do
       live "/instances/:id/terminal", TerminalLive
       live "/instances/:id/capture", CaptureLive
       live "/instances/:id/firewall", FirewallRulesLive
+      # Path-based detail tabs (/instances/7/checks). MUST stay below the
+      # dedicated sub-pages above — the router matches top-down, so a
+      # /:tab route earlier would swallow edit/terminal/capture/firewall.
+      # Old ?tab= links keep working: handle_params reads both params.
+      live "/instances/:id/:tab", InstanceDetailLive
       live "/alerts", AlertsLive
       live "/connectivity", ConnectivityLive
       live "/certificates", CertificatesLive

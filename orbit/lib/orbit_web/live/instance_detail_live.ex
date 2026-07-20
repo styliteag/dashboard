@@ -103,9 +103,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     end
   end
 
-  # Tab from the URL (?tab=) — patch-navigation keeps the LiveView mounted;
-  # an unknown or not-available tab (e.g. "agent" on a Securepoint) falls
-  # back to overview, mirroring the react TABS fallback effect.
+  # Tab from the URL path (/instances/7/checks; legacy ?tab= bookmarks land
+  # here too since path and query params merge) — patch-navigation keeps the
+  # LiveView mounted; an unknown or not-available tab (e.g. "agent" on a
+  # Securepoint) falls back to overview, mirroring the react TABS fallback.
   @impl true
   def handle_params(params, _uri, socket) do
     valid =
@@ -1395,7 +1396,11 @@ defmodule OrbitWeb.InstanceDetailLive do
           <%= for {key, label, kind} <- tabs_for(@instance) do %>
             <.link
               :if={kind == :tab}
-              patch={~p"/instances/#{@instance.id}?tab=#{key}"}
+              patch={
+                if key == "overview",
+                  do: ~p"/instances/#{@instance.id}",
+                  else: ~p"/instances/#{@instance.id}/#{key}"
+              }
               class={[
                 "rounded-md px-3 py-1 text-sm",
                 if(@tab == key,
@@ -1534,9 +1539,12 @@ defmodule OrbitWeb.InstanceDetailLive do
                     phx-click="check_toggle"
                     phx-value-consumer={consumer}
                     phx-value-key={c.key}
-                    title={"#{consumer}: #{if Orbit.Selection.is_on_live(consumer, c.key, @instance.id), do: "on", else: "off"}#{if MapSet.member?(@check_rules, {consumer, c.key}), do: " (instance override — click to clear)", else: " (global — click to override)"}"}
+                    aria-pressed={
+                      to_string(Orbit.Selection.is_on_live(consumer, c.key, @instance.id))
+                    }
+                    title={"Export to #{consumer}: #{if Orbit.Selection.is_on_live(consumer, c.key, @instance.id), do: "ON", else: "OFF"} — #{if MapSet.member?(@check_rules, {consumer, c.key}), do: "instance override, click to clear back to the global rule", else: "global rule, click to override for this box"}"}
                     class={[
-                      "ml-1 rounded px-1.5 py-0.5 text-[10px]",
+                      "ml-1 rounded px-2 py-0.5 text-[11px]",
                       if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
                         do: "bg-primary/20 text-primary",
                         else: "bg-base-300 text-base-content/60"
@@ -3001,7 +3009,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp consumer_tag("checkmk"), do: "cmk"
   defp consumer_tag("mattermost"), do: "mm"
   defp consumer_tag("telegram"), do: "tg"
-  defp consumer_tag("email"), do: "@"
+  defp consumer_tag("email"), do: "mail"
   defp consumer_tag(other), do: other
 
   # Slowest collectors of the last push, longest first.
