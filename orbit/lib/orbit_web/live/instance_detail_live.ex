@@ -992,13 +992,18 @@ defmodule OrbitWeb.InstanceDetailLive do
     """
   end
 
+  # `restart`, not `enable --now` / `start`: pasting this on a box that already
+  # runs an agent (re-enrollment, a move to another dashboard, a repeat of the
+  # snippet) must end with the agent running on the NEW config. `--now` leaves
+  # a running unit alone with its old config, and on FreeBSD `start` aborts on
+  # "daemon: process already running" and the box quietly keeps the old agent.
   defp install_start_cmd(%Instance{device_type: "linux"}) do
-    "systemctl daemon-reload\nsystemctl enable --now orbit-agent\n" <>
+    "systemctl daemon-reload\nsystemctl enable orbit-agent\nsystemctl restart orbit-agent\n" <>
       "# verify it came up and is pushing:\njournalctl -u orbit-agent -n 30 --no-pager"
   end
 
   defp install_start_cmd(_inst) do
-    "sysrc orbit_agent_enable=YES\nservice orbit_agent start"
+    "sysrc orbit_agent_enable=YES\nservice orbit_agent restart"
   end
 
   # One place for both ways a code is minted: the agent card's button and the

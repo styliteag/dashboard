@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needed the same three clicks — open the detail page, find the agent card,
   press "Mint enroll code" — before anything could be installed on it.
 
+### Fixed
+
+- **The install snippet no longer leaves an old agent running.** Pasting it on
+  a box that already had one ended in `daemon: process already running` on
+  OPNsense and pfSense, which aborted the start: the new config was written but
+  the OLD agent kept running against the old dashboard, so the box looked
+  installed and never appeared. Re-enrolling a box, moving it to another
+  dashboard or simply pasting the snippet twice all hit this. The snippet now
+  restarts the service (and on Linux restarts the unit instead of leaving a
+  running one untouched).
+
 ## [4.0.10] - 2026-07-20
 
 ### Added
