@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed update check no longer counts as "update available".** When a box
+  cannot reach its update repository the fleet Firmware page listed it among
+  the boxes with a pending update, indistinguishable from a real one. Those
+  rows now carry a "check failed" badge and count under Unknown, where "we do
+  not know" belongs. The check itself still rates WARN, so Alerts and the
+  exports are unchanged. The page also gained the operator comments the other
+  fleet pages have, sharing the row with the instance's own Firmware tab.
 - **Interface throughput was never shown.** The Network tab's RX/s and TX/s
   columns read "—" on every box and every transport, because nothing ever
   turned the cumulative byte counters into a rate. They are now derived per

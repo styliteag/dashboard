@@ -15,10 +15,12 @@ defmodule OrbitWeb.FirmwareLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit
+  import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
   alias Orbit.Checks.Evaluate
   alias Orbit.Hub
   alias Orbit.Instances
+  alias OrbitWeb.Components.CommentEditor
 
   @refresh_ms 60_000
   @sort_cols ~w(state instance version latest location)
@@ -37,7 +39,8 @@ defmodule OrbitWeb.FirmwareLive do
        state_filter: "all",
        type_filter: "all",
        sort_col: "state",
-       sort_dir: :asc
+       sort_dir: :asc,
+       writable: socket.assigns.current_user.role in ~w(admin user)
      )
      |> load()}
   end
@@ -77,13 +80,19 @@ defmodule OrbitWeb.FirmwareLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
+  def handle_event("comment_save", params, socket),
+    do: {:noreply, socket |> CommentEditor.save(params) |> load()}
+
+  def handle_event("comment_clear", params, socket),
+    do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
   defp load(socket) do
+    # Firmware state is reported by polled boxes too (Securepoint sends a
+    # version); filtering to agent-mode hid them from the compliance view.
+    instances = Instances.list_visible(socket.assigns.current_user)
+
     rows =
-      socket.assigns.current_user
-      |> Instances.list_visible()
-      # Firmware state is reported by polled boxes too (Securepoint sends a
-      # version); filtering to agent-mode hid them from the compliance view.
-      |> Enum.map(fn inst ->
+      Enum.map(instances, fn inst ->
         fw = Hub.cache_entry(inst.id)["firmware"] || %{}
         check = fw != %{} && Evaluate.firmware_check(fw)
 
@@ -100,12 +109,30 @@ defmodule OrbitWeb.FirmwareLive do
           security_updates: fw["security_updates"] || 0,
           needs_reboot: fw["needs_reboot"] == true,
           state: (check && check.state) || 3,
+          # The box tried to check for updates and the check itself failed —
+          # "no answer", not "an update is waiting". The check engine rates it
+          # WARN (unchanged, so Alerts/Checkmk/Prometheus keep agreeing); this
+          # page buckets it under Unknown, where "we do not know" belongs.
+          check_failed: fw["check_failed"] == true,
           summary: (check && check.summary) || "No firmware data"
         }
       end)
 
-    assign(socket, rows: rows)
+    assign(socket, rows: rows, comments: CommentEditor.lookup(instances))
   end
+
+  @doc """
+  Compliance bucket for a row — deliberately not the check state.
+
+  A failed update check is WARN in the check engine (and must stay WARN, or
+  Alerts, Checkmk and Prometheus would stop agreeing with each other), but for
+  compliance counting "the box could not ask" is Unknown, not "an update is
+  waiting". Public only so the mapping is unit-testable.
+  """
+  def bucket(%{check_failed: true}), do: "unknown"
+  def bucket(%{state: 0}), do: "ok"
+  def bucket(%{state: s}) when s in [1, 2], do: "update"
+  def bucket(_), do: "unknown"
 
   defp visible(a) do
     q = String.downcase(a.search)
@@ -117,14 +144,7 @@ defmodule OrbitWeb.FirmwareLive do
         String.contains?(String.downcase(r.version), q) or
         String.contains?(String.downcase(r.location), q)
     end)
-    |> Enum.filter(fn r ->
-      case a.state_filter do
-        "all" -> true
-        "ok" -> r.state == 0
-        "update" -> r.state in [1, 2]
-        "unknown" -> r.state == 3
-      end
-    end)
+    |> Enum.filter(&(a.state_filter == "all" or bucket(&1) == a.state_filter))
     |> Enum.filter(&(a.type_filter == "all" or &1.device_type == a.type_filter))
     |> Enum.sort_by(sort_key(a.sort_col), a.sort_dir)
   end
@@ -143,9 +163,9 @@ defmodule OrbitWeb.FirmwareLive do
     assigns =
       assign(assigns,
         visible_rows: visible(assigns),
-        ok_count: Enum.count(assigns.rows, &(&1.state == 0)),
-        update_count: Enum.count(assigns.rows, &(&1.state in [1, 2])),
-        unknown_count: Enum.count(assigns.rows, &(&1.state == 3)),
+        ok_count: Enum.count(assigns.rows, &(bucket(&1) == "ok")),
+        update_count: Enum.count(assigns.rows, &(bucket(&1) == "update")),
+        unknown_count: Enum.count(assigns.rows, &(bucket(&1) == "unknown")),
         present_types: assigns.rows |> Enum.map(& &1.device_type) |> Enum.uniq() |> Enum.sort()
       )
 
@@ -249,6 +269,15 @@ defmodule OrbitWeb.FirmwareLive do
                   >
                     ↻
                   </span>
+                  <%!-- Without this the row is indistinguishable from a box
+                       that really has an update waiting. --%>
+                  <span
+                    :if={r.check_failed}
+                    title="The box could not reach its update repository — the pending-update state is unknown, not confirmed."
+                    class="ml-1 rounded bg-base-300 px-1 py-0.5 text-[10px] text-base-content/70"
+                  >
+                    check failed
+                  </span>
                 </td>
                 <td class="px-3 py-2">
                   <a href={~p"/instances/#{r.id}"} class="text-base-content hover:text-primary">
@@ -273,6 +302,15 @@ defmodule OrbitWeb.FirmwareLive do
                   <span :if={r.security_updates > 0} class="ml-1 text-error">
                     ({r.security_updates} security)
                   </span>
+                  <%!-- Same kind/key as the detail page's firmware comment,
+                       so both surfaces show and edit the one row. --%>
+                  <.comment_editor
+                    text={CommentEditor.text(@comments, r.id, "firmware", "")}
+                    writable={@writable}
+                    instance_id={r.id}
+                    kind="firmware"
+                    entity_key=""
+                  />
                 </td>
               </tr>
             </tbody>
