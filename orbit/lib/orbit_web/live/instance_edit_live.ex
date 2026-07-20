@@ -288,7 +288,7 @@ defmodule OrbitWeb.InstanceEditLive do
               <.flag
                 name="instance[gui_login_enabled]"
                 checked={@instance.gui_login_enabled}
-                label="GUI login"
+                label="Autologin GUI"
               />
               <.flag
                 :if={@admin}

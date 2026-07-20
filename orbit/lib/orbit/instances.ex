@@ -273,7 +273,12 @@ defmodule Orbit.Instances do
         device_type: device_type,
         ssl_verify: params["ssl_verify"] in [true, "true", "on"],
         ca_bundle: presence(params["ca_bundle"]),
-        gui_login_enabled: params["gui_login_enabled"] in [true, "true", "on"],
+        # Autologin armed on new instances (operator decision 2026-07-20): the
+        # point of the GUI proxy is landing IN the firewall's web UI, not on
+        # its login form, and every box that gets one wants it. Absent means
+        # on; an explicit false still wins, so a create form that later grows
+        # the checkbox keeps working without touching this.
+        gui_login_enabled: params["gui_login_enabled"] not in [false, "false", "off"],
         # Terminal armed on new instances (2.7.8/3.0.5 behaviour, restored by
         # operator decision 2026-07-20). This is a per-instance opt-in only —
         # the root shell still needs the global DASH_SHELL_ENABLED gate, an

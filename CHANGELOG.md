@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"GUI login" is called "Autologin GUI", and new instances get it on.**
+  The flag makes the agent replay the firewall's own login so the proxy lands
+  you inside the web UI instead of on its login form — which is the point of
+  opening it, so it is armed on creation now (the create form has no checkbox;
+  unchecking it in Edit still wins). Existing instances are unchanged: the flag
+  has the agent mint and cache a web-UI password on the box, and flipping that
+  on for boxes already in the field is an operator decision, not a migration.
 - **The GUI origin's hostname now follows `DASH_GUI_BASE_TEMPLATE` instead of
   an assumed `gui-` prefix.** The template was the documented way to name those
   origins, but the request side ignored it and matched a hardcoded `gui-`, so
