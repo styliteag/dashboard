@@ -811,7 +811,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   defp install_start_cmd(%Instance{device_type: "linux"}) do
-    "systemctl daemon-reload\nsystemctl enable --now orbit-agent"
+    "systemctl daemon-reload\nsystemctl enable --now orbit-agent\n" <>
+      "# verify it came up and is pushing:\njournalctl -u orbit-agent -n 30 --no-pager"
   end
 
   defp install_start_cmd(_inst) do
@@ -1798,8 +1799,11 @@ defmodule OrbitWeb.InstanceDetailLive do
             >
               Reconnect
             </button>
+            <%!-- Relay test only where a local firewall API exists: a
+                 generic Linux node has none, so the button could only ever
+                 fail there. --%>
             <button
-              :if={@agent}
+              :if={@agent and @instance.device_type != "linux"}
               phx-click="agent_test_api"
               title="Authenticated API call through the agent relay"
               class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
