@@ -10,8 +10,11 @@ defmodule OrbitWeb.InstanceCreateLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.TagPicker, only: [tag_picker: 1]
+
   alias Orbit.Audit
   alias Orbit.Instances
+  alias OrbitWeb.Components.TagPicker
 
   @write_roles ~w(admin user)
 
@@ -21,7 +24,16 @@ defmodule OrbitWeb.InstanceCreateLive do
 
     if user.role in @write_roles do
       groups = selectable_groups(user)
-      {:ok, assign(socket, groups: groups, error: nil)}
+
+      {:ok,
+       assign(socket,
+         groups: groups,
+         error: nil,
+         tags: [],
+         known_tags: Instances.known_tags(user),
+         tag_query: "",
+         tag_open: false
+       )}
     else
       {:ok, push_navigate(socket, to: ~p"/instances")}
     end
@@ -39,6 +51,7 @@ defmodule OrbitWeb.InstanceCreateLive do
   @impl true
   def handle_event("create", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
+    params = Map.put(params, "tags", submitted_tags(socket))
 
     with true <- user.role in @write_roles,
          {:ok, group_id} <- Instances.resolve_create_group(user, params["group_id"]),
@@ -57,6 +70,66 @@ defmodule OrbitWeb.InstanceCreateLive do
       false -> {:noreply, socket}
       {:error, reason} -> {:noreply, assign(socket, error: error_text(reason))}
     end
+  end
+
+  # -- tag picker ------------------------------------------------------------
+  # Clauses stay grouped with "create" above: a second `def handle_event`
+  # block further down the module is a compile warning, and warnings are
+  # errors here.
+
+  def handle_event("tag_key", %{"key" => key, "value" => value}, socket) do
+    case key do
+      k when k in ["Enter", ","] ->
+        {:noreply, commit_tag(socket, value)}
+
+      "Escape" ->
+        {:noreply, assign(socket, tag_open: false)}
+
+      "Backspace" when value == "" ->
+        {:noreply, assign(socket, tags: TagPicker.drop_last(socket.assigns.tags))}
+
+      _ ->
+        {:noreply, assign(socket, tag_query: value, tag_open: true)}
+    end
+  end
+
+  def handle_event("tag_add", %{"tag" => tag}, socket) do
+    {:noreply, commit_tag(socket, tag)}
+  end
+
+  def handle_event("tag_remove", %{"tag" => tag}, socket) do
+    {:noreply, assign(socket, tags: TagPicker.remove(socket.assigns.tags, tag))}
+  end
+
+  def handle_event("tag_focus", _params, socket) do
+    {:noreply, assign(socket, tag_open: true)}
+  end
+
+  # Closing only — never committing. A blur commit fired on focus changes
+  # nobody made (a lone keystroke became a chip, seen in the browser); the
+  # typed leftover is folded in at submit time instead.
+  def handle_event("tag_close", _params, socket) do
+    {:noreply, assign(socket, tag_open: false)}
+  end
+
+  # Picked chips plus whatever sits half-typed in the filter field, as the
+  # comma-separated string Instances.coerce(:tags, …) parses. Submitting with
+  # text still in the field is a normal way to fill a form — that tag counts.
+  # The text comes from the assigns, not the form: the filter input carries no
+  # form name (see TagPicker), so phx-keyup is what the server knows it by.
+  defp submitted_tags(socket) do
+    socket.assigns.tags
+    |> TagPicker.add(socket.assigns.tag_query, socket.assigns.known_tags)
+    |> Enum.join(",")
+  end
+
+  defp commit_tag(socket, text) do
+    socket
+    |> assign(
+      tags: TagPicker.add(socket.assigns.tags, text, socket.assigns.known_tags),
+      tag_query: ""
+    )
+    |> push_event("tag_picker_clear", %{})
   end
 
   defp error_text(:name_required), do: "name is required"
@@ -140,10 +213,12 @@ defmodule OrbitWeb.InstanceCreateLive do
                 <span class="mb-1 block text-xs text-base-content/60">Slug (optional)</span>
                 <input name="instance[slug]" class={input_cls()} />
               </label>
-              <label class="block text-sm md:col-span-2">
-                <span class="mb-1 block text-xs text-base-content/60">Tags (comma-separated)</span>
-                <input name="instance[tags]" placeholder="LAB, customer-x" class={input_cls()} />
-              </label>
+              <.tag_picker
+                tags={@tags}
+                known={@known_tags}
+                query={@tag_query}
+                open={@tag_open}
+              />
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">
                   Ping URL (availability probe)

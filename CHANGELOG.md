@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved and then reopened to get its tags — and until someone did, the fleet
   page's tag filter had nothing to filter on. The four fields now sit on the
   new-instance form and are written on creation.
+- **The tag field on the new-instance form is a picker again**, as it was
+  before the rewrite: chips for what is picked, a dropdown of the tags already
+  in use on the boxes you can see, and a "Create …" entry for a new one. Typing
+  a tag that exists in another case adopts the existing spelling, so "lab" next
+  to the fleet's "LAB" no longer quietly becomes a second tag the filter chips
+  can't merge. Suggestions are group-scoped: you are only offered tags from
+  instances you can already see.
 
 ## [4.0.9] - 2026-07-20
 

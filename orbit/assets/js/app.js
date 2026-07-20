@@ -376,6 +376,28 @@ const DirtySave = {
   },
 }
 
+// Tag picker: the filter input sits INSIDE the new-instance form, so Enter
+// and "," would submit it (implicit submission) before the LiveView ever sees
+// the keystroke — the browser default fires on keydown, phx-keyup after. The
+// hook only swallows those keys and keeps focus on an option click; the chips
+// themselves are server-rendered, so no tag text is ever built into DOM here.
+const TagPicker = {
+  mounted() {
+    this.el.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === ",") e.preventDefault()
+    })
+    // mousedown, not click: swallowing it keeps focus in the filter input, so
+    // the next tag can be typed straight after picking one from the list.
+    this.el.addEventListener("mousedown", e => {
+      if (e.target.closest("[data-tag-option]")) e.preventDefault()
+    })
+    this.handleEvent("tag_picker_clear", () => {
+      const input = this.el.querySelector("#tag-picker-input")
+      if (input) input.value = ""
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -389,7 +411,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   // sitting on the single worst possible interval.
   heartbeatIntervalMs: 20000,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue, RuleReorder},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue, RuleReorder, TagPicker},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it

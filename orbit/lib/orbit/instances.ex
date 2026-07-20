@@ -24,6 +24,26 @@ defmodule Orbit.Instances do
   end
 
   @doc """
+  Tag vocabulary in use across the principal's visible instances, sorted —
+  the tag picker's suggestion list.
+
+  Scoped like every other instance read (invariant 1) and for a concrete
+  reason: tags carry customer names, so an unscoped list would leak them into
+  the dropdown of a user who cannot see the boxes wearing them.
+  """
+  @spec known_tags(Scope.principal()) :: [String.t()]
+  def known_tags(principal) do
+    Instance
+    |> where([i], is_nil(i.deleted_at))
+    |> Scope.scope(principal)
+    |> select([i], i.tags)
+    |> Repo.all()
+    |> Enum.flat_map(&(&1 || []))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  @doc """
   Online when the last success is more recent than the last error — the one
   place the transition is decided (mirror of metrics/store.is_online).
   """
