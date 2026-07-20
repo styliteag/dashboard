@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The GUI proxy config is rebuilt when instances change, and at boot.** It
+  was only ever rebuilt when somebody opened a Web UI session for some box, so
+  a renamed instance kept serving its old `gui-<slug>` address, a deleted one
+  kept a live route to its forwarder, and a restarted proxy served no instance
+  at all until the next GUI click. The rebuild now rides create, slug change
+  and delete, and runs once at startup. It stays fire-and-forget: a slow or
+  down proxy cannot block creating or deleting a firewall.
 - **A stressed database no longer turns handled failures into crashes.** Four
   places that are written to degrade gracefully when the database is
   unavailable — the geo-block deny path, the per-group notification channel

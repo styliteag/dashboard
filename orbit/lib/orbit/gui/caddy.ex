@@ -65,14 +65,40 @@ defmodule Orbit.GUI.Caddy do
 
   @doc "Rebuild from live instances + hot-load. No-op/false when off or unset."
   def reconcile(opts \\ []) do
-    url = Application.get_env(:orbit, :gui_caddy_admin_url, "")
-
-    if not Application.get_env(:orbit, :gui_proxy_enabled, false) or url == "" do
-      false
-    else
+    if enabled?() do
+      url = Application.get_env(:orbit, :gui_caddy_admin_url, "")
       config = build_caddyfile(live_instances())
       push(url, config, opts)
+    else
+      false
     end
+  end
+
+  @doc """
+  Reconcile off the caller's process — the instance-CRUD path.
+
+  The moduledoc has claimed a rebuild "on every instance create/slug-change/
+  delete (and at boot)" since this module was written, but the only caller was
+  the open-a-GUI-session flow. A renamed slug therefore kept serving the OLD
+  vhost, and a deleted instance kept a live one, until somebody happened to
+  open a GUI session for ANY box. Now the claim is true.
+
+  Fire-and-forget by design: the push is an HTTP call to a sidecar that may be
+  down or slow, and creating a firewall must not wait on it (the moduledoc's
+  own rule — a transient Caddy outage must not break instance CRUD). The gate
+  is checked before spawning so a disabled proxy costs nothing at all.
+  """
+  def reconcile_async do
+    if enabled?() do
+      Task.start(fn -> reconcile() end)
+    end
+
+    :ok
+  end
+
+  defp enabled? do
+    Application.get_env(:orbit, :gui_proxy_enabled, false) and
+      Application.get_env(:orbit, :gui_caddy_admin_url, "") != ""
   end
 
   defp push(url, config, opts) do
