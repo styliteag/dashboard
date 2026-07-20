@@ -245,6 +245,9 @@ defmodule OrbitWeb.Router do
     plug :fetch_session
     plug :fetch_current_user
     plug :read_principal
+    # After read_principal, so the api-key principal is assigned and the
+    # scrape lands in the access log under the key rather than as anon.
+    plug :track_access
   end
 
   scope "/api", OrbitWeb do

@@ -76,7 +76,22 @@ defmodule OrbitWeb.UserAuth do
   """
   def track_access(conn, _opts) do
     register_before_send(conn, fn conn ->
-      case conn.assigns[:current_user] do
+      case conn.assigns[:principal] || conn.assigns[:current_user] do
+        # An orbit_ API key is a principal in its own right — Checkmk and
+        # Prometheus scrapers were invisible in the access log, so nobody
+        # could tell whether a key was still in use before purging it.
+        # pkey is the key id — the Access page resolves the display name
+        # from it, and opts only carry keys the store actually reads.
+        %Orbit.Accounts.ApiKey{id: id} ->
+          Orbit.Access.Store.record_request(
+            "apikey",
+            to_string(id),
+            Orbit.Net.client_ip(conn),
+            conn.method,
+            conn.request_path,
+            conn.status
+          )
+
         %User{id: id} ->
           Orbit.Access.Store.record_request(
             "user",

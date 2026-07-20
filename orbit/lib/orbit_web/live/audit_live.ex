@@ -179,7 +179,8 @@ defmodule OrbitWeb.AuditLive do
         result: result,
         user: usernames[user_id] || (user_id && "##{user_id}") || "—",
         target: target(ttype, tid, instance_names),
-        ip: ip
+        ip: ip,
+        geo: OrbitWeb.Geo.label(ip)
       }
     end
   end
@@ -300,7 +301,15 @@ defmodule OrbitWeb.AuditLive do
                   </td>
                   <td class="py-2 pr-4 text-base-content/70">{r.user}</td>
                   <td class="py-2 pr-4 text-base-content/70">{r.target}</td>
-                  <td class="py-2 pr-4 text-base-content/60">{r.ip || "—"}</td>
+                  <%!-- GeoIP tag next to the address (3.1.7 parity): the
+                       footer already resolved the viewer's own IP, but the
+                       audit rows — where an unfamiliar address actually
+                       matters — showed a bare number. nil for private and
+                       unknown addresses, so nothing is invented. --%>
+                  <td class="py-2 pr-4 text-base-content/60">
+                    {r.ip || "—"}
+                    <span :if={r.geo} class="ml-1 text-xs text-base-content/40">{r.geo}</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
