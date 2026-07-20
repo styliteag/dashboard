@@ -69,6 +69,21 @@ defmodule OrbitWeb.SecurityLive do
     {:noreply, assign(socket, wa_challenge: nil, error: to_string(message))}
   end
 
+  def handle_event("remove_totp", _params, socket) do
+    case Accounts.disable_totp(socket.assigns.current_user) do
+      {:ok, _user} ->
+        audit(socket, "auth.mfa_totp_remove", "ok", nil)
+        {:noreply, socket |> assign(error: nil) |> load()}
+
+      {:error, :last_factor} ->
+        audit(socket, "auth.mfa_totp_remove", "denied", nil)
+        {:noreply, assign(socket, error: "Register a passkey first — 2FA is mandatory.")}
+
+      {:error, :not_enrolled} ->
+        {:noreply, assign(socket, error: "No authenticator is enrolled.")}
+    end
+  end
+
   def handle_event("remove_passkey", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
@@ -131,12 +146,29 @@ defmodule OrbitWeb.SecurityLive do
         </div>
 
         <div class="mt-5 rounded-xl border border-base-300 bg-base-200/60 p-5">
-          <h3 class="text-sm font-semibold text-base-content">Authenticator app (TOTP)</h3>
-          <p class="mt-1 text-sm text-base-content/70">
-            {if @totp_enabled,
-              do: "Enabled. To re-enroll, ask an admin to reset your 2FA.",
-              else: "Not enabled — you signed in with a passkey."}
-          </p>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-semibold text-base-content">Authenticator app (TOTP)</h3>
+              <p class="mt-1 text-sm text-base-content/70">
+                {if @totp_enabled,
+                  do: "Enabled. To re-enroll, ask an admin to reset your 2FA.",
+                  else: "Not enabled — you signed in with a passkey."}
+              </p>
+            </div>
+            <%!-- Only offered with a passkey to fall back on: 2FA is mandatory,
+                 so the last remaining factor can never be removed. The server
+                 enforces that too (Accounts.disable_totp/1) — this only keeps
+                 the button from appearing when it would always fail. --%>
+            <button
+              :if={@totp_enabled and @passkeys != []}
+              type="button"
+              phx-click="remove_totp"
+              data-confirm="Remove the authenticator app? You will sign in with your passkey from then on."
+              class="shrink-0 rounded px-2 py-1 text-xs text-error hover:bg-base-300"
+            >
+              Remove
+            </button>
+          </div>
         </div>
 
         <div class="mt-5 rounded-xl border border-base-300 bg-base-200/60 p-5">

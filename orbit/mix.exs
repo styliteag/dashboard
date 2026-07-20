@@ -79,6 +79,10 @@ defmodule Orbit.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:argon2_elixir, "~> 4.1"},
+      # TOTP enrollment QR (pure Elixir, no native deps): the enrollment page
+      # only ever printed the secret and the otpauth URI, so setting up an
+      # authenticator meant typing 32 base32 characters by hand.
+      {:eqrcode, "~> 0.2.1"},
       # WebAuthn / passkeys (py_webauthn port): FIDO2 registration + assertion.
       {:wax_, "~> 0.7.0"},
       {:req, "~> 0.5"},

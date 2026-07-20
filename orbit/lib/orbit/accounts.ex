@@ -302,6 +302,37 @@ defmodule Orbit.Accounts do
   def last_factor?(totp_enabled?, count), do: not totp_enabled? and count <= 1
 
   @doc """
+  Drop the authenticator, keeping the account on its passkeys.
+
+  The mirror image of `delete_credential/2`'s guard: 2FA is mandatory, so the
+  last remaining factor can never be removed — with no passkey enrolled the
+  authenticator IS that factor. The secret is cleared, not just disabled: a
+  retired factor must not leave usable key material behind.
+  """
+  @doc """
+  Pure mirror of `last_factor?/2` for the authenticator: with no passkey
+  enrolled, TOTP is the only second factor and must not be removed.
+  """
+  @spec only_factor_totp?(non_neg_integer()) :: boolean()
+  def only_factor_totp?(passkey_count), do: passkey_count == 0
+
+  @spec disable_totp(User.t()) :: {:ok, User.t()} | {:error, :not_enrolled | :last_factor}
+  def disable_totp(%User{} = user) do
+    cond do
+      not totp_enrolled?(user) ->
+        {:error, :not_enrolled}
+
+      only_factor_totp?(passkey_count(user)) ->
+        {:error, :last_factor}
+
+      true ->
+        user
+        |> Ecto.Changeset.change(%{totp_enabled: false, totp_secret_enc: nil})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
   Record a successful passkey assertion: bump the clone-detection counter and
   stamp last_used_at. Scoped by user_id AND credential_id so an assertion never
   touches another user's row (webauthn_auth_verify parity). No-op if the id

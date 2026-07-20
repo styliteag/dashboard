@@ -13,8 +13,22 @@
       {@error}
     </p>
 
+    <%!-- White plate regardless of theme: a scanner wants dark modules on a
+         light field, and this page renders on a near-black background. --%>
+    <div :if={@qr} class="mb-4 flex justify-center">
+      <img
+        src={@qr}
+        alt="QR code for the authenticator app"
+        width="220"
+        height="220"
+        class="rounded bg-white p-3"
+      />
+    </div>
+
     <div class="mb-4 rounded border border-base-300 bg-base-100 p-3">
-      <div class="mb-1 text-xs text-base-content/60">Secret (enter manually):</div>
+      <div class="mb-1 text-xs text-base-content/60">
+        Scan the code above, or enter the secret manually:
+      </div>
       <code class="break-all font-mono text-sm text-primary">{@secret}</code>
       <div class="mb-1 mt-3 text-xs text-base-content/60">…or open in your authenticator:</div>
       <a

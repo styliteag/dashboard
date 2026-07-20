@@ -85,6 +85,30 @@ defmodule Orbit.AccountsTest do
     end
   end
 
+  describe "disable_totp/1 guard" do
+    # The mirror of last_factor?/2 for the other factor: an operator with a
+    # passkey may retire the authenticator, an operator without one may not —
+    # 2FA is mandatory and this is the last thing standing between the account
+    # and password-only login.
+    test "with no passkey, the authenticator is the only factor and stays" do
+      assert Accounts.only_factor_totp?(0)
+    end
+
+    test "one passkey is enough to let the authenticator go" do
+      refute Accounts.only_factor_totp?(1)
+      refute Accounts.only_factor_totp?(3)
+    end
+
+    test "refuses when no authenticator is enrolled" do
+      assert {:error, :not_enrolled} =
+               Accounts.disable_totp(%Orbit.Accounts.User{
+                 id: -1,
+                 totp_enabled: false,
+                 totp_secret_enc: nil
+               })
+    end
+  end
+
   describe "last_factor?/2 — passkey removal guard (delete_passkey parity)" do
     test "blocks removing the only passkey when TOTP is off" do
       assert Accounts.last_factor?(false, 1)

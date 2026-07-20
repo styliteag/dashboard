@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "stylite-orbit-dashboard",
       "name": "stylite-orbit-dashboard",
-      "version": "4.0.0"
+      "version": "4.1.1"
     }
   },
   "components": [
@@ -97,10 +97,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/saadeghi/daisyui@22ecff57f2c3",
+      "bom-ref": "pkg:github/saadeghi/daisyui@374d63758f99",
       "name": "daisyui",
-      "version": "22ecff57f2c3",
-      "purl": "pkg:github/saadeghi/daisyui@22ecff57f2c3",
+      "version": "374d63758f99",
+      "purl": "pkg:github/saadeghi/daisyui@374d63758f99",
       "licenses": [
         {
           "license": {
@@ -189,6 +189,20 @@
         {
           "license": {
             "id": "Apache-2.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:hex/eqrcode@0.2.1",
+      "name": "eqrcode",
+      "version": "0.2.1",
+      "purl": "pkg:hex/eqrcode@0.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
           }
         }
       ]

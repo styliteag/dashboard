@@ -11,6 +11,8 @@ defmodule OrbitWeb.SessionController do
 
   use OrbitWeb, :controller
 
+  require Logger
+
   alias Orbit.Accounts
   alias Orbit.Auth.LoginLimiter
   alias OrbitWeb.UserAuth
@@ -176,7 +178,14 @@ defmodule OrbitWeb.SessionController do
 
       user ->
         {secret, uri} = Orbit.Accounts.begin_totp_enrollment(user)
-        render(conn, :enroll, secret: secret, uri: uri, error: nil, page_title: "Set up 2FA")
+
+        render(conn, :enroll,
+          secret: secret,
+          uri: uri,
+          qr: totp_qr(uri),
+          error: nil,
+          page_title: "Set up 2FA"
+        )
     end
   end
 
@@ -205,11 +214,25 @@ defmodule OrbitWeb.SessionController do
             render(conn, :enroll,
               secret: secret,
               uri: uri,
+              qr: totp_qr(uri),
               error: "Invalid code — try again.",
               page_title: "Set up 2FA"
             )
         end
     end
+  end
+
+  # The provisioning URI as a scannable PNG, inline. PNG rather than SVG on
+  # purpose: the same code is 2.7 KB as a PNG and 173 KB as an SVG, and this
+  # sits in the page body. nil on any failure — a missing QR must never block
+  # enrollment, the secret below it is always typeable.
+  defp totp_qr(uri) do
+    png = uri |> EQRCode.encode() |> EQRCode.png(width: 220)
+    "data:image/png;base64," <> Base.encode64(png)
+  rescue
+    error ->
+      Logger.warning("totp.qr_failed error=#{Exception.message(error)}")
+      nil
   end
 
   # Re-render with the SAME pending secret (the user already scanned it).
