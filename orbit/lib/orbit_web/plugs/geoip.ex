@@ -124,5 +124,10 @@ defmodule OrbitWeb.Plugs.GeoIP do
   rescue
     # An audit hiccup must not 500 the deny.
     error -> Logger.warning("geoip.audit_failed error=#{Exception.message(error)}")
+  catch
+    # A connection-pool checkout EXITS rather than raising, so an exhausted or
+    # restarting pool went straight through the rescue and turned a 403 into a
+    # 500 — the exact failure the test above this line was written to prevent.
+    kind, reason -> Logger.warning("geoip.audit_failed error=#{kind} #{inspect(reason)}")
   end
 end

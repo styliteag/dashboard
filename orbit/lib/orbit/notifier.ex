@@ -188,6 +188,18 @@ defmodule Orbit.Notifier do
       )
 
       %{}
+  catch
+    # A connection-pool checkout does not raise, it EXITS — an exhausted or
+    # restarting pool therefore killed the caller straight through the rescue
+    # above, in a module whose whole contract is "logs, never raises". The
+    # ingest path that dispatches alerts would have died with it.
+    kind, reason ->
+      Logger.warning(
+        "notify.group_channels_load_failed instance_id=#{instance_id} " <>
+          "error=#{kind} #{inspect(reason)}"
+      )
+
+      %{}
   end
 
   # -- channels --------------------------------------------------------------

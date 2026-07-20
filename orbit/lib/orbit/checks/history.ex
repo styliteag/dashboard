@@ -38,6 +38,10 @@ defmodule Orbit.Checks.History do
     end)
   rescue
     _ -> []
+  catch
+    # A pool checkout exits rather than raising; without this an empty
+    # timeline would take the whole page down with it.
+    _kind, _reason -> []
   end
 
   @doc """

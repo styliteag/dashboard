@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A stressed database no longer turns handled failures into crashes.** Four
+  places that are written to degrade gracefully when the database is
+  unavailable — the geo-block deny path, the per-group notification channel
+  lookup, and the two history timelines — caught only exceptions. A connection
+  pool that is exhausted or restarting does not raise, it exits, so it went
+  straight through those guards: a geo-denied login answered 500 instead of
+  403, an alert could take its ingest path down with it, and an empty timeline
+  could take a page down. They now degrade as documented.
 - **A failed update check no longer counts as "update available".** When a box
   cannot reach its update repository the fleet Firmware page listed it among
   the boxes with a pending update, indistinguishable from a real one. Those
