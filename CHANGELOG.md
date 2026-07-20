@@ -70,6 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The firewall rule editor stopped being a memory test.** Source,
+  Destination and both port fields now suggest the box's own aliases (with
+  their descriptions) plus the values OPNsense's own GUI offers — typed from
+  memory before, with typos only surfacing when the save was rejected. The
+  fields stay free text, so anything OPNsense accepts still works; losing the
+  suggestions (an unreachable box) never blocks editing.
+- **Interfaces are tabs again, rules can be dragged.** Switching interface is
+  the most frequent action on that page and was hidden behind a dropdown;
+  reordering was arrow-buttons only. The ↑/↓ buttons stay for keyboard and
+  touch. Rule actions render as colour badges, so pass and block are
+  distinguishable at a glance in a long list.
+
 - **Tunnel graph and history in the per-instance VPN tab.** Both dialogs only
   existed on the fleet VPN page — so an operator debugging one tunnel, who
   lands on that box's own tab, had to navigate back out and find the row

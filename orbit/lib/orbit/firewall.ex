@@ -51,6 +51,67 @@ defmodule Orbit.Firewall do
     end
   end
 
+  # OPNsense's own special values, offered by its GUI on every rule form.
+  @pseudo_networks [
+    %{value: "any", label: "any", type: "special"},
+    %{value: "(self)", label: "This firewall (self)", type: "special"}
+  ]
+
+  @well_known_ports [
+    %{value: "22", label: "22 — SSH", type: "special"},
+    %{value: "53", label: "53 — DNS", type: "special"},
+    %{value: "80", label: "80 — HTTP", type: "special"},
+    %{value: "443", label: "443 — HTTPS", type: "special"},
+    %{value: "500", label: "500 — IKE", type: "special"},
+    %{value: "4500", label: "4500 — IPsec NAT-T", type: "special"}
+  ]
+
+  @doc """
+  Autocomplete suggestions for the rule editor's network and port fields.
+
+  The editor's Source/Destination/Port inputs were free text: an operator had
+  to remember alias names and type CIDRs from memory, and a typo only
+  surfaced when OPNsense rejected the save. OPNsense already knows the
+  answers — the alias list plus the well-known pseudo-networks the GUI itself
+  offers — so this fetches them once per editor open.
+
+  Best-effort by construction: any relay failure returns an empty list, and
+  the fields stay exactly as usable as they were before (plain text with a
+  datalist attached). Never a hard error — losing autocomplete must not block
+  editing a rule.
+  """
+  def field_options(inst, opts \\ []) do
+    aliases = alias_items(inst, opts)
+
+    %{
+      networks: @pseudo_networks ++ aliases,
+      ports: @well_known_ports ++ Enum.filter(aliases, &(&1.type == "port"))
+    }
+  end
+
+  # /api/firewall/alias/search_item → %{"rows" => [%{name, type, description}]}.
+  defp alias_items(inst, opts) do
+    case relay(inst, "GET", "/api/firewall/alias/search_item", nil, opts) do
+      {:ok, %{"rows" => rows}} when is_list(rows) ->
+        for row <- rows,
+            is_map(row),
+            name = field_text(row["name"]),
+            name != "" do
+          %{
+            value: name,
+            label: alias_label(name, field_text(row["description"])),
+            type: field_text(row["type"])
+          }
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  defp alias_label(name, ""), do: name
+  defp alias_label(name, description), do: "#{name} — #{description}"
+
   @doc "Search rules on an interface → {:ok, %{rows, total}} | {:error, msg}."
   def search_rules(inst, opts \\ []) do
     interface = Keyword.get(opts, :interface)

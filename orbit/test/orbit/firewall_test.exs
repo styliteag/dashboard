@@ -85,4 +85,55 @@ defmodule Orbit.FirewallTest do
     di = %{inst() | transport: "push"}
     assert {:error, "agent not connected"} = Firewall.search_rules(di, hub: hub)
   end
+
+  describe "field_options/2 — editor autocomplete" do
+    test "aliases from the box join the special values, ports filtered by type" do
+      relay = fn "GET", "/api/firewall/alias/search_item", nil ->
+        {:ok,
+         %{
+           "rows" => [
+             %{"name" => "bogons", "type" => "external", "description" => "bogon networks"},
+             %{"name" => "web_ports", "type" => "port", "description" => "http/https"},
+             %{"name" => "noname", "type" => "host", "description" => ""}
+           ]
+         }}
+      end
+
+      opts =
+        Orbit.Firewall.field_options(%Orbit.Instances.Instance{device_type: "opnsense"},
+          relay: relay
+        )
+
+      values = Enum.map(opts.networks, & &1.value)
+      # OPNsense's own specials come first, then every alias.
+      assert ["any", "(self)" | _] = values
+      assert "bogons" in values
+      assert "web_ports" in values
+
+      # A description becomes part of the label; a blank one leaves the name.
+      assert Enum.find(opts.networks, &(&1.value == "bogons")).label ==
+               "bogons — bogon networks"
+
+      assert Enum.find(opts.networks, &(&1.value == "noname")).label == "noname"
+
+      # Only port-type aliases reach the port field, alongside well-known ports.
+      port_values = Enum.map(opts.ports, & &1.value)
+      assert "443" in port_values
+      assert "web_ports" in port_values
+      refute "bogons" in port_values
+    end
+
+    test "a relay failure degrades to the specials, never an error" do
+      # Losing autocomplete must not block editing a rule.
+      relay = fn _m, _p, _b -> {:error, "boom"} end
+
+      opts =
+        Orbit.Firewall.field_options(%Orbit.Instances.Instance{device_type: "opnsense"},
+          relay: relay
+        )
+
+      assert Enum.map(opts.networks, & &1.value) == ["any", "(self)"]
+      assert length(opts.ports) == 6
+    end
+  end
 end

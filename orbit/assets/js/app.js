@@ -380,7 +380,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue},
+  hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue, RuleReorder},
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it
@@ -466,3 +466,51 @@ document.addEventListener("click", e => {
     if (d.open && !d.contains(e.target)) d.open = false
   })
 })
+
+// Firewall rules: drag a row onto another to move it before that rule. The
+// server already has move_before (the ↑/↓ buttons use it) — this only adds
+// the pointer path, so keyboard and touch users keep the buttons. Rows that
+// are not editable (OPNsense's own internal rules) are inert.
+const RuleReorder = {
+  mounted() { this.wire() },
+  updated() { this.wire() },
+  wire() {
+    if (this._bound) return
+    this._bound = true
+    let dragged = null
+
+    this.el.addEventListener("dragstart", e => {
+      const row = e.target.closest("tr[data-fw-uuid]")
+      if (!row || row.dataset.fwEditable !== "true") return e.preventDefault()
+      dragged = row
+      row.classList.add("opacity-50")
+      e.dataTransfer.effectAllowed = "move"
+    })
+
+    this.el.addEventListener("dragover", e => {
+      const row = e.target.closest("tr[data-fw-uuid]")
+      if (!dragged || !row || row === dragged) return
+      e.preventDefault()
+      row.classList.add("border-t-2", "border-t-primary")
+    })
+
+    this.el.addEventListener("dragleave", e => {
+      e.target.closest("tr[data-fw-uuid]")?.classList.remove("border-t-2", "border-t-primary")
+    })
+
+    this.el.addEventListener("drop", e => {
+      const row = e.target.closest("tr[data-fw-uuid]")
+      if (!dragged || !row || row === dragged) return
+      e.preventDefault()
+      row.classList.remove("border-t-2", "border-t-primary")
+      this.pushEvent("move_before", {uuid: dragged.dataset.fwUuid, target: row.dataset.fwUuid})
+    })
+
+    this.el.addEventListener("dragend", () => {
+      dragged?.classList.remove("opacity-50")
+      this.el.querySelectorAll("tr").forEach(r =>
+        r.classList.remove("border-t-2", "border-t-primary"))
+      dragged = null
+    })
+  },
+}

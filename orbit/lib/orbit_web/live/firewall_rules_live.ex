@@ -38,6 +38,7 @@ defmodule OrbitWeb.FirewallRulesLive do
           interface: nil,
           search: "",
           editor: nil,
+          field_options: %{networks: [], ports: []},
           editor_uuid: nil,
           busy: false
         )
@@ -65,6 +66,19 @@ defmodule OrbitWeb.FirewallRulesLive do
   end
 
   @impl true
+  # Alias + well-known values for the editor's datalists. Fetched when the
+  # editor opens (not per keystroke, and not on page load: a box with no
+  # aliases must not pay for the call), and only once per open.
+  defp load_field_options(socket) do
+    case socket.assigns.field_options do
+      %{networks: [_ | _]} ->
+        socket
+
+      _ ->
+        assign(socket, field_options: Orbit.Firewall.field_options(socket.assigns.instance))
+    end
+  end
+
   def handle_event("select_interface", %{"interface" => iface}, socket) do
     {:noreply, socket |> assign(interface: iface) |> load_rules()}
   end
@@ -123,7 +137,10 @@ defmodule OrbitWeb.FirewallRulesLive do
       "quick" => "1"
     }
 
-    {:noreply, assign(socket, editor: editor, editor_uuid: nil, error: nil)}
+    {:noreply,
+     socket
+     |> assign(editor: editor, editor_uuid: nil, error: nil)
+     |> load_field_options()}
   end
 
   def handle_event("edit_rule", %{"uuid" => uuid}, socket) do
@@ -168,7 +185,11 @@ defmodule OrbitWeb.FirewallRulesLive do
     case Firewall.get_rule(socket.assigns.instance, source_uuid) do
       {:ok, rule} ->
         editor = Map.new(@editor_fields, fn key -> {key, editor_value(rule, key)} end)
-        {:noreply, assign(socket, editor: editor, editor_uuid: editor_uuid, error: nil)}
+
+        {:noreply,
+         socket
+         |> assign(editor: editor, editor_uuid: editor_uuid, error: nil)
+         |> load_field_options()}
 
       {:error, msg} ->
         {:noreply, assign(socket, error: msg)}
@@ -238,16 +259,25 @@ defmodule OrbitWeb.FirewallRulesLive do
           >
             back to detail
           </a>
-          <form phx-change="select_interface">
-            <select
-              name="interface"
-              class="rounded border border-base-content/20 bg-base-100 p-1 text-sm text-base-content"
+          <%!-- Interface TABS, not a dropdown: switching interface is the
+               single most frequent action on this page, and a select hides
+               which interfaces even exist behind a click. --%>
+          <nav class="flex flex-wrap gap-1">
+            <button
+              :for={i <- @interfaces}
+              phx-click="select_interface"
+              phx-value-interface={i.value}
+              class={[
+                "rounded-md px-2.5 py-1 text-xs",
+                if(i.value == @interface,
+                  do: "bg-base-300 font-medium text-primary",
+                  else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
+                )
+              ]}
             >
-              <option :for={i <- @interfaces} value={i.value} selected={i.value == @interface}>
-                {i.label}
-              </option>
-            </select>
-          </form>
+              {i.label}
+            </button>
+          </nav>
           <button
             phx-click="new_rule"
             class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
@@ -368,11 +398,21 @@ defmodule OrbitWeb.FirewallRulesLive do
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-sm text-base-content"
               />
             </label>
+            <%!-- Datalists: the fields stay plain text (an operator can
+                 still type anything OPNsense accepts), they just suggest the
+                 aliases and well-known values the box actually knows. --%>
+            <datalist id="fw-networks">
+              <option :for={o <- @field_options.networks} value={o.value}>{o.label}</option>
+            </datalist>
+            <datalist id="fw-ports">
+              <option :for={o <- @field_options.ports} value={o.value}>{o.label}</option>
+            </datalist>
             <label class="block text-xs text-base-content/60">
               Source
               <input
                 name="rule[source_net]"
                 value={@editor["source_net"]}
+                list="fw-networks"
                 placeholder="any | net/CIDR | alias"
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
@@ -382,6 +422,7 @@ defmodule OrbitWeb.FirewallRulesLive do
               <input
                 name="rule[source_port]"
                 value={@editor["source_port"]}
+                list="fw-ports"
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
@@ -390,6 +431,7 @@ defmodule OrbitWeb.FirewallRulesLive do
               <input
                 name="rule[destination_net]"
                 value={@editor["destination_net"]}
+                list="fw-networks"
                 placeholder="any | net/CIDR | alias"
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
@@ -399,6 +441,7 @@ defmodule OrbitWeb.FirewallRulesLive do
               <input
                 name="rule[destination_port]"
                 value={@editor["destination_port"]}
+                list="fw-ports"
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
@@ -459,12 +502,27 @@ defmodule OrbitWeb.FirewallRulesLive do
                 <th class="py-2 font-medium"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="fw-rules" phx-hook="RuleReorder">
               <%= for {r, idx} <- Enum.with_index(@visible) do %>
                 <% prev = if idx > 0, do: Enum.at(@visible, idx - 1) %>
                 <% next = Enum.at(@visible, idx + 1) %>
-                <tr class="border-b border-base-300/50">
+                <tr
+                  class="border-b border-base-300/50"
+                  draggable={to_string(r.editable)}
+                  data-fw-uuid={r.uuid}
+                  data-fw-editable={to_string(r.editable)}
+                >
                   <td class="py-1.5 pr-3">
+                    <%!-- Drag handle. Reordering by dragging is what the old
+                         editor did; the ↑/↓ buttons stay as the keyboard and
+                         touch path, so nothing depends on pointer dragging. --%>
+                    <span
+                      :if={r.editable}
+                      class="mr-1 cursor-grab select-none text-base-content/30"
+                      title="Drag to reorder"
+                    >
+                      ⠿
+                    </span>
                     <button
                       :if={r.editable}
                       phx-click="toggle"
@@ -484,7 +542,22 @@ defmodule OrbitWeb.FirewallRulesLive do
                       {if r.enabled, do: "on", else: "off"}
                     </span>
                   </td>
-                  <td class="py-1.5 pr-3 text-base-content/80">{r.action}</td>
+                  <%!-- Action as a colour badge (pre-2.8.7 shape): pass and
+                       block/reject must be distinguishable at a glance in a
+                       long rule list. --%>
+                  <td class="py-1.5 pr-3">
+                    <span class={[
+                      "rounded px-1.5 py-0.5 text-xs",
+                      case r.action do
+                        "pass" -> "bg-primary/20 text-primary"
+                        "block" -> "bg-error/20 text-error"
+                        "reject" -> "bg-warning/20 text-warning"
+                        _ -> "bg-base-300 text-base-content/70"
+                      end
+                    ]}>
+                      {r.action}
+                    </span>
+                  </td>
                   <td class="py-1.5 pr-3 text-base-content/70">{r.protocol}</td>
                   <td class="py-1.5 pr-3 font-mono text-xs text-base-content/70">
                     {r.source}{if r.source_port != "", do: ":#{r.source_port}"}
