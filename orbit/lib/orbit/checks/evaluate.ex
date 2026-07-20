@@ -58,6 +58,7 @@ defmodule Orbit.Checks.Evaluate do
       load_check(status["loadavg"]),
       pf_states_check(status["pf"]),
       ntp_check(status["ntp"]),
+      collect_check(status["collect_ms"]),
       firmware_check(status["firmware"] || sections["firmware"])
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
@@ -204,6 +205,40 @@ defmodule Orbit.Checks.Evaluate do
   end
 
   def ntp_check(_), do: nil
+
+  @collect_warn_ms 10_000
+
+  @doc """
+  How long the agent's collect cycle takes.
+
+  A cycle creeping toward the push interval means a collector is hanging (a
+  wedged pkg fetch, an unreachable NTP peer, a slow API) and the box's data
+  is going stale even though the agent still looks connected. The detail
+  page has always drawn this with a 10s reference line; without a check the
+  degradation raised nothing on Alerts or in the exports.
+
+  WARN only, never CRIT — a slow cycle is not an outage, and CPU-style "can
+  degrade but not page" is the established convention here. No data (a
+  direct-polled box has no agent) returns nil, never a fake OK.
+  """
+  def collect_check(ms) when is_number(ms) and ms > 0 do
+    state = if ms >= @collect_warn_ms, do: ServiceCheck.warn(), else: ServiceCheck.ok()
+    word = if ms >= @collect_warn_ms, do: "slow", else: "ok"
+
+    %ServiceCheck{
+      key: "agent.collect",
+      state: state,
+      summary: "Agent collect cycle #{f1(ms / 1000)}s (#{word})",
+      metrics: [
+        ServiceCheck.metric("collect_seconds", ms / 1000,
+          warn: @collect_warn_ms / 1000,
+          unit: "s"
+        )
+      ]
+    }
+  end
+
+  def collect_check(_), do: nil
 
   @doc "One check per gateway. Down status word ⇒ CRIT; loss 20/80."
   def gateway_checks(gateways) when is_list(gateways) do

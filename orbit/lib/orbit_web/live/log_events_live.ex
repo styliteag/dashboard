@@ -19,7 +19,9 @@ defmodule OrbitWeb.LogEventsLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_ms)
-    {:ok, socket |> assign(search: "", sev_filter: "all", instance_filter: "all") |> load()}
+    # Errors first (python parity): the page exists to surface breakage, and
+    # warning-level noise dominates an unfiltered fleet list.
+    {:ok, socket |> assign(search: "", sev_filter: "err", instance_filter: "all") |> load()}
   end
 
   @impl true

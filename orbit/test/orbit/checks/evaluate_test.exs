@@ -374,6 +374,26 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
+  describe "collect_check — agent cycle duration" do
+    test "a slow cycle WARNs, a quick one is OK" do
+      assert %{key: "agent.collect", state: 1} = Evaluate.collect_check(12_500)
+      assert %{key: "agent.collect", state: 0} = Evaluate.collect_check(4_100)
+    end
+
+    test "summary reports seconds, and the metric carries the warn level" do
+      check = Evaluate.collect_check(12_500)
+      assert check.summary =~ "12.5s"
+      assert [%{name: "collect_seconds", warn: 10.0}] = check.metrics
+    end
+
+    test "no data ⇒ no check (a direct-polled box has no agent)" do
+      # Absent data must never alarm and must never fake an OK (c37de13).
+      assert Evaluate.collect_check(nil) == nil
+      assert Evaluate.collect_check(0) == nil
+      assert Evaluate.collect_check("slow") == nil
+    end
+  end
+
   describe "evaluate/1 over a full cache entry" do
     test "collects non-nil family checks from raw sections" do
       entry = %{

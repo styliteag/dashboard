@@ -6,9 +6,18 @@ defmodule Orbit.Checks.Export do
 
   Scoping is the caller's (routes pass the principal to list_visible); hub
   cache is unscoped in-memory data, so the instance list is the scope gate
-  (invariant 5). Push instances read the hub section cache (cheap); direct
-  instances need the poller (not ported yet) — they are skipped here with a
-  documented seam, so a direct instance currently exports no checks.
+  (invariant 5).
+
+  EVERY transport is evaluated, not just agent-push. Both write the same
+  section cache — the agent by pushing, the poller via
+  `Orbit.Hub.ingest_metrics/2` after each scheduled fetch — so reading the
+  cache costs nothing extra and never touches a box per scrape (incident
+  fce8ccc: machine-cadenced surfaces must not live-poll appliances). The
+  agent-mode filter here dated from before the poller was ported and made a
+  direct-polled or Securepoint box export **zero** checks: its failures were
+  visible on its own Checks tab but absent from Alerts, Checkmk and
+  Prometheus. A box that has never been polled has an empty cache and still
+  yields no checks — absent data, never a fake OK.
 
   Checkmk-only shaping (routes.py export_checkmk parity): the blackout
   toggle empties the export, selection rules filter per check (base default
@@ -25,13 +34,12 @@ defmodule Orbit.Checks.Export do
   def evaluated(principal, now) do
     principal
     |> Orbit.Instances.list_visible()
-    |> Enum.filter(&Instance.agent_mode?/1)
     |> Enum.map(fn inst -> {inst_view(inst), checks_for(inst, now)} end)
   end
 
   @doc """
-  Evaluated+overlaid checks for a single, already-scoped agent-mode instance —
-  the per-instance surface. Shares the exact evaluate→overlay chain with the
+  Evaluated+overlaid checks for a single, already-scoped instance — the
+  per-instance surface. Shares the exact evaluate→overlay chain with the
   Checkmk/Prometheus/Alerts surfaces so all four agree (the parity rule).
   """
   @spec checks_for(Instance.t(), DateTime.t()) :: list()

@@ -66,6 +66,13 @@ defmodule OrbitWeb.AgentSocket do
       "agent.connected instance_id=#{state.instance_id} version=#{hello["agent_version"]} platform=#{hello["platform"]}"
     )
 
+    # The box knows what it is; the enrolment form only guessed. Best-effort
+    # and off the connect path — a DB hiccup must never cost the agent its
+    # session.
+    Task.start(fn ->
+      Orbit.Instances.heal_device_type(state.instance_id, hello["platform"])
+    end)
+
     welcome = %{
       "type" => "welcome",
       "instance_id" => state.instance_id,

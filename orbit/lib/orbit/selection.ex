@@ -90,7 +90,7 @@ defmodule Orbit.Selection do
 
   # -- write side (selection/store.py + model.py validation port) ------------
 
-  @check_categories ~w(agent maintenance ping http memory cpu load swap disk gateway
+  @check_categories ~w(agent agent.collect maintenance ping http memory cpu load swap disk gateway
     pf_states ntp ipsec.service ipsec.tunnel ipsec.tunnel_ping connectivity service
     cert iface_errors firmware)
   @availability "availability"

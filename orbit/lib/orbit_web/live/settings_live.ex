@@ -410,9 +410,17 @@ defmodule OrbitWeb.SettingsLive do
 
         <%!-- Checkmk tab: api keys link + export tree below the fields. --%>
         <div :if={@tab == "checkmk"} class="mt-4 space-y-4">
-          <a href={~p"/apikeys"} class="inline-block text-sm text-primary hover:underline">
-            Manage Checkmk API keys →
-          </a>
+          <div class="flex flex-wrap gap-4">
+            <a href={~p"/apikeys"} class="inline-block text-sm text-primary hover:underline">
+              Manage Checkmk API keys →
+            </a>
+            <%!-- The rules page was routed and implemented but linked from
+                 nowhere — an orphaned surface only reachable by typing the
+                 URL. It belongs next to the tree it overrides. --%>
+            <a href={~p"/selection"} class="inline-block text-sm text-primary hover:underline">
+              Selection rules →
+            </a>
+          </div>
           <.live_component
             module={OrbitWeb.Components.SelectionTree}
             id="seltree-checkmk"
@@ -422,13 +430,32 @@ defmodule OrbitWeb.SettingsLive do
         </div>
 
         <%!-- Prometheus tab: no settings, just the api key surface. --%>
-        <div :if={@tab == "prometheus"} class="mt-4">
-          <p class="mb-2 text-sm text-base-content/70">
+        <div :if={@tab == "prometheus"} class="mt-4 space-y-3">
+          <p class="text-sm text-base-content/70">
             Prometheus scrapes <code>/api/export/prometheus</code> with a read-only API key.
           </p>
-          <a href={~p"/apikeys"} class="text-sm text-primary hover:underline">
-            Manage Prometheus API keys →
-          </a>
+          <div class="flex flex-wrap gap-4">
+            <a href={~p"/apikeys"} class="text-sm text-primary hover:underline">
+              Manage Prometheus API keys →
+            </a>
+            <a href={~p"/selection"} class="text-sm text-primary hover:underline">
+              Selection rules →
+            </a>
+          </div>
+          <%!-- Copy-paste scrape job (python parity): the bearer-token shape
+               is the part people get wrong. --%>
+          <div>
+            <p class="mb-1 text-xs text-base-content/60">Example scrape config:</p>
+            <pre class="overflow-x-auto rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-xs text-base-content/80">scrape_configs:
+    - job_name: orbit
+    metrics_path: /api/export/prometheus
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials: orbit_YOUR_KEY_HERE
+    static_configs:
+      - targets: ["orbit.example.com"]</pre>
+          </div>
         </div>
       </section>
     </main>

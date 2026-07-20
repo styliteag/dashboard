@@ -33,6 +33,7 @@ defmodule OrbitWeb.Components.SelectionTree do
   @category_labels %{
     "availability" => "Instance up / down",
     "agent" => "Agent liveness",
+    "agent.collect" => "Agent collect duration",
     "maintenance" => "Maintenance mode",
     "ping" => "ICMP reachability",
     "http" => "HTTP reachability",

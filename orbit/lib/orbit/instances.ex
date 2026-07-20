@@ -6,6 +6,8 @@ defmodule Orbit.Instances do
 
   import Ecto.Query
 
+  require Logger
+
   alias Orbit.Auth.Scope
   alias Orbit.Instances.Instance
   alias Orbit.Repo
@@ -165,6 +167,52 @@ defmodule Orbit.Instances do
   from the mode, a name-derived slug auto-suffixes -2/-3… while an explicit
   one must be free.
   """
+  @doc """
+  Correct a wrong `device_type` from what the agent reports about itself.
+
+  A box enrolled with the wrong type (the create form defaults to opnsense;
+  a pfSense enrolled by hand stays mislabeled forever) gets the wrong
+  firmware branch, the wrong GUI deep links and the wrong tabs — silently
+  and permanently, because nothing else ever revisits the field. The agent's
+  `detect_platform()` is authoritative: it reads the box's own markers.
+
+  Only ever heals between the agent-detectable types. A Securepoint or any
+  other pull-only type is never touched (no agent runs there), and an
+  unknown/blank platform is ignored rather than written.
+  """
+  @agent_detectable ~w(opnsense pfsense linux)
+
+  def heal_device_type(instance_id, platform) when platform in @agent_detectable do
+    case Repo.get(Instance, instance_id) do
+      %Instance{device_type: ^platform} ->
+        :ok
+
+      %Instance{device_type: old} = inst when old in @agent_detectable ->
+        inst
+        |> Ecto.Changeset.change(device_type: platform)
+        |> Repo.update()
+
+        Orbit.Audit.write(
+          action: "instance.device_type_healed",
+          result: "ok",
+          target_type: "instance",
+          target_id: instance_id,
+          detail: %{"kind" => "#{old}->#{platform}"}
+        )
+
+        Logger.info(
+          "instance.device_type_healed instance_id=#{instance_id} from=#{old} to=#{platform}"
+        )
+
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  def heal_device_type(_instance_id, _platform), do: :ok
+
   def create_instance(params, group_id) do
     transport =
       if params["transport"] in ["push", "direct"], do: params["transport"], else: "push"

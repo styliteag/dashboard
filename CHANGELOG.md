@@ -7,8 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Direct-polled and Securepoint boxes were invisible to Alerts, Checkmk and
+  Prometheus.** Their checks were evaluated and shown on the box's own Checks
+  tab, but the fleet-wide export filtered to agent-push instances only — a
+  leftover from before the poller was ported. On the dev fleet that hid two
+  dead IPsec tunnels on a Securepoint from every alerting surface. All four
+  surfaces now agree again, as the parity rule requires. No extra load: both
+  transports feed the same section cache, so nothing polls a box per scrape.
+- **A box enrolled with the wrong device type stays wrong forever.** The
+  create form defaults to OPNsense, and nothing ever revisited the field, so
+  a hand-enrolled pfSense kept the wrong firmware branch and the wrong GUI
+  deep links. The agent reports what the box actually is on every connect;
+  a mismatch is now corrected and audited. Only ever between the three types
+  an agent can detect — a Securepoint is never touched.
+
 ### Added
 
+- **An `agent.collect` check.** The detail page has always drawn the agent's
+  collect-cycle duration against a 10 s line, but a cycle creeping toward the
+  push interval — a hanging collector, so the box's data goes stale while the
+  agent still looks connected — raised nothing on Alerts or in the exports.
+  WARN only, never CRIT; a box without an agent reports nothing rather than a
+  fake OK.
 - **Public IP on the Network tab, for every kind of box.** The old dashboard
   answered "where does this box sit on the internet?" only for agent-push
   firewalls, because only the agent runs the outbound probe. It now answers
@@ -70,6 +92,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Instance overview layout**: Services and Disks sit side by side instead of
   a half-empty row and a full-width two-line card. A stopped service reads as
   neutral grey, not alarm red — the check engine decides what stopped means.
+- **Problems-first defaults are back**: the fleet VPN page opens on the down
+  tunnels and the Logs page on error-level events, instead of an unfiltered
+  list you have to narrow yourself. (Alerts deliberately keeps showing
+  everything — selection here is base-OFF, so an exported-only landing page
+  would hide most non-OK checks.)
+- **The Selection rules page is reachable again** — it was routed and
+  implemented but linked from nowhere. It now sits next to the export tree it
+  overrides, on the Checkmk and Prometheus settings tabs, and the Prometheus
+  tab carries a copy-paste scrape config.
 - **Settings Save buttons stay inert until you change something.** Twenty
   always-green Save buttons read as twenty pending changes; each one now
   lights up only when its field differs from the stored value.

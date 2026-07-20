@@ -30,6 +30,11 @@ defmodule OrbitWeb.AlertsLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
+    # Deliberately "all", NOT the python default of "exported". Selection is
+    # base-OFF here: nothing exports until an include rule matches, so an
+    # exported-first landing page hid 7 CRIT behind a filter on a fleet whose
+    # rules were not curated. Showing every non-OK check and letting the
+    # operator narrow down is the safer default for this model.
     {:ok, socket |> assign(severity_filter: "all", exported_filter: "all") |> load()}
   end
 
@@ -184,10 +189,10 @@ defmodule OrbitWeb.AlertsLive do
         </div>
 
         <.data_note>
-          Every non-OK check of your agent-mode firewalls, worst first — the exact set the
-          Checkmk and Prometheus exports and the per-instance tab show. Direct-API polled boxes
-          are <em>not</em>
-          covered here. UNKNOWN means "could not check", which is never silently OK. Two
+          Every non-OK check of your firewalls, worst first — the exact set the Checkmk and
+          Prometheus exports and the per-instance tab show, across every transport (agent-push,
+          direct-API polled and Securepoint alike).
+          UNKNOWN means "could not check", which is never silently OK. Two
           overlays soften the picture on purpose: while an agent is silent its box shows one
           <span class="font-mono">agent</span>
           alert and its other CRITs are capped to WARN, and a box in maintenance is capped to

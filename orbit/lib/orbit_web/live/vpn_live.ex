@@ -43,7 +43,10 @@ defmodule OrbitWeb.VpnLive do
      socket
      |> assign(
        search: "",
-       state_filter: "all",
+       # Problems first (python parity): a fleet VPN page is opened because
+       # something is down, and on a large fleet the down tunnels sit far
+       # below the fold of an unfiltered list.
+       state_filter: "down",
        active_tag: nil,
        sort_col: "state",
        sort_dir: :asc,
