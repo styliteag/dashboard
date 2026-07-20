@@ -170,69 +170,86 @@ defmodule OrbitWeb.CaptureLive do
           </a>
         </div>
 
-        <form phx-submit="start" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
-          <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Interface (blank = default)</span>
-            <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">BPF filter (blank = all)</span>
-            <input
-              name="cap[filter]"
-              value={@filter}
-              placeholder="host 10.0.0.1 and port 443"
-              class={input_cls()}
-            />
-          </label>
-          <button
-            type="submit"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
-            {if @capturing, do: "Restart", else: "Start capture"}
-          </button>
-          <button
-            :if={@capturing}
-            type="button"
-            phx-click="stop"
-            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
-          >
-            Stop
-          </button>
-        </form>
+        <%!-- Two modes, and they were two unlabelled forms stacked on top of
+             each other with the same field names — impossible to tell apart.
+             Each gets its own card and a line saying what it does. --%>
+        <div class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4">
+          <h2 class="text-sm font-medium text-base-content/70">Live stream</h2>
+          <p class="mb-3 text-xs text-base-content/60">
+            Streams packets to this page as they arrive. Nothing is stored — close the page
+            and it stops.
+          </p>
+          <form phx-submit="start" class="flex flex-wrap items-end gap-2 text-sm">
+            <label class="block">
+              <span class="mb-1 block text-xs text-base-content/60">Interface (blank = default)</span>
+              <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs text-base-content/60">BPF filter (blank = all)</span>
+              <input
+                name="cap[filter]"
+                value={@filter}
+                placeholder="host 10.0.0.1 and port 443"
+                class={input_cls()}
+              />
+            </label>
+            <button
+              type="submit"
+              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
+            >
+              {if @capturing, do: "Restart", else: "Start capture"}
+            </button>
+            <button
+              :if={@capturing}
+              type="button"
+              phx-click="stop"
+              class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
+            >
+              Stop
+            </button>
+          </form>
+        </div>
 
         <%!-- Snapshot mode: bounded capture, downloadable pcap + parsed view. --%>
-        <form phx-submit="snapshot" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
-          <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Interface</span>
-            <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">BPF filter</span>
-            <input name="cap[filter]" value={@filter} class={input_cls()} />
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Seconds (≤120)</span>
-            <input
-              name="cap[max_seconds]"
-              value="15"
-              class="w-20 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={@snap_busy}
-            class="rounded bg-info px-3 py-1.5 text-xs text-info-content hover:bg-info/80 disabled:opacity-50"
-          >
-            {if @snap_busy, do: "Capturing…", else: "Snapshot capture"}
-          </button>
-          <a
-            :if={@snap_id}
-            href={~p"/api/captures/#{@snap_id}/pcap"}
-            class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
-          >
-            Download pcap ({@snap_meta["bytes"]} B{if @snap_meta["truncated"], do: ", truncated"})
-          </a>
-        </form>
+        <div class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4">
+          <h2 class="text-sm font-medium text-base-content/70">Snapshot</h2>
+          <p class="mb-3 text-xs text-base-content/60">
+            Captures for a fixed number of seconds, then keeps the result: a packet list you
+            can read here and a pcap you can download for Wireshark.
+          </p>
+          <form phx-submit="snapshot" class="flex flex-wrap items-end gap-2 text-sm">
+            <label class="block">
+              <span class="mb-1 block text-xs text-base-content/60">Interface</span>
+              <input name="cap[interface]" value={@interface} placeholder="em0" class={input_cls()} />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs text-base-content/60">BPF filter</span>
+              <input name="cap[filter]" value={@filter} class={input_cls()} />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs text-base-content/60">Seconds (≤120)</span>
+              <input
+                name="cap[max_seconds]"
+                value="15"
+                class="w-20 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={@snap_busy}
+              class="rounded bg-info px-3 py-1.5 text-xs text-info-content hover:bg-info/80 disabled:opacity-50"
+            >
+              {if @snap_busy, do: "Capturing…", else: "Snapshot capture"}
+            </button>
+            <a
+              :if={@snap_id}
+              href={~p"/api/captures/#{@snap_id}/pcap"}
+              class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
+            >
+              Download pcap ({@snap_meta["bytes"]} B{if @snap_meta["truncated"], do: ", truncated"})
+            </a>
+          </form>
+        </div>
 
         <div :if={@snap_error} class="mb-3 rounded bg-error/15 px-3 py-2 text-xs text-error">
           {@snap_error}

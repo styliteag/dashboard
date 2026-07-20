@@ -65,8 +65,14 @@ orbit-test *ARGS:
 orbit-fmt:
     docker compose -f compose-dev.yml run --rm orbit mix format
 
+# Lint gate. MIX_ENV=test on purpose: dev's _build is shared live with the
+# running `dev-up` container, so compiling into it races the dev server and
+# can corrupt its beams ("__live__ is undefined", module not available).
+# _build/test belongs to the throwaway run containers, so this is safe to
+# run at any time. --force because an incremental build re-emits no
+# warnings, which made the gate silently pass on warning-laden code.
 orbit-lint:
-    docker compose -f compose-dev.yml run --rm orbit sh -c "mix format --check-formatted && mix compile --warnings-as-errors"
+    docker compose -f compose-dev.yml run --rm -e MIX_ENV=test orbit sh -c "mix format --check-formatted && mix compile --force --warnings-as-errors"
 
 orbit-sh:
     docker compose -f compose-dev.yml run --rm orbit bash

@@ -1912,9 +1912,11 @@ defmodule OrbitWeb.InstanceDetailLive do
             </button>
             <%!-- Relay test only where a local firewall API exists: a
                  generic Linux node has none, so the button could only ever
-                 fail there. --%>
+                 fail there. `@agent` is the hub record (a struct), so it
+                 needs an explicit nil check — `struct and x` raises
+                 BadBooleanError while rendering. --%>
             <button
-              :if={@agent and @instance.device_type != "linux"}
+              :if={@agent != nil and @instance.device_type != "linux"}
               phx-click="agent_test_api"
               title="Authenticated API call through the agent relay"
               class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"

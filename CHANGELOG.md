@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Agent tab crashed on Linux nodes.** Hiding the relay API test there
+  compared the hub's agent record as if it were a boolean, which raises while
+  rendering — the tab died on every open.
+- **The packet-capture page explains its two modes.** Live stream and
+  snapshot were two unlabelled forms stacked on each other with identical
+  field names; each is now its own card saying what it does with the result.
+
 - **Interface error counters never produced a check.** The `iface_errors`
   family was registered everywhere — selection categories, the export tree,
   the aggregate map, even the flap-debounce list — but nothing emitted it, so
