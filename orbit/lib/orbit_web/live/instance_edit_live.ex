@@ -15,9 +15,12 @@ defmodule OrbitWeb.InstanceEditLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.TagPicker, only: [tag_picker: 1]
+
   alias Orbit.Audit
   alias Orbit.Auth.Scope
   alias Orbit.Instances
+  alias OrbitWeb.Components.TagPicker
 
   @write_roles ~w(admin user)
 
@@ -29,7 +32,8 @@ defmodule OrbitWeb.InstanceEditLive do
          inst when not is_nil(inst) <- Scope.get_instance(id, user),
          true <- user.role in @write_roles do
       {:ok,
-       assign(socket,
+       socket
+       |> assign(
          instance: inst,
          admin: user.role == "admin",
          error: nil,
@@ -37,7 +41,8 @@ defmodule OrbitWeb.InstanceEditLive do
          pin_result: nil,
          ssh_testing: false,
          ssh_result: nil
-       )}
+       )
+       |> TagPicker.init(inst.tags, Instances.known_tags(user))}
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
     end
@@ -90,6 +95,7 @@ defmodule OrbitWeb.InstanceEditLive do
   def handle_event("save", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
     inst = socket.assigns.instance
+    params = Map.put(params, "tags", TagPicker.submitted_tags(socket))
 
     cond do
       user.role not in @write_roles ->
@@ -102,6 +108,11 @@ defmodule OrbitWeb.InstanceEditLive do
       true ->
         save(socket, inst, params)
     end
+  end
+
+  # Tag picker state lives in TagPicker, shared with the create form.
+  def handle_event("tag_" <> _ = event, params, socket) do
+    {:noreply, TagPicker.on_event(event, params, socket)}
   end
 
   def handle_event("delete", _params, socket) do
@@ -202,16 +213,14 @@ defmodule OrbitWeb.InstanceEditLive do
               </.field>
               <%!-- The schema carried tags and the fleet page filters by
                    them, but no form ever wrote one — the filter chips could
-                   never be populated. Comma-separated, parsed in the
-                   context. --%>
-              <.field label="Tags (comma-separated)">
-                <input
-                  name="instance[tags]"
-                  value={Enum.join(@instance.tags || [], ", ")}
-                  placeholder="LAB, customer-x"
-                  class={input_cls()}
-                />
-              </.field>
+                   never be populated. Same picker as the create form; the
+                   value still reaches the context comma-separated. --%>
+              <.tag_picker
+                tags={@tags}
+                known={@known_tags}
+                query={@tag_query}
+                open={@tag_open}
+              />
             </div>
           </div>
 

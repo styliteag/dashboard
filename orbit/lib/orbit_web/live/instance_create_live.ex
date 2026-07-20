@@ -26,14 +26,9 @@ defmodule OrbitWeb.InstanceCreateLive do
       groups = selectable_groups(user)
 
       {:ok,
-       assign(socket,
-         groups: groups,
-         error: nil,
-         tags: [],
-         known_tags: Instances.known_tags(user),
-         tag_query: "",
-         tag_open: false
-       )}
+       socket
+       |> assign(groups: groups, error: nil)
+       |> TagPicker.init([], Instances.known_tags(user))}
     else
       {:ok, push_navigate(socket, to: ~p"/instances")}
     end
@@ -51,7 +46,7 @@ defmodule OrbitWeb.InstanceCreateLive do
   @impl true
   def handle_event("create", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
-    params = Map.put(params, "tags", submitted_tags(socket))
+    params = Map.put(params, "tags", TagPicker.submitted_tags(socket))
 
     with true <- user.role in @write_roles,
          {:ok, group_id} <- Instances.resolve_create_group(user, params["group_id"]),
@@ -72,69 +67,12 @@ defmodule OrbitWeb.InstanceCreateLive do
     end
   end
 
-  # -- tag picker ------------------------------------------------------------
-  # Clauses stay grouped with "create" above: a second `def handle_event`
+  # Tag picker state lives in TagPicker so both instance forms behave alike.
+  # The clause stays grouped with "create" above: a second `def handle_event`
   # block further down the module is a compile warning, and warnings are
   # errors here.
-
-  def handle_event("tag_key", %{"key" => key, "value" => value}, socket) do
-    case key do
-      k when k in ["Enter", ","] ->
-        {:noreply, commit_tag(socket, value)}
-
-      "Escape" ->
-        {:noreply, assign(socket, tag_open: false)}
-
-      "Backspace" ->
-        {:noreply,
-         assign(socket,
-           tags: TagPicker.backspace(socket.assigns.tags, socket.assigns.tag_query),
-           tag_query: value,
-           tag_open: true
-         )}
-
-      _ ->
-        {:noreply, assign(socket, tag_query: value, tag_open: true)}
-    end
-  end
-
-  def handle_event("tag_add", %{"tag" => tag}, socket) do
-    {:noreply, commit_tag(socket, tag)}
-  end
-
-  def handle_event("tag_remove", %{"tag" => tag}, socket) do
-    {:noreply, assign(socket, tags: TagPicker.remove(socket.assigns.tags, tag))}
-  end
-
-  def handle_event("tag_focus", _params, socket) do
-    {:noreply, assign(socket, tag_open: true)}
-  end
-
-  # Closing only — never committing. A blur commit fired on focus changes
-  # nobody made (a lone keystroke became a chip, seen in the browser); the
-  # typed leftover is folded in at submit time instead.
-  def handle_event("tag_close", _params, socket) do
-    {:noreply, assign(socket, tag_open: false)}
-  end
-
-  # Picked chips plus whatever sits half-typed in the filter field, as the
-  # comma-separated string Instances.coerce(:tags, …) parses. Submitting with
-  # text still in the field is a normal way to fill a form — that tag counts.
-  # The text comes from the assigns, not the form: the filter input carries no
-  # form name (see TagPicker), so phx-keyup is what the server knows it by.
-  defp submitted_tags(socket) do
-    socket.assigns.tags
-    |> TagPicker.add(socket.assigns.tag_query, socket.assigns.known_tags)
-    |> Enum.join(",")
-  end
-
-  defp commit_tag(socket, text) do
-    socket
-    |> assign(
-      tags: TagPicker.add(socket.assigns.tags, text, socket.assigns.known_tags),
-      tag_query: ""
-    )
-    |> push_event("tag_picker_clear", %{})
+  def handle_event("tag_" <> _ = event, params, socket) do
+    {:noreply, TagPicker.on_event(event, params, socket)}
   end
 
   defp error_text(:name_required), do: "name is required"

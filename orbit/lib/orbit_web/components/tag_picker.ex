@@ -4,10 +4,12 @@ defmodule OrbitWeb.Components.TagPicker do
   the picked tags, a dropdown of tags already in use across the fleet (typed
   text filters it) and a "Create …" entry for a brand-new one.
 
-  The host LiveView owns the state (`tags`, `query`, `open`) and the events
-  (`tag_key`, `tag_add`, `tag_remove`, `tag_focus`, `tag_close`); this only
-  draws them. State stays with the host on purpose: the create form re-renders
-  on a rejected submit (name collision), and picked chips must survive that.
+  The host LiveView holds the state — `init/3` puts it in the assigns, a single
+  `handle_event("tag_" <> _, …)` clause forwards to `on_event/3`, and
+  `submitted_tags/1` turns it into the form value. State lives in the host, not
+  in a LiveComponent, on purpose: the create form re-renders on a rejected
+  submit (name collision) and picked chips must survive that, which a
+  component re-seeded from its parent's assigns would not.
 
   Text typed but not committed is NOT lost on submit: the host tracks it in
   `query` (every keystroke arrives via phx-keyup) and folds it into the tags
@@ -31,6 +33,8 @@ defmodule OrbitWeb.Components.TagPicker do
   use Phoenix.Component
 
   import OrbitWeb.CoreComponents, only: [icon: 1]
+
+  alias Phoenix.LiveView
 
   # Enough to pick from without turning into a scroll list — the fleet's tag
   # vocabulary is small, and typing narrows it.
@@ -106,6 +110,84 @@ defmodule OrbitWeb.Components.TagPicker do
       </div>
     </div>
     """
+  end
+
+  @doc """
+  Seed the picker's assigns. Call once in the host's `mount/3`.
+  """
+  @spec init(LiveView.Socket.t(), [String.t()], [String.t()]) :: LiveView.Socket.t()
+  def init(socket, tags, known) do
+    assign(socket, tags: tags || [], known_tags: known, tag_query: "", tag_open: false)
+  end
+
+  @doc """
+  Apply one `tag_*` event to the host's socket.
+
+  Both forms forward every `tag_` event here, so the picker behaves identically
+  on create and edit and a fix lands in one place. Enter and "," commit the
+  typed text (the hook keeps them from submitting the surrounding form),
+  Escape and blur only close the dropdown, Backspace either clears typed text
+  or eats the last chip — see `backspace/2` for why that needs the previous
+  query rather than the payload.
+  """
+  @spec on_event(String.t(), map(), LiveView.Socket.t()) :: LiveView.Socket.t()
+  def on_event("tag_key", %{"key" => key, "value" => value}, socket) do
+    case key do
+      k when k in ["Enter", ","] ->
+        commit(socket, value)
+
+      "Escape" ->
+        assign(socket, tag_open: false)
+
+      "Backspace" ->
+        assign(socket,
+          tags: backspace(socket.assigns.tags, socket.assigns.tag_query),
+          tag_query: value,
+          tag_open: true
+        )
+
+      _ ->
+        assign(socket, tag_query: value, tag_open: true)
+    end
+  end
+
+  def on_event("tag_add", %{"tag" => tag}, socket), do: commit(socket, tag)
+
+  def on_event("tag_remove", %{"tag" => tag}, socket) do
+    assign(socket, tags: remove(socket.assigns.tags, tag))
+  end
+
+  def on_event("tag_focus", _params, socket), do: assign(socket, tag_open: true)
+
+  # Closing only — never committing. A blur commit fired on focus changes
+  # nobody made (a lone keystroke became a chip, seen in the browser); the
+  # typed leftover is folded in at submit time instead.
+  def on_event("tag_close", _params, socket), do: assign(socket, tag_open: false)
+
+  defp commit(socket, text) do
+    socket
+    |> assign(
+      tags: add(socket.assigns.tags, text, socket.assigns.known_tags),
+      tag_query: ""
+    )
+    |> LiveView.push_event("tag_picker_clear", %{})
+  end
+
+  @doc """
+  The form value: picked chips plus whatever sits half-typed in the filter
+  field, comma-separated for `Instances.coerce(:tags, …)`.
+
+  Submitting with text still in the field is a normal way to fill a form —
+  that tag counts. The text comes from the assigns, not the form params: the
+  filter input carries no form name (a named input is reset to the
+  server-rendered value on every patch, which wiped each keystroke as it was
+  typed), so phx-keyup is what the server knows it by.
+  """
+  @spec submitted_tags(LiveView.Socket.t()) :: String.t()
+  def submitted_tags(socket) do
+    socket.assigns.tags
+    |> add(socket.assigns.tag_query, socket.assigns.known_tags)
+    |> Enum.join(",")
   end
 
   @doc """

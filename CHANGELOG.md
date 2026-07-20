@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The edit form has the same tag picker as the new-instance form.** Editing
+  tags meant retyping a comma-separated line, with no sight of what the rest of
+  the fleet already uses — the one place where a spelling drifts apart from the
+  filter chips. Both forms now share one picker, so a fix or a change of
+  behaviour lands on both at once.
+
 ## [4.0.10] - 2026-07-20
 
 ### Added
