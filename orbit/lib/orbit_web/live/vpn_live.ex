@@ -510,6 +510,7 @@ defmodule OrbitWeb.VpnLive do
             device_type: inst.device_type,
             shell_enabled: inst.shell_enabled,
             gui_openable: gui_openable,
+            base_url: inst.base_url,
             id: to_string(t["id"] || t["description"] || "tunnel"),
             unique_id: to_string(t["unique_id"] || ""),
             label: t["description"] || t["id"] || "tunnel",
@@ -778,6 +779,7 @@ defmodule OrbitWeb.VpnLive do
                     >
                       {t.instance_name}
                     </a>
+                    <.base_url_link base_url={t.base_url} />
                     <.webui_link
                       instance_id={t.instance_id}
                       openable={t.gui_openable}

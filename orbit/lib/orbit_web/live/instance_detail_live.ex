@@ -20,6 +20,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
+  import OrbitWeb.Components.ListKit, only: [base_url_link: 1]
 
   alias OrbitWeb.Components.CommentEditor
 
@@ -1693,6 +1694,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
             <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> {@instance.name}
+            <.base_url_link base_url={@instance.base_url} />
           </h1>
           <span
             class={["rounded px-2 py-0.5 text-xs", conn_badge(@connected)]}
