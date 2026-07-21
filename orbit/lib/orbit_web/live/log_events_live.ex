@@ -21,7 +21,7 @@ defmodule OrbitWeb.LogEventsLive do
     if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_ms)
     # Errors first (python parity): the page exists to surface breakage, and
     # warning-level noise dominates an unfiltered fleet list.
-    {:ok, socket |> assign(search: "", sev_filter: "err", instance_filter: "all") |> load()}
+    {:ok, socket |> assign(search: "", sev_filter: "err", tag_filter: "all") |> load()}
   end
 
   @impl true
@@ -32,9 +32,9 @@ defmodule OrbitWeb.LogEventsLive do
     {:noreply, assign(socket, sev_filter: b)}
   end
 
-  def handle_event("instance_filter", %{"name" => name}, socket) do
-    name = if socket.assigns.instance_filter == name, do: "all", else: name
-    {:noreply, assign(socket, instance_filter: name)}
+  def handle_event("tag_filter", %{"tag" => tag}, socket) do
+    tag = if socket.assigns.tag_filter == tag, do: "all", else: tag
+    {:noreply, assign(socket, tag_filter: tag)}
   end
 
   @impl true
@@ -74,30 +74,8 @@ defmodule OrbitWeb.LogEventsLive do
         "warn" -> r.event.severity >= 4
       end
     end)
-    |> Enum.filter(&(a.instance_filter == "all" or &1.instance.name == a.instance_filter))
+    |> Enum.filter(&(a.tag_filter == "all" or a.tag_filter in (&1.instance.tags || [])))
   end
-
-  # Which daemons are noisy, worst severity first — the shape of the noise
-  # before the first row. Top 8 keeps the row scannable; the count in the note
-  # says how many were left out rather than silently truncating.
-  defp program_tally(rows) do
-    rows
-    |> Enum.reject(&(&1.event.program in [nil, ""]))
-    |> Enum.group_by(& &1.event.program)
-    |> Enum.map(fn {program, list} ->
-      %{
-        program: program,
-        count: Enum.sum(Enum.map(list, & &1.event.count)),
-        tone: tone_for(Enum.min_by(list, & &1.event.severity).event.severity)
-      }
-    end)
-    |> Enum.sort_by(&{-&1.count, &1.program})
-  end
-
-  # Syslog severity is inverted: lower number = worse.
-  defp tone_for(sev) when sev <= 2, do: :crit
-  defp tone_for(3), do: :warn
-  defp tone_for(_), do: :neutral
 
   # Newest ingest across the visible boxes — the age of everything on the page.
   defp last_ingest([]), do: nil
@@ -120,9 +98,8 @@ defmodule OrbitWeb.LogEventsLive do
         crit: Enum.count(assigns.rows, &(&1.event.severity <= 2)),
         err: Enum.count(assigns.rows, &(&1.event.severity == 3)),
         warn: Enum.count(assigns.rows, &(&1.event.severity >= 4)),
-        instance_names:
-          assigns.rows |> Enum.map(& &1.instance.name) |> Enum.uniq() |> Enum.sort(),
-        programs: program_tally(assigns.rows),
+        tags:
+          assigns.rows |> Enum.flat_map(&(&1.instance.tags || [])) |> Enum.uniq() |> Enum.sort(),
         last_ingest: last_ingest(assigns.rows)
       )
 
@@ -137,15 +114,13 @@ defmodule OrbitWeb.LogEventsLive do
         </h1>
 
         <.data_note>
-          Aggregated syslog lines of your agent-mode boxes, worst severity first. This is not a
-          log viewer: agents push their logfiles about once an hour, each push <em>replaces</em>
-          the events of that box, and only severity 4 (warning) or worse is kept at all —
-          everything quieter is dropped at ingest and can never appear here. Identical lines are
-          normalised (IPs and numbers masked) and counted, so one row is a pattern, not an
-          occurrence. Real fleets legitimately show zero CRIT rows.
+          Warning-or-worse syslog lines from your agent-mode boxes, worst first — not a live
+          viewer. Each hourly push <em>replaces</em>
+          a box's events; identical lines are
+          normalised and counted, so a row is a pattern, not one occurrence.
           <span :if={@last_ingest}>
-            Newest ingest: {local_time_tag(@last_ingest, "datetime")} — an idle box
-            keeps showing its last push.
+            Newest ingest: {local_time_tag(@last_ingest, "datetime")} — an idle box keeps its
+            last push.
           </span>
         </.data_note>
 
@@ -194,29 +169,16 @@ defmodule OrbitWeb.LogEventsLive do
               class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </form>
-          <div :if={length(@instance_names) > 1} class="flex flex-wrap gap-2">
+          <div :if={@tags != []} class="flex flex-wrap gap-2">
             <button
-              :for={name <- @instance_names}
-              phx-click="instance_filter"
-              phx-value-name={name}
-              class={chip(@instance_filter == name)}
+              :for={tag <- @tags}
+              phx-click="tag_filter"
+              phx-value-tag={tag}
+              class={chip(@tag_filter == tag)}
             >
-              {name}
+              {tag}
             </button>
           </div>
-        </div>
-
-        <div :if={@programs != []} class="mb-3 flex flex-wrap gap-2">
-          <.count_chip
-            :for={p <- Enum.take(@programs, 8)}
-            label={p.program}
-            count={p.count}
-            tone={p.tone}
-            title="lines counted for this program, toned by its worst severity"
-          />
-          <span :if={length(@programs) > 8} class="self-center text-xs text-base-content/50">
-            +{length(@programs) - 8} more programs, see the table
-          </span>
         </div>
 
         <.empty_state :if={@rows == []} title="No log events at or above the severity floor.">

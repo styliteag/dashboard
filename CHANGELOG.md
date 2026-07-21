@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Log events: filter by tag instead of by instance name, and less clutter
+  above the table.** The row of instance-name chips is replaced by tag chips
+  (a large fleet had one chip per box); the per-program severity-toned tally
+  chips are gone (every program was orange because the whole page is
+  warning-or-worse by definition, so the colour carried no signal); and the
+  intro note is trimmed to the essentials.
+
 ## [4.2.7] - 2026-07-22
 
 ### Changed
