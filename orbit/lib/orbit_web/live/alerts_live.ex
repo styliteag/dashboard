@@ -62,7 +62,7 @@ defmodule OrbitWeb.AlertsLive do
     {:noreply, assign(socket, severity_filter: b)}
   end
 
-  def handle_event("exported_filter", %{"value" => v}, socket)
+  def handle_event("exported_filter", %{"val" => v}, socket)
       when v in ~w(all exported excluded) do
     v = if socket.assigns.exported_filter == v, do: "all", else: v
     {:noreply, assign(socket, exported_filter: v)}
@@ -249,7 +249,7 @@ defmodule OrbitWeb.AlertsLive do
             <button
               :for={{v, label} <- [{"exported", "Checkmk-exported"}, {"excluded", "Excluded"}]}
               phx-click="exported_filter"
-              phx-value-value={v}
+              phx-value-val={v}
               class={chip(@exported_filter == v)}
             >
               {label}
