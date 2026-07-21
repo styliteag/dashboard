@@ -21,7 +21,10 @@ defmodule OrbitWeb.LogEventsLive do
     if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_ms)
     # Errors first (python parity): the page exists to surface breakage, and
     # warning-level noise dominates an unfiltered fleet list.
-    {:ok, socket |> assign(search: "", sev_filter: "err", tag_filter: "all") |> load()}
+    {:ok,
+     socket
+     |> assign(search: "", sev_filter: "err", tag_filter: "all", open_sample: nil)
+     |> load()}
   end
 
   @impl true
@@ -36,6 +39,22 @@ defmodule OrbitWeb.LogEventsLive do
     tag = if socket.assigns.tag_filter == tag, do: "all", else: tag
     {:noreply, assign(socket, tag_filter: tag)}
   end
+
+  # Raw sample popover. Admin-only — the sample is un-masked raw log content
+  # (CLAUDE.md invariant 4), so the toggle is refused for anyone else even
+  # though the button is never rendered for them.
+  def handle_event("toggle_sample", %{"id" => id}, socket) do
+    if socket.assigns.current_user.role == "admin" do
+      id = String.to_integer(id)
+      open = if socket.assigns.open_sample == id, do: nil, else: id
+      {:noreply, assign(socket, open_sample: open)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_sample", _params, socket),
+    do: {:noreply, assign(socket, open_sample: nil)}
 
   @impl true
   def handle_info(:refresh, socket) do
@@ -100,7 +119,8 @@ defmodule OrbitWeb.LogEventsLive do
         warn: Enum.count(assigns.rows, &(&1.event.severity >= 4)),
         tags:
           assigns.rows |> Enum.flat_map(&(&1.instance.tags || [])) |> Enum.uniq() |> Enum.sort(),
-        last_ingest: last_ingest(assigns.rows)
+        last_ingest: last_ingest(assigns.rows),
+        admin?: assigns.current_user.role == "admin"
       )
 
     ~H"""
@@ -202,25 +222,55 @@ defmodule OrbitWeb.LogEventsLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
-                <td class="py-2 pr-4">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
-                    {sev_label(r.event.severity)}
-                  </span>
-                </td>
-                <td class="py-2 pr-4">
-                  <a
-                    href={~p"/instances/#{r.instance.id}"}
-                    class="text-base-content hover:text-primary"
-                  >
-                    {r.instance.name}
-                  </a>
-                </td>
-                <td class="py-2 pr-4 text-base-content/70">{r.event.program}</td>
-                <td class="py-2 pr-4 text-base-content/80">{r.event.pattern}</td>
-                <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
-                <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
-              </tr>
+              <%= for r <- @visible_rows do %>
+                <tr class="border-b border-base-300/50">
+                  <td class="py-2 pr-4">
+                    <span class={["rounded px-1.5 py-0.5 text-xs", sev_class(r.event.severity)]}>
+                      {sev_label(r.event.severity)}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4">
+                    <a
+                      href={~p"/instances/#{r.instance.id}"}
+                      class="text-base-content hover:text-primary"
+                    >
+                      {r.instance.name}
+                    </a>
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/70">{r.event.program}</td>
+                  <td class="py-2 pr-4 text-base-content/80">
+                    {r.event.pattern}
+                    <button
+                      :if={@admin? and (r.event.sample || "") != ""}
+                      phx-click="toggle_sample"
+                      phx-value-id={r.event.id}
+                      title="Show the raw (un-masked) log line for this pattern — admin only"
+                      class="ml-2 rounded border border-base-content/20 px-1 py-0 align-middle text-[10px] text-base-content/50 hover:bg-base-300 hover:text-base-content/80"
+                    >
+                      raw
+                    </button>
+                  </td>
+                  <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
+                  <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
+                </tr>
+                <%!-- Raw un-masked sample line for this pattern (admin only —
+                     invariant 4). Full-width row, not a floating popover, so
+                     the overflow-x container can never clip it. --%>
+                <tr
+                  :if={@admin? and @open_sample == r.event.id}
+                  class="border-b border-base-300/50 bg-base-200/40"
+                >
+                  <td colspan="6" class="px-3 py-2">
+                    <div class="mb-1 flex items-center justify-between text-[11px] text-base-content/50">
+                      <span>Raw sample · {r.event.log_name} · last seen {r.event.last_ts}</span>
+                      <button phx-click="close_sample" class="hover:text-base-content/80">
+                        ✕ close
+                      </button>
+                    </div>
+                    <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-base-300/50 p-2 font-mono text-xs text-base-content/80">{r.event.sample}</pre>
+                  </td>
+                </tr>
+              <% end %>
             </tbody>
           </table>
         </div>

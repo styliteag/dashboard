@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Log events: a "raw" toggle reveals the un-masked sample line for a pattern.**
+  Each row's masked pattern can be expanded to the actual raw log line it was
+  built from, in a full-width panel under the row. Admin-only — raw log content
+  may carry sensitive data the pattern masking removed (invariant 4).
+
 ### Changed
 
 - **Log events: filter by tag instead of by instance name, and less clutter
