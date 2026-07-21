@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tunnels that were plainly up (and showed regardless of ping monitoring). The
   unknown state is now a neutral em dash; red is reserved for a child that is
   genuinely down.
+- **The "Analyse with AI" output is now rendered as formatted Markdown instead
+  of raw text.** The model replies in Markdown — a findings table, `###`
+  headings, bold severities, inline code — which a plain `<pre>` showed
+  literally as `### Findings` and `| Title | Severity |…` pipes. Both AI panels
+  (the IPsec tunnel diagnosis and the Log-tab analyser) now render a real
+  table, headings, lists and code spans. The renderer is dependency-free and
+  builds escaped HTML from parsed tokens, so the model's untrusted
+  (prompt-injectable) output can never render as live markup.
 
 ### Fixed
 

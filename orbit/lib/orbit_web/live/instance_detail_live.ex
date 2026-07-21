@@ -2750,7 +2750,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <div class="mb-2 text-xs text-base-content/60">
                 {@diag_ai_result.provider} · {@diag_ai_result.model}
               </div>
-              <pre class="whitespace-pre-wrap text-xs text-base-content/80">{@diag_ai_result.findings}</pre>
+              <OrbitWeb.MarkdownLite.ai_markdown text={@diag_ai_result.findings} />
             </div>
           </div>
         </div>
@@ -3145,7 +3145,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <div class="mb-2 text-xs text-base-content/60">
               {@ai_result.provider} · {@ai_result.model}
             </div>
-            <pre class="whitespace-pre-wrap text-xs text-base-content/80">{@ai_result.findings}</pre>
+            <OrbitWeb.MarkdownLite.ai_markdown text={@ai_result.findings} />
           </div>
         </div>
 
