@@ -880,11 +880,20 @@ defmodule OrbitWeb.VpnLive do
                   <td class="px-3 py-1 text-base-content/60" colspan="2">
                     {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
                   </td>
-                  <td class={[
-                    "px-3 py-1",
-                    if(child_up?(ch), do: "text-primary", else: "text-error")
-                  ]}>
-                    {ch["status"] || "?"}
+                  <td class={
+                    [
+                      "px-3 py-1",
+                      cond do
+                        # No status text pushed for this child SA — "unknown", not
+                        # "down". A red "?" here alarmed operators on children of
+                        # tunnels that were plainly up; muted em dash instead.
+                        to_string(ch["status"]) == "" -> "text-base-content/40"
+                        child_up?(ch) -> "text-primary"
+                        true -> "text-error"
+                      end
+                    ]
+                  }>
+                    {if to_string(ch["status"]) == "", do: "—", else: ch["status"]}
                   </td>
                   <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
                     <% mon = p2_monitor(@monitors, t.instance_id, ch["name"]) %>

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A child SA with no reported status now shows a muted "—", not an alarming
+  red "?".** On the IPsec overview, Phase-2 children whose strongSwan status
+  text is absent were painted in error-red with a "?", which read as a fault on
+  tunnels that were plainly up (and showed regardless of ping monitoring). The
+  unknown state is now a neutral em dash; red is reserved for a child that is
+  genuinely down.
+
 ## [4.2.6] - 2026-07-21
 
 ### Changed
