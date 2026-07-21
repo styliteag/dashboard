@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.7] - 2026-07-22
+
 ### Changed
 
 - **The Base URL is now a clickable link everywhere it appears, and a
