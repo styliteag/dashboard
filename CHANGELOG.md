@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.8] - 2026-07-22
+
 ### Added
 
 - **Log events: a "raw" toggle reveals the un-masked sample line for a pattern.**
