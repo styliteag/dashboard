@@ -18,99 +18,21 @@ env:
   CACHE_IMAGE: ghcr.io/styliteag/dashboard-cache
 
 jobs:
-  # Build each architecture on a NATIVE runner (no QEMU emulation) and push the
-  # resulting image by digest. Measured on 4.0.2/4.0.3: the same
-  # `mix deps.compile` step took 413s under emulated arm64 versus 59s on native
-  # amd64, and the whole release took ~12 min. Native runners remove that gap.
+  # Single amd64 build, tagged and released in one job. There is no per-arch
+  # matrix and no merge job any more: multi-arch (amd64 + arm64) is produced
+  # LOCALLY with `just publish` (build-and-push.sh), because the native arm64
+  # GitHub runner is billed per minute. CI builds amd64 only, so the image it
+  # pushes IS the final manifest — nothing to assemble from digests.
+  #
+  # CAVEAT (same one build-and-push.sh documents): a single-arch push overwrites
+  # the tag, it does not merge. Do not let this CI run and `just publish all`
+  # both land on the same version tag — whichever runs last wins and the other
+  # arch drops out. Pick one path per release.
   build:
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-latest
-          # arm64 disabled: the native `ubuntu-24.04-arm` runner is BILLED per
-          # minute on private repos (kostet €). The Mac dev boxes build their
-          # own arm64 image from compose.yml's `build:` block, so nothing pulls
-          # arm64 from the registry today. Re-enable if arm64 servers appear —
-          # the merge job already handles multiple digests, so just uncomment.
-          # Do NOT add arm64 back to a single amd64 runner without this matrix:
-          # that silently falls back to QEMU emulation (~10 min extra).
-          # - platform: linux/arm64
-          #   arch: arm64
-          #   runner: ubuntu-24.04-arm
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      # No version extraction here: orbit/Dockerfile reads VERSION from the file
-      # it copies out of the build context, so this job needs no version input.
-      # The merge job below does the tagging and extracts it there.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Build context is the repo root: orbit/Dockerfile copies VERSION and
-      # agent/ from there and reads the version out of the file, not a build-arg.
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./orbit/Dockerfile
-          platforms: ${{ matrix.platform }}
-          provenance: false
-          sbom: false
-          # Registry cache for the deps layer. It was removed for one release
-          # (4.2.1) to measure the effect, and that run exposed why it belongs:
-          # `mix deps.get` downloads from hex.pm, which swings 16s–37s run to
-          # run purely on network speed. The cache replaces that variable cost
-          # with a stable ~17s layer pull. The earlier "cache saves nothing"
-          # reading compared a hit against a lucky-fast cold run; against a slow
-          # hex.pm day it saves ~20s. mode=max also carries the Dockerfile's
-          # hex mount-cache across runners. ignore-error: the cache is an
-          # optimisation and must never fail a release that already built a good
-          # image.
-          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=max,ignore-error=true
-          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: digest-${{ matrix.arch }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  # Assemble the per-arch digests into a multi-arch manifest list, tag it, and
-  # cut the GitHub Release. Runs once, after every build finishes.
-  merge:
-    needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
+      contents: write # create the GitHub Release
+      packages: write # push the image + prune old versions
     env:
       # Secrets are not directly addressable in `if:` expressions.
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -132,13 +54,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Extracted version: $VERSION"
 
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: digest-*
-          merge-multiple: true
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -156,32 +71,48 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Create GHCR manifest list
-        working-directory: /tmp/digests
+      # Tag list for the build push: GHCR always, Docker Hub only when its
+      # secret is set. build-push-action pushes the image to every tag in one
+      # go, so no imagetools copy step is needed.
+      - name: Compute tags
+        id: tags
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          docker buildx imagetools create \
-            -t "${GHCR_IMAGE}:${VERSION}" \
-            -t "${GHCR_IMAGE}:latest" \
-            $(printf "${GHCR_IMAGE}@sha256:%s " *)
-          docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
+          V="${{ steps.version.outputs.version }}"
+          TAGS="${GHCR_IMAGE}:${V},${GHCR_IMAGE}:latest"
+          if [ -n "${DOCKERHUB_USERNAME}" ]; then
+            TAGS="${TAGS},${DOCKERHUB_IMAGE}:${V},${DOCKERHUB_IMAGE}:latest"
+          else
+            echo "::notice::DOCKERHUB_USERNAME secret is not set — pushing to GHCR only."
+            echo "::notice::Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets to enable Docker Hub."
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
-      - name: Create Docker Hub manifest list
-        if: env.DOCKERHUB_USERNAME != ''
-        working-directory: /tmp/digests
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # imagetools copies the per-arch blobs from GHCR into Docker Hub.
-          docker buildx imagetools create \
-            -t "${DOCKERHUB_IMAGE}:${VERSION}" \
-            -t "${DOCKERHUB_IMAGE}:latest" \
-            $(printf "${GHCR_IMAGE}@sha256:%s " *)
+      # Build context is the repo root: orbit/Dockerfile copies VERSION and
+      # agent/ from there and reads the version out of the file, not a build-arg.
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./orbit/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          # Registry cache for the deps layer. It was removed for one release
+          # (4.2.1) to measure the effect, and that run exposed why it belongs:
+          # `mix deps.get` downloads from hex.pm, which swings 16s–37s run to
+          # run purely on network speed. The cache replaces that variable cost
+          # with a stable ~17s layer pull. mode=max also carries the Dockerfile's
+          # hex mount-cache across runners. ignore-error: the cache is an
+          # optimisation and must never fail a release that already built a good
+          # image.
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:amd64
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:amd64,mode=max,ignore-error=true
 
-      # Retention. A "version" here is a manifest, not a release: each release
-      # adds the per-arch image pushed by digest (untagged) plus the manifest
-      # list carrying the version tag and latest. Targets the `dashboard`
-      # package only — the build cache lives in its own CACHE_IMAGE package,
-      # out of reach of this prune (pruning it would force a cold rebuild).
+      # Retention. Targets the `dashboard` package only — the build cache lives
+      # in its own CACHE_IMAGE package, out of reach of this prune (pruning it
+      # would force a cold rebuild).
       # NOTE: this is the one action still on node20 — actions/delete-package-
       # versions has had no release since v5.0.0 (Jan 2024) and no node24 line
       # exists, so it keeps emitting the deprecation warning. Bumping cannot fix
@@ -196,12 +127,6 @@ jobs:
           package-type: "container"
           min-versions-to-keep: 30
           delete-only-untagged-versions: false
-
-      - name: Note Docker Hub skipped
-        if: env.DOCKERHUB_USERNAME == ''
-        run: |
-          echo "::notice::DOCKERHUB_USERNAME secret is not set — skipping Docker Hub push."
-          echo "::notice::Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets to enable."
 
       - name: Extract release notes from CHANGELOG
         id: release_notes
