@@ -219,6 +219,52 @@ defmodule OrbitWeb.Components.ListKit do
     """
   end
 
+  attr :base_url, :string, default: ""
+  attr :title, :string, default: "Open base URL directly"
+
+  @doc """
+  Direct link to the box's own web UI at its `base_url` — distinct from
+  `webui_link/1`, which tunnels through the GUI proxy. Pass the raw `base_url`
+  (may be a comma-separated list); the icon opens the first endpoint. Shows only
+  for an `http(s)://` value (never a `javascript:` scheme), so it is safe on an
+  admin-typed field.
+  """
+  def base_url_link(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :url,
+        assigns.base_url |> to_string() |> String.split(",") |> hd() |> String.trim()
+      )
+
+    ~H"""
+    <a
+      :if={String.starts_with?(@url, ["http://", "https://"])}
+      href={@url}
+      target="_blank"
+      rel="noreferrer"
+      title={@title}
+      aria-label={@title}
+      class="inline-flex items-center rounded p-0.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
+    >
+      <%!-- heroicon: globe-alt (outline) --%>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        class="h-3.5 w-3.5"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m-9 9h18"
+        />
+      </svg>
+    </a>
+    """
+  end
+
   @doc """
   Shared `row_gui_open` handler body: re-resolves the id through the
   caller's scope (never trust the DOM id), re-checks openable, audits and

@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comma-separated list opens each endpoint.** The instance detail page showed it
   as plain text; the list linked only the first endpoint. Both now render every
   comma-separated URL as its own link (parity with the old dashboard, where a
-  base URL could hold several). Only `http(s)://` values become links.
+  base URL could hold several). Only `http(s)://` values become links. A globe
+  quick-link icon now also sits beside the instance name on the fleet lists
+  (instances, firmware, certificates, hub, alerts, connectivity), opening the
+  box's URL in a new tab next to the existing WebGUI/terminal icons.
 - **A child SA with no reported status now shows a muted "—", not an alarming
   red "?".** On the IPsec overview, Phase-2 children whose strongSwan status
   text is absent were painted in error-red with a "?", which read as a fault on

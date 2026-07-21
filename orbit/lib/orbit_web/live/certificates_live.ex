@@ -102,6 +102,7 @@ defmodule OrbitWeb.CertificatesLive do
             instance_name: inst.name,
             shell_enabled: inst.shell_enabled,
             gui_openable: gui_openable,
+            base_url: inst.base_url,
             name: c["name"] || c["subject"] || "cert",
             refid: to_string(c["refid"] || c["name"] || ""),
             issuer: c["issuer"] || "",
@@ -308,6 +309,7 @@ defmodule OrbitWeb.CertificatesLive do
                   >
                     {r.instance_name}
                   </a>
+                  <.base_url_link base_url={r.base_url} />
                   <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
                   <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
                 </td>

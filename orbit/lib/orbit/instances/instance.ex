@@ -91,7 +91,8 @@ defmodule Orbit.Instances.Instance do
   defp present?(_), do: true
 
   def primary_base_url(%__MODULE__{base_url: base_url}) do
-    base_url |> String.split(",", parts: 2) |> hd() |> String.trim()
+    # base_url is nullable (push-only device types have none) — never split nil.
+    (base_url || "") |> String.split(",", parts: 2) |> hd() |> String.trim()
   end
 
   @type t :: %__MODULE__{}

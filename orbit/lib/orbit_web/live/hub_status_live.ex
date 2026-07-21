@@ -132,6 +132,7 @@ defmodule OrbitWeb.HubStatusLive do
               instance_name: inst.name,
               shell_enabled: inst.shell_enabled,
               gui_openable: Orbit.GUI.openable(inst) == :ok,
+              base_url: inst.base_url,
               version: agent.agent_version,
               platform: agent.platform,
               pushes: agent.pushes,
@@ -355,6 +356,7 @@ defmodule OrbitWeb.HubStatusLive do
                   >
                     {a.instance_name}
                   </a>
+                  <.base_url_link base_url={a.base_url} />
                   <.webui_link instance_id={a.instance_id} openable={a.gui_openable} />
                   <.shell_link instance_id={a.instance_id} shell_enabled={a.shell_enabled} />
                 </td>

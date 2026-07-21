@@ -295,6 +295,7 @@ defmodule OrbitWeb.AlertsLive do
                   <a href={~p"/instances/#{a.inst.id}"} class="text-base-content hover:text-primary">
                     {a.inst.name}
                   </a>
+                  <.base_url_link base_url={a.inst.base_url} />
                   <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
                   <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
                 </td>

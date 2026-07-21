@@ -21,7 +21,9 @@ defmodule OrbitWeb.InstancesLive do
 
   use OrbitWeb, :live_view
 
-  import OrbitWeb.Components.ListKit, only: [webui_link: 1, shell_link: 1, gui_open_row: 3]
+  import OrbitWeb.Components.ListKit,
+    only: [webui_link: 1, shell_link: 1, gui_open_row: 3, base_url_link: 1]
+
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
   alias OrbitWeb.Components.CommentEditor
@@ -637,6 +639,7 @@ defmodule OrbitWeb.InstancesLive do
               >
                 {i.name}
               </a>
+              <.base_url_link base_url={i.base_url} />
               <.webui_link instance_id={i.id} openable={i.gui_openable} />
               <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
               <.comment_editor
@@ -732,6 +735,7 @@ defmodule OrbitWeb.InstancesLive do
                   <a href={~p"/instances/#{i.id}"} class="text-base-content hover:text-primary">
                     {i.name}
                   </a>
+                  <.base_url_link base_url={i.base_url} />
                   <.webui_link instance_id={i.id} openable={i.gui_openable} />
                   <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
                   <.comment_editor

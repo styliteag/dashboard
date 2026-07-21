@@ -104,6 +104,7 @@ defmodule OrbitWeb.FirmwareLive do
           firmware_locked: inst.firmware_locked,
           shell_enabled: inst.shell_enabled,
           gui_openable: Orbit.GUI.openable(inst) == :ok,
+          base_url: Orbit.Instances.Instance.primary_base_url(inst),
           version: fw["product_version"] || "—",
           latest: fw["product_latest"] || "",
           security_updates: fw["security_updates"] || 0,
@@ -290,6 +291,7 @@ defmodule OrbitWeb.FirmwareLive do
                   >
                     🔒
                   </span>
+                  <.base_url_link base_url={r.base_url} />
                   <.webui_link instance_id={r.id} openable={r.gui_openable} />
                   <.shell_link instance_id={r.id} shell_enabled={r.shell_enabled} />
                   <div class="text-xs text-base-content/40">{r.device_type}</div>
