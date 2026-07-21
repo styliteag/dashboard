@@ -171,6 +171,12 @@ dev-logs:
 release type="patch":
     ./release.sh {{type}}
 
+# Build the prod image LOCALLY and push straight to the registries (no CI).
+# The ONLY path that produces an arm64 image — CI builds amd64 only.
+# just publish        → amd64 + arm64   |   just publish amd64   → single arch
+publish platforms="all":
+    ./build-and-push.sh {{platforms}}
+
 # Regenerate THIRD-PARTY-NOTICES.md AND sbom.cdx.json (CycloneDX 1.6) from the
 # shipped runtime deps of the orbit release. Needs the orbit deps fetched
 # (`just orbit-setup`) so the Hex license files are on disk. Run after changing
