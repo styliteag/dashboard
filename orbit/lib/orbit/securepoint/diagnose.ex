@@ -22,8 +22,16 @@ defmodule Orbit.Securepoint.Diagnose do
   @sec "@@SEC@@"
   @plain_title "Connection config (swanctl --list-conns)"
   @raw_title "Configured crypto proposals (swanctl --list-conns --raw)"
-  # Tunnel ids reach a shell command; only strongSwan-legal names pass.
-  @safe_name ~r/^[A-Za-z0-9._:-]{1,128}$/
+  # Tunnel ids reach a shell command — but single-quoted at `script/1`
+  # (`N='#{name}'`), so `$` is literal there and every later use is `"$N"`
+  # (expanded once, never re-parsed). The allow-list therefore includes `$`,
+  # which is exactly how Securepoint escapes characters illegal in a
+  # strongSwan section id: a space becomes `$20` (`OCV MEH` → `OCV$20MEH`),
+  # and that ENCODED form is the id, because `swanctl --ike` wants the section
+  # name verbatim. `$` can only ever be followed by hex here, so a literal
+  # quote/backtick/paren/semicolon still cannot appear — the guard stays
+  # airtight against injection while no longer refusing legit escaped names.
+  @safe_name ~r/^[A-Za-z0-9._:$-]{1,128}$/
   @diag_timeout 30_000
 
   @doc """

@@ -96,6 +96,20 @@ defmodule Orbit.Securepoint.DiagnoseTest do
     end
   end
 
+  test "a Securepoint $XX-escaped id is not refused as unsafe" do
+    # `OCV MEH` reaches swanctl as `OCV$20MEH` (strongSwan escapes the space),
+    # and `$` + hex is the ONLY way `$` appears — none of the injection cases
+    # above survive it. Regression: the guard rejected every tunnel whose name
+    # held a space, so Diagnose did nothing on the most common Securepoint box.
+    inst = %Orbit.Instances.Instance{id: 1, device_type: "securepoint"}
+
+    assert [%{"title" => title}] = Diagnose.run(inst, "OCV$20MEH")
+    # No SSH is configured on the bare struct, so the escaped id passes the
+    # charset guard and falls through to the SSH-required branch instead.
+    refute title == "Diagnostics unavailable"
+    assert title == "SSH required"
+  end
+
   test "the script names every section the agent bundle names" do
     script = Diagnose.script("t1")
 

@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unknown state is now a neutral em dash; red is reserved for a child that is
   genuinely down.
 
+### Fixed
+
+- **IPsec "Diagnose" works again for a Securepoint tunnel whose name contains a
+  space.** Securepoint escapes a space in a strongSwan connection name as `$20`
+  (`OCV MEH` → `OCV$20MEH`) and keeps that encoded form as the id, but the
+  diagnose safety check rejected the `$`, so Diagnose returned only `unsafe
+  tunnel id: "OCV$20MEH"` and never gathered the bundle. `$` is now accepted —
+  it can only ever precede hex here and is single-quoted before it reaches the
+  shell — while every shell-injection character stays rejected.
+
 ## [4.2.6] - 2026-07-21
 
 ### Changed
