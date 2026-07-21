@@ -170,6 +170,12 @@ services:
   #   docker exec dashboard-crowdsec-1 cscli bouncers add orbit-dashboard
   # and put it into .env as DASH_CROWDSEC_API_KEY (key set = check active;
   # DASH_CROWDSEC_DISABLE=true switches it off without removing the key).
+  # Noisy logs? The default `common.log_level: info` prints a line per LAPI
+  # request — the orbit bouncer polls /v1/decisions/stream every 30s plus the
+  # agent heartbeat. Set `common.log_level: warning` in the config.yaml inside
+  # the crowdsec_config volume and restart the sidecar; warnings/errors (sync
+  # and auth failures) still log. Don't slow the bouncer poll instead — that
+  # delays ban propagation.
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.7
     restart: unless-stopped
