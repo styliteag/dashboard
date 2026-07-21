@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The reachability probe no longer crash-loops on the slim release image.**
+  On `debian-slim` (no `/etc/protocols`) the ICMP socket was opened with the
+  `:icmp` protocol name, which the kernel could not resolve — every probe sweep
+  raised `String.Chars not implemented for Tuple` and measured nothing. The
+  socket now uses the IPPROTO_ICMP number directly, so ICMP probing works with
+  no image or host change. When a runtime genuinely cannot open an ICMP socket
+  (no `ping_group_range` gid and no `CAP_NET_RAW`) the probe now reports ICMP as
+  "not measured" rather than a false "down", so HTTP probing and check grading
+  are unaffected.
+
 ## [4.2.3] - 2026-07-21
 
 ## [4.2.2] - 2026-07-21

@@ -50,6 +50,28 @@ defmodule Orbit.ProbeTest do
     end
   end
 
+  describe "icmp_axis_from/1 — an unopenable socket is 'not measured', never 'down'" do
+    test "a successful echo is up with its rtt" do
+      assert Probe.icmp_axis_from({:ok, 4.2}) == %{Probe.empty() | icmp_up: true, rtt_ms: 4.2}
+    end
+
+    test ":unavailable (no ping_group_range gid / no CAP_NET_RAW) measures nothing" do
+      # Regression: on the debian-slim release image `:socket.open(.., :icmp)`
+      # returns {:invalid, {:protocol, :icmp}} (no /etc/protocols). The probe
+      # crashed on `to_string` of that tuple; the naive fix would instead mark
+      # every box icmp_up: false and CRIT the whole direct-polled fleet. An
+      # unopenable socket is a runtime limit — "not measured", never "down".
+      assert Probe.icmp_axis_from({:error, :unavailable}) == Probe.empty()
+      refute Probe.probed?(Probe.icmp_axis_from({:error, :unavailable}))
+    end
+
+    test "a genuine ping failure is down with a readable reason (never raises)" do
+      axis = Probe.icmp_axis_from({:error, :timeout})
+      assert axis.icmp_up == false
+      assert axis.error == "timeout"
+    end
+  end
+
   describe "confidence model" do
     defp up, do: %{Probe.empty() | icmp_up: true, rtt_ms: 9.87, http_up: true, http_status: 200}
     defp icmp_down, do: %{Probe.empty() | icmp_up: false}

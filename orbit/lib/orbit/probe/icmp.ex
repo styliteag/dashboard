@@ -2,10 +2,14 @@ defmodule Orbit.Probe.ICMP do
   @moduledoc """
   ICMP echo with no external binary — port of the deleted `probe/icmp.py`.
 
-  Prefers an unprivileged `:dgram`/`:icmp` socket (works whenever the kernel's
-  `ping_group_range` permits it, which is the Docker default), falling back to
-  `:raw`. No `ping(8)` dependency, so the runtime image needs nothing extra and
-  there is no output format to parse per platform.
+  Prefers an unprivileged `:dgram` ICMP socket (works whenever the kernel's
+  `ping_group_range` permits the runtime's gid), falling back to `:raw`. The
+  protocol is passed as the IPPROTO_ICMP *number* (1), never the `:icmp` atom:
+  the atom is resolved through `/etc/protocols`, which the debian-slim release
+  image omits, and there the atom fails with `{:invalid, {:protocol, :icmp}}` —
+  the whole probe used to crash on that (String.Chars on a tuple). No `ping(8)`
+  dependency, so the runtime image needs nothing extra and there is no output
+  format to parse per platform.
 
   Raw sockets hand back the IPv4 header in front of the ICMP message; datagram
   sockets do not — the reply parser accounts for both. The kernel also rewrites
@@ -19,6 +23,9 @@ defmodule Orbit.Probe.ICMP do
   @icmp_echo_reply 0
   @ip_header_len 20
   @payload_size 32
+  # IPPROTO_ICMP as a number — the :icmp atom needs /etc/protocols, which
+  # debian-slim omits, so there it returns {:invalid, {:protocol, :icmp}}.
+  @icmp_proto 1
 
   @doc """
   One echo to `host`. Returns the round-trip time in ms, or an error.
@@ -56,18 +63,21 @@ defmodule Orbit.Probe.ICMP do
     end
   end
 
-  # Unprivileged first; :raw only if the kernel refuses the datagram socket.
+  # Unprivileged datagram ping socket first; :raw only if the kernel refuses it.
+  # Both refusing → :unavailable: a limit of THIS runtime (gid outside
+  # ping_group_range, no CAP_NET_RAW), never a property of the target — the
+  # caller must read it as "not measured", never as the box being down.
   defp open do
-    case :socket.open(:inet, :dgram, :icmp) do
+    case :socket.open(:inet, :dgram, @icmp_proto) do
       {:ok, s} -> {:ok, s}
       {:error, _} -> raw_open()
     end
   end
 
   defp raw_open do
-    case :socket.open(:inet, :raw, :icmp) do
+    case :socket.open(:inet, :raw, @icmp_proto) do
       {:ok, s} -> {:ok, s}
-      {:error, reason} -> {:error, reason}
+      {:error, _} -> {:error, :unavailable}
     end
   end
 

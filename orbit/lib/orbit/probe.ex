@@ -89,9 +89,21 @@ defmodule Orbit.Probe do
   end
 
   defp icmp_axis(host, opts) do
-    case ICMP.ping(host, timeout: Keyword.get(opts, :icmp_timeout, 2_000)) do
-      {:ok, rtt} -> %{@empty | icmp_up: true, rtt_ms: rtt}
-      {:error, reason} -> %{@empty | icmp_up: false, error: to_string(reason)}
-    end
+    ICMP.ping(host, timeout: Keyword.get(opts, :icmp_timeout, 2_000))
+    |> icmp_axis_from()
   end
+
+  @doc false
+  # Grade one ICMP.ping/2 result. Public + @doc false so the grading is
+  # unit-testable without a live socket (probe_test.exs).
+  def icmp_axis_from({:ok, rtt}), do: %{@empty | icmp_up: true, rtt_ms: rtt}
+
+  # The socket could not be opened here at all (no ping_group_range gid, no
+  # CAP_NET_RAW): an environment limit, NOT the target being down. Report "not
+  # measured" (icmp_up: nil) — a false icmp_up: false would CRIT every
+  # direct-polled box fleet-wide. Regression: the probe crashed with
+  # `String.Chars not implemented for Tuple` on {:invalid, {:protocol, :icmp}}.
+  def icmp_axis_from({:error, :unavailable}), do: @empty
+
+  def icmp_axis_from({:error, reason}), do: %{@empty | icmp_up: false, error: to_string(reason)}
 end
