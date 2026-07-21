@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The VPN tunnel expand toggle is a larger, easier click target.** The
+  phase-2 child-SA disclosure arrow grew from a 24px to a 32px button with a
+  bigger glyph.
 - **Log events: filter by tag instead of by instance name, and less clutter
   above the table.** The row of instance-name chips is replaced by tag chips
   (a large fleet had one chip per box); the per-program severity-toned tally

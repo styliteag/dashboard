@@ -756,7 +756,7 @@ defmodule OrbitWeb.VpnLive do
                       phx-click="toggle_expand"
                       phx-value-key={key}
                       title="Show phase-2 child SAs"
-                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-base-content/20 text-base text-base-content/80 hover:bg-base-300"
+                      class="mr-2 inline-flex h-8 w-8 items-center justify-center rounded border border-base-content/20 text-xl leading-none text-base-content/80 hover:bg-base-300"
                     >
                       {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
                     </button>
