@@ -103,8 +103,7 @@ jobs:
           # (4.2.1) to measure the effect, and that run exposed why it belongs:
           # `mix deps.get` downloads from hex.pm, which swings 16s–37s run to
           # run purely on network speed. The cache replaces that variable cost
-          # with a stable ~17s layer pull. mode=max also carries the Dockerfile's
-          # hex mount-cache across runners. ignore-error: the cache is an
+          # with a stable ~17s layer pull. ignore-error: the cache is an
           # optimisation and must never fail a release that already built a good
           # image.
           cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:amd64
