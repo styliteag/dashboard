@@ -92,6 +92,7 @@ defmodule OrbitWeb.AlertsLive do
           %{
             inst: inst,
             shell_enabled: (record && record.shell_enabled) || false,
+            base_url: (record && record.base_url) || "",
             check: c,
             exported: Orbit.Selection.is_on_live("checkmk", c.key, inst.id),
             gui_openable: record != nil and Orbit.GUI.openable(record) == :ok
@@ -295,7 +296,7 @@ defmodule OrbitWeb.AlertsLive do
                   <a href={~p"/instances/#{a.inst.id}"} class="text-base-content hover:text-primary">
                     {a.inst.name}
                   </a>
-                  <.base_url_link base_url={a.inst.base_url} />
+                  <.base_url_link base_url={a.base_url} />
                   <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
                   <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
                 </td>
