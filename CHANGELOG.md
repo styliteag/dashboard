@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.4] - 2026-07-21
+
 ### Fixed
 
 - **The reachability probe no longer crash-loops on the slim release image.**
