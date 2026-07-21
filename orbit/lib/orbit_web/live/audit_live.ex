@@ -331,7 +331,7 @@ defmodule OrbitWeb.AuditLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
                 <tr class="border-b border-base-300">
-                  <th class="py-2 pr-4 font-medium">Time (UTC)</th>
+                  <th class="py-2 pr-4 font-medium">Time</th>
                   <th class="py-2 pr-4 font-medium">Action</th>
                   <th class="py-2 pr-4 font-medium">Result</th>
                   <th class="py-2 pr-4 font-medium">User</th>
@@ -486,7 +486,7 @@ defmodule OrbitWeb.AuditLive do
             <table :if={not @grouped} class="w-full min-w-[46rem] text-left text-sm">
               <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
                 <tr class="border-b border-base-300">
-                  <th class="py-2 pr-4 font-medium">Time (UTC)</th>
+                  <th class="py-2 pr-4 font-medium">Time</th>
                   <th class="py-2 pr-4 font-medium">Type</th>
                   <th class="py-2 pr-4 font-medium">Who</th>
                   <th class="py-2 pr-4 font-medium">IP</th>
@@ -517,8 +517,8 @@ defmodule OrbitWeb.AuditLive do
     """
   end
 
-  defp fmt_ts(%NaiveDateTime{} = ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S")
-  defp fmt_ts(%DateTime{} = ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S")
+  defp fmt_ts(%NaiveDateTime{} = ts), do: local_time_tag(ts, "datetime-sec")
+  defp fmt_ts(%DateTime{} = ts), do: local_time_tag(ts, "datetime-sec")
   defp fmt_ts(other), do: to_string(other)
 
   defp result_class("ok"), do: "bg-primary/20 text-primary"

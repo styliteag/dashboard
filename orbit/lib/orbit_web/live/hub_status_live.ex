@@ -180,9 +180,9 @@ defmodule OrbitWeb.HubStatusLive do
           <span class="ml-2 text-sm text-base-content/60">({length(@agents)} connected)</span>
         </h1>
         <p class="mb-4 max-w-3xl text-xs leading-relaxed text-base-content/60">
-          Live state of the agent WebSocket hub, in memory since {Calendar.strftime(
+          Live state of the agent WebSocket hub, in memory since {local_time_tag(
             @started_at,
-            "%Y-%m-%d %H:%M UTC"
+            "datetime"
           )} — a backend restart resets every
           number on this page, and nothing here is persisted. Agents reconnect on their own.
           Tiles and the roster below are limited to your groups; the counter blocks and the
@@ -383,5 +383,5 @@ defmodule OrbitWeb.HubStatusLive do
   defp cpu_text(_), do: "—"
 
   defp push_text(nil), do: "—"
-  defp push_text(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S UTC")
+  defp push_text(%DateTime{} = dt), do: local_time_tag(dt, "time-sec")
 end

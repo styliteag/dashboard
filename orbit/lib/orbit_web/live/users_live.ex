@@ -369,7 +369,7 @@ defmodule OrbitWeb.UsersLive do
       |> Enum.reject(&(&1 in [nil, ""]))
       |> Enum.join(" · ")
 
-    stamp = Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
-    if where == "", do: stamp, else: "#{stamp} (#{where})"
+    stamp = local_time_tag(at, "datetime")
+    if where == "", do: stamp, else: [stamp, " (", where, ")"]
   end
 end

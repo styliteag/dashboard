@@ -943,7 +943,7 @@ defmodule OrbitWeb.InstancesLive do
 
     cond do
       a < 5 -> "just now"
-      stamp == nil -> Calendar.strftime(dt, "%Y-%m-%d")
+      stamp == nil -> local_time_tag(dt, "date")
       secs >= 0 -> "#{stamp} ago"
       true -> "in #{stamp}"
     end

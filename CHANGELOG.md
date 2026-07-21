@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Timestamps now display in your browser's local time zone, not UTC.** Every
+  clock on the dashboard (audit/access tables, hub status, instance cards,
+  users, API keys, log-events, check/tunnel history) now renders in the
+  viewer's own zone with the zone shown (e.g. `2026-07-21 22:53:10 CEST`),
+  formatted client-side — no server time-zone configuration needed, and each
+  viewer sees their own zone. With JavaScript disabled the original UTC value
+  stays visible. Metric-chart axes and the timestamp in export filenames remain
+  UTC on purpose; a couple of hover tooltips (relative-time cells, config
+  revision time) also stay UTC.
+
 ## [4.2.5] - 2026-07-21
 
 ## [4.2.4] - 2026-07-21

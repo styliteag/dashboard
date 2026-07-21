@@ -81,7 +81,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
         <table :if={@history.events != []} class="mt-4 w-full text-left text-xs">
           <thead class="text-base-content/60">
             <tr class="border-b border-base-300">
-              <th class="py-1 pr-3 font-medium">Time (UTC)</th>
+              <th class="py-1 pr-3 font-medium">Time</th>
               <th class="py-1 pr-3 font-medium">Change</th>
               <th class="py-1 font-medium">Summary</th>
             </tr>
@@ -116,5 +116,5 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
   defp state_color(2), do: "text-error"
   defp state_color(_), do: "text-base-content/60"
 
-  defp fmt_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S UTC")
+  defp fmt_ts(ts), do: OrbitWeb.CoreComponents.local_time_tag(ts, "datetime-sec")
 end

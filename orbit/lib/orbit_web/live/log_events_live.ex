@@ -144,7 +144,7 @@ defmodule OrbitWeb.LogEventsLive do
           normalised (IPs and numbers masked) and counted, so one row is a pattern, not an
           occurrence. Real fleets legitimately show zero CRIT rows.
           <span :if={@last_ingest}>
-            Newest ingest: {Calendar.strftime(@last_ingest, "%Y-%m-%d %H:%M UTC")} — an idle box
+            Newest ingest: {local_time_tag(@last_ingest, "datetime")} — an idle box
             keeps showing its last push.
           </span>
         </.data_note>

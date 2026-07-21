@@ -139,7 +139,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
         >
           <thead class="text-base-content/60">
             <tr class="border-b border-base-300">
-              <th class="py-1 pr-3 font-medium">Time (UTC)</th>
+              <th class="py-1 pr-3 font-medium">Time</th>
               <th class="py-1 pr-3 font-medium">Event</th>
               <th class="py-1 pr-3 font-medium">Phase 2</th>
               <th class="py-1 font-medium">Change</th>
@@ -177,5 +177,5 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
   def event_color("ping_fail"), do: "text-error"
   def event_color(_), do: "text-warning"
 
-  def fmt_event_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S UTC")
+  def fmt_event_ts(ts), do: OrbitWeb.CoreComponents.local_time_tag(ts, "datetime-sec")
 end

@@ -398,6 +398,33 @@ const TagPicker = {
   },
 }
 
+// --- browser-local timestamps -----------------------------------------------
+// The server renders <time datetime="<UTC ISO>" data-localtime data-fmt="…">UTC
+// text</time>; we rewrite the text to the viewer's own zone. sv-SE yields the
+// ISO-ish "2026-07-21 22:53:10" the UI already used, and timeZoneName:"short"
+// appends the live zone ("CEST"/"CET"). We NEVER touch the datetime attribute —
+// it is the canonical UTC the next LiveView patch re-reads. No timeZone option,
+// so Intl uses the browser's actual zone (the whole point).
+const LT_LOCALE = "sv-SE"
+const LT_OPTS = {
+  "datetime-sec": {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "short"},
+  "datetime": {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short"},
+  "time-sec": {hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "short"},
+  "date": {year: "numeric", month: "2-digit", day: "2-digit"},
+}
+function localizeTime(el) {
+  const iso = el.getAttribute("datetime")
+  if (!iso) return
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return
+  el.textContent = new Intl.DateTimeFormat(LT_LOCALE, LT_OPTS[el.dataset.fmt] || LT_OPTS["datetime-sec"]).format(d)
+}
+function localizeTimesIn(root) {
+  if (!root || !root.querySelectorAll) return
+  if (root.matches && root.matches("time[data-localtime]")) localizeTime(root)
+  root.querySelectorAll("time[data-localtime]").forEach(localizeTime)
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -412,6 +439,18 @@ const liveSocket = new LiveSocket("/live", Socket, {
   heartbeatIntervalMs: 20000,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks, Terminal, Capture, Passkey, CommentPop, DirtySave, ChartHover, CopyValue, RuleReorder, TagPicker},
+  dom: {
+    // Localise timestamps as nodes arrive and on every patch. Mutating `to`
+    // (never returning false) rewrites the text BEFORE morphdom copies it into
+    // the live DOM, so live-updating stamps ("last push", "newest ingest")
+    // never flash their UTC fallback.
+    onNodeAdded(node) {
+      localizeTimesIn(node)
+    },
+    onBeforeElUpdated(_from, to) {
+      if (to.matches && to.matches("time[data-localtime]")) localizeTime(to)
+    },
+  },
 })
 
 // GUI-proxy "Open GUI": the LiveView pushes the minted handoff URL; open it
@@ -427,6 +466,10 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
+
+// Localise any timestamps already in the dead-rendered DOM (the connected
+// render then keeps them current via the dom callbacks above).
+localizeTimesIn(document.body)
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

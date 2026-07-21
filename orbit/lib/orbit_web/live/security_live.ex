@@ -222,5 +222,5 @@ defmodule OrbitWeb.SecurityLive do
   defp used_text(%{last_used_at: nil}), do: "never used"
 
   defp used_text(%{last_used_at: at}),
-    do: "last used " <> Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+    do: ["last used ", local_time_tag(at, "datetime")]
 end

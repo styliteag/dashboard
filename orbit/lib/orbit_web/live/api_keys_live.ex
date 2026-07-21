@@ -284,7 +284,7 @@ defmodule OrbitWeb.ApiKeysLive do
   end
 
   defp ts(nil), do: "never"
-  defp ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+  defp ts(dt), do: local_time_tag(dt, "datetime")
 
   defp input_cls do
     "w-full rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"

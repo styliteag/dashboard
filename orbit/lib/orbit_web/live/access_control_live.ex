@@ -320,12 +320,12 @@ defmodule OrbitWeb.AccessControlLive do
   defp refresh_text(%{at: nil}), do: "never"
 
   defp refresh_text(%{at: at, ok: ok, detail: detail}) do
-    prefix = Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+    prefix = local_time_tag(at, "datetime")
 
     case ok do
-      true -> "#{prefix} — ok"
-      false -> "#{prefix} — FAILED: #{detail}"
-      nil -> "#{prefix} — #{detail}"
+      true -> [prefix, " — ok"]
+      false -> [prefix, " — FAILED: ", detail]
+      nil -> [prefix, " — ", detail]
     end
   end
 end

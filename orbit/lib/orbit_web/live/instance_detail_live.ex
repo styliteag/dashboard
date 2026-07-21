@@ -3625,7 +3625,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp state_class(3), do: "bg-base-300 text-base-content/70"
   defp state_class(_), do: "bg-primary/20 text-primary"
 
-  defp cb_ts(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+  defp cb_ts(dt), do: local_time_tag(dt, "datetime")
 
   # Syslog severity (0 emerg … 4 warning; lower = worse) for the Logs section.
   defp sev_label(s) when s <= 2, do: "CRIT"

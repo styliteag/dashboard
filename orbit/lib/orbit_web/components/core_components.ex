@@ -498,4 +498,53 @@ defmodule OrbitWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @localtime_formats ~w(datetime-sec datetime time-sec date)
+
+  @doc """
+  A `<time>` element carrying the UTC instant that `app.js` rewrites to the
+  viewer's local zone (the `data-localtime` scan in the LiveSocket `dom`
+  callbacks).
+
+  The `datetime` attribute is the canonical UTC — JS never mutates it, so every
+  LiveView patch re-reads it. The server-rendered body is the UTC string with a
+  "UTC" suffix, so without JS (or before the first paint) it stays correct,
+  never a silently-wrong local guess. `fmt` picks the granularity:
+  `datetime-sec` | `datetime` | `time-sec` | `date`.
+
+  Returns safe HTML — interpolate it directly, e.g. `{local_time_tag(ts)}`.
+  """
+  def local_time_tag(at, fmt \\ "datetime-sec")
+  def local_time_tag(nil, _fmt), do: "—"
+
+  def local_time_tag(at, fmt) when fmt in @localtime_formats do
+    # Every interpolated value is controlled (an ISO-8601 instant, an
+    # allowlisted fmt, a numeric UTC string) — none can carry markup — so a
+    # hand-built raw tag is safe and avoids the soft-deprecated content_tag.
+    Phoenix.HTML.raw([
+      ~s(<time datetime="),
+      iso_utc(at),
+      ~s(" data-localtime data-fmt="),
+      fmt,
+      ~s(">),
+      utc_fallback(at, fmt),
+      ~s(</time>)
+    ])
+  end
+
+  @doc """
+  ISO-8601 UTC string for the `datetime` attribute. A `NaiveDateTime` is a
+  MariaDB `UtcDateTime` read-back (naive-but-UTC) — the appended `Z` is what
+  stops the browser parsing it as local time and shifting it by the viewer's
+  offset.
+  """
+  def iso_utc(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  def iso_utc(%NaiveDateTime{} = ndt), do: NaiveDateTime.to_iso8601(ndt) <> "Z"
+
+  # Server-side UTC fallback (visible until app.js localises, and forever if JS
+  # is off). Mirrors the strftime formats these sites used before.
+  defp utc_fallback(at, "date"), do: Calendar.strftime(at, "%Y-%m-%d")
+  defp utc_fallback(at, "time-sec"), do: Calendar.strftime(at, "%H:%M:%S UTC")
+  defp utc_fallback(at, "datetime"), do: Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+  defp utc_fallback(at, _datetime_sec), do: Calendar.strftime(at, "%Y-%m-%d %H:%M:%S UTC")
 end
