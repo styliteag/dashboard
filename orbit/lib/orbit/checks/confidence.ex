@@ -84,6 +84,9 @@ defmodule Orbit.Checks.Confidence do
 
   defp rtt_metrics(nil), do: []
 
+  # Must be the canonical atom-keyed metric — the Checkmk and Prometheus exports
+  # read `m.name`/`m.unit`. A hand-built string-keyed map crashed the Checkmk
+  # export with `KeyError key :name` once ICMP started actually reporting rtt.
   defp rtt_metrics(rtt),
-    do: [%{"name" => "rtt_ms", "value" => Float.round(rtt, 2), "unit" => "ms"}]
+    do: [ServiceCheck.metric("rtt_ms", Float.round(rtt, 2), unit: "ms")]
 end

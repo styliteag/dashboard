@@ -88,7 +88,10 @@ defmodule Orbit.ProbeTest do
       assert ping.key == "ping"
       assert ping.state == 0
       assert ping.summary == "ICMP reachable (9.9ms)"
-      assert [%{"name" => "rtt_ms", "value" => 9.87}] = ping.metrics
+      # Atom-keyed canonical metric — the exports read `m.name`/`m.unit`; a
+      # string-keyed map crashed the Checkmk export (KeyError key :name).
+      assert [%{name: "rtt_ms", value: 9.87, unit: "ms"} = metric] = ping.metrics
+      refute Map.has_key?(metric, "name")
 
       assert http.key == "http"
       assert http.state == 0

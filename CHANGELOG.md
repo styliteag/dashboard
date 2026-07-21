@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Checkmk export no longer 500s for any box with a live ICMP probe.** The
+  probe's `rtt_ms` perfdata was built as a string-keyed map while every other
+  metric (and both exports) uses atom keys, so the export crashed with
+  `KeyError key :name` as soon as ICMP started reporting a round-trip time. The
+  probe now emits the canonical `ServiceCheck.metric/3` shape.
 - **The reachability probe no longer crash-loops on the slim release image.**
   On `debian-slim` (no `/etc/protocols`) the ICMP socket was opened with the
   `:icmp` protocol name, which the kernel could not resolve — every probe sweep
