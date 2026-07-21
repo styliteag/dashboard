@@ -547,4 +547,48 @@ defmodule OrbitWeb.CoreComponents do
   defp utc_fallback(at, "time-sec"), do: Calendar.strftime(at, "%H:%M:%S UTC")
   defp utc_fallback(at, "datetime"), do: Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
   defp utc_fallback(at, _datetime_sec), do: Calendar.strftime(at, "%Y-%m-%d %H:%M:%S UTC")
+
+  @doc """
+  Renders an instance `base_url` as clickable link(s).
+
+  `base_url` may be a comma-separated list (the first is the canonical endpoint,
+  the rest are alternates) — each part becomes its own `_blank` link. Empty
+  renders a muted em dash. Only `http(s)://` parts are linkified; anything else
+  is shown as plain text, so a stray `javascript:`-style value can never become
+  a live link. `rest` is spread onto each `<a>` — pass
+  `onclick="event.stopPropagation()"` inside a row that is itself clickable.
+  """
+  attr :base_url, :string, default: ""
+  attr :class, :any, default: nil, doc: "extra classes for each link"
+  attr :rest, :global
+
+  def base_url_links(assigns) do
+    assigns = assign(assigns, :urls, split_base_urls(assigns.base_url))
+
+    ~H"""
+    <span :if={@urls == []} class="text-base-content/40">—</span>
+    <span :for={{url, idx} <- Enum.with_index(@urls)}>
+      <span :if={idx > 0} class="text-base-content/30">, </span>
+      <a
+        :if={linkable_url?(url)}
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        class={["hover:underline", @class]}
+        {@rest}
+      >{url}</a>
+      <span :if={not linkable_url?(url)}>{url}</span>
+    </span>
+    """
+  end
+
+  defp split_base_urls(base_url) do
+    (base_url || "")
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp linkable_url?(url),
+    do: String.starts_with?(url, "http://") or String.starts_with?(url, "https://")
 end

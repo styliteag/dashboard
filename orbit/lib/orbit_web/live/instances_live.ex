@@ -318,7 +318,7 @@ defmodule OrbitWeb.InstancesLive do
           alerts: alert_counts[inst.id] || %{crit: 0, warn: 0},
           shell_enabled: inst.shell_enabled,
           gui_openable: Orbit.GUI.openable(inst) == :ok,
-          base_url: Instance.primary_base_url(inst),
+          base_url: inst.base_url || "",
           # Fleet policy is NO password on the console menu, so a box that
           # reports one is the exception worth seeing. The detail page has
           # said so for a while; from the list there was no way to tell which
@@ -649,15 +649,9 @@ defmodule OrbitWeb.InstancesLive do
             </div>
             <div class="mt-2 space-y-1 text-xs text-base-content/70">
               <div>{i.device_type} · {if i.agent_mode, do: "agent", else: "api"}</div>
-              <a
-                :if={i.base_url != ""}
-                href={i.base_url}
-                target="_blank"
-                rel="noreferrer"
-                class="block truncate hover:text-base-content/70 hover:underline"
-              >
-                {i.base_url}
-              </a>
+              <div :if={i.base_url != ""} class="truncate">
+                <.base_url_links base_url={i.base_url} class="hover:text-base-content/70" />
+              </div>
               <div :if={i.location}>{i.location}</div>
               <div :if={i.tags != []} class="flex flex-wrap gap-1">
                 <span
@@ -748,16 +742,13 @@ defmodule OrbitWeb.InstancesLive do
                   />
                   <div class="flex items-center gap-2 text-xs text-base-content/40">
                     <span>{i.device_type}</span>
-                    <a
-                      :if={i.base_url != ""}
-                      href={i.base_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      class="truncate hover:text-base-content/70 hover:underline"
-                      onclick="event.stopPropagation()"
-                    >
-                      {i.base_url}
-                    </a>
+                    <div :if={i.base_url != ""} class="truncate">
+                      <.base_url_links
+                        base_url={i.base_url}
+                        class="hover:text-base-content/70"
+                        onclick="event.stopPropagation()"
+                      />
+                    </div>
                   </div>
                 </td>
                 <td class="px-3 py-2"><.status_badge row={i} /></td>

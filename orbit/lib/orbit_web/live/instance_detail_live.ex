@@ -1747,7 +1747,12 @@ defmodule OrbitWeb.InstanceDetailLive do
             <dl class="space-y-1 text-sm">
               <.kv label="Type" value={@instance.device_type} />
               <.kv label="Transport" value={@instance.transport} />
-              <.kv label="Base URL" value={Orbit.Instances.Instance.primary_base_url(@instance)} />
+              <div class="flex justify-between gap-3">
+                <dt class="shrink-0 text-base-content/60">Base URL</dt>
+                <dd class="min-w-0 break-words text-right text-base-content">
+                  <.base_url_links base_url={@instance.base_url} />
+                </dd>
+              </div>
               <.kv label="Location" value={@instance.location || "—"} />
             </dl>
           </div>
