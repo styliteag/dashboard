@@ -17,31 +17,67 @@ defmodule Orbit.Ipsec.LocalEndpoint do
   Only PUBLIC local endpoints are judged. A private/RFC1918 local address is
   the normal shape for a box behind NAT — comparing it to the public address
   would flag every such tunnel forever.
+
+  Two things keep the hint honest:
+
+  - **An established tunnel can never drift.** You cannot hold a live IKE SA
+    from a local address the box does not currently own, so an up tunnel has
+    already proven ownership — flagging "phase 1 will fail" on it is
+    self-contradictory. Only DOWN tunnels are judged. (Regression: a
+    Securepoint carrying several public IPs showed drift on established
+    tunnels bound to a public address other than the box's first one.)
+  - **A box can own MORE than one public address.** The verdict compares the
+    endpoint against every public address the box is known to own — its
+    derived public IP *and* any public address configured on an interface —
+    not a single "the" public IP. On a box with a WAN block, the first
+    interface address is an arbitrary pick; matching only it false-flagged
+    every tunnel bound to a sibling address.
   """
 
   alias Orbit.Net
 
-  @doc """
-  `true` when the tunnel pins a public local endpoint that is not the box's
-  public address.
+  # Status strings that mean the tunnel is up (mirrors the ipsec check family
+  # and the VPN page's @ipsec_up). An up tunnel owns its local address.
+  @up_states ~w(established installed connected up 1 true yes)
 
-  Returns `false` on anything uncertain: no local endpoint, a private one,
-  or no known public address for the box. Never guesses.
+  @doc """
+  `true` when a DOWN tunnel pins a public local endpoint the box does not own.
+
+  Returns `false` on anything uncertain: an established tunnel, no local
+  endpoint, a private one, or no known public address for the box. Never
+  guesses.
   """
-  @spec mismatch?(String.t() | nil, map()) :: boolean()
-  def mismatch?(local, public_ip) when is_map(public_ip) do
+  @spec mismatch?(String.t() | nil, String.t() | nil, map()) :: boolean()
+  def mismatch?(local, status, public_ip) when is_map(public_ip) do
     local = Net.bare_address(to_string(local || ""))
-    box = public_ip[:ipv4]
 
     cond do
+      up?(status) -> false
       local == "" -> false
       not Net.public_ip?(local) -> false
-      is_nil(box) -> false
-      true -> local != box
+      true -> not owns_public?(public_ip, local)
     end
   end
 
-  def mismatch?(_local, _public_ip), do: false
+  def mismatch?(_local, _status, _public_ip), do: false
+
+  defp up?(status), do: String.downcase(to_string(status || "")) in @up_states
+
+  # Does the box own `local` as one of its public addresses? An empty owned
+  # set means we don't know the box's public address, so we never guess (the
+  # returned `true` becomes `false` mismatch via the `not` at the call site).
+  defp owns_public?(public_ip, local) do
+    owned = box_public_addresses(public_ip)
+    owned == [] or local in owned
+  end
+
+  defp box_public_addresses(public_ip) do
+    [public_ip[:ipv4] | List.wrap(public_ip[:interface_addresses])]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&Net.bare_address/1)
+    |> Enum.filter(&Net.public_ip?/1)
+    |> Enum.uniq()
+  end
 
   @doc "Hover text naming both addresses — the whole point is seeing them side by side."
   def hint(local, public_ip) do

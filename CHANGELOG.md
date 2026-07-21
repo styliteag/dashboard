@@ -26,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"local IP drift" is no longer flagged on tunnels that are up.** The badge
+  compares a tunnel's pinned local endpoint against the box's public address,
+  but on a box that owns more than one public IP — typical of a Securepoint
+  carrying a WAN block — the derived "public address" is only the first
+  interface address, so every established tunnel bound to a sibling public
+  address was wrongly flagged. An established tunnel proves it owns its local
+  address (you cannot hold a live IKE SA otherwise), so the hint is now
+  suppressed for up tunnels entirely; a down tunnel is matched against every
+  public address the box owns, not a single one. Vendor-agnostic — it also
+  cleared false positives on direct-polled OPNsense/pfSense.
 - **IPsec "Diagnose" works again for a Securepoint tunnel whose name contains a
   space.** Securepoint escapes a space in a strongSwan connection name as `$20`
   (`OCV MEH` → `OCV$20MEH`) and keeps that encoded form as the id, but the

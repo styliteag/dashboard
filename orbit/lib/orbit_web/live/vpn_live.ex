@@ -517,7 +517,7 @@ defmodule OrbitWeb.VpnLive do
             up: status in @ipsec_up,
             remote: t["remote"] || "",
             local: to_string(t["local"] || ""),
-            lip_mismatch: Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], public_ip),
+            lip_mismatch: Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], t["status"], public_ip),
             box_public_ip: public_ip[:ipv4],
             phase2_up: int0(t["phase2_up"]),
             phase2_total: int0(t["phase2_total"]),

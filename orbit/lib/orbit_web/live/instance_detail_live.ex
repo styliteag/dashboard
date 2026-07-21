@@ -2547,7 +2547,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                            no longer owns (moved behind NAT / WAN changed).
                            @public_ip is already loaded for the Network tab. --%>
                       <span
-                        :if={Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], @public_ip)}
+                        :if={Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], t["status"], @public_ip)}
                         title={Orbit.Ipsec.LocalEndpoint.hint(t["local"], @public_ip)}
                         class="ml-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] text-warning"
                       >
