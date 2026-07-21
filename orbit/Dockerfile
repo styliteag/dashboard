@@ -29,7 +29,15 @@ RUN mix local.hex --force && mix local.rebar --force
 # nothing about a dependency depends on the parent app's version. The real
 # VERSION lands below, before mix compile, where it is baked into the release.
 COPY orbit/mix.exs orbit/mix.lock ./
-RUN mix deps.get --only prod && mix deps.compile
+# --mount=type=cache on /root/.hex: the hex package download cache. The whole
+# deps layer is also cached at the registry level (see release.yml), which
+# covers the common case of an unchanged mix.lock — but when a dependency DOES
+# change, this makes `mix deps.get` re-fetch only the new tarball instead of
+# every package from hex.pm. Measured: deps.get+compile swung 16s–37s cold
+# across releases purely on hex.pm download speed; this caps that tail.
+# Carried across runners by the registry cache export (mode=max).
+RUN --mount=type=cache,target=/root/.hex,sharing=locked \
+    mix deps.get --only prod && mix deps.compile
 
 COPY VERSION ./VERSION
 COPY orbit/config ./config

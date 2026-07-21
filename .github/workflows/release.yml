@@ -14,6 +14,8 @@ on:
 env:
   GHCR_IMAGE: ghcr.io/styliteag/dashboard
   DOCKERHUB_IMAGE: docker.io/styliteag/dashboard
+  # Separate package so the retention prune below never touches the cache.
+  CACHE_IMAGE: ghcr.io/styliteag/dashboard-cache
 
 jobs:
   # Build each architecture on a NATIVE runner (no QEMU emulation) and push the
@@ -73,16 +75,18 @@ jobs:
           platforms: ${{ matrix.platform }}
           provenance: false
           sbom: false
-          # No registry build cache. Measured over five releases (4.0.9–4.1.3):
-          # the only cacheable layer is mix deps.compile (everything after it
-          # copies the source, which changes every commit), and pulling that
-          # layer back from the registry cost ~17s — MORE than the ~16s to
-          # rebuild it, because the deps are small. The cache-hit runs were
-          # consistently slower end to end than the cache-miss ones (1m16–1m22s
-          # vs 0m59–1m03s), and the export added ~12s on top. apt install cmake,
-          # the only other cached step, is 4s cold. So the cache paid nothing
-          # and cost the import/export round trip; removed. Native runners
-          # already killed the real cost (QEMU emulation), not this.
+          # Registry cache for the deps layer. It was removed for one release
+          # (4.2.1) to measure the effect, and that run exposed why it belongs:
+          # `mix deps.get` downloads from hex.pm, which swings 16s–37s run to
+          # run purely on network speed. The cache replaces that variable cost
+          # with a stable ~17s layer pull. The earlier "cache saves nothing"
+          # reading compared a hit against a lucky-fast cold run; against a slow
+          # hex.pm day it saves ~20s. mode=max also carries the Dockerfile's
+          # hex mount-cache across runners. ignore-error: the cache is an
+          # optimisation and must never fail a release that already built a good
+          # image.
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=max,ignore-error=true
           outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -175,8 +179,9 @@ jobs:
 
       # Retention. A "version" here is a manifest, not a release: each release
       # adds the per-arch image pushed by digest (untagged) plus the manifest
-      # list carrying the version tag and latest. This targets the `dashboard`
-      # package only; there is no separate build-cache package any more.
+      # list carrying the version tag and latest. Targets the `dashboard`
+      # package only — the build cache lives in its own CACHE_IMAGE package,
+      # out of reach of this prune (pruning it would force a cold rebuild).
       # NOTE: this is the one action still on node20 — actions/delete-package-
       # versions has had no release since v5.0.0 (Jan 2024) and no node24 line
       # exists, so it keeps emitting the deprecation warning. Bumping cannot fix
