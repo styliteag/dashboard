@@ -104,32 +104,6 @@ defmodule OrbitWeb.AlertsLive do
     assign(socket, alerts: alerts)
   end
 
-  # Check families ("ipsec.tunnel:3" → "ipsec.tunnel") with their worst state,
-  # so the shape of the outage is readable before the first row. Built from the
-  # alerts already in the socket — no second evaluate pass.
-  defp family_tally(alerts) do
-    alerts
-    |> Enum.group_by(fn %{check: c} -> c.key |> String.split(":", parts: 2) |> hd() end)
-    |> Enum.map(fn {family, list} ->
-      worst = list |> Enum.map(& &1.check.state) |> Enum.max_by(&ServiceCheck.severity/1)
-
-      %{
-        family: family,
-        count: length(list),
-        tone: tone_for(worst)
-      }
-    end)
-    |> Enum.sort_by(&{-ServiceCheck.severity(state_for(&1.tone)), -&1.count, &1.family})
-  end
-
-  defp tone_for(2), do: :crit
-  defp tone_for(1), do: :warn
-  defp tone_for(_unknown), do: :neutral
-
-  defp state_for(:crit), do: 2
-  defp state_for(:warn), do: 1
-  defp state_for(:neutral), do: 3
-
   defp visible(a) do
     q = String.downcase(a.search || "")
 
@@ -156,7 +130,6 @@ defmodule OrbitWeb.AlertsLive do
     assigns =
       assign(assigns,
         rows: visible(assigns),
-        families: family_tally(assigns.alerts),
         tags: assigns.alerts |> Enum.flat_map(& &1.tags) |> Enum.uniq() |> Enum.sort(),
         crit: Enum.count(assigns.alerts, &(&1.check.state == 2)),
         warn: Enum.count(assigns.alerts, &(&1.check.state == 1)),
@@ -247,16 +220,6 @@ defmodule OrbitWeb.AlertsLive do
               {tag}
             </button>
           </div>
-        </div>
-
-        <div :if={@families != []} class="mb-3 flex flex-wrap gap-2">
-          <.count_chip
-            :for={f <- @families}
-            label={f.family}
-            count={f.count}
-            tone={f.tone}
-            title="check family, worst state"
-          />
         </div>
 
         <div :if={@alerts == []} class="text-sm text-primary">
