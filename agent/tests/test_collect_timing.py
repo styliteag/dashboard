@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-# The linux line still carries the FULL section registry until phase 3 of
-# the split (§28) — the stubbed collect_all runs against it; the firewall
-# line's slimmed registry is asserted in test_agent_split.py.
-import orbit_agent_linux as agent
+# Runs against the firewall line — since phase 3 of the split (§28) it
+# carries the larger registry; the linux line's slim registry is pinned in
+# test_agent_split.py.
+import orbit_agent as agent
 
 _SECTIONS = {
     "system": {"hostname": "fw"},
@@ -29,7 +29,6 @@ _SECTIONS = {
     "certificates": [],
     "logfiles": {},
     "config_backup": {},
-    "checkmk_raw": {},
 }
 
 _STUB_FN = {
@@ -54,7 +53,6 @@ _STUB_FN = {
     "certificates": "collect_certificates",
     "logfiles": "collect_logfiles",
     "config_backup": "collect_config_backup",
-    "checkmk_raw": "collect_checkmk",
 }
 
 

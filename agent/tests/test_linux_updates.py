@@ -200,12 +200,19 @@ def test_upgrade_status_done_drops_cached_verdict(monkeypatch) -> None:
     agent._STATE.fw_check_ts = 0.0
 
 
-def test_upgrade_status_unknown_platform_is_unknown(monkeypatch) -> None:
-    # opnsense/pfsense answer running/done since 3.0.4 (test_firewall_upgrade_status);
-    # only a platform the agent cannot classify degrades to the historic "unknown".
-    monkeypatch.setattr(agent, "detect_platform", lambda: "unknown")
+def test_upgrade_status_has_no_platform_gate_on_the_linux_line(monkeypatch) -> None:
+    # Phase 3 (§28): the linux line only ever runs on linux (main() refuses
+    # anything else), so upgrade_status answers running/done unconditionally.
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: "")
     result = agent._cmd_upgrade_status({})
-    assert result["success"] is False and result["status"] == "unknown"
+    assert result["success"] is True and result["status"] == "done"
+
+
+def test_series_upgrade_is_an_explicit_refusal() -> None:
+    # Kept as a readable refusal instead of an unknown-command error.
+    result = agent._cmd_firmware_upgrade({})
+    assert result["success"] is False
+    assert "opnsense/pfsense" in result["output"]
 
 
 def test_linux_update_check_serializes_concurrent_callers(monkeypatch) -> None:
