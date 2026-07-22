@@ -28,15 +28,14 @@ defmodule Orbit.HubTest do
   test "duplicate connect is last-writer-wins: old socket told to close", %{hub: hub} do
     parent = self()
 
-    old =
-      spawn(fn ->
-        Hub.register(hub, 7, %{})
-        send(parent, :registered)
+    spawn(fn ->
+      Hub.register(hub, 7, %{})
+      send(parent, :registered)
 
-        receive do
-          :hub_replaced -> send(parent, :old_replaced)
-        end
-      end)
+      receive do
+        :hub_replaced -> send(parent, :old_replaced)
+      end
+    end)
 
     assert_receive :registered
     :ok = register_self(hub, 7)

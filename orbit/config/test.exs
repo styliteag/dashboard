@@ -53,6 +53,11 @@ config :orbit, :write_metrics, false
 # not reconfigure the live handler mid-run (Orbit.Logging no-ops).
 config :orbit, :apply_log_settings, false
 
+# Orbit.Settings must not read the DB at boot in test (it is not a
+# sandbox-owned process — the read fails and logs noise every run). It still
+# starts; effective/1 serves env defaults, reload/set_override work per-test.
+config :orbit, :load_settings_on_boot, false
+
 # Static Req.Test plug for the GeoLite2 updater (same per-process stub rule).
 config :orbit, :geoip_req_plug, {Req.Test, Orbit.GeoIP.Updater}
 

@@ -11,7 +11,7 @@ defmodule Orbit.Access.StoreTest do
 
   @now ~U[2026-07-17 12:00:00Z]
 
-  defp add(buffers, ptype, pkey, opts \\ []) do
+  defp add(buffers, ptype, pkey, opts) do
     Store.add_request(
       buffers,
       ptype,

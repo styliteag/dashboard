@@ -114,8 +114,17 @@ defmodule Orbit.Settings do
 
   @impl true
   def handle_continue(:load, state) do
-    load_overrides()
-    Process.send_after(self(), :refresh, @refresh_ms)
+    # The test env starts the app against the SQL sandbox: this GenServer is
+    # not a checked-out test process, so a boot-time DB read fails and logs
+    # settings.load_failed (plus a scary pool-ownership error) on every run.
+    # Skip the boot load + periodic refresh there — effective/1 falls back to
+    # env defaults, and tests that need an override call reload/set_override
+    # from their own sandbox-owned process.
+    if Application.get_env(:orbit, :load_settings_on_boot, true) do
+      load_overrides()
+      Process.send_after(self(), :refresh, @refresh_ms)
+    end
+
     {:noreply, state}
   end
 

@@ -11,7 +11,7 @@ defmodule Orbit.GeoIP.RulesTest do
 
   @none MapSet.new()
 
-  defp rules(attrs \\ []) do
+  defp rules(attrs) do
     Rules.parse_rules(
       Keyword.get(attrs, :enabled, true),
       Jason.encode!(Keyword.get(attrs, :countries, [])),
