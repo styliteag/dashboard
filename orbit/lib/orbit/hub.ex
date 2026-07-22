@@ -632,7 +632,9 @@ defmodule Orbit.Hub do
   # writer — hub unit tests have no instances table.
   defp maybe_persist_snapshot(instance_id, cache) do
     if Application.get_env(:orbit, :write_metrics, true) do
-      entry = Map.get(cache, instance_id, %{})
+      # Strip the retained raw Checkmk dump — it is large and refreshes on the
+      # next push, so it stays in-memory only and never bloats the row.
+      entry = cache |> Map.get(instance_id, %{}) |> Map.delete("checkmk_output")
 
       Task.start(fn ->
         Orbit.Repo.query!(

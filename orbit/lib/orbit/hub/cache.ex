@@ -48,6 +48,7 @@ defmodule Orbit.Hub.Cache do
       |> apply_truthy_guards(data)
       |> apply_presence_guards(data)
       |> apply_extra_sections(data)
+      |> apply_checkmk_output(data)
       |> put_external_ip(data)
       |> put_cpu_state(cpu_state)
 
@@ -77,12 +78,29 @@ defmodule Orbit.Hub.Cache do
       raw when is_map(raw) and map_size(raw) > 0 ->
         prev = Map.get(cache, instance_id, %{})
         {parsed, cpu_state} = Orbit.Hub.Checkmk.parse(raw, prev["checkmk_cpu"])
-        {Map.merge(data, parsed), cpu_state}
+        data = Map.merge(data, parsed)
+
+        data =
+          case Orbit.Hub.Checkmk.raw_text(raw) do
+            text when is_binary(text) -> Map.put(data, "checkmk_output", text)
+            _ -> data
+          end
+
+        {data, cpu_state}
 
       _ ->
         {data, :unchanged}
     end
   end
+
+  # Retain the raw Checkmk-agent dump for the instance's Checkmk view. Truthy-
+  # guard: a push without checkmk_raw must not wipe it. In-memory only — the
+  # persist path strips it (it is large, and it refreshes on the next push).
+  defp apply_checkmk_output(entry, %{"checkmk_output" => text})
+       when is_binary(text) and text != "",
+       do: Map.put(entry, "checkmk_output", text)
+
+  defp apply_checkmk_output(entry, _data), do: entry
 
   defp put_cpu_state(entry, :unchanged), do: entry
   defp put_cpu_state(entry, nil), do: entry

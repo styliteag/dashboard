@@ -1531,6 +1531,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
       check_history: check_history(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance),
+      # Raw Checkmk-agent dump retained by the hub (linux nodes) — the Checkmk tab.
+      checkmk_output: entry["checkmk_output"],
       check_rules: instance_rules(socket.assigns.instance.id)
     )
   end
@@ -3067,6 +3069,37 @@ defmodule OrbitWeb.InstanceDetailLive do
             </table>
           </div>
         </div>
+
+        <%!-- Checkmk tab (linux nodes): what Orbit exports to Checkmk for this
+             box, and the raw check_mk_agent.linux dump the agent pushed. --%>
+        <section :if={@tab == "checkmk"} class="mt-6 space-y-6">
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <h2 class="mb-1 text-sm font-medium text-base-content/70">Orbit → Checkmk export</h2>
+            <p class="mb-3 text-xs text-base-content/50">
+              The services Orbit delivers to a Checkmk server for this instance.
+            </p>
+            <pre
+              :if={@checks != []}
+              class="overflow-x-auto whitespace-pre-wrap break-words rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/80"
+            ><%= for c <- @checks do %>{c.state} {state_label(c.state)}  {c.key}  {c.summary}
+    <% end %></pre>
+            <p :if={@checks == []} class="text-xs text-base-content/50">No checks evaluated.</p>
+          </div>
+
+          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div class="mb-3 flex items-baseline justify-between">
+              <h2 class="text-sm font-medium text-base-content/70">Agent output</h2>
+              <span class="font-mono text-xs text-base-content/40">check_mk_agent.linux</span>
+            </div>
+            <pre
+              :if={@checkmk_output not in [nil, ""]}
+              class="max-h-[36rem] overflow-auto whitespace-pre rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/80"
+            >{@checkmk_output}</pre>
+            <p :if={@checkmk_output in [nil, ""]} class="text-xs text-base-content/50">
+              No Checkmk output received yet — the agent pushes it each cycle.
+            </p>
+          </div>
+        </section>
 
         <div
           :if={@tab == "log" and @firewall_log != []}

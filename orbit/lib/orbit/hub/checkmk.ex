@@ -73,6 +73,23 @@ defmodule Orbit.Hub.Checkmk do
 
   def parse(_payload, prev_cpu), do: {%{}, prev_cpu}
 
+  @doc """
+  Just the decompressed agent output text (nil when unusable). Used to retain
+  the raw dump for the instance's Checkmk view — separate from `parse/2` so
+  its callers and tests are untouched (the extra gunzip is cheap).
+  """
+  @spec raw_text(map() | nil) :: String.t() | nil
+  def raw_text(%{"output_gz_b64" => b64}) when is_binary(b64) do
+    with {:ok, gz} <- decode64(b64),
+         {:ok, text} <- gunzip(gz) do
+      text
+    else
+      _ -> nil
+    end
+  end
+
+  def raw_text(_), do: nil
+
   # -- decoding ---------------------------------------------------------------
 
   defp decode64(b64) do

@@ -37,6 +37,9 @@ defmodule OrbitWeb.Components.InstanceTabs do
       {"overview", "Overview", :tab},
       unless(linux, do: {"config", "Config", :tab}),
       {"checks", "Checks", :tab},
+      # Linux nodes push a raw Checkmk-agent dump; the tab shows it and what
+      # Orbit exports to Checkmk for the box.
+      if(linux and agent, do: {"checkmk", "Checkmk", :tab}),
       {"network", "Network", :tab},
       if(agent, do: {"capture", "Capture", :link}),
       if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),

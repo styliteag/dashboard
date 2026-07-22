@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Linux instances get a **Checkmk** tab on the detail page showing the raw
+  `check_mk_agent.linux` output the box pushed (retained in-memory, refreshed
+  each cycle — includes sections Orbit itself does not parse, e.g. ZFS
+  pools/datasets) plus the services Orbit exports to a Checkmk server for the
+  instance.
+
 ## [4.2.15] - 2026-07-22
 
 ## [4.2.14] - 2026-07-22

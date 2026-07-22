@@ -191,4 +191,15 @@ defmodule Orbit.Hub.CacheTest do
       assert kept |> Cache.entry(7) |> Map.fetch!("x_zfs") == %{"arc" => %{"size" => 1}}
     end
   end
+
+  describe "checkmk_output retention (raw agent dump for the Checkmk view)" do
+    test "a pushed checkmk_output is retained; an empty push does not wipe it" do
+      cache = Cache.ingest(%{}, 7, %{"checkmk_output" => "<<<mem>>>\nMemTotal: 1"}, @now)
+      assert Cache.entry(cache, 7)["checkmk_output"] =~ "MemTotal"
+
+      # A later push without checkmk_raw (no checkmk_output) keeps the last dump.
+      kept = Cache.ingest(cache, 7, %{"cpu" => %{"total" => 5}}, @now)
+      assert Cache.entry(kept, 7)["checkmk_output"] =~ "MemTotal"
+    end
+  end
 end
