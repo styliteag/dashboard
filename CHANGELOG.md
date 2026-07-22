@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.12] - 2026-07-22
+
 ### Changed
 
 - The agent is now split into two single-file lines (docs §28), both at version 4.2.12:
