@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New-instance form: picking or removing a tag no longer wipes the values
   already typed into the other fields (every re-render reset unbound inputs).
+- Hub status page loads fast on large fleets: the pushes/min chart query now
+  has a matching index (it scanned every metric row in the 6h window), the
+  roster is scoped with one query instead of one per connected agent, and the
+  initial HTTP render no longer computes the whole page twice — the skeleton
+  paints immediately and the live data follows on the socket join.
 
 ### Changed
 

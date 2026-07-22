@@ -6,7 +6,8 @@ defmodule OrbitWeb.HubStatusLive do
   metrics on a tier timer (10s, the react hub-status refetch tier).
 
   Hub state is UNSCOPED in-memory data (invariant 5): the roster is filtered
-  per-entry through Scope before it ever reaches the socket.
+  against the caller's visible-instance set (one list_visible query) before
+  it ever reaches the socket.
   """
 
   use OrbitWeb, :live_view
@@ -14,7 +15,6 @@ defmodule OrbitWeb.HubStatusLive do
   import OrbitWeb.Components.ListKit
   import OrbitWeb.Components.MetricChart
 
-  alias Orbit.Auth.Scope
   alias Orbit.Hub
 
   @refresh_ms 10_000
@@ -24,15 +24,36 @@ defmodule OrbitWeb.HubStatusLive do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Orbit.PubSub, Hub.roster_topic())
       Process.send_after(self(), :refresh, @refresh_ms)
+      {:ok, load(socket)}
+    else
+      # The dead HTTP render skips everything DB-backed (roster scoping, the
+      # 6h push-rate scan, the fleet check evaluation) — it was all computed
+      # twice per visit and the first byte waited on it. The skeleton paints
+      # the in-memory hub numbers immediately; the WS mount fills the rest.
+      {:ok, skeleton(socket)}
     end
+  end
 
-    {:ok, load(socket)}
+  defp skeleton(socket) do
+    stats = Hub.stats()
+
+    assign(socket,
+      loaded: false,
+      agents: [],
+      push_rate: [],
+      crit_tabs: [],
+      counters: stats.counters,
+      started_at: stats.started_at,
+      push_p95_ms: Map.get(stats, :push_p95_ms),
+      push_samples: Map.get(stats, :push_samples, 0)
+    )
   end
 
   defp load(socket) do
     stats = Hub.stats()
 
     assign(socket,
+      loaded: true,
       agents: visible_agents(socket.assigns.current_user),
       push_rate: Orbit.Metrics.push_rate("6h"),
       counters: stats.counters,
@@ -141,33 +162,51 @@ defmodule OrbitWeb.HubStatusLive do
   end
 
   # Scope the unscoped hub roster: keep only instances the user may see, then
-  # decorate each with its live cpu from the section cache.
+  # decorate each with its live cpu from the section cache. Visibility comes
+  # from ONE list_visible query — the previous per-agent Scope.get_instance
+  # was an N+1 that fired 70 sequential queries per load on the prod fleet.
   defp visible_agents(user) do
-    Hub.list_connected()
+    visible = Map.new(Orbit.Instances.list_visible(user), &{&1.id, &1})
+
+    roster(
+      Hub.list_connected(),
+      visible,
+      # RAW agent section key is cpu.total_pct (not .total) — see collect_cpu.
+      &(Hub.cache_entry(&1) |> get_in(["status", "cpu", "total_pct"])),
+      &(Orbit.GUI.openable(&1) == :ok)
+    )
+  end
+
+  @doc """
+  Roster rows for the connected agents the caller may see — the scope gate
+  over the unscoped hub state (invariant 5): an agent whose instance_id is
+  not in `visible` is dropped, never rendered. Pure so the filter is
+  testable without hub or DB; `cpu_fn`/`openable_fn` inject the in-memory
+  lookups.
+  """
+  @spec roster([map()], %{integer() => struct()}, (integer() -> term()), (struct() -> boolean())) ::
+          [map()]
+  def roster(connected, visible, cpu_fn, openable_fn) do
+    connected
     |> Enum.flat_map(fn agent ->
-      case Scope.get_instance(agent.instance_id, user) do
+      case visible[agent.instance_id] do
         nil ->
           []
 
         inst ->
-          # RAW agent section key is cpu.total_pct (not .total) — see collect_cpu.
-          cpu =
-            Hub.cache_entry(agent.instance_id)
-            |> get_in(["status", "cpu", "total_pct"])
-
           [
             %{
               instance_id: agent.instance_id,
               instance_name: inst.name,
               shell_enabled: inst.shell_enabled,
-              gui_openable: Orbit.GUI.openable(inst) == :ok,
+              gui_openable: openable_fn.(inst),
               base_url: inst.base_url,
               version: agent.agent_version,
               platform: agent.platform,
               pushes: agent.pushes,
               connected_at: agent.connected_at,
               last_push_at: agent.last_push_at,
-              cpu: cpu,
+              cpu: cpu_fn.(agent.instance_id),
               update_error: agent.last_update_error
             }
           ]
@@ -356,7 +395,9 @@ defmodule OrbitWeb.HubStatusLive do
           />
         </div>
 
-        <.empty_state :if={@agents == []} title="No agents connected in your scope.">
+        <%!-- Gated on @loaded: the dead render has not queried anything yet,
+             and a flash of "no agents" on a 70-box fleet reads as an outage. --%>
+        <.empty_state :if={@loaded and @agents == []} title="No agents connected in your scope.">
           Push-mode boxes appear here once their WebSocket is up; direct-API polled devices
           never do. The Instances page is the authority on reachability.
         </.empty_state>
