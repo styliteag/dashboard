@@ -36,7 +36,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
   agent tabs), the rule editor is OPNsense-specific, linux nodes have no
   config.xml and no VPN.
   """
-  def tabs_for(inst) do
+  def tabs_for(inst, entry \\ nil) do
     agent = Instance.agent_mode?(inst)
     linux = inst.device_type == "linux"
 
@@ -48,7 +48,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
        {"checks", "Checks", :tab},
        if(linux and agent, do: {"checkmk", "Checkmk", :tab})
      ] ++
-       vendor_tabs_for(inst) ++
+       vendor_tabs_for(inst, entry) ++
        [
          {"network", "Network", :tab},
          if(agent, do: {"capture", "Capture", :link}),
@@ -62,18 +62,34 @@ defmodule OrbitWeb.Components.InstanceTabs do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Vendor tabs matching this box's device type (and agent requirement).
-  defp vendor_tabs_for(inst) do
+  # Vendor tabs matching this box's device type (and agent requirement). An
+  # optional `visible: {mod, fun}` predicate `fun(entry) -> bool` hides the tab
+  # when its data is absent (e.g. Pro's ZFS tab on a linux box without ZFS) —
+  # evaluated only when a cache `entry` is on hand (the detail page); with no
+  # entry (sub-pages) the tab shows, since we can't tell.
+  defp vendor_tabs_for(inst, entry) do
     agent = Instance.agent_mode?(inst)
 
     for t <- @vendor_tabs,
         inst.device_type in Map.get(t, :device_types, []),
         not Map.get(t, :agent, false) or agent,
+        vendor_tab_visible?(t, entry),
         do: {t.key, t.label, :tab}
+  end
+
+  defp vendor_tab_visible?(t, entry) do
+    case Map.get(t, :visible) do
+      {mod, fun} when is_map(entry) -> apply(mod, fun, [entry]) == true
+      _ -> true
+    end
   end
 
   attr :instance, :map, required: true
   attr :active, :string, required: true, doc: ~s(tab key, e.g. "overview" or "capture")
+
+  attr :entry, :map,
+    default: nil,
+    doc: "cache entry, so vendor tabs can hide when their data is absent"
 
   attr :patch?, :boolean,
     default: false,
@@ -82,7 +98,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
   def instance_tabs(assigns) do
     ~H"""
     <nav class="mb-6 flex flex-wrap gap-1 border-b border-base-300 pb-2">
-      <%= for {key, label, kind} <- tabs_for(@instance) do %>
+      <%= for {key, label, kind} <- tabs_for(@instance, @entry) do %>
         <%!-- Patch keeps the detail LiveView (and its timers) mounted. From a
              sub-page there is nothing to patch into, so those navigate. --%>
         <.link

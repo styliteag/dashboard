@@ -16,7 +16,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
   import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
   import OrbitWeb.Components.PingMonitorDialog, only: [ping_monitor_dialog: 1]
-  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1, tabs_for: 1]
+  import OrbitWeb.Components.InstanceTabs, only: [instance_tabs: 1, tabs_for: 2]
   import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
@@ -122,7 +122,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   @impl true
   def handle_params(params, _uri, socket) do
     valid =
-      for {key, _label, :tab} <- tabs_for(socket.assigns.instance), do: key
+      for {key, _label, :tab} <- tabs_for(socket.assigns.instance, socket.assigns[:cache_entry]),
+          do: key
 
     tab = if params["tab"] in valid, do: params["tab"], else: "overview"
     # nil for a built-in tab; `{mod, fun}` when a vendor tab (§28) owns the body.
@@ -1755,7 +1756,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </a>
         </div>
 
-        <.instance_tabs instance={@instance} active={@tab} patch?={true} />
+        <.instance_tabs instance={@instance} active={@tab} entry={@cache_entry} patch?={true} />
 
         <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
           <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
