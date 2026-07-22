@@ -33,8 +33,12 @@ defmodule Orbit.Access.Store do
   @last_seen_throttle_ms 60_000
   @prune_batch 10_000
 
-  # Keep in sync with the python SessionMiddleware max_age (12h) — the
-  # registry sweep must agree with when the cookie actually dies.
+  # Keep in sync with max_age in OrbitWeb.Endpoint's @session_options (12h,
+  # python SessionMiddleware parity) — the registry sweep must agree with
+  # when the cookie actually dies. A cookie that outlives this sweep shows
+  # as "Online now 0" while the operator is still logged in: the expired
+  # row can never be stamped again (last_seen UPDATE gates on ended_at IS
+  # NULL by design).
   @session_max_age_s 12 * 60 * 60
 
   def start_link(opts) do
@@ -75,6 +79,23 @@ defmodule Orbit.Access.Store do
     :exit, _ -> :ok
   end
 
+  @doc """
+  Throttled last_seen stamp for a session whose traffic rides the LiveView
+  socket. live_session navigation and events never pass the HTTP plug
+  pipeline, so `track_access/2` alone lets an active operator go stale after
+  the 5-minute online window ("Online now 0" with a logged-in user,
+  2026-07-22). Connected LiveViews stamp on mount and every 60s via
+  `OrbitWeb.UserAuth` — the buffer throttle dedupes against the HTTP path.
+  """
+  def touch_session(server \\ __MODULE__, sid)
+  def touch_session(_server, nil), do: :ok
+
+  def touch_session(server, sid) do
+    GenServer.cast(server, {:touch, sid})
+  catch
+    :exit, _ -> :ok
+  end
+
   @doc "Synchronous flush (test/ops seam); returns the aggregated count."
   def flush(server \\ __MODULE__), do: GenServer.call(server, :flush)
 
@@ -92,6 +113,9 @@ defmodule Orbit.Access.Store do
     |> sample_event(ptype, ip, method, path, status, opts[:user_id], now)
     |> stamp_seen(opts[:sid], now, mono_ms)
   end
+
+  @doc false
+  def touch(buffers, sid, now, mono_ms), do: stamp_seen(buffers, sid, now, mono_ms)
 
   defp bump_agg(buffers, ptype, pkey, ip) do
     agg = Map.update(buffers.agg, {ptype, pkey}, 1, &(&1 + 1))
@@ -154,6 +178,12 @@ defmodule Orbit.Access.Store do
     now = DateTime.utc_now()
     mono = System.monotonic_time(:millisecond)
     {:noreply, add_request(buffers, ptype, pkey, ip, method, path, status, opts, now, mono)}
+  end
+
+  def handle_cast({:touch, sid}, buffers) do
+    now = DateTime.utc_now()
+    mono = System.monotonic_time(:millisecond)
+    {:noreply, touch(buffers, sid, now, mono)}
   end
 
   @impl true

@@ -8,7 +8,14 @@ defmodule OrbitWeb.Endpoint do
     store: :cookie,
     key: "_orbit_key",
     signing_salt: "aUgmQ03O",
-    same_site: "Lax"
+    same_site: "Lax",
+    # 12h absolute session TTL (python SessionMiddleware parity). MUST stay
+    # in sync with @session_max_age_s in Orbit.Access.Store: the registry
+    # sweep force-expires rows at that age, and a cookie that outlives the
+    # sweep reads as "Online now 0" while the operator is still logged in
+    # (the expired row can never be stamped again). Without max_age this
+    # was a browser-session cookie that lived for days.
+    max_age: 12 * 60 * 60
   ]
 
   # peer_data + x_headers feed the GeoGate on_mount hook (the socket macro

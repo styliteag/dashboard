@@ -70,6 +70,29 @@ defmodule Orbit.Access.StoreTest do
     assert map_size(b3.seen) == 2
   end
 
+  test "touch stamps last_seen without counting a request (LiveView socket path)" do
+    # Regression 2026-07-22: live_session navigation never passes the HTTP
+    # pipeline, so an operator working purely inside LiveViews went stale
+    # after 5 minutes and the Access tab showed "Online now 0" while they
+    # were actively clicking. Connected LiveViews stamp via touch instead.
+    b0 = Store.touch(Store.empty_buffers(), "s1", @now, 0)
+    assert b0.seen == %{"s1" => @now}
+    assert b0.agg == %{}
+    assert b0.events == []
+
+    # 30s later: throttled (shares the 60s window with the HTTP path).
+    b1 = Store.touch(b0, "s1", ~U[2026-07-17 12:00:30Z], 30_000)
+    assert b1.seen == b0.seen
+
+    # 61s later: stamped again with the newer timestamp.
+    b2 = Store.touch(b1, "s1", ~U[2026-07-17 12:01:01Z], 61_000)
+    assert b2.seen["s1"] == ~U[2026-07-17 12:01:01Z]
+  end
+
+  test "touch without a sid is a no-op" do
+    assert Store.touch(Store.empty_buffers(), nil, @now, 0) == Store.empty_buffers()
+  end
+
   test "long fields truncate to column widths" do
     buffers =
       Store.add_request(

@@ -154,7 +154,7 @@ defmodule OrbitWeb.UserAuth do
     user = live_user_from_session(session)
 
     if user do
-      {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+      {:cont, socket |> Phoenix.Component.assign(:current_user, user) |> hook_live_touch(session)}
     else
       {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/login")}
     end
@@ -164,7 +164,8 @@ defmodule OrbitWeb.UserAuth do
   def on_mount(:require_admin, _params, session, socket) do
     case live_user_from_session(session) do
       %User{role: "admin"} = user ->
-        {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+        {:cont,
+         socket |> Phoenix.Component.assign(:current_user, user) |> hook_live_touch(session)}
 
       %User{} ->
         {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
@@ -181,7 +182,8 @@ defmodule OrbitWeb.UserAuth do
   def on_mount(:require_admin_or_superadmin, _params, session, socket) do
     case live_user_from_session(session) do
       %User{} = user when user.role == "admin" or user.is_superadmin ->
-        {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+        {:cont,
+         socket |> Phoenix.Component.assign(:current_user, user) |> hook_live_touch(session)}
 
       %User{} ->
         {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
@@ -195,7 +197,8 @@ defmodule OrbitWeb.UserAuth do
   def on_mount(:require_superadmin, _params, session, socket) do
     case live_user_from_session(session) do
       %User{is_superadmin: true} = user ->
-        {:cont, Phoenix.Component.assign(socket, :current_user, user)}
+        {:cont,
+         socket |> Phoenix.Component.assign(:current_user, user) |> hook_live_touch(session)}
 
       %User{} ->
         {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
@@ -214,6 +217,38 @@ defmodule OrbitWeb.UserAuth do
       user
     else
       _ -> nil
+    end
+  end
+
+  @live_touch_ms 60_000
+
+  # LiveView traffic bypasses the HTTP pipeline entirely — live_session
+  # navigation and events ride the socket, so track_access/2 never stamps
+  # last_seen_at for an operator who keeps working inside LiveViews. After
+  # the 5-minute online window they read as offline while actively clicking
+  # ("Online now 0" with a logged-in user, 2026-07-22). Connected mounts
+  # stamp immediately, then re-stamp every 60s via a self-rearming
+  # send_after (dies with the LiveView process; the store throttles
+  # duplicates against the HTTP path). The handle_info hook halts only its
+  # own message and passes everything else through.
+  defp hook_live_touch(socket, session) do
+    sid = session["sid"]
+
+    if sid && Phoenix.LiveView.connected?(socket) do
+      Orbit.Access.Store.touch_session(sid)
+      Process.send_after(self(), {:orbit_access_touch, sid}, @live_touch_ms)
+
+      Phoenix.LiveView.attach_hook(socket, :orbit_access_touch, :handle_info, fn
+        {:orbit_access_touch, ^sid}, socket ->
+          Orbit.Access.Store.touch_session(sid)
+          Process.send_after(self(), {:orbit_access_touch, sid}, @live_touch_ms)
+          {:halt, socket}
+
+        _msg, socket ->
+          {:cont, socket}
+      end)
+    else
+      socket
     end
   end
 

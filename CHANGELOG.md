@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Access tab showed "Online now 0" while operators were logged in and active:
+  LiveView navigation rides the WebSocket and never stamped `last_seen_at`, so
+  anyone working purely inside the app went "offline" after 5 minutes.
+  Connected LiveViews now stamp the session registry on mount and every 60s.
+  The session cookie also gets the 12h max-age the registry sweep always
+  assumed — previously it was a browser-session cookie, and a login older
+  than 12h was force-expired in the registry (permanently "offline") while
+  the operator kept using it.
+
 ## [4.2.10] - 2026-07-22
 
 ### Changed
