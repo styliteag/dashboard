@@ -142,6 +142,17 @@ defmodule Orbit.MetricsTest do
       assert "disk.var_log.used_pct" in metrics
       assert "iface.wan_pppoe.bytes_rx" in metrics
     end
+
+    test "open registers no vendor_metrics → x_* passthrough is never persisted" do
+      data = Map.put(push(), "x_zfs", %{"arc" => %{"hit_ratio_pct" => 90.0}})
+      metrics = Enum.map(Metrics.rows_for_push(data), &elem(&1, 0))
+
+      # A downstream build's x_zfs section produces no metric rows in open:
+      # the metrics table stays identical, open just never writes these names.
+      refute Enum.any?(metrics, &String.starts_with?(&1, "zfs."))
+      refute Enum.any?(metrics, &String.starts_with?(&1, "x_"))
+      assert "cpu.total" in metrics
+    end
   end
 
   describe "to_rate/1" do

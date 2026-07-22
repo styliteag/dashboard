@@ -23,7 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 - Extension point for downstream builds: `config :orbit, :vendor_tabs` adds
   device-type-scoped tabs to the instance detail page, rendered from the
-  instance's cache entry. Open ships none.
+  instance's cache entry (now also given the current `chart_range`). Open ships
+  none.
+- Extension point `config :orbit, :vendor_metrics`: a downstream build can
+  register `{module, fun}` extractors that append extra `{name, value}` series
+  to each push's persisted metrics. The `metrics` table is generic (metric-name
+  string + double), so this adds rows, never schema — open, which registers
+  none, never writes or reads those names. Enables charting downstream-only
+  series with the existing `metric_chart` component.
 
 ## [4.2.15] - 2026-07-22
 

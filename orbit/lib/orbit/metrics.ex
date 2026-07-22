@@ -227,8 +227,36 @@ defmodule Orbit.Metrics do
         {"load.5m", num(load["five"])},
         {"load.15m", num(load["fifteen"])}
       ] ++
-      swap_rows ++ pf_rows ++ disk_rows ++ iface_rows ++ collect_rows
+      swap_rows ++ pf_rows ++ disk_rows ++ iface_rows ++ collect_rows ++ vendor_rows(data)
   end
+
+  # Extra metric series a downstream build registers (§28). Each entry is an
+  # `{module, function}` whose `fun(push)` returns `[{metric_name, value}]`;
+  # they append to the fixed core series above. The `metrics` table is generic
+  # (a metric-name string + a double), so this adds ROWS, never a column or a
+  # table — open's and a downstream's schema stay bit-identical, and open, which
+  # registers nothing here, simply never writes (or reads) those names.
+  # compile_env in the module body, not per call.
+  @vendor_metrics Application.compile_env(:orbit, :vendor_metrics, [])
+
+  defp vendor_rows(_data) when @vendor_metrics == [], do: []
+
+  defp vendor_rows(data) do
+    Enum.flat_map(@vendor_metrics, fn {mod, fun} ->
+      # An extractor must never break the core series persist.
+      try do
+        mod |> apply(fun, [data]) |> List.wrap() |> Enum.filter(&metric_row?/1)
+      rescue
+        _ -> []
+      end
+    end)
+  end
+
+  defp metric_row?({name, value})
+       when is_binary(name) and byte_size(name) <= 128 and is_number(value),
+       do: true
+
+  defp metric_row?(_), do: false
 
   @doc """
   Persist one push as metric rows (INSERT IGNORE — replays of the same

@@ -3118,7 +3118,12 @@ defmodule OrbitWeb.InstanceDetailLive do
              whole cache entry. Open registers none, so this never matches. --%>
         <section :if={@vendor_tab} class="mt-6">
           {apply(elem(@vendor_tab, 0), elem(@vendor_tab, 1), [
-            %{entry: @cache_entry, instance: @instance, __changed__: nil}
+            %{
+              entry: @cache_entry,
+              instance: @instance,
+              chart_range: @chart_range,
+              __changed__: nil
+            }
           ])}
         </section>
 
