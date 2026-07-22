@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.11] - 2026-07-22
+
 ### Fixed
 
 - Access tab showed "Online now 0" while operators were logged in and active:
