@@ -177,7 +177,7 @@ services:
   # and auth failures) still log. Don't slow the bouncer poll instead — that
   # delays ban propagation.
   crowdsec:
-    image: crowdsecurity/crowdsec:v1.7.7
+    image: crowdsecurity/crowdsec:v1.7.8
     restart: unless-stopped
     profiles: [crowdsec]
     environment:

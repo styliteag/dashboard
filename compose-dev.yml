@@ -118,7 +118,7 @@ services:
         condition: service_healthy
 
   crowdsec:
-    image: crowdsecurity/crowdsec:v1.7.7
+    image: crowdsecurity/crowdsec:v1.7.8
     restart: unless-stopped
     profiles: [crowdsec]
     environment:
