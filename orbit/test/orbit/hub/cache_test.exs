@@ -170,4 +170,25 @@ defmodule Orbit.Hub.CacheTest do
     assert Cache.entry(cache, 7)["gateways"] != Cache.entry(cache, 8)["gateways"]
     assert Cache.entry(Cache.drop(cache, 7), 7) == %{}
   end
+
+  describe "x_* vendor passthrough (agent drop-in backend hook, §28)" do
+    test "an x_ section is stored verbatim; a non-x_ unknown section is dropped" do
+      cache =
+        Cache.ingest(
+          %{},
+          7,
+          %{"x_zfs" => %{"arc" => %{"hit_ratio_pct" => 82.2}}, "bogus" => %{"a" => 1}},
+          @now
+        )
+
+      assert Cache.entry(cache, 7)["x_zfs"] == %{"arc" => %{"hit_ratio_pct" => 82.2}}
+      refute Map.has_key?(Cache.entry(cache, 7), "bogus")
+    end
+
+    test "an empty x_ push does not wipe a known-good vendor section" do
+      cache = Cache.ingest(%{}, 7, %{"x_zfs" => %{"arc" => %{"size" => 1}}}, @now)
+      kept = Cache.ingest(cache, 7, %{"x_zfs" => %{}}, @now)
+      assert kept |> Cache.entry(7) |> Map.fetch!("x_zfs") == %{"arc" => %{"size" => 1}}
+    end
+  end
 end

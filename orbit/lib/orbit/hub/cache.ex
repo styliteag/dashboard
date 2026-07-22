@@ -25,6 +25,13 @@ defmodule Orbit.Hub.Cache do
 
   @truthy_sections ~w(gateways ipsec services certificates firmware pf_top)
   @presence_sections ~w(connectivity firewall_log)
+  # Vendor/extension passthrough: any pushed section whose key starts with
+  # `x_` is stored verbatim (truthy-guarded like the real sections). This is
+  # the backend half of the agent drop-in mechanism (§28) — a downstream
+  # build adds a collector as an agent/src/linux.d part that pushes e.g.
+  # `x_zfs`, and it lands here + in the status_snapshot with no core change.
+  # Core sections are never named `x_*`, so the namespace can't collide.
+  @extra_section_prefix "x_"
   # Always-overwrite portions of the push that make up the live status view.
   # `config` = the box's last config revision (collect_config) — pushed on
   # every cycle like the other status sections, shown on the detail page.
@@ -40,6 +47,7 @@ defmodule Orbit.Hub.Cache do
       |> put_status(with_iface_rates(prev, data, now), now)
       |> apply_truthy_guards(data)
       |> apply_presence_guards(data)
+      |> apply_extra_sections(data)
       |> put_external_ip(data)
       |> put_cpu_state(cpu_state)
 
@@ -170,6 +178,19 @@ defmodule Orbit.Hub.Cache do
         value when value in [nil, [], %{}, ""] -> acc
         value -> Map.put(acc, section, value)
       end
+    end)
+  end
+
+  # Store every `x_*` section verbatim, truthy-guarded (an empty push must not
+  # wipe a known-good vendor section — same rule as the truthy sections).
+  defp apply_extra_sections(entry, data) do
+    Enum.reduce(data, entry, fn
+      {<<@extra_section_prefix, _::binary>> = key, value}, acc
+      when value not in [nil, [], %{}, ""] ->
+        Map.put(acc, key, value)
+
+      _pair, acc ->
+        acc
     end)
   end
 
