@@ -59,8 +59,14 @@ WORKDIR /app
 RUN chown nobody /app
 
 # Served agent code for the self-update relay (read-only path parity with
-# the python image; the signed .sig ships beside the .py).
+# the python image; the signed .sig ships beside the .py). BOTH lines — the
+# firewall agent AND the linux agent (§25/§28): without orbit_agent_linux.py
+# the dashboard serves no linux update (served_version(:linux) is nil, so no
+# instance shows "update available") and the linux install guide's
+# script_linux download 404s. The split (052b9ff) shipped the serving code
+# but not this COPY, so every linux box was stuck on its enrolled version.
 COPY --chown=nobody:root agent/orbit_agent.py agent/orbit_agent.py.sig /app/agent/
+COPY --chown=nobody:root agent/orbit_agent_linux.py agent/orbit_agent_linux.py.sig /app/agent/
 # The other four bootstrap downloads in AgentApiController.@downloads — the
 # install guides curl/fetch these, so an image without them 404s every new
 # enrollment. Copied as an explicit allowlist (not the whole agent/ dir the

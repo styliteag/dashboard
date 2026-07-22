@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux agent self-update never worked: the image built `orbit_agent.py`
+  (firewall) into `/app/agent` but not `orbit_agent_linux.py`, so
+  `served_version(:linux)` was nil — no linux instance ever showed "update
+  available", the dashboard could serve no linux update, and the linux install
+  guide's `script_linux` download 404'd. The Dockerfile now copies both agent
+  lines (and their `.sig`s). Linux boxes were stuck on their enrolled version
+  since the agent split. Rebuild + redeploy the image, then canary one box.
+
 ## [4.2.16] - 2026-07-23
 
 ### Added
