@@ -143,15 +143,20 @@ defmodule Orbit.MetricsTest do
       assert "iface.wan_pppoe.bytes_rx" in metrics
     end
 
-    test "open registers no vendor_metrics → x_* passthrough is never persisted" do
+    test "x_* passthrough is persisted only when a vendor_metrics extractor is registered" do
       data = Map.put(push(), "x_zfs", %{"arc" => %{"hit_ratio_pct" => 90.0}})
       metrics = Enum.map(Metrics.rows_for_push(data), &elem(&1, 0))
 
-      # A downstream build's x_zfs section produces no metric rows in open:
-      # the metrics table stays identical, open just never writes these names.
-      refute Enum.any?(metrics, &String.starts_with?(&1, "zfs."))
-      refute Enum.any?(metrics, &String.starts_with?(&1, "x_"))
       assert "cpu.total" in metrics
+
+      # Extension-tolerant (a downstream build may register vendor_metrics): with
+      # NO extractor (open's default) an x_zfs section yields no rows, so the
+      # generic metrics table stays identical and open never writes x_* names.
+      # The positive case is covered by the downstream's own *_pro_test.
+      if Application.get_env(:orbit, :vendor_metrics, []) == [] do
+        refute Enum.any?(metrics, &String.starts_with?(&1, "zfs."))
+        refute Enum.any?(metrics, &String.starts_with?(&1, "x_"))
+      end
     end
   end
 
