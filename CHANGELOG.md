@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Interface error-rate check (`iface_errors:*`) is far less noisy: it now
+  needs a meaningful packet sample (a near-idle link with a handful of packets
+  no longer reads as a nonsensical >100% error rate — seen: igc0.305 300% =
+  6 err / 2 pkts), and it skips virtual/software interfaces (bridge, loopback,
+  pf log/sync, VPN + tunnel devices, jail/VM and container veths) whose error
+  counters are not a physical-link signal. VLAN sub-interfaces on a real NIC
+  (igc0.203) stay eligible.
+
 ## [4.2.17] - 2026-07-23
 
 ### Fixed

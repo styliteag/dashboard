@@ -334,6 +334,19 @@ defmodule Orbit.Checks.Evaluate do
   # since boot, so this is the lifetime error ratio, not a point-in-time rate.
   @iface_err_warn 0.05
   @iface_err_crit 0.1
+  # A rate needs a meaningful sample: on an interface that has only carried a
+  # handful of packets, a few errors reads as a nonsensical >100% and CRITs a
+  # link that has done almost nothing (seen: igc0.305 300% = 6 err / 2 pkts).
+  # Below this floor there is no check.
+  @iface_min_packets 10000
+  # Virtual / software interfaces where an error counter is not a physical-link
+  # signal: bridges, loopback, pf log/sync, VPN + tunnel devices, jail/VM and
+  # container veths. Matched as a name prefix. NOT vlans (igc0.203) — those ride
+  # a real NIC and stay eligible (the packet floor handles idle ones).
+  @virtual_iface_prefixes ~w(
+    bridge lo pflog pfsync enc gif gre stf tun tap ovpn wg ipsec
+    epair vnet docker veth virbr br- cni tailscale appgw
+  )
 
   @doc """
   Per-interface error rate.
@@ -350,14 +363,17 @@ defmodule Orbit.Checks.Evaluate do
   #{@iface_err_warn}%, CRIT at #{@iface_err_crit}%.
 
   Returns nothing (never a fake zero) when the box reports no error counters
-  or no packet counters (Securepoint, some poll paths), or when the link has
-  carried no packets to rate against. An interface that is down is skipped —
-  its errors are a symptom of the outage, not a second incident.
+  or no packet counters (Securepoint, some poll paths), when the link has
+  carried fewer than #{@iface_min_packets} packets (too small a sample to rate),
+  or for a virtual/software interface (bridge, tunnel, VPN, container veth — an
+  error counter there is not a physical-link signal). An interface that is down
+  is skipped — its errors are a symptom of the outage, not a second incident.
   """
   def iface_error_checks(interfaces) when is_list(interfaces) do
     for iface <- interfaces,
         is_map(iface),
         name = presence(iface["name"]),
+        not virtual_iface?(name),
         iface["status"] in [nil, "up", "up (not running)"],
         rate = iface_error_rate(iface),
         rate != nil do
@@ -385,15 +401,25 @@ defmodule Orbit.Checks.Evaluate do
   def iface_error_checks(_), do: []
 
   # Errors as a % of total packets, or nil when the rate cannot be formed:
-  # error counters absent, packet counters absent, or no packets carried yet
-  # (an idle link's lone error would otherwise read as a div-by-zero spike).
+  # error counters absent, packet counters absent, or too few packets to rate
+  # against (below @iface_min_packets a handful of errors reads as a >100%
+  # spike on a link that has barely passed traffic).
   defp iface_error_rate(iface) do
     with errors when is_integer(errors) <- iface_error_total(iface),
-         packets when is_integer(packets) and packets > 0 <- iface_packet_total(iface) do
+         packets when is_integer(packets) and packets >= @iface_min_packets <-
+           iface_packet_total(iface) do
       errors / packets * 100
     else
       _ -> nil
     end
+  end
+
+  # True for a virtual/software interface (matched by name prefix) whose error
+  # counters are not a physical-link signal. Vlan sub-interfaces (igc0.203) are
+  # NOT virtual — they ride a real NIC — so a bare "." is not a marker here.
+  defp virtual_iface?(name) do
+    lower = String.downcase(name)
+    Enum.any?(@virtual_iface_prefixes, &String.starts_with?(lower, &1))
   end
 
   # Absent counters ⇒ nil (no check). Present-but-zero is a real zero.

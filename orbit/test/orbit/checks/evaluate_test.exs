@@ -490,6 +490,39 @@ defmodule Orbit.Checks.EvaluateTest do
       assert [%{key: "iface_errors:em0", state: 0}] = Evaluate.iface_error_checks(ifaces)
     end
 
+    test "too few packets ⇒ no check — no nonsensical >100% rate on a near-idle link" do
+      # Seen in the wild: igc0.305 6 err / 2 pkts read as 300% CRIT.
+      ifaces = [
+        %{"name" => "igc0.305", "status" => "up", "in_errors" => 6, "in_packets" => 2},
+        %{"name" => "igc0.303", "status" => "up", "in_errors" => 5, "in_packets" => 3},
+        %{"name" => "igc0.203", "status" => "up", "in_errors" => 4, "in_packets" => 714}
+      ]
+
+      assert Evaluate.iface_error_checks(ifaces) == []
+    end
+
+    test "at the packet floor the rate is formed again" do
+      ifaces = [%{"name" => "igc1", "status" => "up", "in_errors" => 1, "in_packets" => 10_000}]
+      assert [%{key: "iface_errors:igc1"}] = Evaluate.iface_error_checks(ifaces)
+    end
+
+    test "virtual interfaces are skipped regardless of traffic (bridge, tunnel, veth…)" do
+      ifaces =
+        for n <- ~w(bridge0 lo0 pfsync0 ovpnc1 wg0 gif0 docker0 veth3a1b tailscale0) do
+          %{"name" => n, "status" => "up", "in_errors" => 2_744_166, "in_packets" => 286_243_653}
+        end
+
+      assert Evaluate.iface_error_checks(ifaces) == []
+    end
+
+    test "a vlan on a real NIC is NOT virtual — it stays eligible" do
+      ifaces = [
+        %{"name" => "igc0.203", "status" => "up", "in_errors" => 5000, "in_packets" => 1_000_000}
+      ]
+
+      assert [%{key: "iface_errors:igc0.203", state: 2}] = Evaluate.iface_error_checks(ifaces)
+    end
+
     test "the key is a registered selection category" do
       # A colon-keyed family: category/1 splits on ":" so the rules and the
       # export tree see "iface_errors" (the metric renamed, the family did not).
@@ -500,7 +533,7 @@ defmodule Orbit.Checks.EvaluateTest do
             "status" => "up",
             "in_errors" => 1,
             "out_errors" => 0,
-            "in_packets" => 1000,
+            "in_packets" => 100_000,
             "out_packets" => 0
           }
         ])
