@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.17] - 2026-07-23
+
 ### Fixed
 
 - Linux agent self-update never worked: the image built `orbit_agent.py`
