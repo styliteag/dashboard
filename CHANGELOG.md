@@ -9,36 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The agent now ships as two single-file lines (phase 1 of the split, docs
-  §28): `orbit_agent.py` stays the OPNsense/pfSense firewall agent under its
-  historical name, new `orbit_agent_linux.py` (3.2.0) is served to Linux
-  nodes — self-update, the install snippet and "Update all agents" pick the
-  right line per instance automatically. Phase 1 is a functionally identical
-  copy; the platform-foreign code is stripped from each line in follow-ups.
-- Firewall agent 3.3.0 (phase 2 of the split): the Linux-only code left the
-  firewall line — checkmk bridge and `checkmk.update`, apt/dnf update checks
-  and package upgrades, journald log collection, Linux ping flags (~340
-  lines). It now refuses to start on a Linux host, so a wrong update push
-  dies into the supervisor's probation rollback instead of half-running.
-  No behavior change on OPNsense/pfSense.
+- The agent is now split into two single-file lines (docs §28), both at version 4.2.12:
+  version 4.2.12: `orbit_agent.py` for OPNsense/pfSense firewalls (keeps its
+  historical name and behavior) and `orbit_agent_linux.py` for generic Linux
+  nodes. The dashboard serves each instance the line for its device type —
+  self-update, the install snippet and "Update all agents" pick automatically
+  — and each line refuses to start on the other's platform, so a wrong push
+  rolls back via probation instead of half-running. The linux line carries
+  only server-relevant collectors (the Checkmk agent still does the heavy
+  telemetry); the firewall line keeps relay, GUI proxy, IPsec and firmware
+  upgrades. Existing agents migrate onto their line by normal self-update.
+- Both lines are generated from one source tree (`agent/src/`: a shared core
+  plus per-line templates and drop-in parts) via `just build-agent`; the
+  committed agent files are the build output, and a test fails if they drift
+  from the source. The shared core — WS client, self-update, enrollment, push
+  loop, shell/capture, probation — now lives in exactly one place, so a fix
+  reaches both lines by construction.
 - The UI now names each instance's agent line: the instances list shows
   `agent fw` / `agent linux` next to the version, and the instance detail
   Agent tab lists the line with its source file.
-- The two agent lines are now generated from one source tree (`agent/src/`:
-  shared core + per-line templates + drop-in parts) via `just build-agent`;
-  the committed `orbit_agent*.py` are the build output and a test fails if
-  they drift from the sources. The shared core (WS client, self-update,
-  enrollment, push loop, shell/capture, probation) now lives in exactly one
-  place, so a fix reaches both lines by construction. Firewall agent 3.3.2,
-  Linux agent 3.4.2 (no behavior change — assembly only).
-- Linux agent 3.4.0 (phase 3 of the split): the firewall machinery left the
-  linux line — local API relay, GUI login/proxy tunnels, IPsec, pf/gateway/
-  interface collectors, vendor firmware upgrades, boot environments and
-  config.xml handling (the file shrinks from ~6200 to ~2500 lines). Its
-  snapshot now carries only the server-relevant sections (system, uptime,
-  disks, ntp, external IP, connectivity, package updates, journald logs,
-  Checkmk raw output), uninstall cleans up systemd properly, and it refuses
-  to start on FreeBSD — the mirror image of the firewall line's guard.
 
 ## [4.2.11] - 2026-07-22
 
