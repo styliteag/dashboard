@@ -55,7 +55,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.8"
+__version__ = "3.1.9"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -529,12 +529,16 @@ def collect_interfaces() -> list[dict]:
         if name not in bytes_map:
             # netstat -ibn columns (Idrop is optional, shifting the input side):
             #   Name Mtu Network Address Ipkts Ierrs [Idrop] Ibytes Opkts Oerrs Obytes Coll
-            # Input side is stable from the LEFT (Ierrs = [5], before optional Idrop);
-            # output side is stable from the RIGHT (Coll [-1], Obytes [-2], Oerrs [-3]).
+            # Input side is stable from the LEFT (Ipkts = [4], Ierrs = [5], before
+            # optional Idrop); output side is stable from the RIGHT (Coll [-1],
+            # Obytes [-2], Oerrs [-3], Opkts [-4]). Packet counts feed the
+            # iface_errors check, which grades errors as a % of total packets.
             with contextlib.suppress(ValueError, IndexError):
                 bytes_map[name] = {
                     "bytes_received": int(parts[-5]),
                     "bytes_transmitted": int(parts[-2]),
+                    "in_packets": _netstat_int(parts[4]),
+                    "out_packets": _netstat_int(parts[-4]),
                     "in_errors": _netstat_int(parts[5]),
                     "out_errors": _netstat_int(parts[-3]),
                     "collisions": _netstat_int(parts[-1]),
@@ -560,6 +564,8 @@ def collect_interfaces() -> list[dict]:
                         {
                             "bytes_received": 0,
                             "bytes_transmitted": 0,
+                            "in_packets": 0,
+                            "out_packets": 0,
                             "in_errors": 0,
                             "out_errors": 0,
                             "collisions": 0,

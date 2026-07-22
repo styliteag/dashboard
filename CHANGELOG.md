@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents now report per-interface packet counters** (`in_packets`/`out_packets`
+  from `netstat -ibn`), the denominator the interface error-rate check needs.
+  Agent 3.1.9; existing agents keep working, they just don't feed the rate
+  check until they self-update.
+
 ## [4.2.9] - 2026-07-22
 
 ## [4.2.8] - 2026-07-22
