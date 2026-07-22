@@ -81,21 +81,20 @@ file ships inside the container image alongside this license. The same run emits
 [`sbom.cdx.json`](sbom.cdx.json), a CycloneDX 1.6 Software Bill of Materials of the
 shipped components, also bundled in the image.
 
-Almost every dependency is permissively licensed (MIT / BSD / ISC / Apache-2.0),
-which imposes no restriction on distributing Orbit under the BSL. Two are weak
-("file-level") copyleft and remain fine because we use them **unmodified, as
-libraries**:
+Every Hex dependency is permissively licensed (MIT / BSD / ISC / Apache-2.0),
+which imposes no restriction on distributing Orbit under the BSL. One bundled
+component is copyleft and remains fine because of **how** it ships:
 
-- **asyncssh** — dual-licensed `EPL-2.0 OR GPL-2.0-or-later`. We rely on the
-  GPL-2.0-or-later arm, which is compatible with Orbit's GPL-3.0-or-later Change
-  License, so the dependency stays clean both now and after the Change Date.
-- **certifi** (CA bundle) — `MPL-2.0`. File-level copyleft on the bundle itself;
-  used as-is, so its terms do not extend to Orbit's own code.
+- **check_mk_agent.linux** (Checkmk Linux agent) — `GPL-2.0-only`. Vendored
+  **unmodified** and deployed as a standalone program alongside the Orbit agent
+  ("mere aggregation" in GPL terms), so its license governs that file only and
+  does not extend to Orbit's own code. Its full license text and unmodified
+  source ship in the notices file and the image.
 
-No dependency is under a strong/network copyleft license (GPL/AGPL applied to a
-combined work), so bundling them does not force Orbit's own source under those
-terms. If you modify a copyleft dependency's own files, that component's license
-governs those changes.
+No dependency is under a strong/network copyleft license applied to a combined
+work (GPL linked into Orbit, AGPL), so bundling them does not force Orbit's own
+source under those terms. If you modify a copyleft component's own files, that
+component's license governs those changes.
 
 ## Trademark
 
