@@ -252,8 +252,23 @@ if config_env() == :prod do
 
   config :orbit, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Phoenix's check_origin defaults to the url host only, so a deployment
+  # routing a SECOND hostname at this service (prod: dash.nb.stylite.io) had
+  # its /live websocket rejected 403 — every browser on that name silently
+  # fell back to longpoll and phoenix.js memorizes the fallback per tab.
+  # DASH_WS_ALLOWED_ORIGIN_HOSTS already lists the extra names for the
+  # /api/ws/* routes (ws_auth.ex); the LiveView socket must accept the same
+  # set. Proven with a handshake probe: Origin dash.nb.stylite.io got 403
+  # while dash.stylite-live.net got 101 (2026-07-22).
+  extra_origin_hosts =
+    System.get_env("DASH_WS_ALLOWED_ORIGIN_HOSTS", "")
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+
   config :orbit, OrbitWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
+    check_origin: Enum.map([host | extra_origin_hosts], &("https://" <> &1)),
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.

@@ -426,6 +426,13 @@ function localizeTimesIn(root) {
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+// phoenix.js memorizes a longpoll fallback in sessionStorage and then never
+// tries the websocket again for the tab's lifetime. One failed reconnect —
+// e.g. a deploy restart with the tab open — degraded every surviving tab to
+// permanent longpoll (~6 requests/min each, seen in prod on 2026-07-22).
+// Clearing the memo on a full page load makes each fresh load re-probe the
+// websocket; a genuinely broken socket still falls back after 2.5s.
+sessionStorage.removeItem("phx:fallback:longpoll")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   // phoenix.js defaults to 30s, which is exactly the idle timeout a lot of

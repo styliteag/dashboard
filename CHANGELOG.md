@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   roster is scoped with one query instead of one per connected agent, and the
   initial HTTP render no longer computes the whole page twice — the skeleton
   paints immediately and the live data follows on the socket join.
+- Live views reached over a secondary hostname (`DASH_WS_ALLOWED_ORIGIN_HOSTS`)
+  no longer silently degrade to long-polling: the LiveView websocket only
+  accepted the PHX_HOST origin and rejected the extra names with 403, and a
+  browser tab that fell back once (also e.g. across a deploy restart) stayed
+  on long-poll for its whole lifetime. The extra hostnames are now allowed on
+  the LiveView socket too, and a full page load forgets a memorized fallback
+  and probes the websocket again.
 
 ### Changed
 
