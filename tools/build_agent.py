@@ -14,6 +14,10 @@ Sources live under agent/src/:
   - linux.py.in             the linux line template
   - linux.d/*.py            build-time drop-in parts (empty in the open build;
                             a downstream/pro build adds collectors here)
+  - <line>.version          optional version override (pro-only, e.g.
+                            linux.version) — keeps a downstream agent version
+                            out of the tracked template so an upstream bump
+                            never conflicts on __version__
 
 Templates carry directives, each on its own line:
   # @@shared: <name>        -> spliced with agent/src/shared/<name>.py
@@ -30,6 +34,7 @@ so `just agent-test` and release.sh catch a forgotten rebuild.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -44,6 +49,7 @@ LINES = {
 
 _SHARED_DIRECTIVE = "# @@shared: "
 _DROPINS_DIRECTIVE = "# @@dropins: "
+_VERSION_RE = re.compile(r'^(__version__\s*=\s*)"[^"]*"', re.M)
 
 
 def _shared_block(name: str) -> str:
@@ -82,7 +88,24 @@ def build(template: str) -> str:
             lines.append(_dropin_block(stripped[len(_DROPINS_DIRECTIVE):].strip()))
         else:
             lines.append(line)
-    return "".join(lines)
+    return _apply_version_override(template, "".join(lines))
+
+
+def _apply_version_override(template: str, text: str) -> str:
+    """Optional per-line version override from `agent/src/<line>.version`.
+
+    Lets a downstream build set the agent version WITHOUT editing the tracked
+    template — so an upstream version bump never merge-conflicts on the
+    `__version__` line. Open ships no such file, so the template's own
+    `__version__` stands (`<line>` is e.g. "firewall" / "linux")."""
+    override = SRC / f"{template.split('.', 1)[0]}.version"
+    if not override.exists():
+        return text
+    version = override.read_text().strip()
+    new_text, n = _VERSION_RE.subn(rf'\g<1>"{version}"', text, count=1)
+    if n != 1:
+        raise SystemExit(f"{template}: expected one __version__ line to override, found {n}")
+    return new_text
 
 
 def main() -> None:
