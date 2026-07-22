@@ -374,12 +374,36 @@ defmodule Orbit.Checks.EvaluateTest do
     end
   end
 
-  describe "iface_error_checks — the family that was registered but never fired" do
-    test "counters above the levels WARN and CRIT, per interface" do
+  describe "iface_error_checks — error rate as a % of total packets" do
+    test "the rate, not the raw count, decides WARN (0.05%) and CRIT (0.1%)" do
       ifaces = [
-        %{"name" => "em0", "status" => "up", "in_errors" => 0, "out_errors" => 0},
-        %{"name" => "em1", "status" => "up", "in_errors" => 90, "out_errors" => 20},
-        %{"name" => "em2", "status" => "up", "in_errors" => 5000, "out_errors" => 0}
+        # 0 / 1M = 0.0% -> OK
+        %{
+          "name" => "em0",
+          "status" => "up",
+          "in_errors" => 0,
+          "out_errors" => 0,
+          "in_packets" => 1_000_000,
+          "out_packets" => 0
+        },
+        # 700 / 1M = 0.07% -> WARN
+        %{
+          "name" => "em1",
+          "status" => "up",
+          "in_errors" => 500,
+          "out_errors" => 200,
+          "in_packets" => 1_000_000,
+          "out_packets" => 0
+        },
+        # 2000 / 1M = 0.2% -> CRIT
+        %{
+          "name" => "em2",
+          "status" => "up",
+          "in_errors" => 2000,
+          "out_errors" => 0,
+          "in_packets" => 1_000_000,
+          "out_packets" => 0
+        }
       ]
 
       by_key = ifaces |> Evaluate.iface_error_checks() |> Map.new(&{&1.key, &1.state})
@@ -389,27 +413,96 @@ defmodule Orbit.Checks.EvaluateTest do
       assert by_key["iface_errors:em2"] == 2
     end
 
-    test "no counters ⇒ no check (Securepoint and some poll paths)" do
+    test "a huge raw count on a huge-traffic link stays OK — the whole point" do
+      # 1_237_904 errors would have been CRIT under the old absolute levels;
+      # against 2e10 packets it is 0.006% and healthy.
+      ifaces = [
+        %{
+          "name" => "ix0",
+          "status" => "up",
+          "in_errors" => 1_237_904,
+          "out_errors" => 0,
+          "in_packets" => 20_000_000_000,
+          "out_packets" => 0
+        }
+      ]
+
+      assert [%{key: "iface_errors:ix0", state: 0, metrics: [m]}] =
+               Evaluate.iface_error_checks(ifaces)
+
+      assert m.name == "iface_error_rate"
+      assert m.unit == "%"
+      assert_in_delta m.value, 0.00618952, 0.0001
+    end
+
+    test "no error counters ⇒ no check (Securepoint and some poll paths)" do
       # Absent data must never alarm and never fake an OK (c37de13).
       assert Evaluate.iface_error_checks([%{"name" => "A1", "status" => "up"}]) == []
     end
 
-    test "a down interface is skipped — its errors are a symptom, not a second incident" do
-      ifaces = [%{"name" => "em3", "status" => "down", "in_errors" => 9999, "out_errors" => 0}]
+    test "no packet counters ⇒ no check — the rate cannot be formed" do
+      ifaces = [%{"name" => "B1", "status" => "up", "in_errors" => 50, "out_errors" => 0}]
       assert Evaluate.iface_error_checks(ifaces) == []
     end
 
-    test "present-but-zero is a real result, not absent data" do
-      ifaces = [%{"name" => "em0", "status" => "up", "in_errors" => 0, "out_errors" => 0}]
+    test "zero packets ⇒ no check — no traffic to rate against, never div-by-zero" do
+      ifaces = [
+        %{
+          "name" => "em4",
+          "status" => "up",
+          "in_errors" => 3,
+          "out_errors" => 0,
+          "in_packets" => 0,
+          "out_packets" => 0
+        }
+      ]
+
+      assert Evaluate.iface_error_checks(ifaces) == []
+    end
+
+    test "a down interface is skipped — its errors are a symptom, not a second incident" do
+      ifaces = [
+        %{
+          "name" => "em3",
+          "status" => "down",
+          "in_errors" => 9999,
+          "out_errors" => 0,
+          "in_packets" => 1000,
+          "out_packets" => 0
+        }
+      ]
+
+      assert Evaluate.iface_error_checks(ifaces) == []
+    end
+
+    test "present-but-zero errors on a link with traffic is a real OK, not absent data" do
+      ifaces = [
+        %{
+          "name" => "em0",
+          "status" => "up",
+          "in_errors" => 0,
+          "out_errors" => 0,
+          "in_packets" => 5_000_000,
+          "out_packets" => 0
+        }
+      ]
+
       assert [%{key: "iface_errors:em0", state: 0}] = Evaluate.iface_error_checks(ifaces)
     end
 
     test "the key is a registered selection category" do
       # A colon-keyed family: category/1 splits on ":" so the rules and the
-      # export tree see "iface_errors".
+      # export tree see "iface_errors" (the metric renamed, the family did not).
       [check] =
         Evaluate.iface_error_checks([
-          %{"name" => "em0", "status" => "up", "in_errors" => 1, "out_errors" => 0}
+          %{
+            "name" => "em0",
+            "status" => "up",
+            "in_errors" => 1,
+            "out_errors" => 0,
+            "in_packets" => 1000,
+            "out_packets" => 0
+          }
         ])
 
       assert Orbit.Selection.valid_selector?("checkmk", check.key)

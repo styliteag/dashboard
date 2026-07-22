@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Interface error checks now alarm on the error _rate_ (% of total packets),
+  not an absolute since-boot count.** A busy 10G link passes orders of
+  magnitude more frames than a mgmt port, so a fixed "1000 errors = CRIT" was
+  routine on one and a dying transceiver on the other. `iface_errors:*` now
+  grades errors ÷ total packets: **CRIT above 0.1%, WARN above 0.05%**. A link
+  with no packet counters, or no traffic carried yet, emits no check rather
+  than a fake zero. (Needs an agent that reports packet counts — see below;
+  poll-only boxes are unaffected as before.)
 - **Agents now report per-interface packet counters** (`in_packets`/`out_packets`
   from `netstat -ibn`), the denominator the interface error-rate check needs.
   Agent 3.1.9; existing agents keep working, they just don't feed the rate

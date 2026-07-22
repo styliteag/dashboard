@@ -207,42 +207,52 @@ defmodule Orbit.Checks.Evaluate do
 
   def ntp_check(_), do: nil
 
-  @iface_err_warn 100
-  @iface_err_crit 1000
+  # Error rate as a percentage of total packets. Both counters are cumulative
+  # since boot, so this is the lifetime error ratio, not a point-in-time rate.
+  @iface_err_warn 0.05
+  @iface_err_crit 0.1
 
   @doc """
-  Per-interface error counters.
+  Per-interface error rate.
 
   The `iface_errors:*` family was registered everywhere — selection
   categories, the export tree, the aggregate map, even the flap-debounce
-  prefix list — but nothing ever emitted a check for it, so the entry in the
-  selection tree could never match anything. The counters have always been
-  in the push and on the Network tab.
+  prefix list — but nothing ever emitted a check for it. The counters have
+  always been in the push and on the Network tab.
 
-  Counters are cumulative since boot, so this reports a level, not a rate: a
-  handful of errors on a long-lived link is normal, thousands are not. WARN
-  at #{@iface_err_warn}, CRIT at #{@iface_err_crit}. Interfaces that report
-  no counters at all (Securepoint, some poll paths) emit nothing rather than
-  a fake zero, and an interface that is down is skipped — its errors are a
-  symptom of the outage, not a second incident.
+  A raw error count is not comparable across links: a busy 10G port passes
+  orders of magnitude more frames than a mgmt link, so the same "thousands of
+  errors" is routine on one and a dying transceiver on another. So this grades
+  the error *rate* — errors as a percentage of total packets — WARN at
+  #{@iface_err_warn}%, CRIT at #{@iface_err_crit}%.
+
+  Returns nothing (never a fake zero) when the box reports no error counters
+  or no packet counters (Securepoint, some poll paths), or when the link has
+  carried no packets to rate against. An interface that is down is skipped —
+  its errors are a symptom of the outage, not a second incident.
   """
   def iface_error_checks(interfaces) when is_list(interfaces) do
     for iface <- interfaces,
         is_map(iface),
         name = presence(iface["name"]),
         iface["status"] in [nil, "up", "up (not running)"],
-        errors = iface_errors(iface),
-        errors != nil do
-      {state, word} = level(errors * 1.0, @iface_err_warn * 1.0, @iface_err_crit * 1.0)
+        rate = iface_error_rate(iface),
+        rate != nil do
+      {state, word} = level(rate, @iface_err_warn, @iface_err_crit)
+      errors = iface_error_total(iface)
+      packets = iface_packet_total(iface)
 
       %ServiceCheck{
         key: "iface_errors:#{name}",
         state: state,
-        summary: "Interface #{name} #{errors} error(s) since boot (#{word})",
+        summary:
+          "Interface #{name} #{fmt_rate(rate)}% error rate " <>
+            "(#{errors} err / #{packets} pkts since boot, #{word})",
         metrics: [
-          ServiceCheck.metric("iface_errors", errors * 1.0,
-            warn: @iface_err_warn * 1.0,
-            crit: @iface_err_crit * 1.0
+          ServiceCheck.metric("iface_error_rate", rate,
+            warn: @iface_err_warn,
+            crit: @iface_err_crit,
+            unit: "%"
           )
         ]
       }
@@ -251,13 +261,36 @@ defmodule Orbit.Checks.Evaluate do
 
   def iface_error_checks(_), do: []
 
-  # Absent counters ⇒ nil (no check). Present-but-zero is a real "no errors".
-  defp iface_errors(iface) do
+  # Errors as a % of total packets, or nil when the rate cannot be formed:
+  # error counters absent, packet counters absent, or no packets carried yet
+  # (an idle link's lone error would otherwise read as a div-by-zero spike).
+  defp iface_error_rate(iface) do
+    with errors when is_integer(errors) <- iface_error_total(iface),
+         packets when is_integer(packets) and packets > 0 <- iface_packet_total(iface) do
+      errors / packets * 100
+    else
+      _ -> nil
+    end
+  end
+
+  # Absent counters ⇒ nil (no check). Present-but-zero is a real zero.
+  defp iface_error_total(iface) do
     case {iface["in_errors"], iface["out_errors"]} do
       {nil, nil} -> nil
       {in_e, out_e} -> num(in_e) + num(out_e)
     end
   end
+
+  defp iface_packet_total(iface) do
+    case {iface["in_packets"], iface["out_packets"]} do
+      {nil, nil} -> nil
+      {in_p, out_p} -> num(in_p) + num(out_p)
+    end
+  end
+
+  # Shortest readable form of the rate for the summary; 3 decimals resolves the
+  # 0.05/0.1 lines and Elixir drops any trailing zeros.
+  defp fmt_rate(rate), do: Float.round(rate, 3)
 
   defp num(v) when is_number(v), do: trunc(v)
   defp num(_), do: 0
