@@ -275,7 +275,9 @@ defmodule OrbitWeb.InstancesLive do
     connected = Hub.list_connected()
     connected_ids = MapSet.new(connected, & &1.instance_id)
     agents = Map.new(connected, &{&1.instance_id, &1})
-    served = Orbit.Agent.Package.served_version()
+    # Two agent lines since the split (§28) — each row compares against the
+    # served version of ITS line (device_type), never the other one's.
+    served = Orbit.Agent.Package.served_versions()
 
     # Per-row CRIT/WARN badge — same evaluate→overlay chain as Alerts (the
     # four-surface parity rule), one pass over the caller's visible fleet.
@@ -296,6 +298,7 @@ defmodule OrbitWeb.InstancesLive do
       |> Enum.map(fn inst ->
         agent = agents[inst.id]
         agent_connected = MapSet.member?(connected_ids, inst.id)
+        served_for = served[Orbit.Agent.Package.line_for(inst.device_type)]
 
         %{
           id: inst.id,
@@ -311,9 +314,10 @@ defmodule OrbitWeb.InstancesLive do
           agent_mode: Instance.agent_mode?(inst),
           last_success_at: inst.last_success_at,
           agent_version: agent && agent.agent_version,
+          served_version: served_for,
           update_available:
-            agent_connected and served != nil and agent != nil and
-              agent.agent_version != served,
+            agent_connected and served_for != nil and agent != nil and
+              agent.agent_version != served_for,
           online: Instances.online?(inst),
           agent_connected: agent_connected,
           bucket: Instances.status_bucket(inst, agent_connected),
@@ -334,9 +338,18 @@ defmodule OrbitWeb.InstancesLive do
         }
       end)
 
+    # Banner label: one value while both lines serve the same version,
+    # otherwise name them ("fw 3.2.0 · linux 3.2.1").
+    served_label =
+      case served |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.uniq() do
+        [] -> nil
+        [v] -> v
+        _ -> "fw #{served.firewall || "—"} · linux #{served.linux || "—"}"
+      end
+
     assign(socket,
       instances: rows,
-      served_version: served,
+      served_version: served_label,
       comments: CommentEditor.lookup(Enum.map(rows, & &1.inst))
     )
   end
@@ -764,7 +777,7 @@ defmodule OrbitWeb.InstancesLive do
                     <span
                       :if={i.update_available}
                       class="text-warning"
-                      title={"update available → #{@served_version}"}
+                      title={"update available → #{i.served_version}"}
                     >
                       ↑
                     </span>

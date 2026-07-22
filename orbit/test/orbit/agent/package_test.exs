@@ -17,6 +17,13 @@ defmodule Orbit.Agent.PackageTest do
     )
 
     File.write!(Path.join(dir, "orbit_agent.py.sig"), "  ZmFrZS1zaWc=  \n")
+
+    File.write!(
+      Path.join(dir, "orbit_agent_linux.py"),
+      ~s(#!/usr/bin/env python3\n__version__ = "8.8.8"\n)
+    )
+
+    File.write!(Path.join(dir, "orbit_agent_linux.py.sig"), "bGludXgtc2ln\n")
     prev = System.get_env("AGENT_DIR")
     System.put_env("AGENT_DIR", dir)
 
@@ -30,6 +37,24 @@ defmodule Orbit.Agent.PackageTest do
 
   test "served_version parses __version__" do
     assert Package.served_version() == "9.9.9"
+  end
+
+  test "the two lines serve their own file and version (§28)" do
+    assert Package.served_version(:firewall) == "9.9.9"
+    assert Package.served_version(:linux) == "8.8.8"
+    assert Package.served_versions() == %{firewall: "9.9.9", linux: "8.8.8"}
+
+    assert {:ok, params} = Package.update_params(:linux)
+    assert params["version"] == "8.8.8"
+    assert params["signature"] == "bGludXgtc2ln"
+  end
+
+  test "line_for: only device_type linux gets the linux line" do
+    assert Package.line_for("linux") == :linux
+    assert Package.line_for("opnsense") == :firewall
+    assert Package.line_for("pfsense") == :firewall
+    assert Package.line_for("securepoint") == :firewall
+    assert Package.line_for(nil) == :firewall
   end
 
   test "update_params has version, hex sha256, base64 code, trimmed signature" do

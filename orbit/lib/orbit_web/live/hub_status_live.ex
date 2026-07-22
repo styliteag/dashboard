@@ -78,6 +78,35 @@ defmodule OrbitWeb.HubStatusLive do
     |> Enum.sort_by(fn {label, n} -> {-n, label} end)
   end
 
+  # Two agent lines since the split (§28): a version chip is "outdated" when
+  # ANY agent at that version is behind the served version of ITS OWN line —
+  # a linux agent is never compared against the firewall package or vice
+  # versa. The agent's hello platform maps 1:1 onto line_for/1.
+  defp version_tally(agents, served) do
+    agents
+    |> Enum.reject(&(&1.version in [nil, ""]))
+    |> Enum.group_by(& &1.version)
+    |> Enum.map(fn {version, as} ->
+      outdated =
+        Enum.any?(as, fn a ->
+          s = served[Orbit.Agent.Package.line_for(a.platform)]
+          s != nil and a.version != s
+        end)
+
+      {version, length(as), outdated}
+    end)
+    |> Enum.sort_by(fn {version, n, _} -> {-n, version} end)
+  end
+
+  # One value while both lines serve the same version, else name them.
+  defp served_label(served) do
+    case served |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.uniq() do
+      [] -> nil
+      [v] -> v
+      _ -> "fw #{served.firewall || "—"} · linux #{served.linux || "—"}"
+    end
+  end
+
   # Counters that indicate something is wrong — rendered red when non-zero.
   defp error_counters do
     [
@@ -157,14 +186,16 @@ defmodule OrbitWeb.HubStatusLive do
         _ -> 0
       end
 
+    served = Orbit.Agent.Package.served_versions()
+
     assigns =
       assign(assigns,
         total_pushes: assigns.agents |> Enum.map(& &1.pushes) |> Enum.sum(),
         update_errors: Enum.count(assigns.agents, & &1.update_error),
-        served_version: Orbit.Agent.Package.served_version(),
+        served_label: served_label(served),
         per_minute: per_minute,
         platform_tally: tally(assigns.agents, & &1.platform),
-        version_tally: tally(assigns.agents, & &1.version),
+        version_tally: version_tally(assigns.agents, served),
         errors_total:
           error_counters()
           |> Enum.map(fn {k, _} -> Map.get(assigns.counters, k, 0) end)
@@ -222,7 +253,7 @@ defmodule OrbitWeb.HubStatusLive do
                 else: "your agents; last self-update clean"}
             </:hint>
           </.stat_tile>
-          <.stat_tile label="Served agent" value={@served_version || "—"}>
+          <.stat_tile label="Served agent" value={@served_label || "—"}>
             <:hint>version this dashboard offers on update</:hint>
           </.stat_tile>
           <%!-- Hub-side processing time per push. The number an operator
@@ -317,15 +348,11 @@ defmodule OrbitWeb.HubStatusLive do
         <div :if={@agents != []} class="mb-3 flex flex-wrap gap-2">
           <.count_chip :for={{label, n} <- @platform_tally} label={label} count={n} />
           <.count_chip
-            :for={{version, n} <- @version_tally}
+            :for={{version, n, outdated} <- @version_tally}
             label={version}
             count={n}
-            tone={if @served_version && version != @served_version, do: :warn, else: :ok}
-            title={
-              if @served_version && version != @served_version,
-                do: "update available → #{@served_version}",
-                else: "current"
-            }
+            tone={if outdated, do: :warn, else: :ok}
+            title={if outdated, do: "update available", else: "current"}
           />
         </div>
 

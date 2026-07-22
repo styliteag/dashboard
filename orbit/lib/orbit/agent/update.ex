@@ -15,8 +15,10 @@ defmodule Orbit.Agent.Update do
   anti-rollback would refuse it anyway.
   """
   def push(inst, user) do
+    line = Orbit.Agent.Package.line_for(inst.device_type)
+
     with %Hub.Agent{} = agent <- Hub.get(inst.id),
-         {:ok, params} <- Orbit.Agent.Package.update_params() do
+         {:ok, params} <- Orbit.Agent.Package.update_params(line) do
       if agent.agent_version == params["version"] do
         {:ok, "already at #{params["version"]}"}
       else

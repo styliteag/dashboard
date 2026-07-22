@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The agent now ships as two single-file lines (phase 1 of the split, docs
+  §28): `orbit_agent.py` stays the OPNsense/pfSense firewall agent under its
+  historical name, new `orbit_agent_linux.py` (3.2.0) is served to Linux
+  nodes — self-update, the install snippet and "Update all agents" pick the
+  right line per instance automatically. Phase 1 is a functionally identical
+  copy; the platform-foreign code is stripped from each line in follow-ups.
+
 ## [4.2.11] - 2026-07-22
 
 ### Fixed

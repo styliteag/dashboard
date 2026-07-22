@@ -220,6 +220,7 @@ defmodule OrbitWeb.Router do
     # Bootstrap downloads (update.py parity, no auth — the token/enroll code
     # is the credential; these files are public on every install anyway).
     get "/agent/script", AgentApiController, :download_script
+    get "/agent/script-linux", AgentApiController, :download_script_linux
     get "/agent/rc", AgentApiController, :download_rc
     get "/agent/run", AgentApiController, :download_run
     get "/agent/systemd", AgentApiController, :download_systemd

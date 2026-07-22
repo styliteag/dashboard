@@ -2,9 +2,20 @@ defmodule Orbit.Agent.Package do
   @moduledoc """
   The agent code this container serves for self-update — port of the
   `_agent_update_params` half of update.py. The dashboard only RELAYS the
-  offline-produced Ed25519 signature (orbit_agent.py.sig); it never holds the
+  offline-produced Ed25519 signature (`<file>.sig`); it never holds the
   signing key. The fleet-bricking verification (signature, anti-rollback,
-  exit-42 respawn, probation) lives in orbit_agent.py and is untouched.
+  exit-42 respawn, probation) lives in the agent and is untouched.
+
+  Since the agent split (§28) there are TWO single-file agent lines, chosen
+  by the instance's device type via `line_for/1`:
+
+  - `:firewall` — `orbit_agent.py` (OPNsense/pfSense, FreeBSD). Keeps its
+    historical name so the deployed firewall fleet's self-update path is
+    byte-for-byte unchanged.
+  - `:linux` — `orbit_agent_linux.py` (generic Linux nodes, §25). Served
+    to `device_type == "linux"` instances; on the box it still lands at
+    /usr/local/orbit-agent/orbit_agent.py, so supervisor + systemd unit
+    stay untouched.
 
   Agent files are mounted read-only at AGENT_DIR (/app/agent), same as the
   python backend.
@@ -12,13 +23,29 @@ defmodule Orbit.Agent.Package do
 
   @version_re ~r/^__version__\s*=\s*["']([^"']+)["']/m
 
+  @agent_files %{
+    firewall: "orbit_agent.py",
+    linux: "orbit_agent_linux.py"
+  }
+
+  @doc "The two agent lines."
+  def lines, do: Map.keys(@agent_files)
+
+  @doc """
+  Which agent line an instance's device_type gets. Everything that is not a
+  Linux node is the firewall line — Securepoint is pull-only and never asks.
+  """
+  @spec line_for(String.t() | nil) :: :firewall | :linux
+  def line_for("linux"), do: :linux
+  def line_for(_other), do: :firewall
+
   @doc "AGENT_DIR from the env (defaults to /app/agent)."
   def agent_dir, do: System.get_env("AGENT_DIR", "/app/agent")
 
-  @doc "Parse __version__ from the served agent script, or nil."
-  @spec served_version() :: String.t() | nil
-  def served_version do
-    with {:ok, text} <- File.read(Path.join(agent_dir(), "orbit_agent.py")),
+  @doc "Parse __version__ from the served agent script of a line, or nil."
+  @spec served_version(:firewall | :linux) :: String.t() | nil
+  def served_version(line \\ :firewall) do
+    with {:ok, text} <- File.read(agent_path(line)),
          [_, version] <- Regex.run(@version_re, text) do
       version
     else
@@ -26,23 +53,30 @@ defmodule Orbit.Agent.Package do
     end
   end
 
+  @doc "Served version per line: `%{firewall: v | nil, linux: v | nil}`."
+  @spec served_versions() :: %{firewall: String.t() | nil, linux: String.t() | nil}
+  def served_versions do
+    Map.new(lines(), &{&1, served_version(&1)})
+  end
+
   @doc """
   Build the agent.update command params (version, sha256, base64 code, the
-  relayed signature), or `{:error, :unavailable}` if the script is missing.
+  relayed signature) for a line, or `{:error, :unavailable}` if the script
+  is missing.
   """
-  @spec update_params() :: {:ok, map()} | {:error, :unavailable}
-  def update_params do
-    case File.read(Path.join(agent_dir(), "orbit_agent.py")) do
+  @spec update_params(:firewall | :linux) :: {:ok, map()} | {:error, :unavailable}
+  def update_params(line \\ :firewall) do
+    case File.read(agent_path(line)) do
       {:ok, code} ->
         signature =
-          case File.read(Path.join(agent_dir(), "orbit_agent.py.sig")) do
+          case File.read(agent_path(line) <> ".sig") do
             {:ok, sig} -> String.trim(sig)
             _ -> ""
           end
 
         {:ok,
          %{
-           "version" => served_version() || "unknown",
+           "version" => served_version(line) || "unknown",
            "sha256" => :crypto.hash(:sha256, code) |> Base.encode16(case: :lower),
            "code" => Base.encode64(code),
            "signature" => signature
@@ -52,6 +86,8 @@ defmodule Orbit.Agent.Package do
         {:error, :unavailable}
     end
   end
+
+  defp agent_path(line), do: Path.join(agent_dir(), Map.fetch!(@agent_files, line))
 
   @doc """
   sha256 of the vendored Checkmk agent script we serve, or nil when it is

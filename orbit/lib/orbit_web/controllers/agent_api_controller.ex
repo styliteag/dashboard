@@ -62,7 +62,8 @@ defmodule OrbitWeb.AgentApiController do
     with {id, ""} <- Integer.parse(raw_id),
          inst when not is_nil(inst) <- Scope.get_instance(id, user),
          %Orbit.Hub.Agent{} = agent <- Hub.get(id),
-         {:ok, params} <- Orbit.Agent.Package.update_params() do
+         {:ok, params} <-
+           Orbit.Agent.Package.update_params(Orbit.Agent.Package.line_for(inst.device_type)) do
       do_update(conn, id, agent, params)
     else
       {:error, :unavailable} ->
@@ -77,10 +78,14 @@ defmodule OrbitWeb.AgentApiController do
   end
 
   # Bootstrap file downloads (update.py parity, unauthenticated). Only ever
-  # serves the five fixed files below out of the read-only AGENT_DIR mount —
+  # serves the fixed files below out of the read-only AGENT_DIR mount —
   # no path input from the request reaches the filesystem.
+  # script_linux serves the Linux agent line (§28) but keeps the download
+  # filename orbit_agent.py: on the box it is a drop-in at the same path,
+  # so run-agent.sh and the systemd unit stay untouched.
   @downloads %{
     script: {"orbit_agent.py", "text/x-python", "orbit_agent.py"},
+    script_linux: {"orbit_agent_linux.py", "text/x-python", "orbit_agent.py"},
     rc: {"rc.d/orbit_agent", "text/plain", "orbit_agent"},
     run: {"run-agent.sh", "text/plain", "run-agent.sh"},
     systemd: {"systemd/orbit-agent.service", "text/plain", "orbit-agent.service"},
@@ -88,6 +93,7 @@ defmodule OrbitWeb.AgentApiController do
   }
 
   def download_script(conn, _params), do: serve_agent_file(conn, :script)
+  def download_script_linux(conn, _params), do: serve_agent_file(conn, :script_linux)
   def download_rc(conn, _params), do: serve_agent_file(conn, :rc)
   def download_run(conn, _params), do: serve_agent_file(conn, :run)
   def download_systemd(conn, _params), do: serve_agent_file(conn, :systemd)

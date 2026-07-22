@@ -951,7 +951,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     """
     mkdir -p /usr/local/orbit-agent /usr/local/etc
-    curl -fsSo /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script
+    curl -fsSo /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script-linux
     curl -fsSo /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
     curl -fsSo /usr/local/orbit-agent/check_mk_agent.linux #{base}/api/agent/checkmk
     chmod 755 /usr/local/orbit-agent/run-agent.sh /usr/local/orbit-agent/check_mk_agent.linux
@@ -1507,7 +1507,10 @@ defmodule OrbitWeb.InstanceDetailLive do
       firmware: entry["firmware"],
       fw_verdict: Evaluate.firmware_check(entry["firmware"]),
       agent: Hub.get(socket.assigns.instance.id),
-      served_agent_version: Orbit.Agent.Package.served_version(),
+      served_agent_version:
+        Orbit.Agent.Package.served_version(
+          Orbit.Agent.Package.line_for(socket.assigns.instance.device_type)
+        ),
       gateways: entry["gateways"] || [],
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],

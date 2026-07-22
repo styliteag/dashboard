@@ -48,14 +48,21 @@ echo "  Using interpreter: ${PYTHON}"
 echo "[2/5] Installing agent to ${INSTALL_DIR}..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "${INSTALL_DIR}"
-for f in orbit_agent.py run-agent.sh; do
-    if [ ! -f "${SCRIPT_DIR}/${f}" ]; then
-        echo "ERROR: ${f} not found in ${SCRIPT_DIR}"
-        exit 1
-    fi
-    cp "${SCRIPT_DIR}/${f}" "${INSTALL_DIR}/${f}"
-    chmod 755 "${INSTALL_DIR}/${f}"
-done
+# Since the agent split (§28) Linux nodes run the linux line
+# (orbit_agent_linux.py in the repo) — installed under the historical
+# orbit_agent.py name so run-agent.sh and the systemd unit stay untouched.
+if [ ! -f "${SCRIPT_DIR}/orbit_agent_linux.py" ]; then
+    echo "ERROR: orbit_agent_linux.py not found in ${SCRIPT_DIR}"
+    exit 1
+fi
+cp "${SCRIPT_DIR}/orbit_agent_linux.py" "${INSTALL_DIR}/orbit_agent.py"
+chmod 755 "${INSTALL_DIR}/orbit_agent.py"
+if [ ! -f "${SCRIPT_DIR}/run-agent.sh" ]; then
+    echo "ERROR: run-agent.sh not found in ${SCRIPT_DIR}"
+    exit 1
+fi
+cp "${SCRIPT_DIR}/run-agent.sh" "${INSTALL_DIR}/run-agent.sh"
+chmod 755 "${INSTALL_DIR}/run-agent.sh"
 
 # The vendored Checkmk agent does the actual data collection on Linux (DR-10).
 # Without it the node still connects — it just pushes no system metrics.

@@ -13,6 +13,7 @@ printed below). Keep the private key OFFLINE — never on the dashboard.
 Generate a fresh keypair with ``--gen`` (prints PRIV_B64 + PUB_HEX), keep the
 private offline, and bake PUB_HEX into the agent's _UPDATE_PUBKEY.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,27 +83,41 @@ def _verify_one(path: str, pub_hex: str) -> None:
     print(f"{path}: signature verifies against baked _UPDATE_PUBKEY. OK")
 
 
-def _verify(agent_path: str, vendor_path: str | None = None) -> None:
+def _verify(agent_paths: list[str], vendor_path: str | None = None) -> None:
     """Release guard: every committed .sig must verify against the baked pubkey.
 
     Exits non-zero (with a clear message) if signing is enabled but a signature
     is missing or stale — stale agent .sig = deployed agents reject every future
     update; stale vendor .sig = linux nodes refuse the Checkmk-agent deploy.
-    The vendor script has no baked key of its own; it verifies against the
-    orbit agent's _UPDATE_PUBKEY (one key chain for all root-run code, §25).
+    Each agent line (§28: orbit_agent.py + orbit_agent_linux.py) verifies
+    against its OWN baked _UPDATE_PUBKEY. The vendor script has no baked key
+    of its own; it verifies against the first agent's _UPDATE_PUBKEY (one key
+    chain for all root-run code, §25).
     """
-    pub_hex = _baked_pubkey_hex(agent_path)
-    if not pub_hex:
-        print(f"{agent_path}: _UPDATE_PUBKEY empty — self-update signing is OFF.")
-        return
-    _verify_one(agent_path, pub_hex)
-    if vendor_path and Path(vendor_path).exists():
-        _verify_one(vendor_path, pub_hex)
+    first_pub = ""
+    for agent_path in agent_paths:
+        pub_hex = _baked_pubkey_hex(agent_path)
+        if not pub_hex:
+            print(f"{agent_path}: _UPDATE_PUBKEY empty — self-update signing is OFF.")
+            continue
+        first_pub = first_pub or pub_hex
+        _verify_one(agent_path, pub_hex)
+    if first_pub and vendor_path and Path(vendor_path).exists():
+        _verify_one(vendor_path, first_pub)
+
+
+# Both single-file agent lines (§28). Signing/verifying always covers both —
+# a forgotten linux .sig would make every linux node reject its next update.
+_AGENT_FILES = ["agent/orbit_agent.py", "agent/orbit_agent_linux.py"]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Sign the agent for self-update.")
-    ap.add_argument("--agent", default="agent/orbit_agent.py")
+    ap.add_argument(
+        "--agent",
+        default=None,
+        help="sign/verify only this agent file (default: both lines)",
+    )
     # Vendored Checkmk agent (§25/DR-10) — signed with the same key so linux
     # nodes can verify it before running it as root. Skipped when absent.
     ap.add_argument("--vendor", default="agent/vendor/check_mk_agent.linux")
@@ -115,8 +130,13 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    agents = [args.agent] if args.agent else _AGENT_FILES
+    for agent_path in agents:
+        if not Path(agent_path).exists():
+            sys.exit(f"{agent_path} not found — both agent lines must exist (§28).")
+
     if args.verify:
-        _verify(args.agent, args.vendor)
+        _verify(agents, args.vendor)
         return
 
     if args.gen:
@@ -129,7 +149,7 @@ def main() -> None:
         return
 
     priv = _load_private_key(args.key_file)
-    targets = [args.agent]
+    targets = list(agents)
     if args.vendor and Path(args.vendor).exists():
         targets.append(args.vendor)
     for target in targets:
