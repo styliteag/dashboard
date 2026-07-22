@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ZFS pool checks for linux nodes: Orbit now parses the Checkmk
+  `zpool`/`zpool_status` sections into a per-pool health + capacity check
+  (`zfs:<pool>` — ONLINE is OK, DEGRADED/FAULTED/… is CRIT, capacity warns at
+  80%%/crits at 90%%). It shows under Checks and rides every surface (Checkmk
+  export, Prometheus, Alerts).
 - Linux instances get a **Checkmk** tab on the detail page showing the raw
   `check_mk_agent.linux` output the box pushed (retained in-memory, refreshed
   each cycle — includes sections Orbit itself does not parse, e.g. ZFS

@@ -544,4 +544,49 @@ defmodule Orbit.Checks.EvaluateTest do
       assert keys == ["cpu", "disk:/", "memory"]
     end
   end
+
+  describe "zfs_checks/1" do
+    defp pool(attrs), do: Map.merge(%{"name" => "rpool", "health" => "ONLINE"}, attrs)
+
+    test "no zfs section → no check (no-data never emits)" do
+      assert Evaluate.zfs_checks(nil) == []
+      assert Evaluate.zfs_checks(%{}) == []
+    end
+
+    test "ONLINE, low capacity → OK" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [pool(%{"cap_pct" => 9, "frag_pct" => 38})]})
+      assert %ServiceCheck{key: "zfs:rpool", state: 0} = c
+      assert c.summary =~ "ONLINE"
+      assert c.summary =~ "9% full"
+    end
+
+    test "DEGRADED pool → CRIT regardless of capacity" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [pool(%{"health" => "DEGRADED", "cap_pct" => 5})]})
+      assert c.state == 2
+    end
+
+    test "capacity over 90% → CRIT even when ONLINE" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [pool(%{"cap_pct" => 95})]})
+      assert c.state == 2
+    end
+
+    test "capacity 80–89% → WARN" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [pool(%{"cap_pct" => 85})]})
+      assert c.state == 1
+    end
+
+    test "unknown health string → UNKNOWN" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [pool(%{"health" => "WEIRD", "cap_pct" => 1})]})
+      assert c.state == 3
+    end
+
+    test "one check per pool, keyed zfs:<name>" do
+      checks =
+        Evaluate.zfs_checks(%{
+          "pools" => [pool(%{"cap_pct" => 1}), pool(%{"name" => "tank", "cap_pct" => 1})]
+        })
+
+      assert Enum.map(checks, & &1.key) == ["zfs:rpool", "zfs:tank"]
+    end
+  end
 end

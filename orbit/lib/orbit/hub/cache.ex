@@ -35,7 +35,7 @@ defmodule Orbit.Hub.Cache do
   # Always-overwrite portions of the push that make up the live status view.
   # `config` = the box's last config revision (collect_config) — pushed on
   # every cycle like the other status sections, shown on the detail page.
-  @status_sections ~w(ts system uptime loadavg cpu memory disks pf ntp interfaces collect_ms section_ms config)
+  @status_sections ~w(ts system uptime loadavg cpu memory disks pf ntp interfaces collect_ms section_ms config zfs)
 
   @doc "Apply one metrics push to the cache map; returns the updated cache."
   @spec ingest(t(), integer(), map(), DateTime.t()) :: t()

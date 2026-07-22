@@ -163,4 +163,29 @@ defmodule Orbit.Hub.CheckmkTest do
 
     assert sections == %{"uptime" => "0:00"}
   end
+
+  test "parses the zpool section into per-pool health/capacity/frag" do
+    text =
+      "<<<zpool>>>\n" <>
+        "NAME  SIZE ALLOC FREE CKPOINT EXPANDSZ FRAG CAP DEDUP HEALTH ALTROOT\n" <>
+        "rpool 928G 90.3G 838G - - 38% 9% 1.00x ONLINE -\n" <>
+        "tank 10T 9.5T 0.5T - - 12% 95% 1.00x DEGRADED -\n" <>
+        "<<<zpool_status>>>\nall pools are healthy\n"
+
+    b64 = text |> :zlib.gzip() |> Base.encode64()
+    {sections, _} = Checkmk.parse(%{"output_gz_b64" => b64})
+
+    assert %{"pools" => pools, "healthy" => true} = sections["zfs"]
+
+    assert Enum.find(pools, &(&1["name"] == "rpool")) ==
+             %{"name" => "rpool", "health" => "ONLINE", "cap_pct" => 9, "frag_pct" => 38}
+
+    assert Enum.find(pools, &(&1["name"] == "tank"))["health"] == "DEGRADED"
+  end
+
+  test "no zpool section yields no zfs" do
+    b64 = "<<<uptime>>>\n1 1\n" |> :zlib.gzip() |> Base.encode64()
+    {sections, _} = Checkmk.parse(%{"output_gz_b64" => b64})
+    refute Map.has_key?(sections, "zfs")
+  end
 end

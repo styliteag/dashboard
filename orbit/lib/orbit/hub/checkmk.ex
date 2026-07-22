@@ -58,7 +58,8 @@ defmodule Orbit.Hub.Checkmk do
           "uptime" => uptime_section(sections["uptime"]),
           "loadavg" => loadavg_section(sections["cpu"]),
           "ntp" => chrony_section(sections["chrony"]),
-          "services" => systemd_section(sections["systemd_units"])
+          "services" => systemd_section(sections["systemd_units"]),
+          "zfs" => zpool_section(sections["zpool"], sections["zpool_status"])
         }
         |> Enum.reject(fn {_k, v} -> v in [nil, [], %{}] end)
         |> Map.new()
@@ -89,6 +90,52 @@ defmodule Orbit.Hub.Checkmk do
   end
 
   def raw_text(_), do: nil
+
+  # <<<zpool>>> is `zpool list` (header row + one row per pool);
+  # <<<zpool_status>>> is `zpool status -x`. Parse the pools' health/capacity/
+  # fragmentation for the ZFS check family. Header-indexed so it survives
+  # column shifts across ZFS versions (ckpoint/expandsz added over time).
+  @doc false
+  def zpool_section(nil, _status), do: nil
+  def zpool_section([], _status), do: nil
+
+  def zpool_section([header | rows], status_lines) do
+    idx = header |> String.split() |> Enum.with_index() |> Map.new()
+
+    pools =
+      for row <- rows,
+          fields = String.split(row),
+          name = zpool_col(fields, idx["NAME"] || 0),
+          is_binary(name) and name != "" do
+        %{
+          "name" => name,
+          "health" => zpool_col(fields, idx["HEALTH"]),
+          "cap_pct" => zpool_pct(zpool_col(fields, idx["CAP"])),
+          "frag_pct" => zpool_pct(zpool_col(fields, idx["FRAG"]))
+        }
+      end
+
+    if pools == [], do: nil, else: %{"pools" => pools, "healthy" => zpool_healthy?(status_lines)}
+  end
+
+  def zpool_section(_zpool, _status), do: nil
+
+  defp zpool_col(_fields, nil), do: nil
+  defp zpool_col(fields, i), do: Enum.at(fields, i)
+
+  defp zpool_pct(nil), do: nil
+
+  defp zpool_pct(s) do
+    case s |> String.trim_trailing("%") |> Integer.parse() do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+
+  defp zpool_healthy?(lines) when is_list(lines),
+    do: Enum.any?(lines, &String.contains?(&1, "all pools are healthy"))
+
+  defp zpool_healthy?(_), do: nil
 
   # -- decoding ---------------------------------------------------------------
 

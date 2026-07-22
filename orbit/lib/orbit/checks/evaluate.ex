@@ -26,6 +26,9 @@ defmodule Orbit.Checks.Evaluate do
   @cpu_warn 95.0
   @disk_warn 80.0
   @disk_crit 90.0
+  # ZFS pools degrade badly when full — warn earlier than a plain filesystem.
+  @zfs_cap_warn 80
+  @zfs_cap_crit 90
   # (min_gb, warn, crit) largest-first; disk levels scale with volume size.
   @disk_size_levels [{1024.0, 93.0, 97.0}, {200.0, 90.0, 95.0}, {50.0, 85.0, 93.0}]
   # Load is saturation (run-queue), normalised per core, 5-min average — CRIT
@@ -68,8 +71,62 @@ defmodule Orbit.Checks.Evaluate do
     |> Enum.concat(service_checks(status["services"] || sections["services"] || []))
     |> Enum.concat(cert_checks(status["certificates"] || sections["certificates"] || []))
     |> Enum.concat(connectivity_checks(status["connectivity"] || sections["connectivity"] || []))
+    |> Enum.concat(zfs_checks(status["zfs"]))
     |> Enum.reject(&is_nil/1)
   end
+
+  @doc """
+  Per-pool ZFS health + capacity, from the Checkmk `zpool` section (linux
+  nodes). `[]` when the box has no ZFS — no-data never emits a check.
+  ONLINE is OK; any other known pool state is CRIT (redundancy lost or
+  worse); an unrecognised state is UNKNOWN. Capacity warns at 80 %, crit 90 %.
+  """
+  def zfs_checks(%{"pools" => pools}) when is_list(pools), do: Enum.map(pools, &zfs_pool_check/1)
+  def zfs_checks(_), do: []
+
+  defp zfs_pool_check(%{"name" => name} = p) do
+    cap = p["cap_pct"]
+    frag = p["frag_pct"]
+    {health_state, health_word} = zfs_health(p["health"])
+
+    {cap_state, _} =
+      if is_integer(cap),
+        do: level(cap, @zfs_cap_warn, @zfs_cap_crit),
+        else: {ServiceCheck.ok(), "ok"}
+
+    cap_txt = if is_integer(cap), do: ", #{cap}% full", else: ""
+    frag_txt = if is_integer(frag), do: ", #{frag}% frag", else: ""
+
+    metrics =
+      if is_integer(cap) do
+        [
+          ServiceCheck.metric("zfs_cap_pct", cap,
+            warn: @zfs_cap_warn,
+            crit: @zfs_cap_crit,
+            unit: "%"
+          )
+        ]
+      else
+        []
+      end
+
+    %ServiceCheck{
+      key: "zfs:#{name}",
+      state: worse(health_state, cap_state),
+      summary: "Pool #{name} #{health_word}#{cap_txt}#{frag_txt}",
+      metrics: metrics
+    }
+  end
+
+  defp zfs_health("ONLINE"), do: {ServiceCheck.ok(), "ONLINE"}
+
+  defp zfs_health(h) when h in ~w(DEGRADED FAULTED OFFLINE UNAVAIL REMOVED SUSPENDED),
+    do: {ServiceCheck.crit(), h}
+
+  defp zfs_health(h), do: {ServiceCheck.unknown(), h || "unknown"}
+
+  defp worse(a, b),
+    do: if(ServiceCheck.severity(a) >= ServiceCheck.severity(b), do: a, else: b)
 
   @doc "Memory used-% check. nil when no memory section."
   def memory_check(nil), do: nil
