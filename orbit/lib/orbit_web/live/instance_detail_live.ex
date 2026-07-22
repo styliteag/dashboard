@@ -1939,6 +1939,8 @@ defmodule OrbitWeb.InstanceDetailLive do
             />
             <.kv :if={@agent} label="Version" value={@agent.agent_version || "?"} />
             <.kv :if={@agent} label="Platform" value={@agent.platform || "?"} />
+            <%!-- Which of the two agent lines (§28) this instance is served. --%>
+            <.kv label="Agent line" value={agent_line_label(@instance.device_type)} />
             <.kv label="Served version" value={@served_agent_version || "—"} />
           </dl>
 
@@ -3645,4 +3647,12 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp sev_class(s) when s <= 2, do: "bg-error/20 text-error"
   defp sev_class(3), do: "bg-orange-900/50 text-orange-300"
   defp sev_class(_), do: "bg-warning/20 text-warning"
+
+  # Which of the two single-file agent lines (§28) this device type is served.
+  defp agent_line_label(device_type) do
+    case Orbit.Agent.Package.line_for(device_type) do
+      :linux -> "linux (orbit_agent_linux.py)"
+      :firewall -> "firewall (orbit_agent.py)"
+    end
+  end
 end

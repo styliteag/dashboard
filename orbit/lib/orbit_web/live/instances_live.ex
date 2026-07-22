@@ -314,6 +314,9 @@ defmodule OrbitWeb.InstancesLive do
           agent_mode: Instance.agent_mode?(inst),
           last_success_at: inst.last_success_at,
           agent_version: agent && agent.agent_version,
+          # Short line tag for the agent cell (§28): "fw" | "linux".
+          agent_line:
+            if(Orbit.Agent.Package.line_for(inst.device_type) == :linux, do: "linux", else: "fw"),
           served_version: served_for,
           update_available:
             agent_connected and served_for != nil and agent != nil and
@@ -771,8 +774,8 @@ defmodule OrbitWeb.InstancesLive do
                 <td class="px-3 py-2"><.status_badge row={i} /></td>
                 <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>
                 <td class="px-3 py-2 text-base-content/70">
-                  <span :if={i.agent_mode}>
-                    agent
+                  <span :if={i.agent_mode} title={"agent line: #{i.agent_line}"}>
+                    agent <span class="text-base-content/40">{i.agent_line}</span>
                     <span :if={i.agent_version} class="text-base-content/40">v{i.agent_version}</span>
                     <span
                       :if={i.update_available}

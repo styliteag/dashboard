@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lines). It now refuses to start on a Linux host, so a wrong update push
   dies into the supervisor's probation rollback instead of half-running.
   No behavior change on OPNsense/pfSense.
+- The UI now names each instance's agent line: the instances list shows
+  `agent fw` / `agent linux` next to the version, and the instance detail
+  Agent tab lists the line with its source file.
 - Linux agent 3.4.0 (phase 3 of the split): the firewall machinery left the
   linux line — local API relay, GUI login/proxy tunnels, IPsec, pf/gateway/
   interface collectors, vendor firmware upgrades, boot environments and
