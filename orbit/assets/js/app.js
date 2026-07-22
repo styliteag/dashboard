@@ -432,7 +432,10 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 // permanent longpoll (~6 requests/min each, seen in prod on 2026-07-22).
 // Clearing the memo on a full page load makes each fresh load re-probe the
 // websocket; a genuinely broken socket still falls back after 2.5s.
-sessionStorage.removeItem("phx:fallback:longpoll")
+// Key spelling is Socket.transportName(LongPoll) = "LongPoll" — CamelCase,
+// verified in phoenix.mjs; the all-lowercase spelling shipped first and
+// silently removed nothing.
+sessionStorage.removeItem("phx:fallback:LongPoll")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   // phoenix.js defaults to 30s, which is exactly the idle timeout a lot of
