@@ -77,10 +77,11 @@ LINUX_COMMANDS = {
 
 def test_both_versions_are_purely_numeric_dotted():
     # A suffix like "-rc1" makes the anti-rollback parser refuse ALL updates.
-    # The two lines version independently — each box compares within its line.
+    # The two lines MAY version independently (each box only ever compares
+    # within its own line) but MAY also share a number when re-aligned to the
+    # product release version — so equality is allowed, only the format is fixed.
     assert re.fullmatch(r"\d+(\.\d+)+", orbit_agent.__version__)
     assert re.fullmatch(r"\d+(\.\d+)+", orbit_agent_linux.__version__)
-    assert orbit_agent.__version__ != orbit_agent_linux.__version__
 
 
 def test_registries_are_pinned_per_line():
