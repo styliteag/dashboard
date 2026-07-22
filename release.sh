@@ -36,6 +36,26 @@ fi
 echo "✓ Lint passed"
 echo ""
 
+# Test gates. There is no CI on main and the release workflow only runs AFTER
+# the tag is pushed, so a broken test would first surface in a build that can
+# no longer be un-tagged. Run the suites here (the release is the last catch),
+# same as the pro release flow.
+echo "Running orbit tests..."
+if ! just orbit-test; then
+    echo "Error: 'just orbit-test' failed. Fix before releasing."
+    exit 1
+fi
+echo "✓ orbit-test passed"
+echo ""
+
+echo "Running agent tests..."
+if ! just agent-test; then
+    echo "Error: 'just agent-test' failed. Fix before releasing."
+    exit 1
+fi
+echo "✓ agent-test passed"
+echo ""
+
 # Agent build gate: the committed orbit_agent*.py are generated from agent/src/
 # (§28). A forgotten `just build-agent` would ship a stale agent whose bytes no
 # longer match its source — and whose .sig we are about to refresh over the
