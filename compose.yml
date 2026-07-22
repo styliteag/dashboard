@@ -142,7 +142,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 300s
 
   # The only front door: TLS terminates at your external reverse proxy / LB,
   # which forwards HTTP here; this nginx proxies the dashboard, /api and both
