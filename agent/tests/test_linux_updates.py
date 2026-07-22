@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import orbit_agent as agent
+# Linux-only functionality lives in the linux line since the split (§28).
+import orbit_agent_linux as agent
 
 APT_LIST = """Listing...
 base-files/noble-updates 13ubuntu10.2 amd64 [upgradable from: 13ubuntu10]

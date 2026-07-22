@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""orbit agent — runs on OPNsense/pfSense (FreeBSD) and generic Linux servers,
+"""orbit agent (firewall line, §28) — runs on OPNsense/pfSense (FreeBSD) and
 pushes data to the central dashboard.
 
 Collects system metrics locally (no API needed), connects outbound via WebSocket,
-and executes commands received from the dashboard. On Linux the vendored Checkmk
-agent does the collecting; orbit_agent transports its raw output (§25/DR-10).
+and executes commands received from the dashboard. Generic Linux servers run the
+separate linux line (orbit_agent_linux.py) — this file refuses to start on Linux,
+so a wrong update push dies fast into the supervisor's probation rollback.
 
 Dependencies: Python 3.8+ only — no pip packages (stdlib WebSocket client).
 Config: /usr/local/etc/orbit-agent.conf (JSON)
@@ -55,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.1.9"
+__version__ = "3.3.0"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -213,8 +214,8 @@ def detect_platform() -> str:
     OPNsense ships /usr/local/opnsense/version/; pfSense marks /etc/platform
     (confirmed on pfSense Plus 26.03). Shared FreeBSD collectors work on both;
     only gateways + firmware diverge (see docs/agent-architecture.md §4).
-    Generic Linux servers (§25) are detected by the kernel name — cheapest
-    check first, and a FreeBSD firewall can never report Linux.
+    Linux is still detected (cheapest check first) so main() can refuse to
+    run the firewall line on a server (§28) — the linux line ships separately.
     """
     if platform.system() == "Linux":
         return "linux"
@@ -1291,18 +1292,12 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     # 1s/packet. The deadline caps the run: all probes are sent within
     # (count-1)*0.3s, so max(count, 2) still leaves >1s of reply slack while a
     # dead target waits out a shorter deadline than the old max(count+1, 3).
-    # Flag divergence (§25): FreeBSD deadline/-source are -t/-S; on Linux
-    # (iputils) -t is TTL and -S is sndbuf — the equivalents are -w/-I. The
-    # loss/rtt summary lines parse identically on both.
+    # FreeBSD flags: -t deadline, -S source address (iputils spells these
+    # -w/-I — that variant lives in the linux line).
     timeout = max(count, 2)
-    if detect_platform() == "linux":
-        cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-w", str(timeout)]
-        if source:
-            cmd += ["-I", source]
-    else:
-        cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
-        if source:
-            cmd += ["-S", source]
+    cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
+    if source:
+        cmd += ["-S", source]
     cmd.append(dest)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
@@ -1617,8 +1612,8 @@ def _store_fw_verdict(
         "product_latest": latest,
         "update_check_output": out.strip()[:500],
         "check_failed": check_failed,
-        # Linux package-update detail (updates_available/security_updates/
-        # needs_reboot, §25) rides along; firewalls pass no extra.
+        # Extra verdict detail rides along (upgrade_major_version for the
+        # series-upgrade action).
         **(extra or {}),
     }
     _STATE.fw_check_ts = time.monotonic()
@@ -1787,81 +1782,14 @@ def _pfsense_newer_train_verdict(
     return True, newer_version, newer_version, out
 
 
-def _read_linux_version() -> str:
-    """PRETTY_NAME from /etc/os-release (e.g. 'Ubuntu 26.04 LTS')."""
-    try:
-        for line in Path("/etc/os-release").read_text(errors="replace").splitlines():
-            if line.startswith("PRETTY_NAME="):
-                return line.split("=", 1)[1].strip().strip('"')
-    except OSError:
-        pass
-    return ""
-
-
-def _apt_update_check() -> "tuple[bool, str, bool, dict]":
-    """Pending updates via apt. Returns (upgrade_available, out, check_failed, extra)."""
-    refresh = subprocess.run(
-        ["apt-get", "update", "-qq"], capture_output=True, text=True, timeout=90
-    )
-    # `apt list --upgradable` line: "pkg/noble-security 1.2 amd64 [upgradable from: 1.1]"
-    out = _run(["sh", "-c", "apt list --upgradable 2>/dev/null"], timeout=60)
-    rows = [ln for ln in out.splitlines() if "upgradable from" in ln]
-    security = [ln for ln in rows if "-security" in ln.split(None, 1)[0]]
-    packages = []
-    for ln in rows[:50]:
-        parts = ln.split()
-        old = ln.rsplit("upgradable from:", 1)[-1].strip(" ]") if "upgradable from:" in ln else ""
-        packages.append(
-            {
-                "name": parts[0].split("/", 1)[0],
-                "current": old,
-                "new": parts[1] if len(parts) > 1 else "",
-            }
-        )
-    extra = {
-        "updates_available": len(rows),
-        "security_updates": len(security),
-        "needs_reboot": os.path.exists("/var/run/reboot-required"),
-        "packages": packages,
-    }
-    summary = "%d update(s) pending, %d security" % (len(rows), len(security))
-    if refresh.returncode != 0:
-        summary += " (apt-get update failed: %s)" % (refresh.stderr or "").strip()[:200]
-    return len(security) > 0, summary, refresh.returncode != 0, extra
-
-
-def _dnf_update_check() -> "tuple[bool, str, bool, dict]":
-    """Pending updates via dnf. Returns (upgrade_available, out, check_failed, extra)."""
-    # rc 100 = updates available, 0 = up to date, anything else = check failed.
-    r = subprocess.run(["dnf", "-q", "check-update"], capture_output=True, text=True, timeout=120)
-    check_failed = r.returncode not in (0, 100)
-    rows = [
-        ln.split()
-        for ln in r.stdout.splitlines()
-        if ln and not ln.startswith((" ", "Obsoleting", "Last metadata"))
-    ]
-    rows = [p for p in rows if len(p) >= 3]
-    sec_out = _run(["sh", "-c", "dnf -q updateinfo list --security 2>/dev/null"], timeout=60)
-    security = [ln for ln in sec_out.splitlines() if "/Sec." in ln]
-    extra = {
-        "updates_available": len(rows),
-        "security_updates": len(security),
-        "needs_reboot": False,  # RHEL needs-restarting is not reliably present
-        "packages": [{"name": p[0], "current": "", "new": p[1]} for p in rows[:50]],
-    }
-    summary = "%d update(s) pending, %d security" % (len(rows), len(security))
-    return len(security) > 0, summary, check_failed, extra
-
-
-# Serializes the update check on ALL platforms: the push loop's throttled
-# collect_firmware and a manual firmware.check command run on different
-# threads. Two concurrent apt-get invocations fight over the dpkg lists lock
-# (live on ubn1); two concurrent `pkg update` runs pile up on the pkg repo
-# lock — live on opn1 after the 26.7 major, where the post-major catalogue
-# rebuild made every check slow and the stacked callers grew a 16-process
-# convoy behind a dead lock holder.
+# Serializes the update check: the push loop's throttled collect_firmware
+# and a manual firmware.check command run on different threads. Two
+# concurrent `pkg update` runs pile up on the pkg repo lock — live on opn1
+# after the 26.7 major, where the post-major catalogue rebuild made every
+# check slow and the stacked callers grew a 16-process convoy behind a dead
+# lock holder.
 _FW_CHECK_LOCK = threading.Lock()
-# A failed check (apt/dnf/pkg lock held, mirror down) retries after 15 min
+# A failed check (pkg lock held, mirror down) retries after 15 min
 # instead of caching the failure for the full ~12h window.
 _FW_FAILED_RETRY_S = 900
 
@@ -1892,29 +1820,6 @@ def _clear_stale_pkg_repo_lock() -> bool:
         except OSError:
             pass
     return removed
-
-
-def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
-    """Pending package updates on a generic Linux node (§25).
-
-    Returns (upgrade_available, latest, out, check_failed, extra).
-    ``upgrade_available`` is deliberately security-only: pending security
-    updates WARN, routine updates stay OK with a count — a server fleet would
-    otherwise be permanently yellow. No supported package manager → the
-    verdict is check_failed (never a false green "up to date").
-    """
-    version = _read_linux_version()
-    with _FW_CHECK_LOCK:
-        try:
-            if shutil.which("apt-get"):
-                upgrade_available, out, check_failed, extra = _apt_update_check()
-            elif shutil.which("dnf"):
-                upgrade_available, out, check_failed, extra = _dnf_update_check()
-            else:
-                return False, version, "no supported package manager (apt/dnf)", True, {}
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            return False, version, "update check failed: %s" % exc, True, {}
-    return upgrade_available, version, out, check_failed, extra
 
 
 # Matches the apply run (`pfSense-upgrade -y`) but never the periodic `-c`
@@ -1957,20 +1862,13 @@ def collect_firmware() -> dict:
     Only ``product_version`` is recomputed every push (a cheap local file read); the
     branch + upgrade verdict come from the cached last network check so the frequent
     interim pushes never blank a detected update (see ``_STATE.fw_verdict``).
-    On linux "firmware" means pending apt/dnf package updates (§25/DR-10).
     """
     plat = detect_platform()
     pfsense = plat == "pfsense"
-    if plat == "linux":
-        version = _read_linux_version()
-    elif pfsense:
-        version = _read_pfsense_version()
-    else:
-        version = _read_opnsense_version()
+    version = _read_pfsense_version() if pfsense else _read_opnsense_version()
 
     if (
-        plat != "linux"
-        and version
+        version
         and _STATE.fw_verdict.get("upgrade_available")
         and _STATE.fw_verdict.get("product_latest") == version
     ):
@@ -1978,26 +1876,13 @@ def collect_firmware() -> dict:
         # without anyone polling upgrade_status (bulk "Update all", manual CLI)
         # and no reboot restarted the agent (pkg-only point release). Drop the
         # verdict so this push re-checks instead of serving "N available" for
-        # up to 12h (incident opn1 2026-07-15). linux is excluded: its verdict
-        # is count-based and product_latest routinely equals the installed
-        # version, so this guard would force a vendor check on every push.
+        # up to 12h (incident opn1 2026-07-15).
         _STATE.fw_verdict = {}
         _STATE.fw_check_ts = 0.0
 
     now = time.monotonic()
     if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
         return {"product_version": version, **_STATE.fw_verdict}
-
-    if plat == "linux":
-        upgrade_available, latest, out, check_failed, extra = _linux_update_check()
-        verdict = _store_fw_verdict(
-            "", [], upgrade_available, latest or version, out, check_failed, extra=extra
-        )
-        if check_failed:
-            # Transient failures (apt/dnf lock held by unattended-upgrades,
-            # mirror hiccup) must not pin a WARN for the whole 12h window.
-            _STATE.fw_check_ts = time.monotonic() - (_FW_CHECK_INTERVAL_S - _FW_FAILED_RETRY_S)
-        return {"product_version": version, **verdict}
 
     with _FW_CHECK_LOCK:
         # Re-check the cache after acquiring the lock: while this caller
@@ -2067,7 +1952,7 @@ def collect_firmware() -> dict:
             extra={"upgrade_major_version": major} if major else None,
         )
         if check_failed:
-            # Same 15-min retry as the linux branch — a transient failure
+            # 15-min retry — a transient failure
             # (mirror down, pkg lock busy, post-major catalogue rebuild) must
             # not pin "Check failed" for the whole 12h window (lived on opn1
             # after the 26.7 major).
@@ -2660,49 +2545,6 @@ def _dhcp_lines() -> str:
     return _run(["sh", "-c", cmd], timeout=10)
 
 
-def _collect_logfiles_linux() -> list:
-    """Linux log snapshot (§25): journald first, classic /var/log as fallback.
-
-    journald delivers severity via the priority filter (no regex calibration):
-    ``journal-err`` = prio 0..3, ``journal-warn`` = prio 4 only, plus an auth
-    slice (sshd/sudo) and dmesg. systemd-less hosts fall back to the classic
-    files. Same shape ({name, content}) and byte caps as the firewall sources;
-    per-item try/except so one bad source never drops the rest.
-    """
-    out: list = []
-    total = 0
-    if shutil.which("journalctl"):
-        sources = (
-            ("journal-err", "journalctl --no-pager -q -p 3 -n 400 --since '-24 hours'"),
-            ("journal-warn", "journalctl --no-pager -q -p 4..4 -n 400 --since '-24 hours'"),
-            ("auth", "journalctl --no-pager -q -t sshd -t sudo -n 200 --since '-24 hours'"),
-        )
-    else:
-        sources = tuple(
-            (name, "tail -c %d %s" % (_LOG_PER_FILE, path))
-            for name, path in (
-                ("syslog", "/var/log/syslog"),
-                ("messages", "/var/log/messages"),
-                ("auth", "/var/log/auth.log"),
-                ("secure", "/var/log/secure"),
-                ("kern", "/var/log/kern.log"),
-            )
-            if os.path.exists(path)
-        )
-    extras = (("dmesg", "dmesg 2>/dev/null | tail -n 200"),)
-    for name, cmd in sources + extras:
-        if total >= _LOG_TOTAL_CAP:
-            break
-        try:
-            budget = min(_LOG_PER_FILE, _LOG_TOTAL_CAP - total)
-            content = _run(["sh", "-c", cmd + " 2>/dev/null"], timeout=15)[:budget]
-        except Exception:
-            continue
-        if content:
-            out.append({"name": name, "content": content})
-            total += len(content)
-    return out
-
 
 def collect_logfiles() -> list:
     """Tail important logs (≈1 MB total) for AI analysis, at most hourly.
@@ -2721,10 +2563,6 @@ def collect_logfiles() -> list:
     if _last_log_ts[0] > 0 and (now - _last_log_ts[0]) < _LOG_INTERVAL:
         return []
     platform_name = detect_platform()
-    if platform_name == "linux":
-        out = _collect_logfiles_linux()
-        _last_log_ts[0] = now
-        return out
     out = []
     total = 0
     for name, opn_glob, pf_path in _LOG_SOURCES:
@@ -2811,110 +2649,6 @@ def collect_config_backup() -> dict:
         "content_gz_b64": base64.b64encode(gzip.compress(raw)).decode(),
     }
 
-
-# --- Checkmk-agent bridge (generic Linux nodes; §25/DR-10) -------------------
-# On linux the vendored upstream check_mk_agent.linux does the data collection;
-# orbit_agent only transports its raw output. Parsing lives in the backend, so
-# evaluating a new Checkmk section never needs an agent rollout.
-_CHECKMK_CANDIDATES = (
-    "/usr/local/orbit-agent/check_mk_agent.linux",  # deployed alongside the agent
-    "/usr/bin/check_mk_agent",  # distro package (checkmk-agent)
-    "/usr/local/bin/check_mk_agent",
-)
-_CHECKMK_TIMEOUT = 30  # stock sections finish in ~1-3s; local plugins get headroom
-_CHECKMK_MAX = 2_000_000  # raw cap — a runaway plugin must not blow the WS frame
-
-
-def _checkmk_script() -> str | None:
-    """Path of the first usable Checkmk agent script, or None."""
-    for path in _CHECKMK_CANDIDATES:
-        if os.path.isfile(path) and os.access(path, os.X_OK):
-            return path
-    return None
-
-
-# Where checkmk.update deploys/refreshes our managed copy (first candidate —
-# a distro-installed /usr/bin/check_mk_agent is never touched).
-_CHECKMK_DEPLOY_PATH = "/usr/local/orbit-agent/check_mk_agent.linux"
-
-
-def _checkmk_script_sha() -> str:
-    """sha256 of the active Checkmk script ('' when absent / non-linux)."""
-    if detect_platform() != "linux":
-        return ""
-    script = _checkmk_script()
-    if script is None:
-        return ""
-    try:
-        with open(script, "rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()
-    except OSError:
-        return ""
-
-
-def _cmd_checkmk_update(params: dict) -> dict:
-    """Deploy/refresh the vendored Checkmk agent script (§25/DR-10).
-
-    Root-executed code from the server — same trust chain as agent.update:
-    the sha256 must match AND the Ed25519 signature must verify against the
-    baked _UPDATE_PUBKEY (dev skip only via the explicit opt-ins). Writes
-    atomically (tmp + rename) so a crashed deploy never leaves a torn script.
-    """
-    if detect_platform() != "linux":
-        return {"success": False, "output": "checkmk deploy is linux-only"}
-    try:
-        code = base64.b64decode(params.get("code", ""), validate=True)
-    except (ValueError, TypeError):
-        return {"success": False, "output": "invalid code encoding"}
-    if not code:
-        return {"success": False, "output": "empty code"}
-    sha = hashlib.sha256(code).hexdigest()
-    if sha != (params.get("sha256") or "").lower():
-        return {"success": False, "output": "sha256 mismatch"}
-    if not _skip_sig_check() and not _signature_ok(code, params.get("signature", "")):
-        return {"success": False, "output": "signature verification failed"}
-    directory = os.path.dirname(_CHECKMK_DEPLOY_PATH)
-    try:
-        os.makedirs(directory, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".checkmk-")
-        with os.fdopen(fd, "wb") as f:
-            f.write(code)
-        os.chmod(tmp, 0o755)
-        os.replace(tmp, _CHECKMK_DEPLOY_PATH)
-    except OSError as exc:
-        return {"success": False, "output": "write failed: %s" % exc}
-    return {"success": True, "output": "check_mk_agent deployed (%s)" % sha[:12], "sha256": sha}
-
-
-def collect_checkmk() -> dict:
-    """Raw Checkmk-agent output for backend-side parsing (linux only).
-
-    Pure transport (DR-10): run the vendored GPLv2 script, ship stdout as
-    gzip+base64. Other platform / no script / failure / empty / oversize → {}
-    so the backend never sees a checkmk_raw section and emits no checks
-    (absent data must never alarm). Oversize output is dropped, not
-    truncated — a cut section boundary would parse as garbage.
-    """
-    if detect_platform() != "linux":
-        return {}
-    script = _checkmk_script()
-    if script is None:
-        return {}
-    try:
-        r = subprocess.run([script], capture_output=True, timeout=_CHECKMK_TIMEOUT)
-    except (subprocess.TimeoutExpired, OSError):
-        return {}
-    raw = r.stdout or b""
-    if not raw:
-        return {}
-    if len(raw) > _CHECKMK_MAX:
-        log.warning("checkmk output skipped: %d bytes exceeds cap", len(raw))
-        return {}
-    return {
-        "sha256": hashlib.sha256(raw).hexdigest(),
-        "size": len(raw),
-        "output_gz_b64": base64.b64encode(gzip.compress(raw)).decode(),
-    }
 
 
 # Public-IP discovery. The box's own interfaces only show its *local* WAN address
@@ -3008,7 +2742,6 @@ _SNAPSHOT_SECTIONS = (
     ("certificates", "collect_certificates"),
     ("logfiles", "collect_logfiles"),
     ("config_backup", "collect_config_backup"),
-    ("checkmk_raw", "collect_checkmk"),
 )
 
 
@@ -4159,24 +3892,6 @@ def _cmd_ipsec_restart(params: dict) -> dict:
 
 def _cmd_firmware_check(params: dict) -> dict:
     plat = detect_platform()
-    if plat == "linux":
-        upgrade_available, latest, out, check_failed, extra = _linux_update_check()
-        verdict = _store_fw_verdict(
-            "", [], upgrade_available, latest, out, check_failed, extra=extra
-        )
-        return {
-            "success": True,
-            "output": verdict["update_check_output"],
-            "product_version": latest,
-            "product_latest": verdict["product_latest"],
-            "upgrade_available": verdict["upgrade_available"],
-            "branch": "",
-            "known_branches": [],
-            "check_failed": verdict["check_failed"],
-            "updates_available": extra.get("updates_available", 0),
-            "security_updates": extra.get("security_updates", 0),
-            "needs_reboot": extra.get("needs_reboot", False),
-        }
     # Serialized against the push loop's own check (_FW_CHECK_LOCK) — without
     # it a manual "Check now" races the throttled collect_firmware and both
     # hammer the pkg repo lock at once. The manual check still always runs
@@ -4305,34 +4020,13 @@ def _fw_space_error() -> "dict | None":
 
 
 def _cmd_firmware_update(params: dict) -> dict:
-    # Non-blocking: start in background. The firewall vendor updaters handle
-    # the reboot themselves when required (new base/kernel); a linux server is
-    # deliberately NEVER auto-rebooted — the needs_reboot flag surfaces it.
+    # Non-blocking: start in background. The vendor updaters handle the
+    # reboot themselves when required (new base/kernel).
     space_err = _fw_space_error()
     if space_err:
         return space_err
     plat = detect_platform()
-    env = None
-    if plat == "linux":
-        if shutil.which("apt-get"):
-            # dist-upgrade, not upgrade: a kernel update (linux-image-generic)
-            # pulls a NEW versioned image package as a dependency — plain
-            # upgrade keeps it back forever and the pending count never
-            # reaches zero. Same release, no do-release-upgrade semantics.
-            cmd = [
-                "apt-get",
-                "-y",
-                "-o", "Dpkg::Options::=--force-confdef",
-                "-o", "Dpkg::Options::=--force-confold",
-                "dist-upgrade",
-            ]
-            env = dict(os.environ)
-            env["DEBIAN_FRONTEND"] = "noninteractive"
-        elif shutil.which("dnf"):
-            cmd = ["dnf", "-y", "upgrade"]
-        else:
-            return {"success": False, "output": "no supported package manager (apt/dnf)"}
-    elif plat == "pfsense":
+    if plat == "pfsense":
         # Plain -y: the -T lockf-timeout flag is >= 1.3 tooling only
         # ("Illegal option -T" on 2.7.2). Lock contention is handled by
         # _pfsense_wait_updater_idle below.
@@ -4341,21 +4035,16 @@ def _cmd_firmware_update(params: dict) -> dict:
         # Same path as the OPNsense GUI (configd "firmware update"):
         # daemonized launcher.sh installs pkg+base+kernel, then reboots.
         cmd = ["configctl", "firmware", "update"]
-    snapshot_note = ""
-    if plat != "linux":
-        installed = _read_pfsense_version() if plat == "pfsense" else _read_opnsense_version()
-        be = _zfs_boot_snapshot(installed)
-        if be:
-            snapshot_note = "; boot environment %s created" % be
+    installed = _read_pfsense_version() if plat == "pfsense" else _read_opnsense_version()
+    be = _zfs_boot_snapshot(installed)
+    snapshot_note = "; boot environment %s created" % be if be else ""
     if plat == "pfsense" and not _pfsense_wait_updater_idle():
         return {
             "success": False,
             "output": "another pfSense-upgrade instance is still running — try again",
         }
     _STATE.fw_update_ts = time.time()
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-    if plat == "linux":
-        return {"success": True, "output": "package upgrade started (no automatic reboot)"}
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {"success": True, "output": "update started in background" + snapshot_note}
 
 
@@ -4500,42 +4189,11 @@ def _firewall_upgrade_status(plat: str) -> dict:
 
 
 def _cmd_upgrade_status(params: dict) -> dict:
-    """Progress of a background package/firmware upgrade.
-
-    linux (§25): "running" while apt/dpkg/dnf processes exist, else "done" —
-    with the dpkg (or dnf) log tail as the visible log. On done the
-    update-check throttle is re-armed so the next push reports fresh pending
-    counts instead of serving the pre-upgrade verdict for up to 12h.
-    OPNsense/pfSense: see _firewall_upgrade_status.
-    """
+    """Progress of a background firmware upgrade (see _firewall_upgrade_status)."""
     plat = detect_platform()
     if plat in ("opnsense", "pfsense"):
         return _firewall_upgrade_status(plat)
-    if plat != "linux":
-        return {"success": False, "output": "unsupported platform", "status": "unknown", "log": []}
-    procs = _run(
-        ["sh", "-c", "pgrep -x apt-get; pgrep -x apt; pgrep -x dpkg; pgrep -x dnf"], timeout=10
-    )
-    running = bool(procs.strip())
-    tail = _run(
-        [
-            "sh",
-            "-c",
-            "tail -n 20 /var/log/dpkg.log 2>/dev/null || tail -n 20 /var/log/dnf.rpm.log",
-        ],
-        timeout=10,
-    )
-    if not running:
-        # Drop the cached verdict entirely — resetting only fw_check_ts to 0
-        # does NOT expire the cache on a box with uptime < the 12h interval
-        # (time.monotonic() starts near 0 at boot, so now-0 < interval).
-        _STATE.fw_verdict = {}
-        _STATE.fw_check_ts = 0.0
-    return {
-        "success": True,
-        "status": "running" if running else "done",
-        "log": tail.splitlines()[-20:],
-    }
+    return {"success": False, "output": "unsupported platform", "status": "unknown", "log": []}
 
 
 def _cmd_config_backup(params: dict) -> dict:
@@ -4722,7 +4380,6 @@ _COMMANDS = {
     "config.backup": _cmd_config_backup,
     "reboot": _cmd_reboot,
     "relay.enable": _cmd_relay_enable,
-    "checkmk.update": _cmd_checkmk_update,
     "firmware.upgrade_status": _cmd_upgrade_status,
     "gui.login": _cmd_gui_login,
     "http.relay": _cmd_http_relay,
@@ -5385,9 +5042,6 @@ async def agent_loop(cfg: Config) -> None:
                 "agent_version": __version__,
                 "hostname": platform.node(),
                 "platform": detect_platform(),
-                # Deployed Checkmk-script sha (linux, §25) — the backend pushes
-                # a signed refresh via checkmk.update when it differs.
-                "checkmk_sha256": _checkmk_script_sha(),
             }))
 
             # Run push, listen and keepalive concurrently
@@ -6137,6 +5791,14 @@ def main() -> None:
     log.info("orbit agent v%s starting (id=%s)", __version__, cfg.agent_id)
     log.info("dashboard: %s", cfg.dashboard_url)
     log.info("push interval: %ds", cfg.push_interval)
+
+    if detect_platform() == "linux":
+        # Firewall line only (§28). A linux box that somehow received this
+        # file (wrong update push) must die fast: the supervisor's probation
+        # (marker + <60s runtime + .bak) then rolls back to the previous
+        # agent instead of half-running firewall code on a server.
+        log.error("firewall agent line — linux nodes run orbit_agent_linux.py")
+        raise SystemExit(1)
 
     # Enrollment: if bootstrapped with a one-time code instead of a token, trade it
     # for an agent_token and persist it before we try to connect (§16 chunk C2).

@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nodes — self-update, the install snippet and "Update all agents" pick the
   right line per instance automatically. Phase 1 is a functionally identical
   copy; the platform-foreign code is stripped from each line in follow-ups.
+- Firewall agent 3.3.0 (phase 2 of the split): the Linux-only code left the
+  firewall line — checkmk bridge and `checkmk.update`, apt/dnf update checks
+  and package upgrades, journald log collection, Linux ping flags (~340
+  lines). It now refuses to start on a Linux host, so a wrong update push
+  dies into the supervisor's probation rollback instead of half-running.
+  No behavior change on OPNsense/pfSense.
 
 ## [4.2.11] - 2026-07-22
 

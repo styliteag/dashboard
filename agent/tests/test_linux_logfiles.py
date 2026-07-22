@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import orbit_agent as agent
+# Linux-only functionality lives in the linux line since the split (§28).
+import orbit_agent_linux as agent
 
 
 def _reset() -> None:

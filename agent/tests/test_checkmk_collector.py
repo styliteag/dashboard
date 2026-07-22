@@ -13,7 +13,8 @@ import gzip
 import hashlib
 import stat
 
-import orbit_agent as agent
+# Linux-only functionality lives in the linux line since the split (§28).
+import orbit_agent_linux as agent
 
 
 def _script(tmp_path, body: str) -> str:

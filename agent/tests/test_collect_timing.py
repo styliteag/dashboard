@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-import orbit_agent as agent
+# The linux line still carries the FULL section registry until phase 3 of
+# the split (§28) — the stubbed collect_all runs against it; the firewall
+# line's slimmed registry is asserted in test_agent_split.py.
+import orbit_agent_linux as agent
 
 _SECTIONS = {
     "system": {"hostname": "fw"},
