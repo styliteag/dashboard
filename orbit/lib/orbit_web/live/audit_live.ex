@@ -24,7 +24,7 @@ defmodule OrbitWeb.AuditLive do
   @refresh_ms 30_000
 
   # Shape the Access header renders; used only when the reads fail.
-  @empty_summary %{online: [], logins_24h: %{ok: 0, failed: 0}, blocks: [], principals_24h: []}
+  @empty_summary %{online: [], logins: %{ok: 0, failed: 0}, blocks: [], principals: []}
 
   @timeline_types [
     {:auth, "Logins"},
@@ -40,11 +40,11 @@ defmodule OrbitWeb.AuditLive do
     socket =
       socket
       |> assign(
-        tab: :actions,
-        types: MapSet.new([:auth, :access, :denial]),
+        tab: :access,
+        types: MapSet.new([:auth, :denial]),
         q: "",
-        hours: nil,
-        grouped: false,
+        hours: 24,
+        grouped: true,
         action_q: "",
         action_hours: nil,
         action_limit: 100
@@ -139,11 +139,18 @@ defmodule OrbitWeb.AuditLive do
     |> assign_new(:grouped_rows, fn -> [] end)
   end
 
+  # Human label for the selected window; mirrors the period <select> options.
+  defp window_label(nil), do: "all time"
+  defp window_label(24), do: "24h"
+  defp window_label(168), do: "7d"
+  defp window_label(720), do: "30d"
+  defp window_label(h), do: "#{h}h"
+
   defp do_load(%{assigns: %{tab: :access}} = socket) do
     types = MapSet.to_list(socket.assigns.types)
     opts = [q: socket.assigns.q, hours: socket.assigns.hours]
 
-    socket = assign(socket, summary: Access.summary())
+    socket = assign(socket, summary: Access.summary(socket.assigns.hours))
 
     if socket.assigns.grouped do
       assign(socket, grouped_rows: Access.grouped(types, @limit, opts), timeline: [])
@@ -275,7 +282,7 @@ defmodule OrbitWeb.AuditLive do
           </h1>
           <div class="flex rounded border border-base-300 text-xs">
             <button
-              :for={{tab, label} <- [{:actions, "Actions"}, {:access, "Access"}]}
+              :for={{tab, label} <- [{:access, "Access"}, {:actions, "Actions"}]}
               phx-click="tab"
               phx-value-tab={tab}
               class={[
@@ -381,16 +388,16 @@ defmodule OrbitWeb.AuditLive do
               </div>
             </div>
             <div class="rounded-lg border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Logins (24h)</div>
+              <div class="text-xs text-base-content/60">Logins ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-base-content">
-                {@summary.logins_24h.ok}
-                <span :if={@summary.logins_24h.failed > 0} class="text-base text-error">
-                  / {@summary.logins_24h.failed} failed
+                {@summary.logins.ok}
+                <span :if={@summary.logins.failed > 0} class="text-base text-error">
+                  / {@summary.logins.failed} failed
                 </span>
               </div>
             </div>
             <div class="rounded-lg border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Blocked (all time)</div>
+              <div class="text-xs text-base-content/60">Blocked ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-error">
                 {@summary.blocks |> Enum.map(& &1.count) |> Enum.sum()}
               </div>
@@ -399,8 +406,8 @@ defmodule OrbitWeb.AuditLive do
               </div>
             </div>
             <div class="rounded-lg border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Requests (24h)</div>
-              <div :for={p <- Enum.take(@summary.principals_24h, 5)} class="mt-1 text-xs">
+              <div class="text-xs text-base-content/60">Requests ({window_label(@hours)})</div>
+              <div :for={p <- Enum.take(@summary.principals, 5)} class="mt-1 text-xs">
                 <span class="text-base-content/80">{p.principal}</span>
                 <span class="text-base-content/60"> · {p.count}</span>
               </div>

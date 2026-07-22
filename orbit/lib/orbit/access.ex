@@ -15,13 +15,19 @@ defmodule Orbit.Access do
   # Nachtrag) — extend when new instance-scoped audit actions appear.
   @access_action_prefixes ~w(agent.gui_open shell. capture. packet_capture. firewall.rule.)
 
-  @doc "Aggregates for the Access tab header."
-  def summary do
+  @doc """
+  Aggregates for the Access tab header, scoped to `hours` (nil = all time).
+
+  Online is always "right now"; logins, blocks and requests follow the window
+  the operator picked in the filter, so the header cards agree with the event
+  list below them instead of each quoting a fixed 24h/all-time span.
+  """
+  def summary(hours \\ nil) do
     %{
       online: online_sessions(),
-      logins_24h: logins_24h(),
-      blocks: blocks_by_reason(),
-      principals_24h: principals_24h()
+      logins: logins_over(hours),
+      blocks: blocks_over(hours),
+      principals: principals_over(hours)
     }
   end
 
@@ -111,12 +117,14 @@ defmodule Orbit.Access do
     end)
   end
 
-  defp logins_24h do
+  defp logins_over(hours) do
+    {clause, params} = since_and("ts", hours)
+
     rows =
       query!(
         "SELECT result, COUNT(*) FROM audit_log " <>
-          "WHERE action = 'auth.login' AND ts >= ? GROUP BY result",
-        [naive_ago(24 * 3600)]
+          "WHERE action = 'auth.login'" <> clause <> " GROUP BY result",
+        params
       )
 
     ok = for([r, n] <- rows, r == "ok", do: n) |> Enum.sum()
@@ -124,7 +132,9 @@ defmodule Orbit.Access do
     %{ok: ok, failed: other}
   end
 
-  defp blocks_by_reason do
+  # All-time uses the monotonic cumulative aggregate (it survives event
+  # pruning); a bounded window counts the actual denial events inside it.
+  defp blocks_over(nil) do
     query!(
       "SELECT reason, SUM(count) FROM geoip_denial_stats " <>
         "WHERE reason <> 'fail_open' GROUP BY reason ORDER BY SUM(count) DESC",
@@ -133,19 +143,38 @@ defmodule Orbit.Access do
     |> Enum.map(fn [reason, n] -> %{reason: reason, count: to_int(n)} end)
   end
 
-  defp principals_24h do
+  defp blocks_over(hours) do
+    query!(
+      "SELECT reason, COUNT(*) FROM geoip_denial_events " <>
+        "WHERE reason <> 'fail_open' AND ts >= ? GROUP BY reason ORDER BY COUNT(*) DESC",
+      [naive_ago(hours * 3600)]
+    )
+    |> Enum.map(fn [reason, n] -> %{reason: reason, count: to_int(n)} end)
+  end
+
+  defp principals_over(hours) do
     usernames = usernames_by_id()
+    {clause, params} = since_where("bucket", hours)
 
     query!(
-      "SELECT principal_type, principal_key, SUM(count) FROM access_stats " <>
-        "WHERE bucket >= ? GROUP BY principal_type, principal_key " <>
-        "ORDER BY SUM(count) DESC LIMIT 10",
-      [naive_ago(24 * 3600)]
+      "SELECT principal_type, principal_key, SUM(count) FROM access_stats" <>
+        clause <>
+        " GROUP BY principal_type, principal_key ORDER BY SUM(count) DESC LIMIT 10",
+      params
     )
     |> Enum.map(fn [ptype, pkey, n] ->
       %{principal: principal_label(ptype, pkey, usernames), count: to_int(n)}
     end)
   end
+
+  # Time-window SQL fragments (column name is a code constant, never user
+  # input). `since_and` extends an existing WHERE; `since_where` opens one;
+  # both are empty for an all-time (nil) window.
+  defp since_and(_col, nil), do: {"", []}
+  defp since_and(col, hours), do: {" AND #{col} >= ?", [naive_ago(hours * 3600)]}
+
+  defp since_where(_col, nil), do: {"", []}
+  defp since_where(col, hours), do: {" WHERE #{col} >= ?", [naive_ago(hours * 3600)]}
 
   # SUM() over BIGINT comes back as a Decimal struct from myxql — normalise
   # to integer or Enum.sum and the HEEx render both crash on it.

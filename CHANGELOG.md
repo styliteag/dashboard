@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The audit page opens on the Access tab, pre-filtered to what usually
+  matters.** Access is now the first tab and the one the page lands on, and its
+  filter defaults to Logins + Blocked over the last 24h, grouped. The three
+  header cards (Logins, Blocked, Requests) now count over the *selected* time
+  window instead of a fixed 24h/all-time span, so they agree with the event
+  list below and re-scope when you change the period (all time still uses the
+  monotonic all-time block total).
 - **Interface error checks now alarm on the error _rate_ (% of total packets),
   not an absolute since-boot count.** A busy 10G link passes orders of
   magnitude more frames than a mgmt port, so a fixed "1000 errors = CRIT" was
