@@ -3,8 +3,10 @@ defmodule OrbitWeb.DesignTest do
 
   alias OrbitWeb.Design
 
-  test "all/0 lists the built-in designs in order" do
-    assert Design.all() == ["orbit", "bench", "soft"]
+  # Prefix assertion, not equality: downstream builds may append designs via
+  # `config :orbit, :designs` and still run this suite unchanged.
+  test "all/0 starts with the built-in designs in order" do
+    assert Enum.take(Design.all(), 3) == ["orbit", "bench", "soft"]
   end
 
   test "default/0 is the first design" do
