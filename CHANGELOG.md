@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Alerts: filter by instance tag instead of Checkmk-exported/excluded.** The
+  exported/excluded filter chips are replaced by tag chips (parity with the
+  Instances and Log-events pages). The page now shows every alert by default
+  and narrows by tag; each row still shows its Checkmk exported/excluded badge.
 - **The VPN tunnel expand toggle is a larger, easier click target.** The
   phase-2 child-SA disclosure arrow grew from a 24px to a 32px button with a
   bigger glyph.

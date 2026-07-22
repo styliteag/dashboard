@@ -30,12 +30,9 @@ defmodule OrbitWeb.AlertsLive do
       Process.send_after(self(), :refresh, @refresh_ms)
     end
 
-    # Opens on the exported set (python parity): those are the checks that
-    # actually page someone. Note the interaction with base-OFF selection —
-    # on a fleet whose include rules are not curated yet this shows few or no
-    # rows even while CRITs exist; the "Checkmk-exported" chip toggles back
-    # to everything.
-    {:ok, socket |> assign(severity_filter: "all", exported_filter: "exported") |> load()}
+    # Show every alert; narrow by instance tag. (Each row still shows whether
+    # the check is Checkmk-exported.)
+    {:ok, socket |> assign(severity_filter: "all", tag_filter: "all") |> load()}
   end
 
   @impl true
@@ -62,10 +59,9 @@ defmodule OrbitWeb.AlertsLive do
     {:noreply, assign(socket, severity_filter: b)}
   end
 
-  def handle_event("exported_filter", %{"val" => v}, socket)
-      when v in ~w(all exported excluded) do
-    v = if socket.assigns.exported_filter == v, do: "all", else: v
-    {:noreply, assign(socket, exported_filter: v)}
+  def handle_event("tag_filter", %{"tag" => tag}, socket) do
+    tag = if socket.assigns.tag_filter == tag, do: "all", else: tag
+    {:noreply, assign(socket, tag_filter: tag)}
   end
 
   def handle_event("refresh_now", _params, socket), do: {:noreply, load(socket)}
@@ -93,6 +89,7 @@ defmodule OrbitWeb.AlertsLive do
             inst: inst,
             shell_enabled: (record && record.shell_enabled) || false,
             base_url: (record && record.base_url) || "",
+            tags: (record && record.tags) || [],
             check: c,
             exported: Orbit.Selection.is_on_live("checkmk", c.key, inst.id),
             gui_openable: record != nil and Orbit.GUI.openable(record) == :ok
@@ -151,13 +148,7 @@ defmodule OrbitWeb.AlertsLive do
         "unknown" -> al.check.state == 3
       end
     end)
-    |> Enum.filter(fn al ->
-      case a.exported_filter do
-        "all" -> true
-        "exported" -> al.exported
-        "excluded" -> not al.exported
-      end
-    end)
+    |> Enum.filter(&(a.tag_filter == "all" or a.tag_filter in &1.tags))
   end
 
   @impl true
@@ -166,6 +157,7 @@ defmodule OrbitWeb.AlertsLive do
       assign(assigns,
         rows: visible(assigns),
         families: family_tally(assigns.alerts),
+        tags: assigns.alerts |> Enum.flat_map(& &1.tags) |> Enum.uniq() |> Enum.sort(),
         crit: Enum.count(assigns.alerts, &(&1.check.state == 2)),
         warn: Enum.count(assigns.alerts, &(&1.check.state == 1)),
         unknown: Enum.count(assigns.alerts, &(&1.check.state == 3))
@@ -245,14 +237,14 @@ defmodule OrbitWeb.AlertsLive do
               class="w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </form>
-          <div class="flex gap-2">
+          <div :if={@tags != []} class="flex flex-wrap gap-2">
             <button
-              :for={{v, label} <- [{"exported", "Checkmk-exported"}, {"excluded", "Excluded"}]}
-              phx-click="exported_filter"
-              phx-value-val={v}
-              class={chip(@exported_filter == v)}
+              :for={tag <- @tags}
+              phx-click="tag_filter"
+              phx-value-tag={tag}
+              class={chip(@tag_filter == tag)}
             >
-              {label}
+              {tag}
             </button>
           </div>
         </div>
