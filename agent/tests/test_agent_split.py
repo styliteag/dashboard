@@ -86,11 +86,21 @@ def test_both_versions_are_purely_numeric_dotted():
 
 def test_registries_are_pinned_per_line():
     assert tuple(k for k, _ in orbit_agent._SNAPSHOT_SECTIONS) == FIREWALL_SECTIONS
-    assert tuple(k for k, _ in orbit_agent_linux._SNAPSHOT_SECTIONS) == LINUX_SECTIONS
+    # The linux line's CORE sections are pinned; a downstream/pro build may
+    # append drop-in sections (agent/src/linux.d parts), which push under the
+    # x_* vendor namespace the hub passthrough stores (§28). Anything not in
+    # the core set must be an x_* extra — never a silent core edit.
+    linux_keys = [k for k, _ in orbit_agent_linux._SNAPSHOT_SECTIONS]
+    assert tuple(k for k in linux_keys if not k.startswith("x_")) == LINUX_SECTIONS
+    for k in linux_keys:
+        assert k in LINUX_SECTIONS or k.startswith("x_"), f"unexpected section {k!r}"
 
 
 def test_linux_command_surface_is_pinned():
-    assert set(orbit_agent_linux._COMMANDS) == LINUX_COMMANDS
+    # Every core command must be present; a downstream/pro build may add more
+    # via drop-in parts (e.g. "zfs.scrub"), so this is a subset check, not
+    # equality. The firewall line has no drop-ins and stays exact elsewhere.
+    assert LINUX_COMMANDS <= set(orbit_agent_linux._COMMANDS)
 
 
 def test_checkmk_is_linux_line_only():
