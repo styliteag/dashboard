@@ -29,11 +29,23 @@ defmodule OrbitWeb.InstanceCreateLive do
 
       {:ok,
        socket
-       |> assign(groups: groups, error: nil)
+       |> assign(groups: groups, error: nil, form: %{"transport" => "push"})
        |> TagPicker.init([], Instances.known_tags(user))}
     else
       {:ok, push_navigate(socket, to: ~p"/instances")}
     end
+  end
+
+  @doc """
+  Whether the direct-API fields (base URL, API credentials, TLS options) are
+  rendered. In agent mode the box pushes and the dashboard never calls its
+  API, so the fields would only invite a base_url that must stay empty —
+  hidden fields are absent from the submit and the record stays clean.
+  Push-only device types (DR-9) never show them, whatever the transport.
+  """
+  @spec direct_fields?(map()) :: boolean()
+  def direct_fields?(form) do
+    form["transport"] == "direct" and not Instances.push_only_type?(form["device_type"])
   end
 
   defp selectable_groups(user) do
@@ -48,6 +60,9 @@ defmodule OrbitWeb.InstanceCreateLive do
   @impl true
   def handle_event("create", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
+    # Submitted values also refresh the form state: a rejected submit
+    # re-renders, and browser autofill can land values no change event saw.
+    socket = assign(socket, form: Map.merge(socket.assigns.form, params))
     params = Map.put(params, "tags", TagPicker.submitted_tags(socket))
 
     with true <- user.role in @write_roles,
@@ -75,6 +90,16 @@ defmodule OrbitWeb.InstanceCreateLive do
   # errors here.
   def handle_event("tag_" <> _ = event, params, socket) do
     {:noreply, TagPicker.on_event(event, params, socket)}
+  end
+
+  # Every keystroke lands here so typed values survive re-renders: any tag_*
+  # event (and a rejected submit) patches the DOM, and a named input without a
+  # bound `value` is reset to the server-rendered one — observed live as "pick
+  # a tag, lose the half-filled form". Merge, not replace: fields hidden by
+  # `direct_fields?/1` are absent from the payload but keep their last typed
+  # value for when the transport switches back to direct.
+  def handle_event("form_change", %{"instance" => params}, socket) do
+    {:noreply, assign(socket, form: Map.merge(socket.assigns.form, params))}
   end
 
   @doc """
@@ -121,46 +146,66 @@ defmodule OrbitWeb.InstanceCreateLive do
           {@error}
         </div>
 
-        <form phx-submit="create" class="space-y-4">
+        <form phx-change="form_change" phx-submit="create" class="space-y-4">
           <div class="rounded-lg border border-base-300 bg-base-200 p-4">
             <div class="grid gap-3 md:grid-cols-2">
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Name</span>
-                <input name="instance[name]" required class={input_cls()} />
+                <input name="instance[name]" value={@form["name"]} required class={input_cls()} />
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Group</span>
                 <select name="instance[group_id]" class={input_cls()}>
-                  <option :for={g <- @groups} value={g.id}>{g.name}</option>
+                  <option
+                    :for={g <- @groups}
+                    value={g.id}
+                    selected={to_string(g.id) == @form["group_id"]}
+                  >
+                    {g.name}
+                  </option>
                 </select>
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Device type</span>
                 <select name="instance[device_type]" class={input_cls()}>
-                  <option :for={t <- Orbit.Instances.device_types()} value={t}>{t}</option>
+                  <option
+                    :for={t <- Orbit.Instances.device_types()}
+                    value={t}
+                    selected={t == @form["device_type"]}
+                  >
+                    {t}
+                  </option>
                 </select>
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Transport</span>
                 <select name="instance[transport]" class={input_cls()}>
-                  <option value="push">push (agent)</option>
-                  <option value="direct">direct (API poll)</option>
+                  <option value="push" selected={@form["transport"] == "push"}>
+                    push (agent)
+                  </option>
+                  <option value="direct" selected={@form["transport"] == "direct"}>
+                    direct (API poll)
+                  </option>
                 </select>
               </label>
-              <label class="block text-sm md:col-span-2">
-                <span class="mb-1 block text-xs text-base-content/60">
-                  Base URL (direct API; leave empty for push-only)
-                </span>
-                <input name="instance[base_url]" class={input_cls()} />
+              <label :if={direct_fields?(@form)} class="block text-sm md:col-span-2">
+                <span class="mb-1 block text-xs text-base-content/60">Base URL (direct API)</span>
+                <input name="instance[base_url]" value={@form["base_url"]} class={input_cls()} />
               </label>
-              <label class="block text-sm">
+              <label :if={direct_fields?(@form)} class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">API key (direct only)</span>
-                <input name="instance[api_key]" autocomplete="off" class={input_cls()} />
+                <input
+                  name="instance[api_key]"
+                  value={@form["api_key"]}
+                  autocomplete="off"
+                  class={input_cls()}
+                />
               </label>
-              <label class="block text-sm">
+              <label :if={direct_fields?(@form)} class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">API secret</span>
                 <input
                   name="instance[api_secret]"
+                  value={@form["api_secret"]}
                   type="password"
                   autocomplete="new-password"
                   class={input_cls()}
@@ -168,11 +213,11 @@ defmodule OrbitWeb.InstanceCreateLive do
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Location</span>
-                <input name="instance[location]" class={input_cls()} />
+                <input name="instance[location]" value={@form["location"]} class={input_cls()} />
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">Slug (optional)</span>
-                <input name="instance[slug]" class={input_cls()} />
+                <input name="instance[slug]" value={@form["slug"]} class={input_cls()} />
               </label>
               <.tag_picker
                 tags={@tags}
@@ -184,7 +229,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                 <span class="mb-1 block text-xs text-base-content/60">
                   Ping URL (availability probe)
                 </span>
-                <input name="instance[ping_url]" class={input_cls()} />
+                <input name="instance[ping_url]" value={@form["ping_url"]} class={input_cls()} />
               </label>
               <label class="block text-sm">
                 <span class="mb-1 block text-xs text-base-content/60">
@@ -192,28 +237,33 @@ defmodule OrbitWeb.InstanceCreateLive do
                 </span>
                 <input
                   name="instance[push_interval_seconds]"
+                  value={@form["push_interval_seconds"]}
                   inputmode="numeric"
                   class={input_cls()}
                 />
               </label>
               <label class="block text-sm md:col-span-2">
                 <span class="mb-1 block text-xs text-base-content/60">Notes</span>
-                <input name="instance[notes]" class={input_cls()} />
+                <input name="instance[notes]" value={@form["notes"]} class={input_cls()} />
               </label>
             </div>
-            <label class="mt-3 flex items-center gap-2 text-sm text-base-content/80">
+            <label
+              :if={direct_fields?(@form)}
+              class="mt-3 flex items-center gap-2 text-sm text-base-content/80"
+            >
               <input type="hidden" name="instance[ssl_verify]" value="false" />
               <input
                 type="checkbox"
                 name="instance[ssl_verify]"
                 value="true"
+                checked={@form["ssl_verify"] == "true"}
                 class="accent-primary"
               /> Verify TLS
             </label>
             <%!-- Only meaningful on the poll path: in agent mode the box
                  collects locally and pushes, so the dashboard makes no
                  outbound HTTPS call to verify (2.1.5 parity). --%>
-            <label class="mt-3 block text-sm">
+            <label :if={direct_fields?(@form)} class="mt-3 block text-sm">
               <span class="mb-1 block text-xs text-base-content/60">
                 CA bundle (PEM, direct only) — lets TLS verification succeed against a
                 firewall's own CA instead of turning verification off
@@ -224,7 +274,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                 spellcheck="false"
                 placeholder="-----BEGIN CERTIFICATE-----"
                 class={[input_cls(), "font-mono text-xs"]}
-              ></textarea>
+              >{@form["ca_bundle"]}</textarea>
             </label>
           </div>
 

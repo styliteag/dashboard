@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- New-instance form: picking or removing a tag no longer wipes the values
+  already typed into the other fields (every re-render reset unbound inputs).
+
+### Changed
+
+- New-instance form: the direct-API fields (base URL, API key/secret, TLS
+  verification, CA bundle) only appear when transport "direct (API poll)" is
+  selected. In agent mode they are hidden and the instance is created with an
+  empty base URL, which the push path expects anyway.
+
 ## [4.2.12] - 2026-07-22
 
 ### Changed
