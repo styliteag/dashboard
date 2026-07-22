@@ -7,9 +7,31 @@ surfaces so an accidental registry/command edit on either line is loud.
 """
 
 import re
+from pathlib import Path
 
 import orbit_agent
 import orbit_agent_linux
+
+_AGENT_DIR = Path(__file__).resolve().parents[1]
+
+# The shared core both lines carry verbatim (single-file design, DR-4 — no
+# build step by choice). These names are pinned so a removed/renamed marker
+# is loud, not silent.
+SHARED_BLOCKS = {
+    "run-helper",
+    "ws-client",
+    "self-update",
+    "probation",
+    "push-loop",
+    "shell-capture",
+    "enrollment",
+}
+
+_MARKER_RE = re.compile(r"# --- shared:([a-z0-9-]+) ---.*?\n(.*?)# --- /shared:\1 ---\n", re.S)
+
+
+def _shared_blocks(filename):
+    return dict(_MARKER_RE.findall((_AGENT_DIR / filename).read_text()))
 
 FIREWALL_SECTIONS = (
     "system",
@@ -115,6 +137,23 @@ def test_linux_line_has_no_firewall_machinery():
     ):
         assert hasattr(orbit_agent, name), name
         assert not hasattr(orbit_agent_linux, name), name
+
+
+def test_shared_blocks_are_byte_identical_in_both_lines():
+    """The drift guard (§28, option B): the duplicated core — WS client,
+    self-update/Ed25519, enrollment, push loop, shell/capture, probation —
+    must stay byte-identical across the two lines. A fix applied to only one
+    file is the silent-non-deploy failure class in a new coat; this test
+    makes forgetting the second file impossible."""
+    fw = _shared_blocks("orbit_agent.py")
+    lx = _shared_blocks("orbit_agent_linux.py")
+    assert set(fw) == SHARED_BLOCKS, f"firewall markers: {sorted(fw)}"
+    assert set(lx) == SHARED_BLOCKS, f"linux markers: {sorted(lx)}"
+    for name in sorted(SHARED_BLOCKS):
+        assert fw[name] == lx[name], (
+            f"shared block {name!r} diverged between the agent lines — "
+            "apply the change to BOTH orbit_agent.py and orbit_agent_linux.py"
+        )
 
 
 def test_both_lines_bake_the_same_update_pubkey():

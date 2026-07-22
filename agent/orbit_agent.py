@@ -56,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "3.3.0"
+__version__ = "3.3.1"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -199,6 +199,9 @@ _STATE = _AgentState()
 # Collectors — all local, no HTTP API calls needed
 # =============================================================================
 
+# --- shared:run-helper --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 def _run(cmd: list[str], timeout: int = 5) -> str:
     """Run a shell command and return stdout."""
     try:
@@ -206,6 +209,7 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return r.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
+# --- /shared:run-helper ---
 
 
 def detect_platform() -> str:
@@ -4419,6 +4423,9 @@ _PING_INTERVAL = 20
 _RECV_TIMEOUT = 60
 
 
+# --- shared:ws-client --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 class WSError(Exception):
     """Raised on handshake failure or when the connection is closed."""
 
@@ -4572,6 +4579,7 @@ async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSoc
         writer.close()
         raise WSError("handshake failed: bad Sec-WebSocket-Accept")
     return WebSocket(reader, writer, max_size)
+# --- /shared:ws-client ---
 
 
 # =============================================================================
@@ -4593,6 +4601,9 @@ _PROBATION_SECS = 60
 # inside the running loop in _main_async() so it never binds to the wrong event loop.
 
 
+# --- shared:self-update --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 def _self_path() -> str:
     return os.environ.get("AGENT_SELF_PATH") or os.path.abspath(__file__)
 
@@ -4848,6 +4859,7 @@ async def _send_update_result(ws: WebSocket, request_id: str, success: bool, out
         "action": "agent.update",
         "result": {"success": success, "output": output},
     }))
+# --- /shared:self-update ---
 
 
 # =============================================================================
@@ -4996,6 +5008,9 @@ async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> Non
         os._exit(0)
 
 
+# --- shared:probation --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 async def _probation_watchdog(healthy: asyncio.Event) -> None:
     """If we just self-updated, demand a healthy reconnect or roll back."""
     try:
@@ -5007,6 +5022,7 @@ async def _probation_watchdog(healthy: asyncio.Event) -> None:
         )
         _rollback()
         os._exit(1)
+# --- /shared:probation ---
 
 
 # =============================================================================
@@ -5069,6 +5085,9 @@ async def agent_loop(cfg: Config) -> None:
         reconnect_delay = min(reconnect_delay * 2, 120)  # exponential backoff, max 2min
 
 
+# --- shared:push-loop --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 async def _keepalive_loop(ws: WebSocket) -> None:
     """Ping periodically (NAT keepalive) and detect a dead peer.
 
@@ -5132,6 +5151,7 @@ async def _push_loop(ws: WebSocket, cfg: Config) -> None:
                 log.warning("push error: %s", exc)
                 raise
         await asyncio.sleep(cfg.push_interval)
+# --- /shared:push-loop ---
 
 
 # =============================================================================
@@ -5285,6 +5305,9 @@ class _TunnelManager:
 
     # --- interactive shell (PTY) ---------------------------------------------
 
+# --- shared:shell-capture --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
     async def _open_shell(self, stream: str, rows: int, cols: int) -> None:
         """Fork root's login shell on a fresh PTY and pump its output to the dashboard.
 
@@ -5537,6 +5560,7 @@ class _TunnelManager:
     async def _wait_proc(proc: "asyncio.subprocess.Process") -> None:
         with contextlib.suppress(Exception):
             await proc.wait()
+# --- /shared:shell-capture ---
 
 
 async def _listen_loop(ws: WebSocket) -> None:
@@ -5694,6 +5718,9 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
 # Enrollment — exchange a one-time code for an agent token (see §16 chunk C2)
 # =============================================================================
 
+# --- shared:enrollment --- identical in BOTH agent lines (§28). Apply any change
+# to orbit_agent.py AND orbit_agent_linux.py — test_agent_split enforces
+# byte equality of this block.
 def _derive_enroll_url(dashboard_url: str) -> str:
     """Turn the WS dashboard_url into the HTTP(S) enroll endpoint, or '' if unknown."""
     parts = urlsplit(dashboard_url)
@@ -5763,6 +5790,7 @@ def _enroll(cfg: Config) -> bool:
     _persist_token(cfg, token)
     log.info("enroll: obtained and persisted agent token")
     return True
+# --- /shared:enrollment ---
 
 
 # =============================================================================
