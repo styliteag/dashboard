@@ -20,6 +20,20 @@ defmodule OrbitWeb.Components.Nav do
     router: OrbitWeb.Router,
     statics: OrbitWeb.static_paths()
 
+  # Edition label (§28 extension point). A downstream build sets
+  # `config :orbit, :edition, "Pro"` to brand the UI "STYLiTE Orbit Pro"
+  # and tag the version; open ships none (empty → plain "STYLiTE Orbit").
+  # Read at runtime (not a module constant) so the value isn't statically
+  # known — a compile-time nil would make the branches below dead code.
+  defp edition, do: :orbit |> Application.get_env(:edition) |> to_string()
+
+  defp edition_suffix do
+    case edition() do
+      "" -> ""
+      label -> " " <> label
+    end
+  end
+
   attr :active, :atom, default: nil, doc: "the current page key, e.g. :alerts"
   attr :current_user, :map, required: true
 
@@ -32,6 +46,12 @@ defmodule OrbitWeb.Components.Nav do
       <div class="flex min-w-0 flex-wrap items-center gap-4">
         <a href={~p"/"} class="flex items-center gap-2 font-semibold text-base-content">
           <.nav_icon name={:brand} class="h-5 w-5 text-primary" /> STYLiTE Orbit
+          <span
+            :if={edition() != ""}
+            class="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-content"
+          >
+            {edition()}
+          </span>
         </a>
         <nav class="flex flex-wrap gap-3 text-sm text-base-content/70">
           <.nav_link
@@ -194,7 +214,7 @@ defmodule OrbitWeb.Components.Nav do
         </div>
 
         <div class="border-t border-base-300 px-3 py-1.5 text-[11px] text-base-content/40">
-          STYLiTE Orbit v{app_version()}
+          STYLiTE Orbit{edition_suffix()} v{app_version()}
         </div>
       </div>
     </details>
