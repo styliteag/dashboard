@@ -1514,6 +1514,10 @@ defmodule OrbitWeb.InstanceDetailLive do
       gateways: entry["gateways"] || [],
       interfaces: status["interfaces"] || [],
       services: entry["services"] || [],
+      # Vendor/extension cards (§28): a downstream build registers a card for
+      # an x_* passthrough section via `config :orbit, :vendor_sections`; open
+      # ships none. Only sections actually present on this box render.
+      vendor_cards: vendor_cards(entry),
       # Public-IP view, one shape for every transport (Orbit.ExternalIp):
       # the agent's ipify probe when there is one, otherwise a routable
       # address off the box's own interfaces — so poll-mode and Securepoint
@@ -1786,6 +1790,18 @@ defmodule OrbitWeb.InstanceDetailLive do
           <span class="font-medium">Console password protection enabled.</span>
           We prefer no password on the console. Disable “Password protect the console
           menu” under System → Settings → Administration → Console / Serial Communications.
+        </div>
+
+        <%!-- Vendor/extension cards (§28): a downstream build registers a card
+             for an x_* passthrough section (e.g. pro ZFS). Renders only for
+             instances actually pushing that section; empty upstream. --%>
+        <div
+          :if={@tab == "overview" and @vendor_cards != []}
+          class="mt-6 grid gap-6 md:grid-cols-2"
+        >
+          <%= for card <- @vendor_cards do %>
+            {apply(card.mod, card.fun, [%{data: card.data, __changed__: nil}])}
+          <% end %>
         </div>
 
         <%!-- System health strip (SystemHealthSection parity): load per core,
@@ -3487,6 +3503,22 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp pct(nil), do: "—"
   defp pct(v) when is_number(v), do: "#{Float.round(v / 1, 1)}%"
   defp pct(_), do: "—"
+
+  # Vendor-section cards (§28 extension point). Config entries are
+  # `%{section: "x_zfs", component: {Module, :fun}}`; a card renders only when
+  # its x_* section is present in this instance's cache entry. Empty upstream.
+  # compile_env must be read in the module body, not per-call.
+  @vendor_sections Application.compile_env(:orbit, :vendor_sections, [])
+
+  defp vendor_cards(entry) do
+    @vendor_sections
+    |> Enum.flat_map(fn %{section: section, component: {mod, fun}} ->
+      case entry[section] do
+        data when is_map(data) and map_size(data) > 0 -> [%{mod: mod, fun: fun, data: data}]
+        _ -> []
+      end
+    end)
+  end
 
   defp mem_text(%{"used_pct" => up, "total_mb" => tot})
        when is_number(up) and is_number(tot) and tot > 0 do
