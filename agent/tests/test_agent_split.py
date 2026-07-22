@@ -6,32 +6,25 @@ push dies into the supervisor's probation rollback. These tests pin both
 surfaces so an accidental registry/command edit on either line is loud.
 """
 
+import importlib.util
 import re
 from pathlib import Path
 
 import orbit_agent
 import orbit_agent_linux
 
-_AGENT_DIR = Path(__file__).resolve().parents[1]
-
-# The shared core both lines carry verbatim (single-file design, DR-4 — no
-# build step by choice). These names are pinned so a removed/renamed marker
-# is loud, not silent.
-SHARED_BLOCKS = {
-    "run-helper",
-    "ws-client",
-    "self-update",
-    "probation",
-    "push-loop",
-    "shell-capture",
-    "enrollment",
-}
-
-_MARKER_RE = re.compile(r"# --- shared:([a-z0-9-]+) ---.*?\n(.*?)# --- /shared:\1 ---\n", re.S)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _shared_blocks(filename):
-    return dict(_MARKER_RE.findall((_AGENT_DIR / filename).read_text()))
+def _build_agent():
+    """Import tools/build_agent.py by path (not on sys.path under the tools venv)."""
+    spec = importlib.util.spec_from_file_location(
+        "build_agent", _REPO_ROOT / "tools" / "build_agent.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 FIREWALL_SECTIONS = (
     "system",
@@ -139,21 +132,29 @@ def test_linux_line_has_no_firewall_machinery():
         assert not hasattr(orbit_agent_linux, name), name
 
 
-def test_shared_blocks_are_byte_identical_in_both_lines():
-    """The drift guard (§28, option B): the duplicated core — WS client,
-    self-update/Ed25519, enrollment, push loop, shell/capture, probation —
-    must stay byte-identical across the two lines. A fix applied to only one
-    file is the silent-non-deploy failure class in a new coat; this test
-    makes forgetting the second file impossible."""
-    fw = _shared_blocks("orbit_agent.py")
-    lx = _shared_blocks("orbit_agent_linux.py")
-    assert set(fw) == SHARED_BLOCKS, f"firewall markers: {sorted(fw)}"
-    assert set(lx) == SHARED_BLOCKS, f"linux markers: {sorted(lx)}"
-    for name in sorted(SHARED_BLOCKS):
-        assert fw[name] == lx[name], (
-            f"shared block {name!r} diverged between the agent lines — "
-            "apply the change to BOTH orbit_agent.py and orbit_agent_linux.py"
+def test_committed_agents_match_the_generator_output():
+    """The generator gate (§28): the committed orbit_agent*.py must be exactly
+    what tools/build_agent.py produces from agent/src/. This is what makes the
+    shared core a single source of truth — a shared fix edited in the source
+    reaches both lines, and a hand-edit of a generated file (or a forgotten
+    rebuild) fails here loudly. Mirrors the sign_agent --verify gate."""
+    build = _build_agent()
+    for template, dest in build.LINES.items():
+        assert build.build(template) == dest.read_text(), (
+            f"{dest.name} is out of sync with agent/src/ — run `just build-agent` "
+            "and commit the result (never hand-edit the generated file)"
         )
+
+
+def test_shared_core_is_one_source_used_by_both_lines():
+    """Every shared block is spliced into BOTH templates from the same source
+    file, so byte-identity across the lines is structural, not test-enforced."""
+    src = _REPO_ROOT / "agent" / "src"
+    shared = {p.stem for p in (src / "shared").glob("*.py")}
+    assert shared, "no shared blocks found"
+    for template in ("firewall.py.in", "linux.py.in"):
+        used = set(re.findall(r"# @@shared: ([a-z0-9-]+)", (src / template).read_text()))
+        assert used == shared, f"{template} uses {sorted(used)}, shared has {sorted(shared)}"
 
 
 def test_both_lines_bake_the_same_update_pubkey():

@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The UI now names each instance's agent line: the instances list shows
   `agent fw` / `agent linux` next to the version, and the instance detail
   Agent tab lists the line with its source file.
+- The two agent lines are now generated from one source tree (`agent/src/`:
+  shared core + per-line templates + drop-in parts) via `just build-agent`;
+  the committed `orbit_agent*.py` are the build output and a test fails if
+  they drift from the sources. The shared core (WS client, self-update,
+  enrollment, push loop, shell/capture, probation) now lives in exactly one
+  place, so a fix reaches both lines by construction. Firewall agent 3.3.2,
+  Linux agent 3.4.2 (no behavior change — assembly only).
 - Linux agent 3.4.0 (phase 3 of the split): the firewall machinery left the
   linux line — local API relay, GUI login/proxy tunnels, IPsec, pf/gateway/
   interface collectors, vendor firmware upgrades, boot environments and

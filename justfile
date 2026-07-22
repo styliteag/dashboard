@@ -20,6 +20,12 @@ tools-fmt:
 
 # --- Agent (runs on OPNsense/pfSense; pure stdlib, tested via the tools venv) ---
 
+# Assemble the two single-file agent lines from agent/src/ (shared core + line
+# templates + drop-in parts). The generated agent/orbit_agent*.py are COMMITTED
+# — run this after editing anything under agent/src/, and commit the result.
+build-agent:
+    cd tools && uv run python build_agent.py
+
 agent-test:
     cd tools && uv run pytest -o asyncio_mode=auto ../agent/tests -q
 

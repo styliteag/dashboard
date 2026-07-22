@@ -36,6 +36,18 @@ fi
 echo "✓ Lint passed"
 echo ""
 
+# Agent build gate: the committed orbit_agent*.py are generated from agent/src/
+# (§28). A forgotten `just build-agent` would ship a stale agent whose bytes no
+# longer match its source — and whose .sig we are about to refresh over the
+# stale bytes. Verify sources and committed files agree BEFORE signing.
+echo "Checking agent build is in sync with agent/src/..."
+if ! uv --project tools run python tools/build_agent.py --check; then
+    echo "Error: committed agent files are out of sync. Run 'just build-agent' and commit."
+    exit 1
+fi
+echo "✓ Agent build in sync"
+echo ""
+
 # Agent self-update signing: if a public key is baked into the agent, the served
 # .sig MUST match it (else deployed agents reject every update). Re-sign here so a
 # release always ships a signature current with the agent bytes, then verify.
