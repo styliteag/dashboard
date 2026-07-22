@@ -3078,11 +3078,18 @@ defmodule OrbitWeb.InstanceDetailLive do
             <p class="mb-3 text-xs text-base-content/50">
               The services Orbit delivers to a Checkmk server for this instance.
             </p>
-            <pre
+            <div
               :if={@checks != []}
-              class="overflow-x-auto whitespace-pre-wrap break-words rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/80"
-            ><%= for c <- @checks do %>{c.state} {state_label(c.state)}  {c.key}  {c.summary}
-    <% end %></pre>
+              class="overflow-x-auto rounded bg-base-300/40 p-3 font-mono text-xs"
+            >
+              <div :for={c <- @checks} class="flex items-baseline gap-2 whitespace-nowrap py-0.5">
+                <span class={["rounded px-1 text-[10px] font-bold", state_class(c.state)]}>
+                  {c.state} {state_label(c.state)}
+                </span>
+                <span class="text-base-content/50">{c.key}</span>
+                <span class="text-base-content/80">{c.summary}</span>
+              </div>
+            </div>
             <p :if={@checks == []} class="text-xs text-base-content/50">No checks evaluated.</p>
           </div>
 
@@ -3093,8 +3100,8 @@ defmodule OrbitWeb.InstanceDetailLive do
             </div>
             <pre
               :if={@checkmk_output not in [nil, ""]}
-              class="max-h-[36rem] overflow-auto whitespace-pre rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/80"
-            >{@checkmk_output}</pre>
+              class="max-h-[36rem] overflow-auto whitespace-pre rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/70"
+            ><%= for s <- checkmk_segments(@checkmk_output) do %><span :if={s.header} class="font-semibold text-primary">{s.text}</span><span :if={not s.header}>{s.text}</span><% end %></pre>
             <p :if={@checkmk_output in [nil, ""]} class="text-xs text-base-content/50">
               No Checkmk output received yet — the agent pushes it each cycle.
             </p>
@@ -3696,6 +3703,17 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp state_label(2), do: "CRIT"
   defp state_label(3), do: "UNKNOWN"
   defp state_label(_), do: "OK"
+
+  # Split a raw Checkmk dump into segments for colouring: section headers
+  # (`<<<name>>>`) vs the data between them. One regex split, ~one span per
+  # section header, so the DOM stays small even on a large dump. Only called
+  # under the non-empty guard, so the input is always a binary.
+  defp checkmk_segments(text) do
+    ~r/<<<[^\n>]*>>>/
+    |> Regex.split(text, include_captures: true)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn part -> %{header: String.starts_with?(part, "<<<"), text: part} end)
+  end
 
   defp state_class(2), do: "bg-error/20 text-error"
   defp state_class(1), do: "bg-warning/20 text-warning"
