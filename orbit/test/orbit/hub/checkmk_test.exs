@@ -188,4 +188,45 @@ defmodule Orbit.Hub.CheckmkTest do
     {sections, _} = Checkmk.parse(%{"output_gz_b64" => b64})
     refute Map.has_key?(sections, "zfs")
   end
+
+  # Real `<<<zfsget:sep(9)>>>` shape captured from a Proxmox box (10.20.1.12):
+  # tab-separated `<dataset>\t<property>\t<value>\t<source>`, values are raw
+  # bytes (`zfs get -Hp`), and this plugin build emits name/quota/used/
+  # available/mountpoint/type — no compressratio, so that field parses to nil.
+  test "parses zfsget datasets (real Proxmox format), biggest-used first" do
+    text =
+      "<<<zpool>>>\n" <>
+        "NAME SIZE ALLOC FREE FRAG CAP HEALTH ALTROOT\n" <>
+        "rpool 928G 90G 838G 38% 9% ONLINE -\n" <>
+        "<<<zfsget:sep(9)>>>\n" <>
+        "rpool/ROOT/pve-1\tname\trpool/ROOT/pve-1\t-\n" <>
+        "rpool/ROOT/pve-1\tquota\t0\tdefault\n" <>
+        "rpool/ROOT/pve-1\tused\t4401614848\t-\n" <>
+        "rpool/ROOT/pve-1\tavailable\t550635429888\t-\n" <>
+        "rpool/ROOT/pve-1\tmountpoint\t/\tlocal\n" <>
+        "rpool/ROOT/pve-1\ttype\tfilesystem\t-\n" <>
+        "rpool/data\tname\trpool/data\t-\n" <>
+        "rpool/data\tquota\t107374182400\tlocal\n" <>
+        "rpool/data\tused\t53687091200\t-\n" <>
+        "rpool/data\tavailable\t53687091200\t-\n" <>
+        "rpool/data\tmountpoint\t/rpool/data\tdefault\n" <>
+        "rpool/data\ttype\tfilesystem\t-\n"
+
+    b64 = text |> :zlib.gzip() |> Base.encode64()
+    {sections, _} = Checkmk.parse(%{"output_gz_b64" => b64})
+
+    assert %{"datasets" => datasets} = sections["zfs"]
+    # rpool/data uses more than rpool/ROOT/pve-1 → sorts first.
+    assert [%{"name" => "rpool/data"} = data, %{"name" => "rpool/ROOT/pve-1"}] = datasets
+
+    assert data == %{
+             "name" => "rpool/data",
+             "type" => "filesystem",
+             "used" => 53_687_091_200,
+             "avail" => 53_687_091_200,
+             "quota" => 107_374_182_400,
+             "compressratio" => nil,
+             "mountpoint" => "/rpool/data"
+           }
+  end
 end

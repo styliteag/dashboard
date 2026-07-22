@@ -9,16 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- ZFS pool checks for linux nodes: Orbit now parses the Checkmk
-  `zpool`/`zpool_status` sections into a per-pool health + capacity check
-  (`zfs:<pool>` — ONLINE is OK, DEGRADED/FAULTED/… is CRIT, capacity warns at
-  80%%/crits at 90%%). It shows under Checks and rides every surface (Checkmk
-  export, Prometheus, Alerts).
+- ZFS checks for linux nodes: Orbit now parses the Checkmk
+  `zpool`/`zpool_status`/`zfsget` sections into per-pool health + capacity
+  checks (`zfs:<pool>` — ONLINE is OK, DEGRADED/FAULTED/… is CRIT, capacity
+  warns at 80%%/crits at 90%%) and per-dataset quota checks (`zfs:<dataset>`,
+  emitted only for datasets that carry a quota and sit within 80%% of it, so a
+  filling share is visible without cluttering the surface with slack datasets).
+  All show under Checks and ride every surface (Checkmk export, Prometheus,
+  Alerts).
 - Linux instances get a **Checkmk** tab on the detail page showing the raw
   `check_mk_agent.linux` output the box pushed (retained in-memory, refreshed
-  each cycle — includes sections Orbit itself does not parse, e.g. ZFS
-  pools/datasets) plus the services Orbit exports to a Checkmk server for the
+  each cycle) plus the services Orbit exports to a Checkmk server for the
   instance.
+- Extension point for downstream builds: `config :orbit, :vendor_tabs` adds
+  device-type-scoped tabs to the instance detail page, rendered from the
+  instance's cache entry. Open ships none.
 
 ## [4.2.15] - 2026-07-22
 

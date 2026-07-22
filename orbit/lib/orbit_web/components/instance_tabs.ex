@@ -21,6 +21,13 @@ defmodule OrbitWeb.Components.InstanceTabs do
 
   alias Orbit.Instances.Instance
 
+  # Vendor/extension tabs (§28): a downstream build (Pro) registers extra tabs
+  # via `config :orbit, :vendor_tabs` — each `%{key, label, device_types,
+  # agent: bool}` — and open ships none. compile_env must be read in the module
+  # body, not per-call. The matching render lives in InstanceDetailLive via the
+  # same config, so the tab and its content stay a single registration.
+  @vendor_tabs Application.compile_env(:orbit, :vendor_tabs, [])
+
   @doc """
   Which tabs this box has: `{key, label, kind}` where kind is `:tab` (patched
   within the detail LiveView) or `:link` (its own LiveView).
@@ -33,23 +40,36 @@ defmodule OrbitWeb.Components.InstanceTabs do
     agent = Instance.agent_mode?(inst)
     linux = inst.device_type == "linux"
 
-    [
-      {"overview", "Overview", :tab},
-      unless(linux, do: {"config", "Config", :tab}),
-      {"checks", "Checks", :tab},
-      # Linux nodes push a raw Checkmk-agent dump; the tab shows it and what
-      # Orbit exports to Checkmk for the box.
-      if(linux and agent, do: {"checkmk", "Checkmk", :tab}),
-      {"network", "Network", :tab},
-      if(agent, do: {"capture", "Capture", :link}),
-      if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
-      unless(linux, do: {"security", "VPN", :tab}),
-      if(Instance.monitors_runnable?(inst), do: {"connectivity", "Connectivity", :tab}),
-      {"log", "Log", :tab},
-      {"firmware", "Firmware", :tab},
-      unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
-    ]
+    # Linux nodes push a raw Checkmk-agent dump; the tab shows it and what
+    # Orbit exports to Checkmk for the box.
+    ([
+       {"overview", "Overview", :tab},
+       unless(linux, do: {"config", "Config", :tab}),
+       {"checks", "Checks", :tab},
+       if(linux and agent, do: {"checkmk", "Checkmk", :tab})
+     ] ++
+       vendor_tabs_for(inst) ++
+       [
+         {"network", "Network", :tab},
+         if(agent, do: {"capture", "Capture", :link}),
+         if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
+         unless(linux, do: {"security", "VPN", :tab}),
+         if(Instance.monitors_runnable?(inst), do: {"connectivity", "Connectivity", :tab}),
+         {"log", "Log", :tab},
+         {"firmware", "Firmware", :tab},
+         unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
+       ])
     |> Enum.reject(&is_nil/1)
+  end
+
+  # Vendor tabs matching this box's device type (and agent requirement).
+  defp vendor_tabs_for(inst) do
+    agent = Instance.agent_mode?(inst)
+
+    for t <- @vendor_tabs,
+        inst.device_type in Map.get(t, :device_types, []),
+        not Map.get(t, :agent, false) or agent,
+        do: {t.key, t.label, :tab}
   end
 
   attr :instance, :map, required: true

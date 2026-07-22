@@ -76,13 +76,58 @@ defmodule Orbit.Checks.Evaluate do
   end
 
   @doc """
-  Per-pool ZFS health + capacity, from the Checkmk `zpool` section (linux
-  nodes). `[]` when the box has no ZFS — no-data never emits a check.
-  ONLINE is OK; any other known pool state is CRIT (redundancy lost or
-  worse); an unrecognised state is UNKNOWN. Capacity warns at 80 %, crit 90 %.
+  ZFS checks from the Checkmk `zpool`/`zfsget` sections (linux nodes). `[]`
+  when the box has no ZFS — no-data never emits a check.
+
+  Per pool: ONLINE is OK; any other known pool state is CRIT (redundancy lost
+  or worse); an unrecognised state is UNKNOWN. Capacity warns at 80 %, crit
+  90 %. Per dataset: only datasets that carry a quota **and** sit near it
+  (>= warn) emit `zfs:<dataset>` — a quota'd share filling up is the operator
+  concern; unquota'd datasets and slack ones never clutter the surface.
   """
-  def zfs_checks(%{"pools" => pools}) when is_list(pools), do: Enum.map(pools, &zfs_pool_check/1)
+  def zfs_checks(%{} = zfs) do
+    pools = Map.get(zfs, "pools", [])
+    pool_names = MapSet.new(pools, & &1["name"])
+
+    pool_checks = Enum.map(pools, &zfs_pool_check/1)
+
+    dataset_checks =
+      zfs
+      |> Map.get("datasets", [])
+      |> Enum.filter(&dataset_near_quota?/1)
+      # A quota on the pool's root dataset shares the pool's `zfs:<name>` key —
+      # let the pool check own it rather than emit a duplicate service.
+      |> Enum.reject(fn d -> MapSet.member?(pool_names, d["name"]) end)
+      |> Enum.map(&zfs_dataset_check/1)
+
+    pool_checks ++ dataset_checks
+  end
+
   def zfs_checks(_), do: []
+
+  defp dataset_near_quota?(%{"quota" => q, "used" => u})
+       when is_integer(q) and q > 0 and is_integer(u),
+       do: u / q * 100 >= @zfs_cap_warn
+
+  defp dataset_near_quota?(_), do: false
+
+  defp zfs_dataset_check(%{"name" => name, "quota" => quota, "used" => used}) do
+    pct = round(used / quota * 100)
+    {state, _} = level(pct, @zfs_cap_warn, @zfs_cap_crit)
+
+    %ServiceCheck{
+      key: "zfs:#{name}",
+      state: state,
+      summary: "Dataset #{name} #{pct}% of quota",
+      metrics: [
+        ServiceCheck.metric("zfs_quota_pct", pct,
+          warn: @zfs_cap_warn,
+          crit: @zfs_cap_crit,
+          unit: "%"
+        )
+      ]
+    }
+  end
 
   defp zfs_pool_check(%{"name" => name} = p) do
     cap = p["cap_pct"]

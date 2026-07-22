@@ -125,7 +125,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       for {key, _label, :tab} <- tabs_for(socket.assigns.instance), do: key
 
     tab = if params["tab"] in valid, do: params["tab"], else: "overview"
-    socket = assign(socket, tab: tab)
+    # nil for a built-in tab; `{mod, fun}` when a vendor tab (§28) owns the body.
+    socket = assign(socket, tab: tab, vendor_tab: vendor_tab_component(tab))
 
     # `?enroll=1` is how the create form says "this box was just made, it needs
     # a code" — an intent flag, never the code itself: a secret in a URL lands
@@ -1533,6 +1534,10 @@ defmodule OrbitWeb.InstanceDetailLive do
       checks: instance_checks(socket.assigns.instance),
       # Raw Checkmk-agent dump retained by the hub (linux nodes) — the Checkmk tab.
       checkmk_output: entry["checkmk_output"],
+      # Whole cache entry, for vendor/extension tabs (§28) that read across
+      # several sections (e.g. Pro's ZFS tab: open's status.zfs + x_zfs). Open
+      # ships no vendor tabs, so nothing reads it here.
+      cache_entry: entry,
       check_rules: instance_rules(socket.assigns.instance.id)
     )
   end
@@ -3108,6 +3113,15 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </section>
 
+        <%!-- Vendor/extension tab body (§28): a downstream build registers the
+             tab in config :orbit, :vendor_tabs and renders it here from the
+             whole cache entry. Open registers none, so this never matches. --%>
+        <section :if={@vendor_tab} class="mt-6">
+          {apply(elem(@vendor_tab, 0), elem(@vendor_tab, 1), [
+            %{entry: @cache_entry, instance: @instance, __changed__: nil}
+          ])}
+        </section>
+
         <div
           :if={@tab == "log" and @firewall_log != []}
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
@@ -3557,6 +3571,17 @@ defmodule OrbitWeb.InstanceDetailLive do
         data when is_map(data) and map_size(data) > 0 -> [%{mod: mod, fun: fun, data: data}]
         _ -> []
       end
+    end)
+  end
+
+  # Vendor/extension tabs (§28): same `config :orbit, :vendor_tabs` the tab bar
+  # reads, so a registered tab and its content are one declaration. Returns the
+  # `{mod, fun}` component for the active tab key, or nil for a built-in tab.
+  @vendor_tabs Application.compile_env(:orbit, :vendor_tabs, [])
+
+  defp vendor_tab_component(tab) do
+    Enum.find_value(@vendor_tabs, fn t ->
+      if t.key == tab, do: t.component
     end)
   end
 

@@ -42,7 +42,7 @@ defmodule OrbitWeb.Components.SelectionTree do
     "load" => "Load average",
     "swap" => "Swap",
     "disk" => "Disks",
-    "zfs" => "ZFS pools",
+    "zfs" => "ZFS pools & datasets",
     "gateway" => "Gateways",
     "pf_states" => "pf state table",
     "ntp" => "NTP sync",

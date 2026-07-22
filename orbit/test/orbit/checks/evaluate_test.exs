@@ -588,5 +588,42 @@ defmodule Orbit.Checks.EvaluateTest do
 
       assert Enum.map(checks, & &1.key) == ["zfs:rpool", "zfs:tank"]
     end
+
+    defp ds(attrs), do: Map.merge(%{"name" => "rpool/home", "used" => 50, "quota" => 100}, attrs)
+
+    test "quota'd dataset near limit → zfs:<dataset> check" do
+      [c] =
+        Evaluate.zfs_checks(%{"pools" => [], "datasets" => [ds(%{"used" => 85})]})
+
+      assert %ServiceCheck{key: "zfs:rpool/home", state: 1} = c
+      assert c.summary =~ "85% of quota"
+    end
+
+    test "dataset at/over 90% of quota → CRIT" do
+      [c] = Evaluate.zfs_checks(%{"pools" => [], "datasets" => [ds(%{"used" => 95})]})
+      assert c.state == 2
+    end
+
+    test "quota'd dataset below warn → no check (only near-limit emits)" do
+      assert Evaluate.zfs_checks(%{"pools" => [], "datasets" => [ds(%{"used" => 50})]}) == []
+    end
+
+    test "dataset without a quota → never emits, regardless of usage" do
+      assert Evaluate.zfs_checks(%{
+               "pools" => [],
+               "datasets" => [ds(%{"quota" => 0, "used" => 999})]
+             }) == []
+    end
+
+    test "quota on the pool root dataset does not duplicate the pool's key" do
+      # A dataset named like the pool shares zfs:<name>; the pool check owns it.
+      checks =
+        Evaluate.zfs_checks(%{
+          "pools" => [pool(%{"cap_pct" => 1})],
+          "datasets" => [ds(%{"name" => "rpool", "used" => 99, "quota" => 100})]
+        })
+
+      assert Enum.map(checks, & &1.key) == ["zfs:rpool"]
+    end
   end
 end

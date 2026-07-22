@@ -59,7 +59,7 @@ defmodule Orbit.Hub.Checkmk do
           "loadavg" => loadavg_section(sections["cpu"]),
           "ntp" => chrony_section(sections["chrony"]),
           "services" => systemd_section(sections["systemd_units"]),
-          "zfs" => zpool_section(sections["zpool"], sections["zpool_status"])
+          "zfs" => zfs_section(sections["zpool"], sections["zpool_status"], sections["zfsget"])
         }
         |> Enum.reject(fn {_k, v} -> v in [nil, [], %{}] end)
         |> Map.new()
@@ -91,34 +91,84 @@ defmodule Orbit.Hub.Checkmk do
 
   def raw_text(_), do: nil
 
-  # <<<zpool>>> is `zpool list` (header row + one row per pool);
-  # <<<zpool_status>>> is `zpool status -x`. Parse the pools' health/capacity/
-  # fragmentation for the ZFS check family. Header-indexed so it survives
-  # column shifts across ZFS versions (ckpoint/expandsz added over time).
+  # The ZFS section (linux nodes) from the Checkmk agent:
+  #   <<<zpool>>>        `zpool list`   → per-pool health/capacity/frag
+  #   <<<zpool_status>>> `zpool status -x`
+  #   <<<zfsget:sep(9)>>> `zfs get`     → per-dataset used/avail/quota/…
+  # Returns nil when the box has no pools (no ZFS). Datasets are capped +
+  # sorted by usage so a NAS with thousands of subvols can't bloat the push.
+  @dataset_cap 200
+
   @doc false
-  def zpool_section(nil, _status), do: nil
-  def zpool_section([], _status), do: nil
+  def zfs_section(zpool_lines, status_lines, zfsget_lines) do
+    case zpool_pools(zpool_lines) do
+      [] ->
+        nil
 
-  def zpool_section([header | rows], status_lines) do
-    idx = header |> String.split() |> Enum.with_index() |> Map.new()
-
-    pools =
-      for row <- rows,
-          fields = String.split(row),
-          name = zpool_col(fields, idx["NAME"] || 0),
-          is_binary(name) and name != "" do
+      pools ->
         %{
-          "name" => name,
-          "health" => zpool_col(fields, idx["HEALTH"]),
-          "cap_pct" => zpool_pct(zpool_col(fields, idx["CAP"])),
-          "frag_pct" => zpool_pct(zpool_col(fields, idx["FRAG"]))
+          "pools" => pools,
+          "healthy" => zpool_healthy?(status_lines),
+          "datasets" => zfsget_datasets(zfsget_lines)
         }
-      end
-
-    if pools == [], do: nil, else: %{"pools" => pools, "healthy" => zpool_healthy?(status_lines)}
+    end
   end
 
-  def zpool_section(_zpool, _status), do: nil
+  # Header-indexed so it survives column shifts across ZFS versions
+  # (ckpoint/expandsz were added over time).
+  defp zpool_pools([header | rows]) do
+    idx = header |> String.split() |> Enum.with_index() |> Map.new()
+
+    for row <- rows,
+        fields = String.split(row),
+        name = zpool_col(fields, idx["NAME"] || 0),
+        is_binary(name) and name != "" do
+      %{
+        "name" => name,
+        "health" => zpool_col(fields, idx["HEALTH"]),
+        "cap_pct" => zpool_pct(zpool_col(fields, idx["CAP"])),
+        "frag_pct" => zpool_pct(zpool_col(fields, idx["FRAG"]))
+      }
+    end
+  end
+
+  defp zpool_pools(_), do: []
+
+  # <<<zfsget:sep(9)>>> rows: `<dataset>\t<property>\t<value>\t<source>`.
+  # Group by dataset, keep the interesting properties, biggest-used first.
+  defp zfsget_datasets(lines) when is_list(lines) do
+    lines
+    |> Enum.reduce(%{}, fn line, acc ->
+      case String.split(line, "\t") do
+        [ds, prop, value | _] -> Map.update(acc, ds, %{prop => value}, &Map.put(&1, prop, value))
+        _ -> acc
+      end
+    end)
+    |> Enum.map(fn {name, p} ->
+      %{
+        "name" => name,
+        "type" => p["type"],
+        "used" => zfs_int(p["used"]),
+        "avail" => zfs_int(p["available"]),
+        "quota" => zfs_int(p["quota"]),
+        "compressratio" => p["compressratio"],
+        "mountpoint" => p["mountpoint"]
+      }
+    end)
+    |> Enum.sort_by(&(&1["used"] || 0), :desc)
+    |> Enum.take(@dataset_cap)
+  end
+
+  defp zfsget_datasets(_), do: []
+
+  defp zfs_int(nil), do: nil
+
+  defp zfs_int(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
 
   defp zpool_col(_fields, nil), do: nil
   defp zpool_col(fields, i), do: Enum.at(fields, i)
