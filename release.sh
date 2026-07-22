@@ -174,7 +174,11 @@ fi
 
 # Commit changes (include a refreshed agent signature when signing is enabled)
 git add VERSION CHANGELOG.md
-[[ -f agent/orbit_agent.py.sig ]] && git add agent/orbit_agent.py.sig
+# Both agent lines are signed (§28); stage every refreshed .sig, not just one.
+for sig in agent/orbit_agent.py.sig agent/orbit_agent_linux.py.sig \
+    agent/vendor/check_mk_agent.linux.sig; do
+    [[ -f "$sig" ]] && git add "$sig"
+done
 git commit -m "chore: bump version to $NEW_VERSION"
 
 # Create annotated tag
