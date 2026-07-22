@@ -72,7 +72,28 @@ defmodule Orbit.Checks.Evaluate do
     |> Enum.concat(cert_checks(status["certificates"] || sections["certificates"] || []))
     |> Enum.concat(connectivity_checks(status["connectivity"] || sections["connectivity"] || []))
     |> Enum.concat(zfs_checks(status["zfs"]))
+    |> Enum.concat(vendor_checks(sections))
     |> Enum.reject(&is_nil/1)
+  end
+
+  # Extra check families a downstream build registers (§28). Each entry is an
+  # `{module, function}` whose `fun(entry)` returns `[ServiceCheck]` from the
+  # WHOLE cache entry (so it can read x_* passthrough sections the core parser
+  # ignores, e.g. Pro's ZFS scrub/device-error checks off x_zfs). Appended to
+  # the core families here, so every surface (Checkmk export, Prometheus,
+  # Alerts, per-instance) sees them identically — evaluate/1 is the one choke
+  # point they all route through. Open registers none. compile_env in the body.
+  @vendor_checks Application.compile_env(:orbit, :vendor_checks, [])
+
+  defp vendor_checks(entry) do
+    Enum.flat_map(@vendor_checks, fn {mod, fun} ->
+      # A vendor check must never break core evaluation (pure + DB-free still).
+      try do
+        mod |> apply(fun, [entry]) |> List.wrap() |> Enum.filter(&match?(%ServiceCheck{}, &1))
+      rescue
+        _ -> []
+      end
+    end)
   end
 
   @doc """

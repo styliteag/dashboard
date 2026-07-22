@@ -543,6 +543,18 @@ defmodule Orbit.Checks.EvaluateTest do
       # swap absent (no device) → not emitted.
       assert keys == ["cpu", "disk:/", "memory"]
     end
+
+    test "no registered vendor_checks → an x_* section adds no checks (extension-tolerant)" do
+      entry = %{"status" => %{"cpu" => %{"total_pct" => 5.0}}, "x_zfs" => %{"pools" => [%{}]}}
+      keys = entry |> Evaluate.evaluate() |> Enum.map(& &1.key)
+
+      # With no extractor registered (open's default) a passthrough section is
+      # inert. A downstream build that registers vendor_checks is covered by its
+      # own *_pro_test; guard so this stays green there too.
+      if Application.get_env(:orbit, :vendor_checks, []) == [] do
+        assert keys == ["cpu"]
+      end
+    end
   end
 
   describe "zfs_checks/1" do

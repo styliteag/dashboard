@@ -239,8 +239,6 @@ defmodule Orbit.Metrics do
   # compile_env in the module body, not per call.
   @vendor_metrics Application.compile_env(:orbit, :vendor_metrics, [])
 
-  defp vendor_rows(_data) when @vendor_metrics == [], do: []
-
   defp vendor_rows(data) do
     Enum.flat_map(@vendor_metrics, fn {mod, fun} ->
       # An extractor must never break the core series persist.
