@@ -10,7 +10,7 @@
 
 services:
   db:
-    image: mariadb:11
+    image: mariadb:lts
     restart: unless-stopped
     # fsync instead of the O_DIRECT default: the datadir is a host bind mount
     # and Docker Desktop's VirtioFS cannot do O_DIRECT — InnoDB then aborts
@@ -125,10 +125,11 @@ services:
       - ./VERSION:/app/VERSION:ro
       # Served agent code for the self-update relay (read-only).
       - ./agent:/app/agent:ro
-      - dev_geoip_data:/data/geoip
       - ./orbit/data/deps:/app/deps
       - ./orbit/data/build:/app/_build
       - ./orbit/data/toolchain:/toolchain
+      # persisted data
+      - ./data/geoip_data:/data/geoip
     depends_on:
       db:
         condition: service_healthy
@@ -140,10 +141,6 @@ services:
     environment:
       COLLECTIONS: crowdsecurity/linux
     volumes:
-      - dev_crowdsec_config:/etc/crowdsec
-      - dev_crowdsec_data:/var/lib/crowdsec/data
-
-volumes:
-  dev_geoip_data:
-  dev_crowdsec_config:
-  dev_crowdsec_data:
+      # persisted data
+      - ./data/crowdsec_config:/etc/crowdsec
+      - ./data/crowdsec_data:/var/lib/crowdsec/data
