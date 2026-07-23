@@ -183,13 +183,19 @@ echo "Version and CHANGELOG.md changes:"
 git --no-pager diff VERSION CHANGELOG.md
 echo ""
 
-# Prompt for confirmation
-read -p "Proceed with commit, tag, and push? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted. Changes have been made to VERSION and CHANGELOG.md."
-    echo "You can review them and commit manually if needed."
-    exit 0
+# Prompt for confirmation. RELEASE_YES=1 skips it — set by wrappers where
+# the invocation itself is the confirmation (the pro workspace's coupled
+# `just release` would otherwise ask twice).
+if [[ "${RELEASE_YES:-}" == "1" ]]; then
+    echo "Proceeding without prompt (RELEASE_YES=1)."
+else
+    read -p "Proceed with commit, tag, and push? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted. Changes have been made to VERSION and CHANGELOG.md."
+        echo "You can review them and commit manually if needed."
+        exit 0
+    fi
 fi
 
 # Commit changes (include a refreshed agent signature when signing is enabled)
