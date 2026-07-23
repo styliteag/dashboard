@@ -84,6 +84,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           ipsec_busy: MapSet.new(),
           ipsec_msg: nil,
           ipsec_expanded: MapSet.new(),
+          # Interfaces table: address-less interfaces (VLAN legs, bridge
+          # members, bonds — dozens on a hypervisor) hide by default.
+          if_show_all: false,
           conn_editor: nil,
           conn_test: nil,
           conn_test_busy: false,
@@ -227,6 +230,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   # (ipsec.connect/disconnect/restart in the agent's _COMMANDS; restart goes
   # through the agent's safe reload path, never `service strongswan restart`).
   # Reconnect = best-effort disconnect of the live SA, then re-initiate.
+  def handle_event("iface_toggle_all", _params, socket),
+    do: {:noreply, assign(socket, if_show_all: not socket.assigns.if_show_all)}
+
   def handle_event("ipsec_toggle", %{"id" => id}, socket) do
     expanded = socket.assigns.ipsec_expanded
 
@@ -2856,7 +2862,24 @@ defmodule OrbitWeb.InstanceDetailLive do
           :if={@tab == "network" and @interfaces != []}
           class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
         >
-          <h2 class="mb-3 text-sm font-medium text-base-content/70">Interfaces</h2>
+          <%!-- Address-less interfaces (VLAN legs, bridge members, bonds —
+               dozens on a hypervisor) hide by default; the toggle shows the
+               full list. If NO interface has an address the filter would
+               blank the table, so everything shows instead. --%>
+          <% shown = visible_interfaces(@interfaces, @if_show_all) %>
+          <% hidden = length(@interfaces) - length(shown) %>
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-sm font-medium text-base-content/70">Interfaces</h2>
+            <button
+              :if={@if_show_all or hidden > 0}
+              phx-click="iface_toggle_all"
+              class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+            >
+              {if @if_show_all,
+                do: "Only with IP",
+                else: "Show all (#{hidden} without IP)"}
+            </button>
+          </div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
               <thead class="text-base-content/60">
@@ -2870,7 +2893,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={i <- @interfaces} class="border-b border-base-300/50 last:border-0">
+                <tr :for={i <- shown} class="border-b border-base-300/50 last:border-0">
                   <td class="py-1.5 pr-4 text-base-content/80">{i["name"]}</td>
                   <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
                     {i["address"] || "—"}
@@ -3543,6 +3566,16 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Interface rates carry the -1.0 no-data sentinel (first push after restart).
   defp rate(v) when is_number(v) and v >= 0, do: bytes(v) <> "/s"
   defp rate(_), do: "—"
+
+  # Interfaces table default filter: only rows with an address. When no
+  # interface carries one at all (a device type whose data has no addresses)
+  # the filter must not blank the table — show everything instead.
+  defp visible_interfaces(interfaces, true), do: interfaces
+
+  defp visible_interfaces(interfaces, false) do
+    with_ip = Enum.filter(interfaces, &(to_string(&1["address"] || "") != ""))
+    if with_ip == [], do: interfaces, else: with_ip
+  end
 
   defp bytes(v) when is_number(v) and v >= 1_073_741_824,
     do: "#{Float.round(v / 1_073_741_824, 1)} GB"

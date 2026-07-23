@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Network tab: interfaces without an address (VLAN legs, bridge members,
+  bonds — dozens on a hypervisor) are hidden by default; a "Show all"
+  toggle reveals the full list. Applies to every instance type.
+
 ## [4.2.23] - 2026-07-23
 
 ### Fixed
