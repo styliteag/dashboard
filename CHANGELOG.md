@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Certificates page opens sorted by Expires (soonest first) instead of by
+  state — the certificate that runs out next is the first row.
+
 ## [4.2.21] - 2026-07-23
 
 ### Changed

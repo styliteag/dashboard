@@ -42,7 +42,9 @@ defmodule OrbitWeb.CertificatesLive do
      |> assign(
        search: "",
        state_filter: "all",
-       sort_col: "state",
+       # Soonest expiry first: the page exists to answer "what runs out
+       # next", and the state sort already exists one click away.
+       sort_col: "days",
        sort_dir: :asc,
        writable: socket.assigns.current_user.role in ~w(admin user)
      )
