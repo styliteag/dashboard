@@ -58,4 +58,44 @@ defmodule Orbit.NetTest do
       assert Net.client_ip(conn_with("6.6.6.6", {192, 0, 2, 1})) == "192.0.2.1"
     end
   end
+
+  # Ping-monitor Destination prefill: the far side's first host address.
+  describe "first_host/1" do
+    test "network selector yields the first host" do
+      assert Net.first_host("192.168.0.0/20") == "192.168.0.1"
+      assert Net.first_host("10.3.3.0/24") == "10.3.3.1"
+    end
+
+    test "off-base selector is normalized to the network first" do
+      assert Net.first_host("10.3.3.7/24") == "10.3.3.1"
+    end
+
+    test "one-host selectors return the host itself" do
+      assert Net.first_host("10.9.9.9/32") == "10.9.9.9"
+      assert Net.first_host("10.1.2.3") == "10.1.2.3"
+    end
+
+    test "/31 point-to-point yields the upper of the two hosts" do
+      assert Net.first_host("10.0.0.0/31") == "10.0.0.1"
+    end
+
+    test "any-selectors and garbage yield no guess" do
+      assert Net.first_host("0.0.0.0/0") == ""
+      assert Net.first_host("::/0") == ""
+      assert Net.first_host("") == ""
+      assert Net.first_host(nil) == ""
+      assert Net.first_host("foo/24") == ""
+      assert Net.first_host("10.0.0.0/33") == ""
+    end
+
+    test "strongSwan proto/port tails are stripped (pfSense pipe, classic bracket)" do
+      assert Net.first_host("10.3.3.0/24|/0") == "10.3.3.1"
+      assert Net.first_host("10.3.3.0/24[tcp/80]") == "10.3.3.1"
+    end
+
+    test "IPv6 selectors work the same way" do
+      assert Net.first_host("fd00:1::/64") == "fd00:1::1"
+      assert Net.first_host("fd00:1::5/128") == "fd00:1::5"
+    end
+  end
 end

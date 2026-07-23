@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- "Add ping monitor" now prefills the Destination with the first host address
+  of the far side's Phase-2 selector (e.g. `192.168.0.0/20` → `192.168.0.1`)
+  — a best-guess gateway you can overtype, instead of an empty field. Selectors
+  without a sensible single guess (`0.0.0.0/0`) stay empty; editing an existing
+  monitor keeps its saved destination.
+
 ## [4.2.18] - 2026-07-23
 
 ### Changed

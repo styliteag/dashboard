@@ -84,6 +84,72 @@ defmodule Orbit.Net do
 
   def ip_address?(_), do: false
 
+  @doc """
+  First sensible ping target inside a traffic selector: the network's first
+  host address (`"192.168.0.0/20"` → `"192.168.0.1"`), the address itself
+  for a one-host selector (bare IP, /32, /128), or `""` when there is no
+  meaningful single guess (`0.0.0.0/0`, `::/0`, unparseable input). Used to
+  prefill a ping monitor's Destination with the far side's most likely
+  gateway — a guess the operator can overtype, so it must never be wrong in
+  the "not even in the selector" sense, only in the "gateway is elsewhere"
+  sense.
+  """
+  def first_host(ts) when is_binary(ts) do
+    # Selectors arrive cleaned from the agent/Securepoint paths, but strip
+    # strongSwan proto/port tails ("…|/0", "…[tcp/80]") defensively anyway.
+    [addr | prefix] =
+      ts
+      |> String.split(["|", "["], parts: 2)
+      |> hd()
+      |> String.trim()
+      |> String.split("/", parts: 2)
+
+    case :inet.parse_address(String.to_charlist(addr)) do
+      {:ok, tuple} -> first_host_in(tuple, prefix)
+      _ -> ""
+    end
+  end
+
+  def first_host(_), do: ""
+
+  # Bare address = a one-host selector: the peer itself.
+  defp first_host_in(tuple, []), do: ntoa(tuple)
+
+  defp first_host_in(tuple, [prefix]) do
+    bits = if tuple_size(tuple) == 4, do: 32, else: 128
+
+    case Integer.parse(prefix) do
+      {^bits, ""} -> ntoa(tuple)
+      # /0 means "any" — there is no sensible single guess. Garbage and
+      # out-of-range prefixes also land here.
+      {p, ""} when p > 0 and p < bits -> tuple |> network_first_host(p, bits) |> ntoa()
+      _ -> ""
+    end
+  end
+
+  # Network base (the selector may arrive off-base) + 1 = first host.
+  defp network_first_host(tuple, prefix, bits) do
+    host_bits = bits - prefix
+    base = tuple |> addr_to_int() |> Bitwise.band(Bitwise.bnot(Bitwise.bsl(1, host_bits) - 1))
+    int_to_addr(base + 1, bits)
+  end
+
+  defp addr_to_int(tuple) do
+    width = if tuple_size(tuple) == 4, do: 8, else: 16
+    tuple |> Tuple.to_list() |> Enum.reduce(0, fn part, acc -> Bitwise.bsl(acc, width) + part end)
+  end
+
+  defp int_to_addr(n, bits) do
+    {width, count} = if bits == 32, do: {8, 4}, else: {16, 8}
+    mask = Bitwise.bsl(1, width) - 1
+
+    (count - 1)..0//-1
+    |> Enum.map(fn i -> n |> Bitwise.bsr(i * width) |> Bitwise.band(mask) end)
+    |> List.to_tuple()
+  end
+
+  defp ntoa(tuple), do: tuple |> :inet.ntoa() |> to_string()
+
   # RFC1918 private, 127/8 loopback, 169.254/16 link-local, 100.64/10 CGNAT,
   # 0/8 and 224/4+ (multicast/reserved) are all non-public.
   defp public_tuple?({10, _, _, _}), do: false

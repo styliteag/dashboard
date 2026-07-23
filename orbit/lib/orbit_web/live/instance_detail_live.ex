@@ -666,7 +666,7 @@ defmodule OrbitWeb.InstanceDetailLive do
       remote_ts: params["rts"] || "",
       monitor_id: mon && mon.id,
       source: (mon && mon.source) || params["suggested"] || "",
-      destination: (mon && mon.destination) || "",
+      destination: (mon && mon.destination) || Orbit.Net.first_host(params["rts"] || ""),
       ping_count: (mon && mon.ping_count) || 3,
       enabled: is_nil(mon) or mon.enabled
     }
