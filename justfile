@@ -1,10 +1,10 @@
 # https://github.com/casey/just
 set shell := ["bash", "-cu"]
-
-# Optional local extension hook: checkout-specific recipes live in a
-# `local.just` next to this file (gitignored here; the pro fork tracks its
-# own). Missing file = no-op.
-import? 'local.just'
+# Local recipes (local.just, imported at the BOTTOM of this file) may also
+# OVERRIDE recipes defined here — with this setting the last definition wins,
+# and the import at the end makes that the local one. The pro fork uses this
+# to make `just dev` start both stacks.
+set allow-duplicate-recipes := true
 
 default:
     @just --list
@@ -207,3 +207,9 @@ gen-key:
 # into the instance form; public key → install on the box, see docs/securepoint-ssh.md)
 gen-ssh-key:
     cd tools && uv run python -c 'import asyncssh; k=asyncssh.generate_private_key("ssh-ed25519"); print(k.export_private_key().decode()); print(k.export_public_key().decode().strip())'
+
+# Optional local extension hook: checkout-specific recipes live in a
+# `local.just` next to this file (gitignored here; the pro fork tracks its
+# own). Imported LAST so local recipes may override the ones above
+# (allow-duplicate-recipes at the top). Missing file = no-op.
+import? 'local.just'
