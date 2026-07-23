@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Fleet VPN page: paired tunnel groups now sort to the top of the list with
+  a slightly larger, bolder header row, and "Expand all" / "Collapse all"
+  now also folds every tunnel's phase-2 child rows open/closed (previously
+  it only toggled the pair groups).
+
 ## [4.2.20] - 2026-07-23
 
 ### Added

@@ -140,12 +140,13 @@ defmodule OrbitWeb.VpnLive do
     {:noreply, assign(socket, open_groups: og, closed_groups: cg)}
   end
 
-  # Expand all / Collapse all. Server-side truth, not a client param: recompute
+  # Expand all / Collapse all — both levels: pair groups AND each tunnel's
+  # phase-2 children. Server-side truth, not a client param: recompute
   # whether anything is collapsed and flip everything the other way.
   def handle_event("groups_toggle_all", _params, socket) do
     rows = visible(socket.assigns)
 
-    {_items, any_collapsed, _has_pairs} =
+    {_items, group_collapsed?, _has_pairs} =
       grouped_display(rows, socket.assigns.open_groups, socket.assigns.closed_groups)
 
     keys =
@@ -154,10 +155,20 @@ defmodule OrbitWeb.VpnLive do
       |> Enum.filter(& &1.paired)
       |> Enum.map(&Pairing.group_key/1)
 
-    if any_collapsed do
-      {:noreply, assign(socket, open_groups: MapSet.new(keys), closed_groups: MapSet.new())}
+    if anything_collapsed?(rows, group_collapsed?, socket.assigns.expanded) do
+      {:noreply,
+       assign(socket,
+         open_groups: MapSet.new(keys),
+         closed_groups: MapSet.new(),
+         expanded: MapSet.union(socket.assigns.expanded, MapSet.new(expandable_keys(rows)))
+       )}
     else
-      {:noreply, assign(socket, open_groups: MapSet.new(), closed_groups: MapSet.new(keys))}
+      {:noreply,
+       assign(socket,
+         open_groups: MapSet.new(),
+         closed_groups: MapSet.new(keys),
+         expanded: MapSet.new()
+       )}
     end
   end
 
@@ -630,13 +641,15 @@ defmodule OrbitWeb.VpnLive do
   defp sort_key("uptime"), do: fn t -> t.uptime_s end
 
   # Interleaved render list for the tbody: `{:group, g, key, health, open}`
-  # headers with their member rows directly below when open. Derived in
-  # render, not an assign — it changes with every filter/sort/override.
+  # headers with their member rows directly below when open. Paired groups
+  # render first (they are the links the page is about), unpaired singles
+  # after — each block keeping the user's sort order. Derived in render,
+  # not an assign — it changes with every filter/sort/override.
   defp grouped_display(rows, open_groups, closed_groups) do
-    groups = Pairing.build_groups(rows)
+    {paired, solo} = rows |> Pairing.build_groups() |> Enum.split_with(& &1.paired)
 
     items =
-      Enum.flat_map(groups, fn
+      Enum.flat_map(paired ++ solo, fn
         %{paired: true, members: [a, b]} = g ->
           key = Pairing.group_key(g)
           health = Pairing.pair_health(a, b)
@@ -651,8 +664,21 @@ defmodule OrbitWeb.VpnLive do
       end)
 
     any_collapsed = Enum.any?(items, &match?({:group, _, _, _, false}, &1))
-    {items, any_collapsed, Enum.any?(groups, & &1.paired)}
+    {items, any_collapsed, paired != []}
   end
+
+  # "Anything left to expand?" for the Expand/Collapse-all button: a closed
+  # group OR a visible tunnel whose phase-2 children are folded — the button
+  # drives both levels.
+  defp anything_collapsed?(rows, group_collapsed?, expanded) do
+    group_collapsed? or
+      Enum.any?(rows, fn t ->
+        t.children != [] and not MapSet.member?(expanded, Pairing.row_key(t))
+      end)
+  end
+
+  defp expandable_keys(rows),
+    do: for(t <- rows, t.children != [], do: Pairing.row_key(t))
 
   # Default: collapse only healthy pairs — problems stay expanded. The two
   # override sets record explicit user choices in either direction.
@@ -673,7 +699,7 @@ defmodule OrbitWeb.VpnLive do
   def render(assigns) do
     rows = visible(assigns)
 
-    {display, any_collapsed, has_pairs} =
+    {display, group_collapsed?, has_pairs} =
       if assigns.grouped,
         do: grouped_display(rows, assigns.open_groups, assigns.closed_groups),
         else: {Enum.map(rows, &{:tunnel, &1, false}), false, false}
@@ -682,7 +708,8 @@ defmodule OrbitWeb.VpnLive do
       assign(assigns,
         rows: rows,
         display: display,
-        any_collapsed: any_collapsed,
+        any_collapsed: anything_collapsed?(rows, group_collapsed?, assigns.expanded),
+        has_expandable: expandable_keys(rows) != [],
         has_pairs: has_pairs,
         up_count: Enum.count(assigns.tunnels, & &1.up),
         down_count: Enum.count(assigns.tunnels, &(not &1.up)),
@@ -801,7 +828,7 @@ defmodule OrbitWeb.VpnLive do
             {if @grouped, do: "Grouped", else: "Flat"}
           </button>
           <button
-            :if={@grouped and @has_pairs}
+            :if={(@grouped and @has_pairs) or @has_expandable}
             phx-click="groups_toggle_all"
             class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
           >
@@ -881,13 +908,15 @@ defmodule OrbitWeb.VpnLive do
                       phx-click="group_toggle"
                       phx-value-key={gkey}
                       phx-value-open={to_string(open)}
-                      class="cursor-pointer border-b border-base-300/50 bg-base-200/70 text-xs last:border-0 hover:bg-base-200"
+                      class="cursor-pointer border-b border-base-300/50 bg-base-200/70 text-sm last:border-0 hover:bg-base-200"
                     >
-                      <td colspan="8" class={["px-3 py-1.5", open && "border-l-4 border-primary"]}>
+                      <td colspan="8" class={["px-3 py-2", open && "border-l-4 border-primary"]}>
                         <span class="inline-flex flex-wrap items-center gap-2 text-base-content/80">
                           <span class="text-base-content/50">{if open, do: "▾", else: "▸"}</span>
-                          <Icons.icon name={:vpn} class="h-3 w-3 text-base-content/50" />
-                          <span class="font-medium">{a.instance_name} ⇄ {b.instance_name}</span>
+                          <Icons.icon name={:vpn} class="h-3.5 w-3.5 text-base-content/50" />
+                          <span class="font-semibold text-base-content">
+                            {a.instance_name} ⇄ {b.instance_name}
+                          </span>
                           <span class="font-mono text-base-content/50">
                             {if(a.local == "", do: "?", else: a.local)} ↔ {if(a.remote == "",
                               do: "?",
