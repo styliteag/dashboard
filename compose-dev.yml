@@ -12,6 +12,10 @@ services:
   db:
     image: mariadb:11
     restart: unless-stopped
+    # fsync instead of the O_DIRECT default: the datadir is a host bind mount
+    # and Docker Desktop's VirtioFS cannot do O_DIRECT — InnoDB then aborts
+    # with "The data file './ibdata1' must be writable" although it is.
+    command: --innodb-flush-method=fsync
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
       MYSQL_DATABASE: ${DB_NAME:-dash}
@@ -21,7 +25,15 @@ services:
     ports:
       - "${DASH_DB_PORT:-3306}:3306"
     volumes:
-      - dev_db_data:/var/lib/mysql
+      # Host bind mount, NOT a named volume: the dev database lives visibly
+      # in the tree (gitignored via data*/), survives `docker compose down -v`,
+      # volume prunes and compose-project renames — three sibling
+      # *_dev_db_data volumes from past project names each looked like "my
+      # dev DB is gone". A second checkout can share this database by
+      # pointing its orbit at THIS db container (ORBIT_DB_HOST/ORBIT_DB_PORT
+      # below) — never by running a second mariadb on the same directory
+      # (InnoDB locks the datadir; two servers on it refuse to start).
+      - ${DASH_DB_DATA_DIR:-./data/db}:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -45,7 +57,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-devpassword}
       DB_NAME: ${DB_NAME:-dash}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootdev}
-      ORBIT_DB_HOST: db
+      # Overridable so a sibling checkout (dashboard-pro) can point its orbit
+      # at this stack's db container instead of running its own database:
+      # ORBIT_DB_HOST=host.docker.internal ORBIT_DB_PORT=3306 in its .env.
+      ORBIT_DB_HOST: ${ORBIT_DB_HOST:-db}
+      ORBIT_DB_PORT: ${ORBIT_DB_PORT:-3306}
       # Public address of THIS dev machine, as a firewall would reach it. Feeds
       # Endpoint.url(), which the agent install snippet is built from — leave it
       # at localhost and the copied block points an agent at its own loopback.
@@ -128,7 +144,6 @@ services:
       - dev_crowdsec_data:/var/lib/crowdsec/data
 
 volumes:
-  dev_db_data:
   dev_geoip_data:
   dev_crowdsec_config:
   dev_crowdsec_data:
