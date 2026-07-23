@@ -1,6 +1,11 @@
 # https://github.com/casey/just
 set shell := ["bash", "-cu"]
 
+# Optional local extension hook: checkout-specific recipes live in a
+# `local.just` next to this file (gitignored here; the pro fork tracks its
+# own). Missing file = no-op.
+import? 'local.just'
+
 default:
     @just --list
 

@@ -243,3 +243,5 @@ data*/
 compose-db2.yml
 .env.*
 !.env.example
+# Local-only just recipes (import? hook in the justfile)
+local.just
