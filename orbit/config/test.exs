@@ -11,6 +11,7 @@ config :orbit, Orbit.Repo,
   username: "root",
   password: System.get_env("DB_ROOT_PASSWORD", "rootdev"),
   hostname: System.get_env("ORBIT_DB_HOST", "db"),
+  port: String.to_integer(System.get_env("ORBIT_DB_PORT", "3306")),
   database: "orbit_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
