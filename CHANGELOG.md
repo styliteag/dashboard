@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Fleet VPN graph draws a lane for EVERY visible tunnel — the 40-row cap
+  ("Showing the first 40 of N tunnels") is gone; the table shows them all,
+  so the graph does too.
+
 ## [4.2.24] - 2026-07-23
 
 ### Changed

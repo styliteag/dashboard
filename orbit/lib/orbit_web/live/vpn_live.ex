@@ -69,7 +69,6 @@ defmodule OrbitWeb.VpnLive do
        fleet_graph: false,
        fleet_window: "7d",
        fleet_events: %{},
-       fleet_cap: 40,
        writable: socket.assigns.current_user.role in @write_roles
      )
      |> load()}
@@ -489,30 +488,24 @@ defmodule OrbitWeb.VpnLive do
 
   # Default 7d rather than everything: the fleet has tunnels with a year of
   # transitions, and "all" squeezes last night's outage into one pixel.
-  # Cap the drawn rows, and say so in the UI when it bites.
-  @fleet_cap 40
-
   defp load_fleet_events(socket) do
     # `rows` is derived in render/1, not an assign — read the source list, and
     # fetch for every visible instance so changing the filter needs no reload.
     ids = socket.assigns.tunnels |> Enum.map(& &1.instance_id) |> Enum.uniq()
     since = Orbit.Ipsec.History.window_start(socket.assigns.fleet_window, DateTime.utc_now())
 
-    assign(socket,
-      fleet_events: Orbit.Ipsec.History.read_many(ids, since),
-      fleet_cap: @fleet_cap
-    )
+    assign(socket, fleet_events: Orbit.Ipsec.History.read_many(ids, since))
   end
 
   # One phase-1 lane per row over the shared window, so the lanes line up
-  # vertically and a fleet-wide event reads as a vertical stripe.
+  # vertically and a fleet-wide event reads as a vertical stripe. Every
+  # visible row gets a lane — the table shows them all, the graph must too
+  # (a 40-row cap read as "all quiet" while the dropped rows weren't).
   defp fleet_lanes(rows, events, window) do
     now = DateTime.utc_now()
     start = Orbit.Ipsec.History.window_start(window, now)
 
-    rows
-    |> Enum.take(@fleet_cap)
-    |> Enum.map(fn row ->
+    Enum.map(rows, fn row ->
       lanes =
         Orbit.Ipsec.History.lanes(
           Map.get(events, {row.instance_id, row.id}, []),
@@ -878,12 +871,6 @@ defmodule OrbitWeb.VpnLive do
             <span>{@fleet_window} ago</span>
             <span>now</span>
           </div>
-          <%!-- Never silently truncate: an operator reading "all quiet" off a
-               graph that dropped rows would be reading a lie. --%>
-          <p :if={length(@rows) > @fleet_cap} class="mt-2 text-[10px] text-warning">
-            Showing the first {@fleet_cap} of {length(@rows)} tunnels — narrow the filter
-            to see the rest.
-          </p>
         </div>
 
         <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-base-300">
