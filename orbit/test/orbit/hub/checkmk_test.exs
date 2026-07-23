@@ -76,6 +76,17 @@ defmodule Orbit.Hub.CheckmkTest do
     assert eth["status"] == "up"
   end
 
+  # Regression: the parser hardcoded "address" => nil, so the Network tab's
+  # Address column showed "—" for every linux box although the lnx_if
+  # [start_iplink] dump carries the addresses.
+  test "interfaces get their address from the iplink dump" do
+    {sections, _} = Checkmk.parse(payload())
+    by_name = Map.new(sections["interfaces"], &{&1["name"], &1["address"]})
+
+    assert by_name["eth0"] == "10.20.1.211/22"
+    assert by_name["lo"] == "127.0.0.1/8"
+  end
+
   test "loadavg carries the core count so the load check can normalise" do
     {sections, _} = Checkmk.parse(payload())
     load = sections["loadavg"]

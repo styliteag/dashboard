@@ -414,14 +414,17 @@ defmodule Orbit.Hub.Checkmk do
     end
   end
 
-  # <<<lnx_if>>> carries an `ip link` dump plus a counter table
-  # ("eth0: rx_bytes rx_packets … tx_bytes …"). Only the counter table maps
-  # onto the interface shape the UI and the metric series already use.
+  # <<<lnx_if>>> carries an `ip address` dump ([start_iplink]…[end_iplink])
+  # plus a counter table ("eth0: rx_bytes rx_packets … tx_bytes …"). The
+  # counter table maps onto the interface shape the UI and the metric series
+  # use; the iplink dump contributes the addresses (the table alone left the
+  # Network tab's Address column showing "—" for every linux box).
   @doc false
   def lnx_if_section(nil), do: []
 
   def lnx_if_section(lines) do
     up = link_states(lines)
+    addrs = iplink_addresses(lines)
 
     for line <- lines,
         [name, rest] <- [String.split(line, ":", parts: 2)],
@@ -433,11 +436,47 @@ defmodule Orbit.Hub.Checkmk do
       %{
         "name" => name,
         "status" => if(Map.get(up, name, true), do: "up", else: "down"),
-        "address" => nil,
+        "address" => Map.get(addrs, name),
         "bytes_received" => Enum.at(nums, 0, 0),
         "bytes_transmitted" => Enum.at(nums, 8, 0)
       }
     end
+  end
+
+  # `ip address` dump: "2: eth0: <FLAGS> …" headers followed by indented
+  # "inet 10.20.1.211/22 …" / "inet6 …" lines. First IPv4 per interface wins
+  # (matching the FreeBSD agent's first-inet rule); a global IPv6 only fills
+  # the slot when the interface has no IPv4 at all. fe80::/10 link-local is
+  # noise, not an address worth a table cell. A veth "eth0@if5" header names
+  # the interface eth0.
+  defp iplink_addresses(lines) do
+    {_current, v4, v6} =
+      Enum.reduce(lines, {nil, %{}, %{}}, fn line, {current, v4, v6} ->
+        trimmed = String.trim(line)
+
+        cond do
+          match = Regex.run(~r/^\d+:\s+([^:@\s]+)/, line) ->
+            {Enum.at(match, 1), v4, v6}
+
+          is_nil(current) ->
+            {current, v4, v6}
+
+          String.starts_with?(trimmed, "inet ") ->
+            {current, Map.put_new(v4, current, trimmed |> String.split() |> Enum.at(1)), v6}
+
+          String.starts_with?(trimmed, "inet6 ") ->
+            addr = trimmed |> String.split() |> Enum.at(1) |> to_string()
+
+            if String.starts_with?(addr, "fe80"),
+              do: {current, v4, v6},
+              else: {current, v4, Map.put_new(v6, current, addr)}
+
+          true ->
+            {current, v4, v6}
+        end
+      end)
+
+    Map.merge(v6, v4)
   end
 
   # "[eth0]" blocks end with "Link detected: yes|no".

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Network tab of linux nodes: the Interfaces table showed "—" in the
+  Address column although the check_mk_agent lnx_if section carries the
+  full `ip address` dump — the parser now reads the addresses from it
+  (first IPv4 per interface, global IPv6 as fallback).
+
 ## [4.2.22] - 2026-07-23
 
 ### Changed
