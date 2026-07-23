@@ -27,6 +27,7 @@ defmodule OrbitWeb.VpnLive do
   alias Orbit.Auth.Scope
   alias Orbit.Hub
   alias Orbit.Instances
+  alias Orbit.Ipsec.Pairing
 
   @refresh_ms 30_000
   @ipsec_up ~w(established installed connected up 1 true yes)
@@ -54,6 +55,13 @@ defmodule OrbitWeb.VpnLive do
        busy: MapSet.new(),
        msg: nil,
        expanded: MapSet.new(),
+       # Peer grouping on by default (old frontend parity): the two ends of a
+       # tunnel between two managed boxes render as one link. Healthy pairs
+       # collapse to their header; the two MapSets are per-group user
+       # overrides on top of that default.
+       grouped: true,
+       open_groups: MapSet.new(),
+       closed_groups: MapSet.new(),
        ping_editor: nil,
        ping_test: nil,
        ping_test_busy: false,
@@ -113,6 +121,44 @@ defmodule OrbitWeb.VpnLive do
         else: MapSet.put(expanded, key)
 
     {:noreply, assign(socket, expanded: expanded)}
+  end
+
+  def handle_event("grouped_toggle", _params, socket),
+    do: {:noreply, assign(socket, grouped: not socket.assigns.grouped)}
+
+  # `open` is the group's CURRENT state — clicking flips it into the matching
+  # override set and out of the opposite one, so the per-health default keeps
+  # applying to every group the user never touched.
+  def handle_event("group_toggle", %{"key" => key, "open" => open}, socket) do
+    {og, cg} = {socket.assigns.open_groups, socket.assigns.closed_groups}
+
+    {og, cg} =
+      if open == "true",
+        do: {MapSet.delete(og, key), MapSet.put(cg, key)},
+        else: {MapSet.put(og, key), MapSet.delete(cg, key)}
+
+    {:noreply, assign(socket, open_groups: og, closed_groups: cg)}
+  end
+
+  # Expand all / Collapse all. Server-side truth, not a client param: recompute
+  # whether anything is collapsed and flip everything the other way.
+  def handle_event("groups_toggle_all", _params, socket) do
+    rows = visible(socket.assigns)
+
+    {_items, any_collapsed, _has_pairs} =
+      grouped_display(rows, socket.assigns.open_groups, socket.assigns.closed_groups)
+
+    keys =
+      rows
+      |> Pairing.build_groups()
+      |> Enum.filter(& &1.paired)
+      |> Enum.map(&Pairing.group_key/1)
+
+    if any_collapsed do
+      {:noreply, assign(socket, open_groups: MapSet.new(keys), closed_groups: MapSet.new())}
+    else
+      {:noreply, assign(socket, open_groups: MapSet.new(), closed_groups: MapSet.new(keys))}
+    end
   end
 
   # Phase-2 ping-monitor dialog (PingMonitorDialog parity) — the instance id
@@ -493,6 +539,12 @@ defmodule OrbitWeb.VpnLive do
 
     monitors = Orbit.Monitors.list_ipsec_for(Enum.map(vpn_instances, & &1.id))
 
+    # Staleness feeds pair_health: a silent agent's "established" is
+    # last-known, not live — a stale pair must never collapse as healthy.
+    now = DateTime.utc_now()
+    push_default = Orbit.Settings.effective("push_interval_seconds")
+    stale_floor = Orbit.Settings.effective("agent_stale_seconds")
+
     tunnels =
       Enum.flat_map(vpn_instances, fn inst ->
         entry = Hub.cache_entry(inst.id)
@@ -500,6 +552,7 @@ defmodule OrbitWeb.VpnLive do
         gui_openable = Orbit.GUI.openable(inst) == :ok
         # The box's real public address, for the lip-mismatch hint below.
         public_ip = Orbit.ExternalIp.build(entry)
+        staleness = Orbit.Checks.Staleness.resolve(inst, push_default, stale_floor, now)
 
         for t <- ipsec["tunnels"] || [] do
           status = (t["status"] || "") |> to_string() |> String.downcase()
@@ -516,8 +569,11 @@ defmodule OrbitWeb.VpnLive do
             label: t["description"] || t["id"] || "tunnel",
             status: t["status"] || "?",
             up: status in @ipsec_up,
+            stale: staleness != nil and staleness.stale,
             remote: t["remote"] || "",
             local: to_string(t["local"] || ""),
+            ike_init_spi: to_string(t["ike_init_spi"] || ""),
+            ike_resp_spi: to_string(t["ike_resp_spi"] || ""),
             lip_mismatch: Orbit.Ipsec.LocalEndpoint.mismatch?(t["local"], t["status"], public_ip),
             box_public_ip: public_ip[:ipv4],
             phase2_up: int0(t["phase2_up"]),
@@ -526,13 +582,14 @@ defmodule OrbitWeb.VpnLive do
             bytes_in: int0(t["bytes_in"]),
             bytes_out: int0(t["bytes_out"]),
             children: t["children"] || [],
+            dups: Pairing.dup_selectors(t["children"] || []),
             tags: inst.tags || []
           }
         end
       end)
 
     assign(socket,
-      tunnels: tunnels,
+      tunnels: Pairing.attach_peers(tunnels),
       monitors: monitors,
       comments: CommentEditor.lookup(vpn_instances)
     )
@@ -572,11 +629,61 @@ defmodule OrbitWeb.VpnLive do
   defp sort_key("remote"), do: fn t -> t.remote end
   defp sort_key("uptime"), do: fn t -> t.uptime_s end
 
+  # Interleaved render list for the tbody: `{:group, g, key, health, open}`
+  # headers with their member rows directly below when open. Derived in
+  # render, not an assign — it changes with every filter/sort/override.
+  defp grouped_display(rows, open_groups, closed_groups) do
+    groups = Pairing.build_groups(rows)
+
+    items =
+      Enum.flat_map(groups, fn
+        %{paired: true, members: [a, b]} = g ->
+          key = Pairing.group_key(g)
+          health = Pairing.pair_health(a, b)
+          open = group_open?(key, health, open_groups, closed_groups)
+
+          if open,
+            do: [{:group, g, key, health, open}, {:tunnel, a, true}, {:tunnel, b, true}],
+            else: [{:group, g, key, health, open}]
+
+        %{members: [t]} ->
+          [{:tunnel, t, false}]
+      end)
+
+    any_collapsed = Enum.any?(items, &match?({:group, _, _, _, false}, &1))
+    {items, any_collapsed, Enum.any?(groups, & &1.paired)}
+  end
+
+  # Default: collapse only healthy pairs — problems stay expanded. The two
+  # override sets record explicit user choices in either direction.
+  defp group_open?(key, {level, _label}, open_groups, closed_groups) do
+    cond do
+      MapSet.member?(open_groups, key) -> true
+      MapSet.member?(closed_groups, key) -> false
+      true -> level != :ok
+    end
+  end
+
+  defp health_class(:ok), do: "bg-primary/20 text-primary"
+  defp health_class(:warn), do: "bg-warning/20 text-warning"
+  defp health_class(:error), do: "bg-error/20 text-error"
+  defp health_class(:muted), do: "bg-base-300 text-base-content/70"
+
   @impl true
   def render(assigns) do
+    rows = visible(assigns)
+
+    {display, any_collapsed, has_pairs} =
+      if assigns.grouped,
+        do: grouped_display(rows, assigns.open_groups, assigns.closed_groups),
+        else: {Enum.map(rows, &{:tunnel, &1, false}), false, false}
+
     assigns =
       assign(assigns,
-        rows: visible(assigns),
+        rows: rows,
+        display: display,
+        any_collapsed: any_collapsed,
+        has_pairs: has_pairs,
         up_count: Enum.count(assigns.tunnels, & &1.up),
         down_count: Enum.count(assigns.tunnels, &(not &1.up)),
         all_tags: assigns.tunnels |> Enum.flat_map(& &1.tags) |> Enum.uniq() |> Enum.sort()
@@ -680,6 +787,26 @@ defmodule OrbitWeb.VpnLive do
           >
             Fleet graph
           </button>
+          <button
+            phx-click="grouped_toggle"
+            title="Group the two ends of each tunnel together"
+            class={[
+              "rounded border border-base-content/20 px-2 py-0.5 text-xs",
+              if(@grouped,
+                do: "bg-base-300 text-base-content",
+                else: "text-base-content/70 hover:bg-base-300"
+              )
+            ]}
+          >
+            {if @grouped, do: "Grouped", else: "Flat"}
+          </button>
+          <button
+            :if={@grouped and @has_pairs}
+            phx-click="groups_toggle_all"
+            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+          >
+            {if @any_collapsed, do: "▾ Expand all", else: "▸ Collapse all"}
+          </button>
           <div :if={@fleet_graph} class="flex items-center gap-1">
             <button
               :for={key <- ~w(24h 7d 30d)}
@@ -747,187 +874,50 @@ defmodule OrbitWeb.VpnLive do
               </tr>
             </thead>
             <tbody>
-              <%= for t <- @rows do %>
-                <% key = "#{t.instance_id}:#{t.id}" %>
-                <tr class="border-b border-base-300/50 last:border-0">
-                  <td class="whitespace-nowrap px-3 py-2">
-                    <button
-                      :if={t.children != []}
-                      phx-click="toggle_expand"
-                      phx-value-key={key}
-                      title="Show phase-2 child SAs"
-                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-base-content/20 text-2xl leading-none text-base-content/80 hover:bg-base-300"
+              <%= for item <- @display do %>
+                <%= case item do %>
+                  <% {:group, %{members: [a, b]}, gkey, {level, label}, open} -> %>
+                    <tr
+                      phx-click="group_toggle"
+                      phx-value-key={gkey}
+                      phx-value-open={to_string(open)}
+                      class="cursor-pointer border-b border-base-300/50 bg-base-200/70 text-xs last:border-0 hover:bg-base-200"
                     >
-                      {if MapSet.member?(@expanded, key), do: "▾", else: "▸"}
-                    </button>
-                    <%!-- title + sr-only text: colour must not be the only
-                         carrier of up/down (a11y), the dot has no label. --%>
-                    <span
-                      title={if t.up, do: "Tunnel up", else: "Tunnel down"}
-                      class={[
-                        "inline-block h-2.5 w-2.5 rounded-full",
-                        if(t.up, do: "bg-primary", else: "bg-error")
-                      ]}
-                    >
-                      <span class="sr-only">{if t.up, do: "up", else: "down"}</span>
-                    </span>
-                  </td>
-                  <td class="px-3 py-2">
-                    <a
-                      href={~p"/instances/#{t.instance_id}"}
-                      class="text-base-content hover:text-primary"
-                    >
-                      {t.instance_name}
-                    </a>
-                    <.base_url_link base_url={t.base_url} />
-                    <.webui_link
-                      instance_id={t.instance_id}
-                      openable={t.gui_openable}
-                      path={ipsec_ui_path(t.device_type)}
-                      title="Open the firewall's IPsec status page (tunneled)"
-                    />
-                    <.shell_link instance_id={t.instance_id} shell_enabled={t.shell_enabled} />
-                  </td>
-                  <td class="px-3 py-2 text-base-content/80">
-                    {t.label}
-                    <%!-- Configuration drift, not a fault of the tunnel: the
-                         pinned local endpoint is a public address the box no
-                         longer owns. Informational only — no check fires. --%>
-                    <span
-                      :if={t.lip_mismatch}
-                      title={Orbit.Ipsec.LocalEndpoint.hint(t.local, %{ipv4: t.box_public_ip})}
-                      class="ml-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] text-warning"
-                    >
-                      local IP drift
-                    </span>
-                    <.comment_editor
-                      text={CommentEditor.text(@comments, t.instance_id, "ipsec", t.id)}
+                      <td colspan="8" class={["px-3 py-1.5", open && "border-l-4 border-primary"]}>
+                        <span class="inline-flex flex-wrap items-center gap-2 text-base-content/80">
+                          <span class="text-base-content/50">{if open, do: "▾", else: "▸"}</span>
+                          <Icons.icon name={:vpn} class="h-3 w-3 text-base-content/50" />
+                          <span class="font-medium">{a.instance_name} ⇄ {b.instance_name}</span>
+                          <span class="font-mono text-base-content/50">
+                            {if(a.local == "", do: "?", else: a.local)} ↔ {if(a.remote == "",
+                              do: "?",
+                              else: a.remote
+                            )}
+                          </span>
+                          <span class={["rounded px-1.5 py-0.5", health_class(level)]}>{label}</span>
+                          <span
+                            :if={max(a.uptime_s, b.uptime_s) > 0}
+                            class="font-mono text-base-content/50"
+                          >
+                            up {duration(max(a.uptime_s, b.uptime_s))}
+                          </span>
+                          <span :if={not open} class="text-base-content/40">
+                            · expand to view ends
+                          </span>
+                        </span>
+                      </td>
+                    </tr>
+                  <% {:tunnel, t, in_group} -> %>
+                    <.tunnel_row
+                      t={t}
+                      in_group={in_group}
+                      expanded={@expanded}
+                      busy={@busy}
                       writable={@writable}
-                      instance_id={t.instance_id}
-                      kind="ipsec"
-                      entity_key={t.id}
+                      monitors={@monitors}
+                      comments={@comments}
                     />
-                  </td>
-                  <td class="px-3 py-2 text-base-content/60">{t.remote}</td>
-                  <td class="px-3 py-2 text-base-content/70">
-                    <span :if={t.phase2_total > 0}>{t.phase2_up}/{t.phase2_total} up</span>
-                    <span :if={t.phase2_total == 0}>—</span>
-                  </td>
-                  <td class="px-3 py-2 text-base-content/70">{duration(t.uptime_s)}</td>
-                  <td class="px-3 py-2 text-base-content/70">
-                    {bytes(t.bytes_in)} / {bytes(t.bytes_out)}
-                  </td>
-                  <td class="px-3 py-2 text-right text-xs whitespace-nowrap">
-                    <%!-- Reads, so no write role required — unlike the
-                         reconnect beside them. --%>
-                    <button
-                      phx-click="recheck"
-                      phx-value-iid={t.instance_id}
-                      disabled={MapSet.member?(@busy, "recheck:#{t.instance_id}")}
-                      title="Ask the box for fresh tunnel status now"
-                      aria-label="Recheck tunnel status"
-                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300 disabled:opacity-40"
-                    >
-                      <Icons.icon name={:refresh} class="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      phx-click="history_open"
-                      phx-value-iid={t.instance_id}
-                      phx-value-tunnel={t.id}
-                      phx-value-label={t.label}
-                      phx-value-up={to_string(t.up)}
-                      phx-value-mode="graph"
-                      title="Uptime graph"
-                      aria-label="Uptime graph"
-                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
-                    >
-                      <Icons.icon name={:chart} class="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      phx-click="history_open"
-                      phx-value-iid={t.instance_id}
-                      phx-value-tunnel={t.id}
-                      phx-value-label={t.label}
-                      phx-value-up={to_string(t.up)}
-                      phx-value-mode="history"
-                      title="Transition history"
-                      aria-label="Transition history"
-                      class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
-                    >
-                      <Icons.icon name={:audit} class="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      :if={@writable}
-                      phx-click="reconnect"
-                      phx-value-iid={t.instance_id}
-                      phx-value-id={t.id}
-                      phx-value-uid={t.unique_id}
-                      disabled={MapSet.member?(@busy, "#{t.instance_id}:#{t.id}")}
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {if MapSet.member?(@busy, "#{t.instance_id}:#{t.id}"),
-                        do: "…",
-                        else: "Reconnect"}
-                    </button>
-                  </td>
-                </tr>
-                <tr
-                  :for={ch <- t.children}
-                  :if={MapSet.member?(@expanded, key)}
-                  class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
-                >
-                  <td class="px-3 py-1"></td>
-                  <td class="px-3 py-1 text-base-content/40">{t.instance_name}</td>
-                  <td class="px-3 py-1 pl-8 text-base-content/60">{ch["name"] || "child"}</td>
-                  <td class="px-3 py-1 text-base-content/60" colspan="2">
-                    {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
-                  </td>
-                  <td class={
-                    [
-                      "px-3 py-1",
-                      cond do
-                        # No status text pushed for this child SA — "unknown", not
-                        # "down". A red "?" here alarmed operators on children of
-                        # tunnels that were plainly up; muted em dash instead.
-                        to_string(ch["status"]) == "" -> "text-base-content/40"
-                        child_up?(ch) -> "text-primary"
-                        true -> "text-error"
-                      end
-                    ]
-                  }>
-                    {if to_string(ch["status"]) == "", do: "—", else: ch["status"]}
-                  </td>
-                  <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
-                    <% mon = p2_monitor(@monitors, t.instance_id, ch["name"]) %>
-                    <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
-                      ping {ch["ping_state"]}
-                    </span>
-                    <span
-                      :if={ch["phase2_dup_persistent"] == true}
-                      title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
-                      class="mr-2 text-warning"
-                    >
-                      ⚠ {ch["dup_count"] || 2}× SAs
-                    </span>
-                    <span :if={mon} class="mr-2 text-base-content/40">
-                      monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
-                      <span :if={not mon.enabled}>(disabled)</span>
-                    </span>
-                    <button
-                      :if={@writable}
-                      phx-click="p2mon_open"
-                      phx-value-iid={t.instance_id}
-                      phx-value-tunnel={t.id}
-                      phx-value-child={ch["name"] || ""}
-                      phx-value-lts={ch["local_ts"] || ""}
-                      phx-value-rts={ch["remote_ts"] || ""}
-                      phx-value-suggested={ch["suggested_source"] || ""}
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                    >
-                      {if mon, do: "Edit ping", else: "Add ping"}
-                    </button>
-                  </td>
-                </tr>
+                <% end %>
               <% end %>
             </tbody>
           </table>
@@ -942,6 +932,204 @@ defmodule OrbitWeb.VpnLive do
         />
       </section>
     </main>
+    """
+  end
+
+  attr :t, :map, required: true
+  attr :in_group, :boolean, default: false
+  attr :expanded, :any, required: true
+  attr :busy, :any, required: true
+  attr :writable, :boolean, required: true
+  attr :monitors, :map, required: true
+  attr :comments, :map, required: true
+
+  defp tunnel_row(assigns) do
+    assigns = assign(assigns, :key, Pairing.row_key(assigns.t))
+
+    ~H"""
+    <tr class={["border-b border-base-300/50 last:border-0", @in_group && "bg-base-200/30"]}>
+      <td class="whitespace-nowrap px-3 py-2">
+        <button
+          :if={@t.children != []}
+          phx-click="toggle_expand"
+          phx-value-key={@key}
+          title="Show phase-2 child SAs"
+          class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-base-content/20 text-2xl leading-none text-base-content/80 hover:bg-base-300"
+        >
+          {if MapSet.member?(@expanded, @key), do: "▾", else: "▸"}
+        </button>
+        <%!-- title + sr-only text: colour must not be the only
+                         carrier of up/down (a11y), the dot has no label. --%>
+        <span
+          title={if @t.up, do: "Tunnel up", else: "Tunnel down"}
+          class={[
+            "inline-block h-2.5 w-2.5 rounded-full",
+            if(@t.up, do: "bg-primary", else: "bg-error")
+          ]}
+        >
+          <span class="sr-only">{if @t.up, do: "up", else: "down"}</span>
+        </span>
+      </td>
+      <td class="px-3 py-2">
+        <a
+          href={~p"/instances/#{@t.instance_id}"}
+          class="text-base-content hover:text-primary"
+        >
+          {@t.instance_name}
+        </a>
+        <.base_url_link base_url={@t.base_url} />
+        <.webui_link
+          instance_id={@t.instance_id}
+          openable={@t.gui_openable}
+          path={ipsec_ui_path(@t.device_type)}
+          title="Open the firewall's IPsec status page (tunneled)"
+        />
+        <.shell_link instance_id={@t.instance_id} shell_enabled={@t.shell_enabled} />
+      </td>
+      <td class="px-3 py-2 text-base-content/80">
+        {@t.label}
+        <%!-- Configuration drift, not a fault of the tunnel: the
+                         pinned local endpoint is a public address the box no
+                         longer owns. Informational only — no check fires. --%>
+        <span
+          :if={@t.lip_mismatch}
+          title={Orbit.Ipsec.LocalEndpoint.hint(@t.local, %{ipv4: @t.box_public_ip})}
+          class="ml-1 rounded bg-warning/20 px-1 py-0.5 text-[10px] text-warning"
+        >
+          local IP drift
+        </span>
+        <.comment_editor
+          text={CommentEditor.text(@comments, @t.instance_id, "ipsec", @t.id)}
+          writable={@writable}
+          instance_id={@t.instance_id}
+          kind="ipsec"
+          entity_key={@t.id}
+        />
+      </td>
+      <td class="px-3 py-2 text-base-content/60">{@t.remote}</td>
+      <td class="px-3 py-2 text-base-content/70">
+        <span :if={@t.phase2_total > 0}>{@t.phase2_up}/{@t.phase2_total} up</span>
+        <span :if={@t.phase2_total == 0}>—</span>
+        <%!-- Tunnel-level rollup of the per-selector duplicate-SA
+                         flags: the warning is about the tunnel's rekey
+                         behaviour, and the child rows hide behind the expand
+                         toggle. The tooltip names each duplicated selector. --%>
+        <span
+          :if={@t.dups != []}
+          title={Pairing.dup_title(@t.dups)}
+          class="ml-1 whitespace-nowrap text-warning"
+        >
+          {Pairing.dup_badge(@t.dups)}
+        </span>
+      </td>
+      <td class="px-3 py-2 text-base-content/70">{duration(@t.uptime_s)}</td>
+      <td class="px-3 py-2 text-base-content/70">
+        {bytes(@t.bytes_in)} / {bytes(@t.bytes_out)}
+      </td>
+      <td class="px-3 py-2 text-right text-xs whitespace-nowrap">
+        <%!-- Reads, so no write role required — unlike the
+                         reconnect beside them. --%>
+        <button
+          phx-click="recheck"
+          phx-value-iid={@t.instance_id}
+          disabled={MapSet.member?(@busy, "recheck:#{@t.instance_id}")}
+          title="Ask the box for fresh tunnel status now"
+          aria-label="Recheck tunnel status"
+          class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300 disabled:opacity-40"
+        >
+          <Icons.icon name={:refresh} class="h-3.5 w-3.5" />
+        </button>
+        <button
+          phx-click="history_open"
+          phx-value-iid={@t.instance_id}
+          phx-value-tunnel={@t.id}
+          phx-value-label={@t.label}
+          phx-value-up={to_string(@t.up)}
+          phx-value-mode="graph"
+          title="Uptime graph"
+          aria-label="Uptime graph"
+          class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
+        >
+          <Icons.icon name={:chart} class="h-3.5 w-3.5" />
+        </button>
+        <button
+          phx-click="history_open"
+          phx-value-iid={@t.instance_id}
+          phx-value-tunnel={@t.id}
+          phx-value-label={@t.label}
+          phx-value-up={to_string(@t.up)}
+          phx-value-mode="history"
+          title="Transition history"
+          aria-label="Transition history"
+          class="mr-1 rounded border border-base-content/20 p-1 align-middle text-base-content/80 hover:bg-base-300"
+        >
+          <Icons.icon name={:audit} class="h-3.5 w-3.5" />
+        </button>
+        <button
+          :if={@writable}
+          phx-click="reconnect"
+          phx-value-iid={@t.instance_id}
+          phx-value-id={@t.id}
+          phx-value-uid={@t.unique_id}
+          disabled={MapSet.member?(@busy, "#{@t.instance_id}:#{@t.id}")}
+          class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {if MapSet.member?(@busy, "#{@t.instance_id}:#{@t.id}"),
+            do: "…",
+            else: "Reconnect"}
+        </button>
+      </td>
+    </tr>
+    <tr
+      :for={ch <- @t.children}
+      :if={MapSet.member?(@expanded, @key)}
+      class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
+    >
+      <td class="px-3 py-1"></td>
+      <td class="px-3 py-1 text-base-content/40">{@t.instance_name}</td>
+      <td class="px-3 py-1 pl-8 text-base-content/60">{ch["name"] || "child"}</td>
+      <td class="px-3 py-1 text-base-content/60" colspan="2">
+        {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
+      </td>
+      <td class={
+        [
+          "px-3 py-1",
+          cond do
+            # No status text pushed for this child SA — "unknown", not
+            # "down". A red "?" here alarmed operators on children of
+            # tunnels that were plainly up; muted em dash instead.
+            to_string(ch["status"]) == "" -> "text-base-content/40"
+            child_up?(ch) -> "text-primary"
+            true -> "text-error"
+          end
+        ]
+      }>
+        {if to_string(ch["status"]) == "", do: "—", else: ch["status"]}
+      </td>
+      <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
+        <% mon = p2_monitor(@monitors, @t.instance_id, ch["name"]) %>
+        <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
+          ping {ch["ping_state"]}
+        </span>
+        <span :if={mon} class="mr-2 text-base-content/40">
+          monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
+          <span :if={not mon.enabled}>(disabled)</span>
+        </span>
+        <button
+          :if={@writable}
+          phx-click="p2mon_open"
+          phx-value-iid={@t.instance_id}
+          phx-value-tunnel={@t.id}
+          phx-value-child={ch["name"] || ""}
+          phx-value-lts={ch["local_ts"] || ""}
+          phx-value-rts={ch["remote_ts"] || ""}
+          phx-value-suggested={ch["suggested_source"] || ""}
+          class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
+        >
+          {if mon, do: "Edit ping", else: "Add ping"}
+        </button>
+      </td>
+    </tr>
     """
   end
 

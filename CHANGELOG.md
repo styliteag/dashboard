@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The fleet VPN page groups the two ends of a tunnel between two managed
+  boxes into one link again (old frontend parity): peers are matched by the
+  shared IKE cookie pair with a reversed-endpoint fallback, each pair gets a
+  header row with a combined health badge (both up / status mismatch / ping
+  fail / stale / …), healthy pairs collapse to just their header, and a
+  Grouped/Flat toggle plus "Expand all" / "Collapse all" are back in the
+  toolbar.
+
+### Changed
+
+- The duplicate-CHILD_SA warning ("⚠ 2× SAs") moved from the expandable
+  phase-2 child rows up to the tunnel row itself (fleet VPN page and the
+  instance's VPN tab) — it was invisible until you expanded the right
+  tunnel. The tooltip lists every affected selector.
+
 ## [4.2.19] - 2026-07-23
 
 ### Changed

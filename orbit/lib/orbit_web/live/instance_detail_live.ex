@@ -2599,6 +2599,18 @@ defmodule OrbitWeb.InstanceDetailLive do
                         {num0(t["phase2_up"])}/{num0(t["phase2_total"])} up
                       </span>
                       <span :if={num0(t["phase2_total"]) == 0}>—</span>
+                      <%!-- Tunnel-level rollup of the per-selector duplicate-SA
+                           flags (fleet-page parity): the warning is about the
+                           tunnel's rekey behaviour, and the child rows hide
+                           behind the expand toggle. --%>
+                      <% dups = Orbit.Ipsec.Pairing.dup_selectors(t["children"]) %>
+                      <span
+                        :if={dups != []}
+                        title={Orbit.Ipsec.Pairing.dup_title(dups)}
+                        class="ml-1 whitespace-nowrap text-warning"
+                      >
+                        {Orbit.Ipsec.Pairing.dup_badge(dups)}
+                      </span>
                     </td>
                     <td class="py-1.5 pr-3 text-base-content/70">
                       {fmt_duration(t["seconds_established"])}
@@ -2687,13 +2699,6 @@ defmodule OrbitWeb.InstanceDetailLive do
                       <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
                       <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                         ping {ch["ping_state"]}
-                      </span>
-                      <span
-                        :if={ch["phase2_dup_persistent"] == true}
-                        title="Duplicate CHILD_SAs for this selector persisted over several pushes — usually a rekey leak"
-                        class="mr-2 text-warning"
-                      >
-                        ⚠ {ch["dup_count"] || 2}× SAs
                       </span>
                       <span :if={mon} class="text-base-content/40">
                         monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
