@@ -6,6 +6,10 @@ defmodule OrbitWeb.ConnectivityLive do
   ⇒ WARN, 'none' skipped). RTT/loss come straight from the check metrics so the
   page agrees with Alerts and the exports. Worst-first, scoped (invariant 5);
   roster PubSub + 30s tier timer (monitors refresh at push cadence).
+
+  Two views: the list (table, edit/history actions) and Graphs — one RTT
+  history tile per monitor over the `connectivity.<id>.rtt_ms` series
+  (range-switchable 1h–7d), loaded only while that view is active.
   """
 
   use OrbitWeb, :live_view
@@ -14,6 +18,7 @@ defmodule OrbitWeb.ConnectivityLive do
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
   import OrbitWeb.Components.ConnectivityMonitorDialog, only: [connectivity_monitor_dialog: 1]
   import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
+  import OrbitWeb.Components.MetricChart, only: [metric_chart: 1]
 
   alias Orbit.Auth.Scope
   alias OrbitWeb.Components.CommentEditor
@@ -42,7 +47,10 @@ defmodule OrbitWeb.ConnectivityLive do
        conn_editor: nil,
        conn_test: nil,
        conn_test_busy: false,
-       monitor_history: nil
+       monitor_history: nil,
+       view: "list",
+       chart_range: "6h",
+       chart_points: %{}
      )
      |> load()}
   end
@@ -53,6 +61,14 @@ defmodule OrbitWeb.ConnectivityLive do
   def handle_event("state_filter", %{"bucket" => b}, socket) when b in ~w(all ok warn crit) do
     b = if socket.assigns.state_filter == b, do: "all", else: b
     {:noreply, assign(socket, state_filter: b)}
+  end
+
+  def handle_event("set_view", %{"view" => v}, socket) when v in ~w(list graphs) do
+    {:noreply, socket |> assign(view: v) |> load_charts()}
+  end
+
+  def handle_event("chart_range", %{"range" => r}, socket) when r in ~w(1h 6h 24h 7d) do
+    {:noreply, socket |> assign(chart_range: r) |> load_charts()}
   end
 
   def handle_event("row_gui_open", %{"id" => id}, socket) do
@@ -262,7 +278,30 @@ defmodule OrbitWeb.ConnectivityLive do
         {-ServiceCheck.severity(c.state), n, c.key}
       end)
 
-    assign(socket, rows: rows, comments: CommentEditor.lookup(monitor_instances))
+    socket
+    |> assign(rows: rows, comments: CommentEditor.lookup(monitor_instances))
+    |> load_charts()
+  end
+
+  # RTT history for the Graphs view — one indexed series read per monitor,
+  # only while the view is active (the list view pays nothing). The series
+  # is written per push by `Orbit.Metrics.rows_for_push` (connectivity.<id>.*),
+  # so it exists exactly for the monitors this page shows. Rows are scoped
+  # already (load/1 walks visible instances only) — no extra scope check here.
+  defp load_charts(socket) do
+    if socket.assigns.view == "graphs" do
+      range = socket.assigns.chart_range
+
+      points =
+        Map.new(socket.assigns.rows, fn r ->
+          {{r.instance_id, r.monitor_id},
+           Orbit.Metrics.read(r.instance_id, "connectivity.#{r.monitor_id}.rtt_ms", range)}
+        end)
+
+      assign(socket, chart_points: points)
+    else
+      assign(socket, chart_points: %{})
+    end
   end
 
   defp visible(a) do
@@ -357,6 +396,41 @@ defmodule OrbitWeb.ConnectivityLive do
           />
         </form>
 
+        <div class="mb-4 flex flex-wrap items-center gap-3">
+          <div class="inline-flex rounded-lg border border-base-content/20 bg-base-300/50 p-0.5 text-xs">
+            <button
+              :for={v <- ~w(list graphs)}
+              phx-click="set_view"
+              phx-value-view={v}
+              class={[
+                "rounded-md px-3 py-1.5 capitalize",
+                if(@view == v,
+                  do: "bg-neutral text-base-content",
+                  else: "text-base-content/70 hover:text-base-content"
+                )
+              ]}
+            >
+              {v}
+            </button>
+          </div>
+          <div :if={@view == "graphs"} class="flex gap-1">
+            <button
+              :for={r <- ~w(1h 6h 24h 7d)}
+              phx-click="chart_range"
+              phx-value-range={r}
+              class={[
+                "rounded-md px-2 py-1 text-xs",
+                if(@chart_range == r,
+                  do: "bg-primary text-primary-content",
+                  else: "text-base-content/70 hover:bg-base-300"
+                )
+              ]}
+            >
+              {r}
+            </button>
+          </div>
+        </div>
+
         <.empty_state :if={@rows == []} title="No connectivity monitors reported.">
           Monitors are configured per instance (Instance → Connectivity) and run on the box
           itself, so results appear here after the next agent push.
@@ -365,7 +439,25 @@ defmodule OrbitWeb.ConnectivityLive do
           No matches.
         </div>
 
-        <div class="overflow-x-auto">
+        <%!-- Graphs view: one RTT tile per monitor, same search/state filter as
+             the list. Chart colour tracks the live check state so a failing
+             monitor's tile reads red at a glance; the series itself is RTT
+             (a failed ping simply has no samples — visible as a gap). --%>
+        <div
+          :if={@view == "graphs" and @visible_rows != []}
+          class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          <.metric_chart
+            :for={r <- @visible_rows}
+            label={"#{r.instance_name} — #{monitor_label(r)}"}
+            points={@chart_points[{r.instance_id, r.monitor_id}] || []}
+            color={chart_color(r.check.state)}
+            domain_max={:auto}
+            unit="ms"
+          />
+        </div>
+
+        <div :if={@view == "list"} class="overflow-x-auto">
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
             <thead class="text-base-content/60">
               <tr class="border-b border-base-300">
@@ -475,4 +567,9 @@ defmodule OrbitWeb.ConnectivityLive do
   defp state_class(1), do: "bg-warning/20 text-warning"
   defp state_class(2), do: "bg-error/20 text-error"
   defp state_class(_), do: "bg-base-300 text-base-content/70"
+
+  # Chart line colour follows the state badge palette (emerald/amber/red).
+  defp chart_color(0), do: "#10b981"
+  defp chart_color(2), do: "#ef4444"
+  defp chart_color(_), do: "#f59e0b"
 end

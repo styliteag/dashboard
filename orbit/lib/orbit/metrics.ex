@@ -288,7 +288,38 @@ defmodule Orbit.Metrics do
         {"load.5m", num(load["five"])},
         {"load.15m", num(load["fifteen"])}
       ] ++
-      swap_rows ++ pf_rows ++ disk_rows ++ iface_rows ++ collect_rows ++ vendor_rows(data)
+      swap_rows ++
+      pf_rows ++ disk_rows ++ iface_rows ++ collect_rows ++ conn_rows(data) ++ vendor_rows(data)
+  end
+
+  # Connectivity-monitor ping series (no python-writer counterpart — the
+  # series starts with this Elixir writer). Keyed by the monitor's DB id,
+  # matching the `connectivity:<id>` check key, so renames keep the history.
+  # `ping_state == "none"` means the probe did not run (disabled/unconfigured)
+  # — write nothing rather than a misleading flatline; every numeric value of
+  # a probe that DID run is kept (a failed ping's 100% loss is real data).
+  defp conn_rows(data) do
+    Enum.flat_map(data["connectivity"] || [], fn
+      %{"id" => id} = r when is_integer(id) ->
+        state = (r["ping_state"] || "none") |> to_string() |> String.downcase()
+
+        if state == "none" do
+          []
+        else
+          [
+            if(is_number(r["ping_rtt_ms"]),
+              do: {"connectivity.#{id}.rtt_ms", num(r["ping_rtt_ms"])}
+            ),
+            if(is_number(r["ping_loss_pct"]),
+              do: {"connectivity.#{id}.loss_pct", num(r["ping_loss_pct"])}
+            )
+          ]
+          |> Enum.reject(&is_nil/1)
+        end
+
+      _ ->
+        []
+    end)
   end
 
   # Extra metric series a downstream build registers (§28). Each entry is an

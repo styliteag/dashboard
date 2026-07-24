@@ -186,6 +186,27 @@ defmodule Orbit.MetricsTest do
       assert "iface.wan_pppoe.bytes_rx" in metrics
     end
 
+    test "connectivity ping results become per-monitor rtt/loss series" do
+      data =
+        Map.put(push(), "connectivity", [
+          %{"id" => 7, "ping_state" => "ok", "ping_rtt_ms" => 12.4, "ping_loss_pct" => 0.0},
+          %{"id" => 8, "ping_state" => "fail", "ping_loss_pct" => 100.0},
+          # "none" = probe did not run — no rows, not a flatline.
+          %{"id" => 9, "ping_state" => "none", "ping_rtt_ms" => 1.0},
+          # No echoed id (pre-id agent) — nothing to key the series on.
+          %{"ping_state" => "ok", "ping_rtt_ms" => 5.0}
+        ])
+
+      rows = Map.new(Metrics.rows_for_push(data))
+
+      assert rows["connectivity.7.rtt_ms"] == 12.4
+      assert rows["connectivity.7.loss_pct"] == 0.0
+      # A failed ping has no RTT but its loss is real data.
+      assert rows["connectivity.8.loss_pct"] == 100.0
+      refute Map.has_key?(rows, "connectivity.8.rtt_ms")
+      refute Enum.any?(Map.keys(rows), &String.starts_with?(&1, "connectivity.9."))
+    end
+
     test "x_* passthrough is persisted only when a vendor_metrics extractor is registered" do
       data = Map.put(push(), "x_zfs", %{"arc" => %{"hit_ratio_pct" => 90.0}})
       metrics = Enum.map(Metrics.rows_for_push(data), &elem(&1, 0))

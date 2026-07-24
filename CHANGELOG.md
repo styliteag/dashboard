@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Connectivity page: a new **Graphs** view next to the list — one RTT
+  history chart per ping monitor (range-switchable 1h/6h/24h/7d), chart
+  colour tracking the monitor's live state. Backed by new per-monitor
+  metric series (`connectivity.<id>.rtt_ms` / `.loss_pct`) persisted from
+  every agent push, so history starts accumulating with this release.
+
 ### Changed
 
 - Default raw-metrics retention (`metrics_retention_days` /
