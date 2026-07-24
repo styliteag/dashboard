@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Metric history now spans up to a year: two new chart ranges (90d, 1y) on
+  the instance Overview, backed by rollup tables (`metrics_5m`/`metrics_1h`)
+  that summarize raw samples into 5-minute and hourly buckets. The 24h/7d
+  ranges read the 5m tier, 30d and longer the hourly tier — long-range
+  charts no longer scan the raw table at all. Existing raw history is
+  backfilled into the tiers automatically after the update (a few minutes,
+  in the background). Two new retention settings (Settings → Retention):
+  5m rollups default 90 days, hourly rollups 730 days; once the rollups are
+  filled, raw metrics retention can be lowered (raw rows only serve the
+  1h/6h ranges) to cut the metrics table to a fraction of its size.
+
 ### Changed
 
 - Instance metric charts read ~40x fewer rows: a new database index

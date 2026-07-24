@@ -54,6 +54,24 @@ defmodule Orbit.Maintenance.Prune do
     deleted
   end
 
+  @doc "Delete 5-minute rollups older than metrics_5m_retention_days. Returns rows deleted."
+  @spec prune_metrics_5m() :: non_neg_integer()
+  def prune_metrics_5m do
+    days = Orbit.Settings.effective("metrics_5m_retention_days")
+    deleted = prune_before("metrics_5m", cutoff(days))
+    if deleted > 0, do: Logger.info("metrics_5m.pruned rows=#{deleted}")
+    deleted
+  end
+
+  @doc "Delete hourly rollups older than metrics_1h_retention_days. Returns rows deleted."
+  @spec prune_metrics_1h() :: non_neg_integer()
+  def prune_metrics_1h do
+    days = Orbit.Settings.effective("metrics_1h_retention_days")
+    deleted = prune_before("metrics_1h", cutoff(days))
+    if deleted > 0, do: Logger.info("metrics_1h.pruned rows=#{deleted}")
+    deleted
+  end
+
   @doc "Delete IPsec tunnel events older than the retention window. Returns rows deleted."
   @spec prune_ipsec_events() :: non_neg_integer()
   def prune_ipsec_events do

@@ -11,13 +11,19 @@ defmodule Orbit.Metrics do
   """
 
   # Range → {window seconds, bucket seconds}; bucket 0 = raw rows.
-  # Mirror of RANGE_BUCKETS in backend/src/app/metrics/routes.py.
+  # Buckets < 300 read raw, >= 300 the 5m tier, >= 3600 the 1h tier
+  # (source_table/1) — every bucket MUST be an exact multiple of its tier or
+  # bucket boundaries straddle rollup rows and averages smear (the reason a
+  # 10m tier was rejected: 10m does not divide the 7d range's 900s bucket).
+  # RollupTest pins that divisibility for every entry here.
   @range_buckets %{
     "1h" => {3_600, 0},
     "6h" => {21_600, 60},
     "24h" => {86_400, 300},
     "7d" => {604_800, 900},
-    "30d" => {2_592_000, 3_600}
+    "30d" => {2_592_000, 3_600},
+    "90d" => {7_776_000, 21_600},
+    "1y" => {31_536_000, 86_400}
   }
 
   @doc "Window + bucket seconds for a UI range string; unknown ranges read as 24h."
@@ -26,13 +32,22 @@ defmodule Orbit.Metrics do
   @doc """
   Time-series for one instance + metric over a UI range.
   Returns `[%{ts: DateTime, value: float}]`, oldest first.
+
+  Bucketed ranges read the rollup tiers (`metrics_5m`/`metrics_1h`); an
+  empty rollup answer falls back to the raw table so charts never blank out
+  while the post-upgrade backfill runs (or on an instance younger than one
+  bucket). The fallback triggers on empty only — a PARTIALLY backfilled
+  window is served as-is and completes within a few rollup ticks.
   """
   def read(instance_id, metric, range) do
     {window, bucket} = range_bucket(range)
-    {sql, params} = build_query(instance_id, metric, bucket, window: window)
+    points = run_points(build_query(instance_id, metric, bucket, window: window))
 
-    Orbit.Repo.query!(sql, params).rows
-    |> Enum.map(fn [ts, value] -> %{ts: as_utc(ts), value: to_float(value)} end)
+    if points == [] and source_table(bucket) != "metrics" do
+      run_points(build_raw_query(instance_id, metric, bucket, window: window))
+    else
+      points
+    end
   rescue
     _ -> []
   catch
@@ -43,17 +58,33 @@ defmodule Orbit.Metrics do
     _kind, _reason -> []
   end
 
+  defp run_points({sql, params}) do
+    Orbit.Repo.query!(sql, params).rows
+    |> Enum.map(fn [ts, value] -> %{ts: as_utc(ts), value: to_float(value)} end)
+  end
+
   @doc """
-  The `{sql, params}` pair for a read. The bucket size is inlined as a
-  literal (it is grouped on), which is safe: it comes from `@range_buckets`,
-  never from user input.
+  Which table serves a bucket size: raw below 300s (the 5m tier cannot make
+  60s buckets), else the coarsest tier the bucket divides into evenly.
+  """
+  def source_table(bucket_seconds) when bucket_seconds >= 3_600, do: "metrics_1h"
+  def source_table(bucket_seconds) when bucket_seconds >= 300, do: "metrics_5m"
+  def source_table(_bucket_seconds), do: "metrics"
+
+  @doc """
+  The `{sql, params}` pair for a read, routed to the right tier. The bucket
+  size is inlined as a literal (it is grouped on), which is safe: it comes
+  from `@range_buckets`, never from user input.
   """
   def build_query(instance_id, metric, bucket_seconds, opts \\ []) do
-    window = Keyword.get(opts, :window, 86_400)
-    end_naive = naive_utc_now()
-    start_naive = NaiveDateTime.add(end_naive, -window)
-    params = [instance_id, metric, start_naive, end_naive]
+    case source_table(bucket_seconds) do
+      "metrics" -> build_raw_query(instance_id, metric, bucket_seconds, opts)
+      table -> build_rollup_query(table, instance_id, metric, bucket_seconds, opts)
+    end
+  end
 
+  @doc "Raw-table read (bucket 0 = plain rows) — also the rollup fallback path."
+  def build_raw_query(instance_id, metric, bucket_seconds, opts \\ []) do
     sql =
       if bucket_seconds > 0 do
         "SELECT FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV #{bucket_seconds} * #{bucket_seconds}) " <>
@@ -65,7 +96,37 @@ defmodule Orbit.Metrics do
           "WHERE instance_id = ? AND metric = ? AND ts >= ? AND ts <= ? ORDER BY ts"
       end
 
-    {sql, params}
+    {sql, window_params(instance_id, metric, opts)}
+  end
+
+  # Rollup read: at the tier's native bucket a plain range scan; coarser
+  # buckets re-group with SUM/SUM — count-weighted, never avg-of-avgs
+  # (sparse buckets — agent briefly online — would be overweighted).
+  # sample_count is COUNT(*)-derived, so it is >= 1 on every existing row.
+  defp build_rollup_query(table, instance_id, metric, bucket_seconds, opts) do
+    tier = tier_seconds(table)
+
+    sql =
+      if bucket_seconds == tier do
+        "SELECT ts, value_sum / sample_count AS value FROM #{table} " <>
+          "WHERE instance_id = ? AND metric = ? AND ts >= ? AND ts <= ? ORDER BY ts"
+      else
+        "SELECT FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV #{bucket_seconds} * #{bucket_seconds}) " <>
+          "AS ts, SUM(value_sum) / SUM(sample_count) AS value FROM #{table} " <>
+          "WHERE instance_id = ? AND metric = ? AND ts >= ? AND ts <= ? " <>
+          "GROUP BY 1 ORDER BY 1"
+      end
+
+    {sql, window_params(instance_id, metric, opts)}
+  end
+
+  defp tier_seconds("metrics_1h"), do: 3_600
+  defp tier_seconds("metrics_5m"), do: 300
+
+  defp window_params(instance_id, metric, opts) do
+    window = Keyword.get(opts, :window, 86_400)
+    end_naive = naive_utc_now()
+    [instance_id, metric, NaiveDateTime.add(end_naive, -window), end_naive]
   end
 
   @doc """

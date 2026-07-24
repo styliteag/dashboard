@@ -222,7 +222,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Range switch is read-only — no write gate. Unknown values fall back to
   # 24h inside Orbit.Metrics, so a forged phx-value can't break the queries.
   def handle_event("chart_range", %{"range" => range}, socket)
-      when range in ~w(1h 6h 24h 7d 30d) do
+      when range in ~w(1h 6h 24h 7d 30d 90d 1y) do
     {:noreply, socket |> assign(chart_range: range) |> load_charts()}
   end
 
@@ -1928,7 +1928,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <h2 class="text-sm font-semibold text-base-content/70">Metrics</h2>
             <div class="flex gap-1">
               <button
-                :for={r <- ~w(1h 6h 24h 7d 30d)}
+                :for={r <- ~w(1h 6h 24h 7d 30d 90d 1y)}
                 phx-click="chart_range"
                 phx-value-range={r}
                 class={[

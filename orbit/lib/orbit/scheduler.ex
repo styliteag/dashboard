@@ -21,6 +21,15 @@ defmodule Orbit.Scheduler do
   @jobs [
     {:enrollment_cleanup, :timer.hours(1), &__MODULE__.cleanup_enrollment_codes/0},
     {:metrics_prune, :timer.hours(1), &Orbit.Maintenance.Prune.prune_metrics/0},
+    # Rollup cascade raw → 5m → 1h (Orbit.Metrics.Rollup): 24h/7d charts read
+    # the 5m tier, 30d/90d/1y the 1h tier. Both jobs are incremental and
+    # chunk-capped, so the post-upgrade backfill of a big raw table spreads
+    # across ticks. The 1h job runs on a faster tick than its bucket to keep
+    # its lag small — a caught-up run is one cheap watermark query.
+    {:metrics_rollup_5m, :timer.minutes(5), &Orbit.Metrics.Rollup.run_5m/0},
+    {:metrics_rollup_1h, :timer.minutes(20), &Orbit.Metrics.Rollup.run_1h/0},
+    {:metrics_5m_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_metrics_5m/0},
+    {:metrics_1h_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_metrics_1h/0},
     {:ipsec_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_ipsec_events/0},
     {:check_events_prune, :timer.hours(24), &Orbit.Maintenance.Prune.prune_check_events/0},
     # Terminal recordings are files, not rows, so no DB prune covered them —

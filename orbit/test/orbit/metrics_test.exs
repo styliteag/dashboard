@@ -10,16 +10,29 @@ defmodule Orbit.MetricsTest do
   alias Orbit.Metrics
 
   describe "range_bucket/1" do
-    test "maps the five UI ranges to window + bucket seconds" do
+    test "maps the seven UI ranges to window + bucket seconds" do
       assert {3_600, 0} = Metrics.range_bucket("1h")
       assert {21_600, 60} = Metrics.range_bucket("6h")
       assert {86_400, 300} = Metrics.range_bucket("24h")
       assert {604_800, 900} = Metrics.range_bucket("7d")
       assert {2_592_000, 3_600} = Metrics.range_bucket("30d")
+      assert {7_776_000, 21_600} = Metrics.range_bucket("90d")
+      assert {31_536_000, 86_400} = Metrics.range_bucket("1y")
     end
 
     test "an unknown range falls back to 24h" do
       assert Metrics.range_bucket("nope") == Metrics.range_bucket("24h")
+    end
+  end
+
+  describe "source_table/1" do
+    test "routes sub-5m buckets to raw, 5m+ to the 5m tier, 1h+ to the hourly tier" do
+      assert Metrics.source_table(0) == "metrics"
+      assert Metrics.source_table(60) == "metrics"
+      assert Metrics.source_table(300) == "metrics_5m"
+      assert Metrics.source_table(900) == "metrics_5m"
+      assert Metrics.source_table(3_600) == "metrics_1h"
+      assert Metrics.source_table(86_400) == "metrics_1h"
     end
   end
 
@@ -43,12 +56,42 @@ defmodule Orbit.MetricsTest do
       assert [7, "cpu.total", %NaiveDateTime{}, %NaiveDateTime{}] = params
     end
 
-    test "bucketed query groups via FROM_UNIXTIME DIV with an inlined literal" do
-      {sql, params} = Metrics.build_query(7, "cpu.total", 300)
-      assert sql =~ "FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV 300 * 300)"
+    test "sub-5m buckets group the raw table via FROM_UNIXTIME DIV" do
+      {sql, params} = Metrics.build_query(7, "cpu.total", 60)
+      assert sql =~ "FROM metrics"
+      assert sql =~ "FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV 60 * 60)"
       assert sql =~ "avg(value)"
       assert sql =~ "GROUP BY 1 ORDER BY 1"
       assert [7, "cpu.total", %NaiveDateTime{}, %NaiveDateTime{}] = params
+    end
+
+    test "a tier-native bucket reads its rollup table without grouping" do
+      {sql, _params} = Metrics.build_query(7, "cpu.total", 300)
+      assert sql =~ "FROM metrics_5m"
+      assert sql =~ "value_sum / sample_count"
+      refute sql =~ "GROUP BY"
+
+      {sql_1h, _} = Metrics.build_query(7, "cpu.total", 3_600)
+      assert sql_1h =~ "FROM metrics_1h"
+    end
+
+    test "a coarser bucket re-groups its tier count-weighted, never avg-of-avgs" do
+      {sql, _params} = Metrics.build_query(7, "cpu.total", 900)
+      assert sql =~ "FROM metrics_5m"
+      assert sql =~ "FROM_UNIXTIME(UNIX_TIMESTAMP(ts) DIV 900 * 900)"
+      assert sql =~ "SUM(value_sum) / SUM(sample_count)"
+      refute sql =~ ~r/avg/i
+
+      {sql_1d, _} = Metrics.build_query(7, "cpu.total", 86_400)
+      assert sql_1d =~ "FROM metrics_1h"
+      assert sql_1d =~ "DIV 86400 * 86400"
+    end
+
+    test "build_raw_query is the rollup fallback — same shape for any bucket" do
+      {sql, _params} = Metrics.build_raw_query(7, "cpu.total", 300)
+      assert sql =~ "FROM metrics"
+      refute sql =~ "metrics_5m"
+      assert sql =~ "avg(value)"
     end
 
     test "start/end params span the requested window" do

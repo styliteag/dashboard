@@ -66,6 +66,22 @@ defmodule Orbit.Settings.Registry do
       max: 3650
     },
     %Def{
+      key: "metrics_5m_retention_days",
+      type: :int,
+      env: "DASH_METRICS_5M_RETENTION_DAYS",
+      default: "90",
+      min: 7,
+      max: 3650
+    },
+    %Def{
+      key: "metrics_1h_retention_days",
+      type: :int,
+      env: "DASH_METRICS_1H_RETENTION_DAYS",
+      default: "730",
+      min: 30,
+      max: 3650
+    },
+    %Def{
       key: "access_events_retention_days",
       type: :int,
       env: "DASH_ACCESS_EVENTS_RETENTION_DAYS",
@@ -289,7 +305,20 @@ defmodule Orbit.Settings.Registry do
     "metrics_retention_days" => %{
       group: "Retention",
       label: "Metrics retention",
-      help: "Raw metrics are pruned after this many days.",
+      help:
+        "Raw metrics are pruned after this many days. Must cover the 1h/6h chart ranges; longer ranges are served by the rollup tiers below, so this can stay short (7 days is plenty).",
+      restart: false
+    },
+    "metrics_5m_retention_days" => %{
+      group: "Retention",
+      label: "Metrics 5m rollup retention",
+      help: "5-minute metric rollups (24h and 7d chart ranges) kept this many days.",
+      restart: false
+    },
+    "metrics_1h_retention_days" => %{
+      group: "Retention",
+      label: "Metrics hourly rollup retention",
+      help: "Hourly metric rollups (30d, 90d and 1y chart ranges) kept this many days.",
       restart: false
     },
     "ipsec_event_retention_days" => %{
