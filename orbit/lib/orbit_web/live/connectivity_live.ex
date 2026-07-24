@@ -7,9 +7,10 @@ defmodule OrbitWeb.ConnectivityLive do
   page agrees with Alerts and the exports. Worst-first, scoped (invariant 5);
   roster PubSub + 30s tier timer (monitors refresh at push cadence).
 
-  Two views: the list (table, edit/history actions) and Graphs — one RTT
-  history tile per monitor over the `connectivity.<id>.rtt_ms` series
-  (range-switchable 1h–7d), loaded only while that view is active.
+  Rows expand like the VPN page's tunnels (chevron toggle): the expanded
+  area holds the monitor's RTT history chart over the
+  `connectivity.<id>.rtt_ms` series (range-switchable 1h–7d, shared range).
+  Series reads happen only for expanded rows.
   """
 
   use OrbitWeb, :live_view
@@ -48,7 +49,7 @@ defmodule OrbitWeb.ConnectivityLive do
        conn_test: nil,
        conn_test_busy: false,
        monitor_history: nil,
-       view: "list",
+       expanded: MapSet.new(),
        chart_range: "6h",
        chart_points: %{}
      )
@@ -63,8 +64,19 @@ defmodule OrbitWeb.ConnectivityLive do
     {:noreply, assign(socket, state_filter: b)}
   end
 
-  def handle_event("set_view", %{"view" => v}, socket) when v in ~w(list graphs) do
-    {:noreply, socket |> assign(view: v) |> load_charts()}
+  # VPN-page interaction: the chevron expands the row, the expanded area
+  # holds the RTT chart. The key is DOM-supplied but only ever used as a
+  # MapSet member and a chart_points lookup key — never resolved to data
+  # without the scope walk in load/1.
+  def handle_event("toggle_expand", %{"key" => key}, socket) do
+    expanded = socket.assigns.expanded
+
+    expanded =
+      if MapSet.member?(expanded, key),
+        do: MapSet.delete(expanded, key),
+        else: MapSet.put(expanded, key)
+
+    {:noreply, socket |> assign(expanded: expanded) |> load_charts()}
   end
 
   def handle_event("chart_range", %{"range" => r}, socket) when r in ~w(1h 6h 24h 7d) do
@@ -283,26 +295,27 @@ defmodule OrbitWeb.ConnectivityLive do
     |> load_charts()
   end
 
-  # RTT history for the Graphs view — one indexed series read per monitor,
-  # only while the view is active (the list view pays nothing). The series
-  # is written per push by `Orbit.Metrics.rows_for_push` (connectivity.<id>.*),
-  # so it exists exactly for the monitors this page shows. Rows are scoped
-  # already (load/1 walks visible instances only) — no extra scope check here.
+  # RTT history for expanded rows only — one indexed series read each; a
+  # fully collapsed table pays nothing. The series is written per push by
+  # `Orbit.Metrics.rows_for_push` (connectivity.<id>.*), so it exists
+  # exactly for the monitors this page shows. Rows are scoped already
+  # (load/1 walks visible instances only) — an expanded key with no
+  # matching row simply reads nothing.
   defp load_charts(socket) do
-    if socket.assigns.view == "graphs" do
-      range = socket.assigns.chart_range
+    range = socket.assigns.chart_range
 
-      points =
-        Map.new(socket.assigns.rows, fn r ->
-          {{r.instance_id, r.monitor_id},
-           Orbit.Metrics.read(r.instance_id, "connectivity.#{r.monitor_id}.rtt_ms", range)}
-        end)
+    points =
+      socket.assigns.rows
+      |> Enum.filter(&MapSet.member?(socket.assigns.expanded, row_key(&1)))
+      |> Map.new(fn r ->
+        {{r.instance_id, r.monitor_id},
+         Orbit.Metrics.read(r.instance_id, "connectivity.#{r.monitor_id}.rtt_ms", range)}
+      end)
 
-      assign(socket, chart_points: points)
-    else
-      assign(socket, chart_points: %{})
-    end
+    assign(socket, chart_points: points)
   end
+
+  defp row_key(r), do: "#{r.instance_id}:#{r.monitor_id}"
 
   defp visible(a) do
     q = String.downcase(a.search)
@@ -396,41 +409,6 @@ defmodule OrbitWeb.ConnectivityLive do
           />
         </form>
 
-        <div class="mb-4 flex flex-wrap items-center gap-3">
-          <div class="inline-flex rounded-lg border border-base-content/20 bg-base-300/50 p-0.5 text-xs">
-            <button
-              :for={v <- ~w(list graphs)}
-              phx-click="set_view"
-              phx-value-view={v}
-              class={[
-                "rounded-md px-3 py-1.5 capitalize",
-                if(@view == v,
-                  do: "bg-neutral text-base-content",
-                  else: "text-base-content/70 hover:text-base-content"
-                )
-              ]}
-            >
-              {v}
-            </button>
-          </div>
-          <div :if={@view == "graphs"} class="flex gap-1">
-            <button
-              :for={r <- ~w(1h 6h 24h 7d)}
-              phx-click="chart_range"
-              phx-value-range={r}
-              class={[
-                "rounded-md px-2 py-1 text-xs",
-                if(@chart_range == r,
-                  do: "bg-primary text-primary-content",
-                  else: "text-base-content/70 hover:bg-base-300"
-                )
-              ]}
-            >
-              {r}
-            </button>
-          </div>
-        </div>
-
         <.empty_state :if={@rows == []} title="No connectivity monitors reported.">
           Monitors are configured per instance (Instance → Connectivity) and run on the box
           itself, so results appear here after the next agent push.
@@ -439,25 +417,7 @@ defmodule OrbitWeb.ConnectivityLive do
           No matches.
         </div>
 
-        <%!-- Graphs view: one RTT tile per monitor, same search/state filter as
-             the list. Chart colour tracks the live check state so a failing
-             monitor's tile reads red at a glance; the series itself is RTT
-             (a failed ping simply has no samples — visible as a gap). --%>
-        <div
-          :if={@view == "graphs" and @visible_rows != []}
-          class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
-        >
-          <.metric_chart
-            :for={r <- @visible_rows}
-            label={"#{r.instance_name} — #{monitor_label(r)}"}
-            points={@chart_points[{r.instance_id, r.monitor_id}] || []}
-            color={chart_color(r.check.state)}
-            domain_max={:auto}
-            unit="ms"
-          />
-        </div>
-
-        <div :if={@view == "list"} class="overflow-x-auto">
+        <div class="overflow-x-auto">
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
             <thead class="text-base-content/60">
               <tr class="border-b border-base-300">
@@ -470,61 +430,108 @@ defmodule OrbitWeb.ConnectivityLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @visible_rows} class="border-b border-base-300/50">
-                <td class="py-2 pr-4">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
-                    {state_label(r.check.state)}
-                  </span>
-                </td>
-                <td class="py-2 pr-4">
-                  <a
-                    href={~p"/instances/#{r.instance_id}"}
-                    class="text-base-content hover:text-primary"
-                  >
-                    {r.instance_name}
-                  </a>
-                  <.base_url_link base_url={r.base_url} />
-                  <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
-                  <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
-                </td>
-                <td class="py-2 pr-4 text-base-content/80">
-                  <%!-- Display-only strip: every summary starts with the word
+              <%!-- Two <tr>s per monitor inside one :for comprehension — HEEx
+                   needs a single root, and the chart row must follow ITS
+                   monitor row (VPN-page expand idiom, toggle_expand). --%>
+              <%= for r <- @visible_rows do %>
+                <tr class="border-b border-base-300/50">
+                  <td class="whitespace-nowrap py-2 pr-4">
+                    <button
+                      phx-click="toggle_expand"
+                      phx-value-key={row_key(r)}
+                      title="Show RTT history"
+                      class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded border border-base-content/20 text-2xl leading-none text-base-content/80 hover:bg-base-300"
+                    >
+                      {if MapSet.member?(@expanded, row_key(r)), do: "▾", else: "▸"}
+                    </button>
+                    <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
+                      {state_label(r.check.state)}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-4">
+                    <a
+                      href={~p"/instances/#{r.instance_id}"}
+                      class="text-base-content hover:text-primary"
+                    >
+                      {r.instance_name}
+                    </a>
+                    <.base_url_link base_url={r.base_url} />
+                    <.webui_link instance_id={r.instance_id} openable={r.gui_openable} />
+                    <.shell_link instance_id={r.instance_id} shell_enabled={r.shell_enabled} />
+                  </td>
+                  <td class="py-2 pr-4 text-base-content/80">
+                    <%!-- Display-only strip: every summary starts with the word
                      "Connectivity", redundant under this page's Monitor
                      column. The check engine's summary itself is untouched
                      (the four check surfaces keep their identical text). --%>
-                  {String.replace_prefix(r.check.summary || "", "Connectivity ", "")}
-                  <.comment_editor
-                    text={CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)}
-                    writable={@writable}
-                    instance_id={r.instance_id}
-                    kind="connectivity"
-                    entity_key={r.monitor_id}
-                  />
-                </td>
-                <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
-                <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
-                <td class="py-2 text-right whitespace-nowrap">
-                  <%!-- History is a read: no write role required, unlike Edit. --%>
-                  <button
-                    phx-click="monitor_history_open"
-                    phx-value-iid={r.instance_id}
-                    phx-value-id={r.monitor_id}
-                    title="Recorded state transitions of this monitor"
-                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
-                  >
-                    History
-                  </button>
-                  <button
-                    :if={@writable}
-                    phx-click="conn_open"
-                    phx-value-iid={r.instance_id}
-                    phx-value-id={r.monitor_id}
-                    class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
+                    {String.replace_prefix(r.check.summary || "", "Connectivity ", "")}
+                    <.comment_editor
+                      text={
+                        CommentEditor.text(@comments, r.instance_id, "connectivity", r.monitor_id)
+                      }
+                      writable={@writable}
+                      instance_id={r.instance_id}
+                      kind="connectivity"
+                      entity_key={r.monitor_id}
+                    />
+                  </td>
+                  <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
+                  <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
+                  <td class="py-2 text-right whitespace-nowrap">
+                    <%!-- History is a read: no write role required, unlike Edit. --%>
+                    <button
+                      phx-click="monitor_history_open"
+                      phx-value-iid={r.instance_id}
+                      phx-value-id={r.monitor_id}
+                      title="Recorded state transitions of this monitor"
+                      class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                    >
+                      History
+                    </button>
+                    <button
+                      :if={@writable}
+                      phx-click="conn_open"
+                      phx-value-iid={r.instance_id}
+                      phx-value-id={r.monitor_id}
+                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
+                    >
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+                <tr
+                  :if={MapSet.member?(@expanded, row_key(r))}
+                  class="border-b border-base-300/30 bg-base-100/40"
+                >
+                  <td colspan="6" class="py-3 pl-10 pr-4">
+                    <div class="mb-2 flex gap-1">
+                      <button
+                        :for={rg <- ~w(1h 6h 24h 7d)}
+                        phx-click="chart_range"
+                        phx-value-range={rg}
+                        class={[
+                          "rounded-md px-2 py-1 text-xs",
+                          if(@chart_range == rg,
+                            do: "bg-primary text-primary-content",
+                            else: "text-base-content/70 hover:bg-base-300"
+                          )
+                        ]}
+                      >
+                        {rg}
+                      </button>
+                    </div>
+                    <div class="max-w-3xl">
+                      <.metric_chart
+                        label={"#{r.instance_name} — #{monitor_label(r)} RTT"}
+                        points={@chart_points[{r.instance_id, r.monitor_id}] || []}
+                        color={chart_color(r.check.state)}
+                        domain_max={:auto}
+                        unit="ms"
+                      />
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
             </tbody>
           </table>
         </div>
