@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.27] - 2026-07-24
+
 ### Added
 
 - Connectivity page: monitor rows now expand like the VPN page's tunnels —
