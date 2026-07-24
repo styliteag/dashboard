@@ -45,22 +45,96 @@ defmodule Orbit.Maintenance.Prune do
     end
   end
 
-  @doc "Delete raw metrics older than metrics_retention_days. Returns rows deleted."
+  @doc """
+  Delete raw metrics older than metrics_retention_days — but never rows the
+  5m rollup has not aggregated yet. Returns rows deleted.
+
+  The 2026-07-24 incident this guards against: retention was lowered from
+  30 to 7 days on the same day the rollup tiers shipped, and the prune ate
+  three weeks of raw history while the post-upgrade backfill was still
+  working toward it — the long-range chart tiers have permanent holes for
+  that window. The rollup watermark (`MAX(ts)` of the tier) is the safe
+  floor: every source row STRICTLY OLDER than it lies in a completed,
+  already-aggregated bucket.
+  """
   @spec prune_metrics() :: non_neg_integer()
   def prune_metrics do
     days = Orbit.Settings.effective("metrics_retention_days")
-    deleted = prune_before("metrics", cutoff(days))
-    if deleted > 0, do: Logger.info("metrics.pruned raw=#{deleted}")
-    deleted
+
+    case rollup_capped_cutoff("metrics", cutoff(days), watermark("metrics_5m")) do
+      nil ->
+        0
+
+      cut ->
+        deleted = prune_before("metrics", cut)
+        if deleted > 0, do: Logger.info("metrics.pruned raw=#{deleted}")
+        deleted
+    end
   end
 
-  @doc "Delete 5-minute rollups older than metrics_5m_retention_days. Returns rows deleted."
+  @doc "Delete 5-minute rollups older than metrics_5m_retention_days (same rollup guard, against the 1h tier). Returns rows deleted."
   @spec prune_metrics_5m() :: non_neg_integer()
   def prune_metrics_5m do
     days = Orbit.Settings.effective("metrics_5m_retention_days")
-    deleted = prune_before("metrics_5m", cutoff(days))
-    if deleted > 0, do: Logger.info("metrics_5m.pruned rows=#{deleted}")
-    deleted
+
+    case rollup_capped_cutoff("metrics_5m", cutoff(days), watermark("metrics_1h")) do
+      nil ->
+        0
+
+      cut ->
+        deleted = prune_before("metrics_5m", cut)
+        if deleted > 0, do: Logger.info("metrics_5m.pruned rows=#{deleted}")
+        deleted
+    end
+  end
+
+  @doc """
+  The effective prune cutoff for a table whose rows feed a rollup tier:
+  the retention cutoff, floored at the tier's watermark. Pure — the DB
+  reads live in the callers.
+
+  - Watermark `nil` (empty tier) = nothing aggregated yet. On a fresh
+    install there is nothing old enough to prune anyway; mid-upgrade it is
+    exactly the backfill about to start. Skip the prune (`nil`) — the tier
+    fills within minutes and the next hourly run proceeds.
+  - Watermark older than the retention cutoff = the rollup is behind
+    (stalled jobs, or retention was just lowered past the backfill). Prune
+    only up to the watermark and say so loudly — this is the state that
+    silently cost history once, and it also means raw is outliving its
+    retention, which must not stay invisible either.
+  """
+  @spec rollup_capped_cutoff(String.t(), DateTime.t(), DateTime.t() | nil) ::
+          DateTime.t() | nil
+  def rollup_capped_cutoff(table, retention_cutoff, watermark) do
+    cond do
+      is_nil(watermark) ->
+        Logger.info("#{table}.prune_skipped_empty_rollup")
+        nil
+
+      DateTime.compare(watermark, retention_cutoff) == :lt ->
+        Logger.warning(
+          "#{table}.prune_capped_by_rollup watermark=#{DateTime.to_iso8601(watermark)} " <>
+            "retention_cutoff=#{DateTime.to_iso8601(retention_cutoff)}"
+        )
+
+        watermark
+
+      true ->
+        retention_cutoff
+    end
+  end
+
+  # MAX(ts) of a rollup tier as UTC DateTime, nil when empty or unreachable.
+  # Unreachable reads as "don't prune" — the conservative direction.
+  defp watermark(table) do
+    case Orbit.Repo.query!("SELECT MAX(ts) FROM #{table}").rows do
+      [[%NaiveDateTime{} = naive]] -> DateTime.from_naive!(naive, "Etc/UTC")
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  catch
+    _kind, _reason -> nil
   end
 
   @doc "Delete hourly rollups older than metrics_1h_retention_days. Returns rows deleted."

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The raw-metrics prune can no longer outrun the rollup tiers: the cutoff
+  is floored at the 5m tier's watermark (and the 5m prune at the 1h
+  tier's), with a loud `prune_capped_by_rollup` warning when the guard
+  bites. Previously, lowering the retention while a rollup backfill was
+  still running deleted raw rows the tiers had never aggregated —
+  permanent holes in the long-range chart history.
+
 ## [4.2.27] - 2026-07-24
 
 ### Added
