@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live state. Backed by new per-monitor metric series
   (`connectivity.<id>.rtt_ms` / `.loss_pct`) persisted from every agent
   push, so history starts accumulating with this release.
+- Connectivity page: a **Fleet graph** toggle like the VPN page's — one
+  ok/warn/crit timeline lane per monitor over a shared 24h/7d/30d window
+  (from the recorded check transitions), so a site-wide outage reads as a
+  vertical stripe across all lanes.
 
 ### Changed
 

@@ -51,6 +51,42 @@ defmodule Orbit.Checks.HistoryTest do
     assert lane.window_start == DateTime.add(@now, -3600)
   end
 
+  describe "lane/4 with a shared fleet window" do
+    test "the opening state comes from the last event BEFORE the window" do
+      # Went CRIT two hours ago, window is one hour: no transition inside the
+      # window at all, but the lane must open red — dropping pre-window
+      # events would paint "no data" for a monitor that was simply down.
+      start = DateTime.add(@now, -3600)
+      lane = History.lane([event(120, 0, 2)], 2, @now, start)
+
+      assert lane.window_start == start
+      assert [%{left: +0.0, width: 100.0, state: :down}] = lane.segments
+    end
+
+    test "an explicit window is never widened by older events" do
+      start = DateTime.add(@now, -3600)
+      lane = History.lane([event(240, 0, 2), event(30, 2, 0)], 0, @now, start)
+
+      assert lane.window_start == start
+      # CRIT until the recovery at the halfway mark, OK to the edge.
+      assert Enum.map(Enum.sort_by(lane.segments, & &1.left), & &1.state) == [:down, :up]
+    end
+
+    test "no events at all still renders the live state across the window" do
+      start = DateTime.add(@now, -24 * 3600)
+      lane = History.lane([], 1, @now, start)
+
+      assert [%{left: +0.0, width: 100.0, state: :partial}] = lane.segments
+    end
+  end
+
+  test "window_start maps the three fleet windows and answers nil otherwise" do
+    assert History.window_start("24h", @now) == DateTime.add(@now, -24 * 3600)
+    assert History.window_start("7d", @now) == DateTime.add(@now, -7 * 24 * 3600)
+    assert History.window_start("30d", @now) == DateTime.add(@now, -30 * 24 * 3600)
+    assert History.window_start("all", @now) == nil
+  end
+
   describe "the dialog only opens on a map" do
     import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
 

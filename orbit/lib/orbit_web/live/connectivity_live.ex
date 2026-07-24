@@ -11,6 +11,10 @@ defmodule OrbitWeb.ConnectivityLive do
   area holds the monitor's RTT history chart over the
   `connectivity.<id>.rtt_ms` series (range-switchable 1h–7d, shared range).
   Series reads happen only for expanded rows.
+
+  Fleet graph (VPN-page parity): one shared-window state lane per monitor
+  from the recorded `connectivity:<id>` check transitions — a site-wide
+  outage reads as a vertical stripe across the lanes.
   """
 
   use OrbitWeb, :live_view
@@ -51,7 +55,10 @@ defmodule OrbitWeb.ConnectivityLive do
        monitor_history: nil,
        expanded: MapSet.new(),
        chart_range: "6h",
-       chart_points: %{}
+       chart_points: %{},
+       fleet_graph: false,
+       fleet_window: "7d",
+       fleet_events: %{}
      )
      |> load()}
   end
@@ -81,6 +88,20 @@ defmodule OrbitWeb.ConnectivityLive do
 
   def handle_event("chart_range", %{"range" => r}, socket) when r in ~w(1h 6h 24h 7d) do
     {:noreply, socket |> assign(chart_range: r) |> load_charts()}
+  end
+
+  # Fleet graph (VPN-page parity): one shared-window state lane per monitor,
+  # so a site-wide outage reads as a vertical stripe across the lanes.
+  def handle_event("fleet_graph", _params, socket) do
+    if socket.assigns.fleet_graph do
+      {:noreply, assign(socket, fleet_graph: false, fleet_events: %{})}
+    else
+      {:noreply, socket |> assign(fleet_graph: true) |> load_fleet_events()}
+    end
+  end
+
+  def handle_event("fleet_window", %{"window" => window}, socket) when window in ~w(24h 7d 30d) do
+    {:noreply, socket |> assign(fleet_window: window) |> load_fleet_events()}
   end
 
   def handle_event("row_gui_open", %{"id" => id}, socket) do
@@ -317,6 +338,36 @@ defmodule OrbitWeb.ConnectivityLive do
 
   defp row_key(r), do: "#{r.instance_id}:#{r.monitor_id}"
 
+  # The recorded connectivity:<id> transitions of every instance on the page
+  # — rows are already scoped by load/1's visible-instances walk, so these
+  # ids are exactly the caller's scope.
+  defp load_fleet_events(socket) do
+    ids = socket.assigns.rows |> Enum.map(& &1.instance_id) |> Enum.uniq()
+    since = History.window_start(socket.assigns.fleet_window, DateTime.utc_now())
+
+    assign(socket, fleet_events: History.read_many(ids, "connectivity:", since))
+  end
+
+  # Every visible row gets a lane over the SHARED window (VPN-page rule: the
+  # lanes must line up vertically, and a filtered-out row must not leave a
+  # phantom lane behind).
+  defp fleet_lanes(rows, events, window) do
+    now = DateTime.utc_now()
+    start = History.window_start(window, now)
+
+    Enum.map(rows, fn r ->
+      lane =
+        History.lane(
+          Map.get(events, {r.instance_id, to_string(r.check.key)}, []),
+          r.check.state,
+          now,
+          start
+        )
+
+      %{label: "#{r.instance_name} · #{monitor_label(r)}", segments: lane.segments}
+    end)
+  end
+
   defp visible(a) do
     q = String.downcase(a.search)
 
@@ -415,6 +466,68 @@ defmodule OrbitWeb.ConnectivityLive do
         </.empty_state>
         <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
           No matches.
+        </div>
+
+        <%!-- Fleet graph: one lane per monitor over a shared window. The
+             per-row expand answers "what did THIS ping's RTT do"; this
+             answers "did they all drop at 03:12, or is it just the one?" --%>
+        <div :if={@rows != []} class="mb-3 flex items-center gap-2">
+          <button
+            phx-click="fleet_graph"
+            class={[
+              "rounded border border-base-content/20 px-2 py-0.5 text-xs",
+              if(@fleet_graph,
+                do: "bg-base-300 text-base-content",
+                else: "text-base-content/70 hover:bg-base-300"
+              )
+            ]}
+          >
+            Fleet graph
+          </button>
+          <div :if={@fleet_graph} class="flex items-center gap-1">
+            <button
+              :for={key <- ~w(24h 7d 30d)}
+              phx-click="fleet_window"
+              phx-value-window={key}
+              class={[
+                "rounded px-2 py-0.5 text-[10px]",
+                if(@fleet_window == key,
+                  do: "bg-base-300 text-base-content",
+                  else: "text-base-content/60 hover:bg-base-300/60"
+                )
+              ]}
+            >
+              {key}
+            </button>
+          </div>
+        </div>
+
+        <div
+          :if={@fleet_graph and @visible_rows != []}
+          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4"
+        >
+          <div :for={row <- fleet_lanes(@visible_rows, @fleet_events, @fleet_window)} class="mb-1.5">
+            <div class="flex items-center gap-2">
+              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/60">
+                {row.label}
+              </span>
+              <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
+                <div
+                  :for={seg <- row.segments}
+                  class={[
+                    "absolute h-full",
+                    OrbitWeb.Components.TunnelHistoryDialog.lane_color(seg.state)
+                  ]}
+                  style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
+                >
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/40">
+            <span>{@fleet_window} ago</span>
+            <span>now</span>
+          </div>
         </div>
 
         <div class="overflow-x-auto">

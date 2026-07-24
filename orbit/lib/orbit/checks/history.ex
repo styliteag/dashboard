@@ -45,29 +45,85 @@ defmodule Orbit.Checks.History do
   end
 
   @doc """
+  Recorded transitions of MANY instances' checks under one key prefix
+  (fleet timeline), grouped by `{instance_id, check_key}` with the same
+  event shape `read/3` returns. `lane/4` sorts its input, so only the
+  grouping matters here. The prefix is bound via `CONCAT(?, '%')` so it
+  stays a parameter even though every caller today passes a constant.
+  """
+  @spec read_many([integer()], String.t(), DateTime.t(), pos_integer()) :: map()
+  def read_many(instance_ids, key_prefix, since, limit \\ 5_000)
+
+  def read_many([], _key_prefix, _since, _limit), do: %{}
+
+  def read_many(instance_ids, key_prefix, %DateTime{} = since, limit)
+      when is_integer(limit) and limit > 0 do
+    placeholders = Enum.map_join(instance_ids, ", ", fn _ -> "?" end)
+
+    Orbit.Repo.query!(
+      "SELECT instance_id, check_key, ts, old_state, new_state FROM check_events " <>
+        "WHERE instance_id IN (#{placeholders}) AND check_key LIKE CONCAT(?, '%') " <>
+        "AND ts >= ? ORDER BY ts LIMIT #{limit}",
+      instance_ids ++ [key_prefix, since]
+    ).rows
+    |> Enum.group_by(
+      fn [iid, key | _] -> {iid, key} end,
+      fn [_iid, _key, ts, old, new] ->
+        %{ts: DateTime.from_naive!(ts, "Etc/UTC"), old_state: old, new_state: new, summary: nil}
+      end
+    )
+  rescue
+    _ -> %{}
+  catch
+    _kind, _reason -> %{}
+  end
+
+  @doc "Fleet-graph windows (VPN-page parity); unknown keys mean 'auto'."
+  @spec window_start(String.t(), DateTime.t()) :: DateTime.t() | nil
+  def window_start("24h", now), do: DateTime.add(now, -24 * 3600)
+  def window_start("7d", now), do: DateTime.add(now, -7 * 24 * 3600)
+  def window_start("30d", now), do: DateTime.add(now, -30 * 24 * 3600)
+  def window_start(_other, _now), do: nil
+
+  @doc """
   One state lane for the graph: `%{window_start, segments}` where each
   segment is `%{left, width, state}` in percent of the window.
 
-  Window = oldest recorded transition → now, but at least an hour. Starting
-  exactly at the oldest transition would give the state the check was in
-  BEFORE it zero width, so a monitor with one recorded outage rendered as a
-  bar that was red from end to end — the "it was fine until 09:14" half, the
-  only part worth seeing, was the part that got squeezed out.
+  Without an explicit `window_start`: oldest recorded transition → now, but
+  at least an hour. Starting exactly at the oldest transition would give the
+  state the check was in BEFORE it zero width, so a monitor with one
+  recorded outage rendered as a bar that was red from end to end — the "it
+  was fine until 09:14" half, the only part worth seeing, was the part that
+  got squeezed out.
+
+  With an explicit `window_start` (fleet graph: every lane shares the
+  window so outages line up as vertical stripes), events before the window
+  are not discarded — the LAST one is what the check was doing when the
+  window opened (the Ipsec.History.lanes/4 rule).
 
   The trailing segment takes the check's LIVE state rather than the last
   recorded one, so the right edge is always what the box reports right now: a
   recovery lands in the table one push after it happened, and a check that has
   never changed state has no rows at all.
   """
-  @spec lane([map()], integer() | nil, DateTime.t()) :: map()
-  def lane(events, live_state, %DateTime{} = now) do
-    sorted = Enum.sort_by(events, & &1.ts, DateTime)
+  @spec lane([map()], integer() | nil, DateTime.t(), DateTime.t() | nil) :: map()
+  def lane(events, live_state, now, window_start \\ nil)
+
+  def lane(events, live_state, %DateTime{} = now, explicit_start) do
+    all = Enum.sort_by(events, & &1.ts, DateTime)
     hour_ago = DateTime.add(now, -3600)
 
+    {before, sorted} =
+      case explicit_start do
+        nil -> {[], all}
+        ws -> Enum.split_with(all, &(DateTime.compare(&1.ts, ws) == :lt))
+      end
+
     window_start =
-      case sorted do
-        [first | _] -> Enum.min([first.ts, hour_ago], DateTime)
-        [] -> hour_ago
+      cond do
+        explicit_start -> explicit_start
+        sorted != [] -> Enum.min([hd(sorted).ts, hour_ago], DateTime)
+        true -> hour_ago
       end
 
     span = max(DateTime.diff(now, window_start), 1)
@@ -76,7 +132,13 @@ defmodule Orbit.Checks.History do
     # Each row records the state the check moved INTO, so the segment that
     # ENDS at a row carries that row's old_state.
     cuts = for e <- sorted, do: {x.(e.ts), state_of(e.new_state)}
-    first_state = if sorted == [], do: state_of(live_state), else: state_of(hd(sorted).old_state)
+
+    first_state =
+      cond do
+        before != [] -> state_of(List.last(before).new_state)
+        sorted != [] -> state_of(hd(sorted).old_state)
+        true -> state_of(live_state)
+      end
 
     {segments, last_left, last_state} =
       Enum.reduce(cuts, {[], 0.0, first_state}, fn {cut, state}, {acc, left, cur} ->
