@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.28] - 2026-07-24
+
 ### Fixed
 
 - The raw-metrics prune can no longer outrun the rollup tiers: the cutoff
