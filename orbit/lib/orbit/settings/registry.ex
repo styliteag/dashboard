@@ -61,7 +61,7 @@ defmodule Orbit.Settings.Registry do
       key: "metrics_retention_days",
       type: :int,
       env: "DASH_METRICS_RETENTION_DAYS",
-      default: "30",
+      default: "7",
       min: 1,
       max: 3650
     },

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Default raw-metrics retention (`metrics_retention_days` /
+  `DASH_METRICS_RETENTION_DAYS`) lowered from 30 to 7 days. Raw rows only
+  serve the 1h/6h chart ranges since the rollup tiers landed — the 5m/1h
+  tiers cover everything longer, so 30 days of raw data was pure disk cost
+  (tens of GB on larger fleets). Explicit overrides (Settings or env) are
+  unaffected; installs running on the old default will prune down to 7 days
+  on the next hourly maintenance run.
+
 ## [4.2.26] - 2026-07-24
 
 ### Added
