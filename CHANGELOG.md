@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Instance metric charts read ~40x fewer rows: a new database index
+  `(instance_id, metric, ts)` lets a chart query touch only the rows it
+  returns instead of scanning every metric of the instance in the time
+  window. On a large fleet the index builds on first boot after the
+  update — that boot can take a few minutes longer (one-time).
+
 ## [4.2.25] - 2026-07-24
 
 ### Changed
