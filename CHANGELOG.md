@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.29] - 2026-07-26
+
 ### Fixed
 
 - Phase-2 ping monitors on multi-net tunnels: when strongSwan splits a child
