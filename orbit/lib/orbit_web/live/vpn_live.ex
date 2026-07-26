@@ -607,6 +607,11 @@ defmodule OrbitWeb.VpnLive do
     )
   end
 
+  # Connectivity-page parity: ok green, fail red, error amber.
+  defp ping_class("ok"), do: "text-primary"
+  defp ping_class("fail"), do: "text-error"
+  defp ping_class(_), do: "text-warning"
+
   # Selector-pair-aware lookup (Orbit.Monitors.match_p2) — a name-only match
   # resolved every sibling CHILD_SA of a multi-net child to the same monitor.
   defp p2_monitor(monitors, instance_id, tunnel_id, ch) do
@@ -1047,6 +1052,20 @@ defmodule OrbitWeb.VpnLive do
         >
           {Pairing.dup_badge(@t.dups)}
         </span>
+        <%!-- Ping-monitor rollup: "established" doesn't mean traffic flows,
+                         and the failing child row hides behind the expand toggle —
+                         without this the collapsed list looks all green. --%>
+        <% wp = Pairing.worst_ping(@t.children) %>
+        <span
+          :if={wp in ["fail", "error"]}
+          title="A Phase-2 ping monitor is failing — expand the tunnel for details"
+          class={[
+            "ml-1 whitespace-nowrap",
+            if(wp == "fail", do: "text-error", else: "text-warning")
+          ]}
+        >
+          ⚠ ping {wp}
+        </span>
       </td>
       <td class="px-3 py-2 text-base-content/70">{duration(@t.uptime_s)}</td>
       <td class="px-3 py-2 text-base-content/70">
@@ -1134,7 +1153,10 @@ defmodule OrbitWeb.VpnLive do
       </td>
       <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
         <% mon = p2_monitor(@monitors, @t.instance_id, @t.id, ch) %>
-        <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
+        <span
+          :if={ch["ping_state"] not in [nil, "none"]}
+          class={["mr-2", ping_class(ch["ping_state"])]}
+        >
           ping {ch["ping_state"]}
         </span>
         <span :if={mon} class="mr-2 text-base-content/40">

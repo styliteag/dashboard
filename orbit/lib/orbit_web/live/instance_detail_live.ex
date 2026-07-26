@@ -2621,6 +2621,20 @@ defmodule OrbitWeb.InstanceDetailLive do
                       >
                         {Orbit.Ipsec.Pairing.dup_badge(dups)}
                       </span>
+                      <%!-- Ping-monitor rollup (fleet-page parity): the failing
+                           child row hides behind the expand toggle — without
+                           this the collapsed table looks all green. --%>
+                      <% wp = Orbit.Ipsec.Pairing.worst_ping(t["children"] || []) %>
+                      <span
+                        :if={wp in ["fail", "error"]}
+                        title="A Phase-2 ping monitor is failing — expand the tunnel for details"
+                        class={[
+                          "ml-1 whitespace-nowrap",
+                          if(wp == "fail", do: "text-error", else: "text-warning")
+                        ]}
+                      >
+                        ⚠ ping {wp}
+                      </span>
                     </td>
                     <td class="py-1.5 pr-3 text-base-content/70">
                       {fmt_duration(t["seconds_established"])}
@@ -2707,7 +2721,10 @@ defmodule OrbitWeb.InstanceDetailLive do
                     <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
                     <td class="py-1 pr-3 text-base-content/60" colspan="3">
                       <% mon = p2_monitor(@ipsec_monitors, id, ch) %>
-                      <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
+                      <span
+                        :if={ch["ping_state"] not in [nil, "none"]}
+                        class={["mr-2", ping_state_color(ch["ping_state"])]}
+                      >
                         ping {ch["ping_state"]}
                       </span>
                       <span :if={mon} class="text-base-content/40">

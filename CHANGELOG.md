@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edited the first one's. Lookup now keys on the selector pair (mirroring
   the agent's `_match_monitor`), with name/whole-tunnel matching kept as
   the fallback for selector-less legacy rows.
+- A failing Phase-2 ping was invisible in the tunnel lists: the child row's
+  "ping fail" was rendered in the same muted grey as everything else, and
+  the collapsed tunnel row showed nothing at all — the list looked all
+  green while a monitor was failing. The child row now colours the ping
+  state (green ok, red fail, amber error), and the tunnel row carries a
+  red "⚠ ping fail" badge next to the Phase-2 count on both the fleet VPN
+  page and the instance VPN tab.
 
 ## [4.2.28] - 2026-07-24
 

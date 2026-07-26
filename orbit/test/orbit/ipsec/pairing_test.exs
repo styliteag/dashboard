@@ -114,6 +114,15 @@ defmodule Orbit.Ipsec.PairingTest do
     end
   end
 
+  describe "worst_ping/1" do
+    test "ranks fail > error > ok > none — the tunnel-row ping badge threshold" do
+      assert Pairing.worst_ping([]) == "none"
+      assert Pairing.worst_ping([%{"ping_state" => "ok"}, %{}]) == "ok"
+      assert Pairing.worst_ping([%{"ping_state" => "ok"}, %{"ping_state" => "error"}]) == "error"
+      assert Pairing.worst_ping([%{"ping_state" => "error"}, %{"ping_state" => "fail"}]) == "fail"
+    end
+  end
+
   describe "dup rollup" do
     test "collects only persisted duplicates, with selector and count" do
       children = [
