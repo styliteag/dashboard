@@ -179,7 +179,15 @@ defmodule OrbitWeb.VpnLive do
     with true <- socket.assigns.writable,
          {iid, ""} <- Integer.parse(to_string(params["iid"] || "")),
          inst when not is_nil(inst) <- Scope.get_instance(iid, socket.assigns.current_user) do
-      mon = p2_monitor(socket.assigns.monitors, inst.id, params["child"])
+      mon =
+        socket.assigns.monitors
+        |> Map.get(inst.id, [])
+        |> Orbit.Monitors.match_p2(
+          params["tunnel"],
+          params["child"],
+          params["lts"],
+          params["rts"]
+        )
 
       editor = %{
         instance_id: inst.id,
@@ -599,10 +607,12 @@ defmodule OrbitWeb.VpnLive do
     )
   end
 
-  defp p2_monitor(monitors, instance_id, child_name) do
+  # Selector-pair-aware lookup (Orbit.Monitors.match_p2) — a name-only match
+  # resolved every sibling CHILD_SA of a multi-net child to the same monitor.
+  defp p2_monitor(monitors, instance_id, tunnel_id, ch) do
     monitors
     |> Map.get(instance_id, [])
-    |> Enum.find(&(&1.child_name == to_string(child_name || "")))
+    |> Orbit.Monitors.match_p2(tunnel_id, ch["name"], ch["local_ts"], ch["remote_ts"])
   end
 
   defp visible(a) do
@@ -1123,7 +1133,7 @@ defmodule OrbitWeb.VpnLive do
         {if to_string(ch["status"]) == "", do: "—", else: ch["status"]}
       </td>
       <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
-        <% mon = p2_monitor(@monitors, @t.instance_id, ch["name"]) %>
+        <% mon = p2_monitor(@monitors, @t.instance_id, @t.id, ch) %>
         <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
           ping {ch["ping_state"]}
         </span>

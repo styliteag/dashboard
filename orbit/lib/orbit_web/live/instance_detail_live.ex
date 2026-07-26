@@ -659,9 +659,13 @@ defmodule OrbitWeb.InstanceDetailLive do
     child = params["child"] || ""
 
     mon =
-      Enum.find(socket.assigns.ipsec_monitors, fn m ->
-        m.tunnel_id == params["tunnel"] and to_string(m.child_name || "") == child
-      end)
+      Orbit.Monitors.match_p2(
+        socket.assigns.ipsec_monitors,
+        params["tunnel"],
+        child,
+        params["lts"],
+        params["rts"]
+      )
 
     editor = %{
       instance_id: inst.id,
@@ -2702,7 +2706,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     </td>
                     <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
                     <td class="py-1 pr-3 text-base-content/60" colspan="3">
-                      <% mon = p2_monitor(@ipsec_monitors, ch["name"]) %>
+                      <% mon = p2_monitor(@ipsec_monitors, id, ch) %>
                       <span :if={ch["ping_state"] not in [nil, "none"]} class="mr-2">
                         ping {ch["ping_state"]}
                       </span>
@@ -3655,8 +3659,10 @@ defmodule OrbitWeb.InstanceDetailLive do
     status |> to_string() |> String.downcase() |> Kernel.in(@tunnel_up)
   end
 
-  defp p2_monitor(monitors, child_name) do
-    Enum.find(monitors, &(&1.child_name == to_string(child_name || "")))
+  # Selector-pair-aware lookup (Orbit.Monitors.match_p2) — a name-only match
+  # resolved every sibling CHILD_SA of a multi-net child to the same monitor.
+  defp p2_monitor(monitors, tunnel_id, ch) do
+    Orbit.Monitors.match_p2(monitors, tunnel_id, ch["name"], ch["local_ts"], ch["remote_ts"])
   end
 
   defp history_assign(history, window) do

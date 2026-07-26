@@ -288,6 +288,33 @@ defmodule Orbit.Monitors do
     _kind, _reason -> %{}
   end
 
+  @doc """
+  Resolve the monitor for ONE child SA — the UI-side mirror of the agent's
+  `_match_monitor`. The selector pair is the authoritative key: strongSwan
+  splits a multi-net child into sibling CHILD_SAs that share one name, so a
+  name-only match resolved every sibling to the SAME row ("Edit ping" on the
+  second Phase 2 silently edited the first one's monitor). Selector-pinned
+  monitors match only their exact pair; child-name (or whole-tunnel "")
+  matching is the fallback for selector-less legacy rows. Unlike the agent
+  this does NOT filter on `enabled` — the UI must find a disabled monitor to
+  display and edit it.
+  """
+  def match_p2(monitors, tunnel_id, child_name, local_ts, remote_ts) do
+    [tunnel_id, child_name, local_ts, remote_ts] =
+      Enum.map([tunnel_id, child_name, local_ts, remote_ts], &to_string(&1 || ""))
+
+    avail = Enum.filter(monitors, &(to_string(&1.tunnel_id || "") == tunnel_id))
+
+    Enum.find(avail, fn m ->
+      {lts, rts} = {to_string(m.local_ts || ""), to_string(m.remote_ts || "")}
+      (lts != "" or rts != "") and lts == local_ts and rts == remote_ts
+    end) ||
+      Enum.find(avail, fn m ->
+        to_string(m.local_ts || "") == "" and to_string(m.remote_ts || "") == "" and
+          to_string(m.child_name || "") in ["", child_name]
+      end)
+  end
+
   # ---- agent config push -----------------------------------------------------
 
   @doc """

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Phase-2 ping monitors on multi-net tunnels: when strongSwan splits a child
+  into sibling CHILD_SAs sharing one name (one "con1" with several selector
+  pairs), the VPN pages resolved every sibling to the SAME monitor — both
+  rows displayed one monitor and "Edit ping" on the second Phase 2 silently
+  edited the first one's. Lookup now keys on the selector pair (mirroring
+  the agent's `_match_monitor`), with name/whole-tunnel matching kept as
+  the fallback for selector-less legacy rows.
+
 ## [4.2.28] - 2026-07-24
 
 ### Fixed
