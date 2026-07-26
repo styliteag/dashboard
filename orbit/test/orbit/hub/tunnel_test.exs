@@ -78,6 +78,63 @@ defmodule Orbit.Hub.TunnelTest do
     assert_receive {:push_frame, %{"op" => "close", "stream" => ^stream}}
   end
 
+  # Regression (pf1 GUI-proxy outage): an agent WS flap unregistered the agent
+  # but left its tunnel streams routed. Consumers (GUI-proxy bridges, shell
+  # sessions) blocked forever in receive, their sockets stayed open, and the
+  # proxy's pooled connections ran every request into a 65s timeout until the
+  # whole node was restarted — reconnect of the agent never healed it.
+  describe "agent-death stream cleanup" do
+    test "unregister closes the agent's streams toward their consumers", %{hub: hub} do
+      {:ok, stream} = Hub.open_tunnel(hub, 7, %{})
+      assert_receive {:push_frame, %{"op" => "open"}}
+
+      :ok = Hub.unregister(hub, 7)
+
+      assert_receive {:tunnel, ^stream, "close", _}
+      # Routing is gone: a late send pushes nothing.
+      Hub.tunnel_send(hub, stream, "late")
+      refute_receive {:push_frame, %{"op" => "data"}}, 50
+    end
+
+    test "last-writer-wins replacement closes the old socket's streams", %{hub: hub} do
+      # Setup registered US as the old agent socket; a new socket takes over.
+      {:ok, stream} = Hub.open_tunnel(hub, 7, %{})
+      assert_receive {:push_frame, %{"op" => "open"}}
+
+      parent = self()
+
+      spawn(fn ->
+        :ok = Hub.register(hub, 7, %{})
+        send(parent, :replaced)
+        receive do: (:stop -> :ok)
+      end)
+
+      assert_receive :replaced
+      assert_receive :hub_replaced
+      assert_receive {:tunnel, ^stream, "close", _}
+    end
+
+    test "a crashing agent socket (no unregister) still evicts roster and streams",
+         %{hub: hub} do
+      parent = self()
+
+      sock =
+        spawn(fn ->
+          :ok = Hub.register(hub, 9, %{})
+          send(parent, :registered)
+          receive do: (:die -> :ok)
+        end)
+
+      assert_receive :registered
+      {:ok, stream} = Hub.open_tunnel(hub, 9, %{})
+
+      send(sock, :die)
+
+      assert_receive {:tunnel, ^stream, "close", _}
+      assert Hub.get(hub, 9) == nil
+    end
+  end
+
   test "a dying consumer's streams are closed toward the agent", %{hub: hub} do
     parent = self()
 

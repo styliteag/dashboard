@@ -27,6 +27,7 @@ defmodule Orbit.Hub do
     defstruct [
       :instance_id,
       :pid,
+      :monitor,
       :agent_version,
       :platform,
       :checkmk_sha256,
@@ -306,19 +307,31 @@ defmodule Orbit.Hub do
   def handle_call({:register, instance_id, pid, meta}, _from, state) do
     state = bump_counter(state, :connects)
 
-    case state.agents[instance_id] do
-      %Agent{pid: old_pid} when old_pid != pid ->
-        # Last-writer-wins: tell the old socket to close (4000-range close is
-        # the socket's business; python hub just closes the old ws).
-        send(old_pid, :hub_replaced)
+    state =
+      case state.agents[instance_id] do
+        %Agent{pid: old_pid, monitor: old_ref} when old_pid != pid ->
+          # Last-writer-wins: tell the old socket to close (4000-range close is
+          # the socket's business; python hub just closes the old ws) — and
+          # close its tunnel streams toward their consumers: whatever they were
+          # bridging ran over the socket we are replacing.
+          send(old_pid, :hub_replaced)
+          if old_ref, do: Process.demonitor(old_ref, [:flush])
+          drop_agent_streams(state, old_pid)
 
-      _ ->
-        :ok
-    end
+        %Agent{pid: ^pid, monitor: old_ref} ->
+          if old_ref, do: Process.demonitor(old_ref, [:flush])
+          state
+
+        nil ->
+          state
+      end
 
     agent = %Agent{
       instance_id: instance_id,
       pid: pid,
+      # A socket that dies without unregistering (crash, kill) must not leave
+      # streams routed to a dead pid — the DOWN handler cleans both.
+      monitor: Process.monitor(pid),
       agent_version: meta[:agent_version],
       platform: meta[:platform],
       checkmk_sha256: meta[:checkmk_sha256],
@@ -332,8 +345,14 @@ defmodule Orbit.Hub do
 
   def handle_call({:unregister, instance_id, pid}, _from, state) do
     case state.agents[instance_id] do
-      %Agent{pid: ^pid} ->
+      %Agent{pid: ^pid, monitor: ref} ->
+        if ref, do: Process.demonitor(ref, [:flush])
         broadcast_roster_change()
+        # Close this socket's tunnel streams toward their consumers, or a
+        # GUI-proxy bridge / shell session blocks in receive forever and the
+        # proxy's pooled connections 502 on a dead conn until node restart
+        # (regression: pf1 WS flap → "firewall gui unavailable").
+        state = drop_agent_streams(state, pid)
 
         {:reply, :ok,
          %{bump_counter(state, :disconnects) | agents: Map.delete(state.agents, instance_id)}}
@@ -537,18 +556,54 @@ defmodule Orbit.Hub do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, consumer, _reason}, state) do
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
     # A tunnel consumer died — close its streams so the agent tears them down.
     streams =
       state.streams
-      |> Enum.filter(fn {_s, meta} -> meta.consumer == consumer end)
+      |> Enum.filter(fn {_s, meta} -> meta.consumer == pid end)
       |> Enum.map(fn {s, _} -> s end)
 
-    new_state = Enum.reduce(streams, state, &drop_stream(&2, &1, tell_agent: true))
-    {:noreply, new_state}
+    state = Enum.reduce(streams, state, &drop_stream(&2, &1, tell_agent: true))
+
+    # An agent socket died WITHOUT unregistering (crash, kill): evict the
+    # roster entry and close its streams toward their consumers — same
+    # cleanup unregister does, minus a cooperating socket.
+    {:noreply, drop_dead_agent(state, pid)}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Close every stream routed over agent_pid TOWARD its consumer (the agent
+  # side is gone — nothing to tell there). The consumer sees the same
+  # {:tunnel, stream, "close", frame} an agent-side close produces, so
+  # bridges/shells tear down their sockets and the GUI proxy's pool sees
+  # :closed (retryable) instead of hanging into a 65s receive timeout.
+  defp drop_agent_streams(state, agent_pid) do
+    {dead, keep} = Enum.split_with(state.streams, fn {_s, m} -> m.agent_pid == agent_pid end)
+
+    for {stream, meta} <- dead do
+      Process.demonitor(meta.monitor, [:flush])
+
+      send(
+        meta.consumer,
+        {:tunnel, stream, "close", %{"reason" => "agent_disconnected"}}
+      )
+    end
+
+    %{state | streams: Map.new(keep)}
+  end
+
+  defp drop_dead_agent(state, pid) do
+    case Enum.find(state.agents, fn {_iid, a} -> a.pid == pid end) do
+      nil ->
+        state
+
+      {iid, _agent} ->
+        broadcast_roster_change()
+        state = drop_agent_streams(state, pid)
+        %{bump_counter(state, :disconnects) | agents: Map.delete(state.agents, iid)}
+    end
+  end
 
   defp drop_stream(state, stream, tell_agent: tell_agent) do
     case Map.pop(state.streams, stream) do

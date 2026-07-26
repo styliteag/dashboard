@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- An agent WebSocket drop no longer strands its open tunnel streams: the
+  hub now closes them toward their consumers on unregister, on
+  last-writer-wins reconnect, and (via monitor) when the socket process
+  dies without unregistering. Previously the GUI proxy's bridges blocked
+  forever on such a stream — the proxy's pooled connections ran every
+  request into a 65-second timeout and answered "firewall gui
+  unavailable" until the server was restarted; an agent reconnect never
+  healed it. Shell sessions over the same tunnel path hung identically.
+
 ## [4.2.30] - 2026-07-26
 
 ## [4.2.29] - 2026-07-26
