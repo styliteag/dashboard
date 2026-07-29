@@ -215,6 +215,12 @@ defmodule Orbit.Ipsec.History do
   tunnel that flapped once last month and a tunnel that flapped twice this
   morning drew the same picture at different scales, and neither said over
   what period. Omitted (nil) keeps the old derive-from-the-data behaviour.
+
+  `live` may carry `:silent_since` (see `Orbit.Checks.Staleness.silent_since/5`)
+  — the point where the box stopped reporting. Everything after it is grey:
+  transitions are only ever recorded on a push, so a dead box produces no
+  events at all, and without this the last state it managed to report was
+  stretched over the whole outage as measured fact.
   """
   def lanes(events, live, now, window_start \\ nil)
 
@@ -242,6 +248,8 @@ defmodule Orbit.Ipsec.History do
     span = max(DateTime.diff(now, window_start), 1)
     x = fn ts -> min(max(DateTime.diff(ts, window_start) / span * 100, 0.0), 100.0) end
 
+    silent = silent_cut(live, x)
+
     %{
       window_start: window_start,
       phase1:
@@ -250,7 +258,8 @@ defmodule Orbit.Ipsec.History do
           &phase1_state/1,
           live_up_state(live.up),
           x,
-          carried(before, &phase1_state/1)
+          carried(before, &phase1_state/1),
+          silent
         ),
       phase2:
         build_lane(
@@ -258,10 +267,21 @@ defmodule Orbit.Ipsec.History do
           &phase2_state/1,
           p2_state(live.phase2_up, live.phase2_total),
           x,
-          carried(before, &phase2_state/1)
+          carried(before, &phase2_state/1),
+          silent
         ),
-      ping: build_lane(sorted, &ping_state/1, nil, x, carried(before, &ping_state/1))
+      ping: build_lane(sorted, &ping_state/1, nil, x, carried(before, &ping_state/1), silent)
     }
+  end
+
+  # Where the box stopped reporting, as a percentage of the window — nil while
+  # it is reporting. `Orbit.Checks.Staleness.silent_since/5` decides the date;
+  # this only places it on the axis.
+  defp silent_cut(live, x) do
+    case Map.get(live, :silent_since) do
+      %DateTime{} = ts -> x.(ts)
+      _ -> nil
+    end
   end
 
   @doc """
@@ -319,10 +339,28 @@ defmodule Orbit.Ipsec.History do
         {[%{left: left, width: cut - left, label: cur} | acc], cut, label}
       end)
 
-    # The tail is the LIVE count, like every other lane's right edge.
+    # The tail is the LIVE count, like every other lane's right edge — and it
+    # ends where the box went silent, for the same reason (a count nobody
+    # measured is a made-up number). The silent stretch carries no label and
+    # drops out below, leaving bare track: exactly how this bar already draws
+    # a stretch with no known count.
     live_label = "#{live.phase2_up}/#{live.phase2_total}"
 
-    [%{left: last_left, width: 100.0 - last_left, label: live_label} | segments]
+    tail =
+      case silent_cut(live, x) do
+        nil ->
+          [%{left: last_left, width: 100.0 - last_left, label: live_label}]
+
+        silent ->
+          cut = max(silent, last_left)
+
+          [
+            %{left: cut, width: 100.0 - cut, label: nil},
+            %{left: last_left, width: cut - last_left, label: live_label}
+          ]
+      end
+
+    (tail ++ segments)
     |> Enum.reverse()
     |> Enum.reject(&(&1.width <= 0.0 or is_nil(&1.label)))
   end
@@ -374,7 +412,7 @@ defmodule Orbit.Ipsec.History do
 
   # One lane: fold the mapped events into state cuts; unknown before the
   # first relevant event; live_state (when given) overrides the tail.
-  defp build_lane(sorted_events, state_fn, live_state, x, initial) do
+  defp build_lane(sorted_events, state_fn, live_state, x, initial, silent) do
     cuts =
       for e <- sorted_events, state = state_fn.(e), state != nil, do: {x.(e.ts), state}
 
@@ -385,13 +423,32 @@ defmodule Orbit.Ipsec.History do
 
     tail_state = live_state || last_state
 
-    all =
-      Enum.reverse([%{left: last_left, width: 100.0 - last_left, state: tail_state} | segments])
+    all = Enum.reverse(tail(last_left, tail_state, silent) ++ segments)
 
     all
     |> Enum.reject(&(&1.width <= 0.0))
     |> Enum.map(&widen/1)
     |> Enum.sort_by(&paint_rank/1)
+  end
+
+  # The right edge is the tunnel's LIVE state — but "live" is the hub cache,
+  # which keeps serving the last push forever. Once the box went silent that
+  # state is last-known, not observed: painting it green claims an uptime
+  # nobody measured (and red would claim an outage). So the tail splits at the
+  # last push: known up to there, grey from there to now. Newest-first, like
+  # the accumulator it is prepended to. A box silent longer than the window
+  # yields a zero-width known part, which the width filter drops — the whole
+  # lane is then grey, which is the honest picture.
+  defp tail(last_left, tail_state, nil),
+    do: [%{left: last_left, width: 100.0 - last_left, state: tail_state}]
+
+  defp tail(last_left, tail_state, silent) do
+    cut = max(silent, last_left)
+
+    [
+      %{left: cut, width: 100.0 - cut, state: :unknown},
+      %{left: last_left, width: cut - last_left, state: tail_state}
+    ]
   end
 
   # A two-minute drop inside a 30d window is 0.005 % wide and rounds away to

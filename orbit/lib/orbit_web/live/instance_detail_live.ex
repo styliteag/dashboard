@@ -303,7 +303,11 @@ defmodule OrbitWeb.InstanceDetailLive do
              label: params["label"] || tunnel_id,
              up: params["up"] == "true",
              phase2_up: (live && live["phase2_up"]) || 0,
-             phase2_total: (live && live["phase2_total"]) || 0
+             phase2_total: (live && live["phase2_total"]) || 0,
+             # Unlike the fleet page there is no row struct here to read it
+             # from — resolve it off the instance, or the lanes would paint a
+             # silent box's last-known state as measured fact.
+             silent_since: silent_since(inst)
            },
            "7d"
          )
@@ -3680,6 +3684,24 @@ defmodule OrbitWeb.InstanceDetailLive do
   # resolved every sibling CHILD_SA of a multi-net child to the same monitor.
   defp p2_monitor(monitors, tunnel_id, ch) do
     Orbit.Monitors.match_p2(monitors, tunnel_id, ch["name"], ch["local_ts"], ch["remote_ts"])
+  end
+
+  # Where this box's cached tunnel state stops being evidence. The fleet page
+  # carries it on the row; here the settings have to be read for the one
+  # instance the page is about.
+  defp silent_since(inst) do
+    now = DateTime.utc_now()
+    push_default = Orbit.Settings.effective("push_interval_seconds")
+    poll_default = Orbit.Settings.effective("poll_interval_seconds")
+    stale_floor = Orbit.Settings.effective("agent_stale_seconds")
+
+    Orbit.Checks.Staleness.silent_since(
+      inst,
+      Orbit.Checks.Staleness.resolve(inst, push_default, stale_floor, now),
+      poll_default,
+      stale_floor,
+      now
+    )
   end
 
   defp history_assign(history, window) do

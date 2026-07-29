@@ -67,7 +67,8 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
             %{
               up: @history.up,
               phase2_up: @history.phase2_up,
-              phase2_total: @history.phase2_total
+              phase2_total: @history.phase2_total,
+              silent_since: @history[:silent_since]
             },
             DateTime.utc_now(),
             @history.window_start
@@ -107,7 +108,11 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
                   seg <-
                     Orbit.Ipsec.History.phase2_numeric(
                       @history.events,
-                      %{phase2_up: @history.phase2_up, phase2_total: @history.phase2_total},
+                      %{
+                        phase2_up: @history.phase2_up,
+                        phase2_total: @history.phase2_total,
+                        silent_since: @history[:silent_since]
+                      },
                       DateTime.utc_now(),
                       @history.window_start
                     )
@@ -131,6 +136,13 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-error"></span>down</span>
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-neutral"></span>no data</span>
           </div>
+          <%!-- Grey on its own reads as "nothing recorded". Say WHY the right
+               edge is grey, or the operator reads a silent box as a gap in
+               the log instead of a box that stopped reporting. --%>
+          <p :if={@history[:silent_since]} class="pl-[4.5rem] text-[10px] text-warning">
+            No data since {fmt_event_ts(@history[:silent_since])} — the box stopped
+            reporting; its last known state is not evidence for the grey stretch.
+          </p>
         </div>
 
         <table

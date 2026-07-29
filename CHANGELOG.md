@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Tunnel history no longer claims uptime nobody measured. A box that stops
+  reporting keeps serving its last push from the cache, so the Phase 1 /
+  Phase 2 / Ping lanes (and the fleet graph) painted "established" green all
+  the way to now — a firewall dead for a week looked like a week of perfect
+  uptime. Every lane now turns grey "no data" at the last push, with a line
+  in the dialog saying since when, and the P2 count bar drops its number for
+  the same stretch. Applies to polled boxes (Securepoint) too, which freeze
+  the same way when their poller stops. A short reconnect does not grey out:
+  the box counts as silent only after the same missed-cycles threshold the
+  `agent` check uses.
+
 ## [4.2.32] - 2026-07-30
 
 ### Fixed

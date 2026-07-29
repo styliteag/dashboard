@@ -229,7 +229,8 @@ defmodule OrbitWeb.VpnLive do
                label: params["label"] || tunnel_id,
                up: params["up"] == "true",
                phase2_up: (live && live.phase2_up) || 0,
-               phase2_total: (live && live.phase2_total) || 0
+               phase2_total: (live && live.phase2_total) || 0,
+               silent_since: live && live.silent_since
              },
              "7d"
            )
@@ -517,7 +518,12 @@ defmodule OrbitWeb.VpnLive do
       lanes =
         Orbit.Ipsec.History.lanes(
           Map.get(events, {row.instance_id, row.id}, []),
-          %{up: row.up, phase2_up: row.phase2_up, phase2_total: row.phase2_total},
+          %{
+            up: row.up,
+            phase2_up: row.phase2_up,
+            phase2_total: row.phase2_total,
+            silent_since: row.silent_since
+          },
           now,
           start
         )
@@ -553,8 +559,10 @@ defmodule OrbitWeb.VpnLive do
 
     # Staleness feeds pair_health: a silent agent's "established" is
     # last-known, not live — a stale pair must never collapse as healthy.
+    # It also fixes the right edge of the history lanes (`silent_since`).
     now = DateTime.utc_now()
     push_default = Orbit.Settings.effective("push_interval_seconds")
+    poll_default = Orbit.Settings.effective("poll_interval_seconds")
     stale_floor = Orbit.Settings.effective("agent_stale_seconds")
 
     tunnels =
@@ -565,6 +573,9 @@ defmodule OrbitWeb.VpnLive do
         # The box's real public address, for the lip-mismatch hint below.
         public_ip = Orbit.ExternalIp.build(entry)
         staleness = Orbit.Checks.Staleness.resolve(inst, push_default, stale_floor, now)
+
+        silent_since =
+          Orbit.Checks.Staleness.silent_since(inst, staleness, poll_default, stale_floor, now)
 
         for t <- ipsec["tunnels"] || [] do
           status = (t["status"] || "") |> to_string() |> String.downcase()
@@ -582,6 +593,7 @@ defmodule OrbitWeb.VpnLive do
             status: t["status"] || "?",
             up: status in @ipsec_up,
             stale: staleness != nil and staleness.stale,
+            silent_since: silent_since,
             remote: t["remote"] || "",
             local: to_string(t["local"] || ""),
             ike_init_spi: to_string(t["ike_init_spi"] || ""),

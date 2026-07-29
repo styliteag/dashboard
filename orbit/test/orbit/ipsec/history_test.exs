@@ -281,4 +281,93 @@ defmodule Orbit.Ipsec.HistoryTest do
       assert [%{label: "2/2", left: +0.0, width: 100.0}] = segs
     end
   end
+
+  describe "silent_since: a box that stopped reporting is unknown, not up" do
+    defp live(attrs \\ %{}) do
+      Map.merge(%{up: true, phase2_up: 2, phase2_total: 2}, attrs)
+    end
+
+    defp states_by_time(lane), do: lane |> Enum.sort_by(& &1.left) |> Enum.map(& &1.state)
+
+    test "the tail after the box went silent is grey on every lane" do
+      # The last push said "established". Twelve hours of silence later that
+      # is last-known, not live — painting it green claims an uptime nobody
+      # measured.
+      events = [evt("phase1_up", 24, "ESTABLISHED"), evt("ping_ok", 24, "ok")]
+      window = DateTime.add(@now, -24 * 3600)
+      silent = DateTime.add(@now, -12 * 3600)
+
+      %{phase1: p1, ping: ping} =
+        History.lanes(events, live(%{silent_since: silent}), @now, window)
+
+      assert [%{state: :up, width: w}, %{state: :unknown, width: u}] = p1
+      assert_in_delta w, 50.0, 0.1
+      assert_in_delta u, 50.0, 0.1
+
+      assert [%{state: :up}, %{state: :unknown}] = ping
+    end
+
+    test "silent for longer than the window: the whole lane is grey" do
+      # Box dead for ten days, operator opens the 24h view. Nothing about
+      # those 24 hours is known — not one green pixel.
+      events = [evt("phase1_up", 24 * 30, "ESTABLISHED")]
+      window = DateTime.add(@now, -24 * 3600)
+      silent = DateTime.add(@now, -10 * 24 * 3600)
+
+      %{phase1: lane} = History.lanes(events, live(%{silent_since: silent}), @now, window)
+
+      assert [%{state: :unknown, left: +0.0, width: 100.0}] = lane
+    end
+
+    test "a down tunnel goes grey too — silence is not a verdict either way" do
+      events = [evt("phase1_up", 48, "ESTABLISHED"), evt("phase1_down", 20, "")]
+      window = DateTime.add(@now, -24 * 3600)
+      silent = DateTime.add(@now, -6 * 3600)
+
+      %{phase1: lane} =
+        History.lanes(events, live(%{up: false, silent_since: silent}), @now, window)
+
+      assert states_by_time(lane) == [:up, :down, :unknown]
+    end
+
+    test "an event newer than silent_since never yields a negative width" do
+      # Clock skew between box and hub, or a push that landed after the
+      # last_seen stamp was read. The grey must clamp, not invert.
+      events = [evt("phase1_down", 1, "")]
+      window = DateTime.add(@now, -24 * 3600)
+      silent = DateTime.add(@now, -6 * 3600)
+
+      %{phase1: lane} = History.lanes(events, live(%{silent_since: silent}), @now, window)
+
+      assert Enum.all?(lane, &(&1.width > 0))
+      assert List.last(states_by_time(lane)) == :unknown
+    end
+
+    test "no silent_since key: unchanged, the live state still takes the tail" do
+      events = [evt("phase1_up", 24, "ESTABLISHED")]
+      window = DateTime.add(@now, -24 * 3600)
+
+      %{phase1: lane} = History.lanes(events, live(), @now, window)
+
+      assert [%{state: :up, left: +0.0, width: 100.0}] = lane
+    end
+
+    test "phase2_numeric drops the count for the silent stretch" do
+      # "2/2" over a period nobody measured is a made-up number.
+      events = [evt("phase2_changed", 24, "2/2")]
+      window = DateTime.add(@now, -24 * 3600)
+      silent = DateTime.add(@now, -12 * 3600)
+
+      segs =
+        History.phase2_numeric(
+          events,
+          %{phase2_up: 2, phase2_total: 2, silent_since: silent},
+          @now,
+          window
+        )
+
+      assert [%{label: "2/2", left: +0.0, width: w}] = segs
+      assert_in_delta w, 50.0, 0.1
+    end
+  end
 end
