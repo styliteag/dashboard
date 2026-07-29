@@ -25,4 +25,60 @@ defmodule OrbitWeb.FirmwareLiveTest do
       assert FirmwareLive.bucket(%{state: 3, check_failed: false}) == "unknown"
     end
   end
+
+  describe "bulk-update eligibility (FirmwareCompliancePage parity)" do
+    alias OrbitWeb.FirmwareLive
+
+    defp row(overrides) do
+      Map.merge(
+        %{
+          id: 1,
+          upgrade_available: true,
+          firmware_locked: false,
+          agent_mode: true,
+          upgrade_major_version: nil
+        },
+        Map.new(overrides)
+      )
+    end
+
+    test "eligible needs a pending update and an unlocked box" do
+      assert FirmwareLive.eligible?(row(%{}))
+      refute FirmwareLive.eligible?(row(%{upgrade_available: false}))
+      refute FirmwareLive.eligible?(row(%{firmware_locked: true}))
+    end
+
+    test "series upgrade additionally needs agent mode and a resolved target" do
+      assert FirmwareLive.series_eligible?(row(%{upgrade_major_version: "25.7"}))
+      refute FirmwareLive.series_eligible?(row(%{}))
+      refute FirmwareLive.series_eligible?(row(%{upgrade_major_version: ""}))
+
+      refute FirmwareLive.series_eligible?(
+               row(%{upgrade_major_version: "25.7", agent_mode: false})
+             )
+
+      refute FirmwareLive.series_eligible?(
+               row(%{upgrade_major_version: "25.7", firmware_locked: true})
+             )
+    end
+
+    test "bulk targets are the intersection of selection and eligible visible rows" do
+      rows = [
+        row(%{id: 1}),
+        row(%{id: 2, upgrade_major_version: "25.7"}),
+        row(%{id: 3, firmware_locked: true}),
+        row(%{id: 4, upgrade_available: false})
+      ]
+
+      # id 5 is selected but no longer visible (filtered away) — never acted on.
+      selected = MapSet.new([1, 2, 3, 4, 5])
+
+      assert FirmwareLive.bulk_targets(rows, selected, "firmware_update") == [1, 2]
+      assert FirmwareLive.bulk_targets(rows, selected, "firmware_upgrade") == [2]
+    end
+
+    test "an empty selection yields no targets" do
+      assert FirmwareLive.bulk_targets([row(%{})], MapSet.new(), "firmware_update") == []
+    end
+  end
 end

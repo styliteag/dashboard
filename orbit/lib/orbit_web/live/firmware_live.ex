@@ -9,7 +9,13 @@ defmodule OrbitWeb.FirmwareLive do
 
   Interaction parity with FirmwareCompliancePage.tsx: KPI tiles as verdict
   filters, search, device-type chips, sortable columns, latest/security/
-  needs-reboot/location columns, lock indicator and quick links.
+  needs-reboot/location columns, lock indicator and quick links. Bulk
+  update/series-upgrade (row checkboxes + action buttons) mirror the old
+  page's eligibility rules: only unlocked boxes with a pending update are
+  selectable, series upgrades additionally need agent mode and an on-box
+  resolved target version. The handler re-checks the write gate (never
+  trust hidden UI); ids outside the caller's scope are silently dropped in
+  Orbit.Bulk.
   """
 
   use OrbitWeb, :live_view
@@ -17,9 +23,11 @@ defmodule OrbitWeb.FirmwareLive do
   import OrbitWeb.Components.ListKit
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
+  alias Orbit.Bulk
   alias Orbit.Checks.Evaluate
   alias Orbit.Hub
   alias Orbit.Instances
+  alias Orbit.Instances.Instance
   alias OrbitWeb.Components.CommentEditor
 
   @refresh_ms 60_000
@@ -40,6 +48,9 @@ defmodule OrbitWeb.FirmwareLive do
        type_filter: "all",
        sort_col: "state",
        sort_dir: :asc,
+       selected: MapSet.new(),
+       bulk_busy: false,
+       bulk_results: nil,
        writable: socket.assigns.current_user.role in ~w(admin user)
      )
      |> load()}
@@ -80,11 +91,78 @@ defmodule OrbitWeb.FirmwareLive do
     {:noreply, gui_open_row(socket, id)}
   end
 
+  def handle_event("toggle_select", %{"id" => raw_id}, socket) do
+    {id, ""} = Integer.parse(raw_id)
+    selected = socket.assigns.selected
+
+    selected =
+      if MapSet.member?(selected, id),
+        do: MapSet.delete(selected, id),
+        else: MapSet.put(selected, id)
+
+    {:noreply, assign(socket, selected: selected)}
+  end
+
+  def handle_event("select_all", _params, socket) do
+    # Select what's currently visible AND update-eligible — filtering down
+    # never selects hidden rows, locked/up-to-date boxes stay untouchable.
+    all =
+      socket.assigns
+      |> visible()
+      |> Enum.filter(&eligible?/1)
+      |> MapSet.new(& &1.id)
+
+    selected =
+      if MapSet.equal?(socket.assigns.selected, all), do: MapSet.new(), else: all
+
+    {:noreply, assign(socket, selected: selected)}
+  end
+
+  def handle_event("bulk", %{"action" => action}, socket)
+      when action in ~w(firmware_update firmware_upgrade) do
+    targets = bulk_targets(visible(socket.assigns), socket.assigns.selected, action)
+
+    cond do
+      not socket.assigns.writable ->
+        {:noreply, socket}
+
+      socket.assigns.bulk_busy or targets == [] ->
+        {:noreply, socket}
+
+      true ->
+        user = socket.assigns.current_user
+
+        {:noreply,
+         socket
+         |> assign(bulk_busy: true, bulk_results: nil)
+         |> start_async(:bulk, fn -> Bulk.run(targets, action, user) end)}
+    end
+  end
+
+  def handle_event("clear_results", _params, socket) do
+    {:noreply, assign(socket, bulk_results: nil)}
+  end
+
   def handle_event("comment_save", params, socket),
     do: {:noreply, socket |> CommentEditor.save(params) |> load()}
 
   def handle_event("comment_clear", params, socket),
     do: {:noreply, socket |> CommentEditor.clear(params) |> load()}
+
+  @impl true
+  def handle_async(:bulk, {:ok, {:ok, results}}, socket) do
+    # Selection is spent — FirmwareCompliancePage parity, and it prevents an
+    # accidental double-fire on the same boxes from the still-open bar.
+    {:noreply, assign(socket, bulk_busy: false, bulk_results: results, selected: MapSet.new())}
+  end
+
+  def handle_async(:bulk, {:ok, {:error, :unknown_action}}, socket) do
+    {:noreply, assign(socket, bulk_busy: false, bulk_results: [])}
+  end
+
+  def handle_async(:bulk, {:exit, _reason}, socket) do
+    {:noreply, assign(socket, bulk_busy: false, bulk_results: [])}
+  end
 
   defp load(socket) do
     # Firmware state is reported by polled boxes too (Securepoint sends a
@@ -104,9 +182,12 @@ defmodule OrbitWeb.FirmwareLive do
           firmware_locked: inst.firmware_locked,
           shell_enabled: inst.shell_enabled,
           gui_openable: Orbit.GUI.openable(inst) == :ok,
-          base_url: Orbit.Instances.Instance.primary_base_url(inst),
+          base_url: Instance.primary_base_url(inst),
+          agent_mode: Instance.agent_mode?(inst),
           version: fw["product_version"] || "—",
           latest: fw["product_latest"] || "",
+          upgrade_available: fw["upgrade_available"] == true,
+          upgrade_major_version: fw["upgrade_major_version"],
           security_updates: fw["security_updates"] || 0,
           needs_reboot: fw["needs_reboot"] == true,
           state: (check && check.state) || 3,
@@ -135,6 +216,36 @@ defmodule OrbitWeb.FirmwareLive do
   def bucket(%{state: s}) when s in [1, 2], do: "update"
   def bucket(_), do: "unknown"
 
+  @doc """
+  Bulk-update eligibility (FirmwareCompliancePage parity): only a box with a
+  pending update that is not firmware-locked may be selected. Public only so
+  the rules are unit-testable.
+  """
+  def eligible?(row), do: row.upgrade_available and not row.firmware_locked
+
+  @doc """
+  Series/major upgrades additionally need an agent on the box (the target is
+  resolved on-box; direct-poll instances keep using the vendor GUI) and a
+  reported target version.
+  """
+  def series_eligible?(row) do
+    eligible?(row) and row.agent_mode and (row.upgrade_major_version || "") != ""
+  end
+
+  @doc """
+  Ids to act on: the intersection of the selection and the currently visible
+  eligible rows — filtering down never fires updates on hidden instances,
+  and a stale selection (row no longer eligible) is dropped, not acted on.
+  """
+  def bulk_targets(rows, selected, action) do
+    eligible = if action == "firmware_upgrade", do: &series_eligible?/1, else: &eligible?/1
+
+    rows
+    |> Enum.filter(eligible)
+    |> Enum.filter(&MapSet.member?(selected, &1.id))
+    |> Enum.map(& &1.id)
+  end
+
   defp visible(a) do
     q = String.downcase(a.search)
 
@@ -161,9 +272,17 @@ defmodule OrbitWeb.FirmwareLive do
 
   @impl true
   def render(assigns) do
+    visible_rows = visible(assigns)
+    eligible_ids = visible_rows |> Enum.filter(&eligible?/1) |> MapSet.new(& &1.id)
+    series_ids = visible_rows |> Enum.filter(&series_eligible?/1) |> MapSet.new(& &1.id)
+
     assigns =
       assign(assigns,
-        visible_rows: visible(assigns),
+        visible_rows: visible_rows,
+        all_eligible_selected:
+          MapSet.size(eligible_ids) > 0 and MapSet.subset?(eligible_ids, assigns.selected),
+        selected_update_count: MapSet.size(MapSet.intersection(assigns.selected, eligible_ids)),
+        selected_series_count: MapSet.size(MapSet.intersection(assigns.selected, series_ids)),
         ok_count: Enum.count(assigns.rows, &(bucket(&1) == "ok")),
         update_count: Enum.count(assigns.rows, &(bucket(&1) == "update")),
         unknown_count: Enum.count(assigns.rows, &(bucket(&1) == "unknown")),
@@ -235,6 +354,55 @@ defmodule OrbitWeb.FirmwareLive do
               {t}
             </button>
           </div>
+          <div :if={@writable and @selected_update_count > 0} class="ml-auto flex items-center gap-2">
+            <button
+              phx-click="bulk"
+              phx-value-action="firmware_update"
+              data-confirm={"Start the firmware update on #{@selected_update_count} instance(s)? Boxes may reboot to finish updates."}
+              disabled={@bulk_busy}
+              class="rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
+            >
+              {if @bulk_busy, do: "Running…", else: "Update #{@selected_update_count} selected"}
+            </button>
+            <button
+              :if={@selected_series_count > 0}
+              phx-click="bulk"
+              phx-value-action="firmware_upgrade"
+              data-confirm={"Start the series upgrade on #{@selected_series_count} instance(s)? This is a major version upgrade — each box downloads the new release and reboots."}
+              disabled={@bulk_busy}
+              class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-error-content hover:bg-error/80 disabled:opacity-50"
+            >
+              {if @bulk_busy,
+                do: "Running…",
+                else: "Series upgrade #{@selected_series_count} selected"}
+            </button>
+          </div>
+        </div>
+
+        <div
+          :if={@bulk_results}
+          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4 text-sm"
+        >
+          <div class="mb-2 flex items-center gap-3">
+            <span class="text-base-content/80">
+              Bulk result: {Enum.count(@bulk_results, & &1.success)} ok, {Enum.count(
+                @bulk_results,
+                &(not &1.success)
+              )} failed
+            </span>
+            <button
+              phx-click="clear_results"
+              class="text-xs text-base-content/60 hover:text-base-content/80"
+            >
+              dismiss
+            </button>
+          </div>
+          <div :for={r <- @bulk_results} class="text-xs">
+            <span class={if r.success, do: "text-primary", else: "text-error"}>
+              {r.instance_name}
+            </span>
+            <span class="text-base-content/60"> — {r.message}</span>
+          </div>
         </div>
 
         <.empty_state :if={@rows == []} title="No push instances in your scope.">
@@ -249,6 +417,15 @@ defmodule OrbitWeb.FirmwareLive do
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>
+                <th :if={@writable} class="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    phx-click="select_all"
+                    checked={@all_eligible_selected}
+                    title="Select all update-eligible rows"
+                    class="accent-primary"
+                  />
+                </th>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="version" label="Version" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -259,6 +436,16 @@ defmodule OrbitWeb.FirmwareLive do
             </thead>
             <tbody>
               <tr :for={r <- @visible_rows} class="border-b border-base-300/50 last:border-0">
+                <td :if={@writable} class="px-3 py-2">
+                  <input
+                    :if={eligible?(r)}
+                    type="checkbox"
+                    phx-click="toggle_select"
+                    phx-value-id={r.id}
+                    checked={MapSet.member?(@selected, r.id)}
+                    class="accent-primary"
+                  />
+                </td>
                 <td class="px-3 py-2">
                   <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
                     {state_label(r.state)}

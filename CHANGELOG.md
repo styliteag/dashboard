@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Firmware page can start bulk updates again (parity with the old
+  compliance page, lost in the LiveView rewrite): rows with a pending
+  update on unlocked boxes get a checkbox, plus "Update selected" and —
+  for agent-mode boxes with a resolved target — "Series upgrade selected"
+  buttons. Filtering the list down also narrows what a bulk action fires
+  on; firmware-locked and out-of-scope instances are never acted on.
+
 ## [4.2.31] - 2026-07-26
 
 ### Fixed
