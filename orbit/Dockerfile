@@ -84,6 +84,35 @@ COPY --chown=nobody:root THIRD-PARTY-NOTICES.md sbom.cdx.json /app/
 
 USER nobody
 
+# --- image metadata (OCI) ----------------------------------------------------
+# Update notifiers read `org.opencontainers.image.version` to report a real
+# release number: without it ouroboros can only show truncated digests
+# ("orbit updated from a1b2c3d to e4f5g6h") instead of "updated from 4.2.31 to
+# 4.2.32". Every value is a build-arg so the same Dockerfile serves both
+# editions — the pro build passes its own title/source/licenses rather than
+# forking this file.
+#
+# Declared LAST on purpose: an ARG value change invalidates every layer after
+# it, and these change on every single release. Everything below is metadata,
+# so a release bump costs nothing. `created` is deliberately absent — no
+# consumer reads it, and an empty label on every plain `docker build` is worse
+# than no label at all.
+ARG IMAGE_VERSION=0.0.0-dev
+ARG IMAGE_REVISION=unknown
+ARG IMAGE_SOURCE=https://github.com/styliteag/dashboard
+ARG IMAGE_TITLE="STYLiTE Orbit"
+ARG IMAGE_DESCRIPTION="Multi-firewall dashboard for OPNsense, pfSense and Securepoint UTM fleets"
+ARG IMAGE_LICENSES=BUSL-1.1
+
+LABEL org.opencontainers.image.version="$IMAGE_VERSION" \
+      org.opencontainers.image.revision="$IMAGE_REVISION" \
+      org.opencontainers.image.source="$IMAGE_SOURCE" \
+      org.opencontainers.image.url="$IMAGE_SOURCE" \
+      org.opencontainers.image.title="$IMAGE_TITLE" \
+      org.opencontainers.image.description="$IMAGE_DESCRIPTION" \
+      org.opencontainers.image.licenses="$IMAGE_LICENSES" \
+      org.opencontainers.image.vendor="STYLiTE AG"
+
 # Bandit listens on 4000 (PORT env); TLS terminates at nginx upstream.
 EXPOSE 4000
 ENV PHX_SERVER=true

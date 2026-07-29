@@ -141,9 +141,14 @@ orbit-dump-baseline:
     } > "$out"
     echo "wrote $out"
 
-# Build the production release image locally (CI builds/publishes on release tags)
+# Build the production release image locally (CI builds/publishes on release tags).
+# Carries the same OCI labels as a published image so a local build is not the
+# odd one out when something reads org.opencontainers.image.version.
 orbit-image:
-    docker build -f orbit/Dockerfile -t dashboard:local .
+    docker build -f orbit/Dockerfile \
+      --build-arg "IMAGE_VERSION=$(tr -d '\n\r ' < VERSION)" \
+      --build-arg "IMAGE_REVISION=$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
+      -t dashboard:local .
 
 # --- Stack (production: single combined image) -----------------------------
 

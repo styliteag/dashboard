@@ -99,6 +99,13 @@ jobs:
           sbom: false
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          # OCI labels. `org.opencontainers.image.version` is what update
+          # notifiers (ouroboros) read to report a real release number instead
+          # of a truncated digest. The remaining labels default in the
+          # Dockerfile; only the two values this run knows are passed here.
+          build-args: |
+            IMAGE_VERSION=${{ steps.version.outputs.version }}
+            IMAGE_REVISION=${{ github.sha }}
           # Registry cache for the deps layer. It was removed for one release
           # (4.2.1) to measure the effect, and that run exposed why it belongs:
           # `mix deps.get` downloads from hex.pm, which swings 16s–37s run to

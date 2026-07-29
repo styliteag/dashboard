@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The release image now carries OCI labels, so update notifiers report a real
+  release number instead of a truncated digest — ouroboros can say "orbit
+  updated from 4.3.0 to 4.3.1" because it reads
+  `org.opencontainers.image.version`. Also labelled: revision, source, title,
+  description, licenses and vendor. Every publish path sets them (`just
+  publish`, the release workflow, and `just orbit-image` for a local build).
+
 ## [4.3.0] - 2026-07-30
 
 ### Fixed

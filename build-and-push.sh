@@ -106,7 +106,20 @@ if [[ "$WANT_HUB" == "1" ]]; then
     DOCKERHUB="$DOCKERHUB_IMAGE:$VERSION (+ :latest)"
 fi
 
+# --- OCI image labels ---
+# `org.opencontainers.image.version` is what ouroboros reports on an update
+# ("orbit updated from 4.2.31 to 4.2.32"); without it operators see truncated
+# digests. Defaults for the rest live in the Dockerfile; only the two values
+# this script actually knows are passed. A build off a dirty tree labels the
+# committed revision, not the working tree.
+REVISION="$(git rev-parse HEAD 2> /dev/null || echo unknown)"
+LABEL_ARGS=(
+    --build-arg "IMAGE_VERSION=$VERSION"
+    --build-arg "IMAGE_REVISION=$REVISION"
+)
+
 echo "Version:    $VERSION"
+echo "Revision:   $REVISION"
 echo "Platforms:  $PLATFORMS"
 echo "GHCR:       $GHCR_IMAGE:$VERSION (+ :latest)"
 echo "Docker Hub: $DOCKERHUB"
@@ -142,6 +155,7 @@ docker buildx build \
     --file "./$DOCKERFILE" \
     --provenance=false \
     --sbom=false \
+    "${LABEL_ARGS[@]}" \
     "${TAGS[@]}" \
     --push \
     .
