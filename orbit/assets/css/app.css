@@ -285,3 +285,15 @@ select:focus-visible,
 textarea:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 65%, transparent);
 }
+
+/* Firmware page bulk-action hover preview: hovering an action button tints
+   exactly the rows that action will fire on — the upgrade button often
+   covers a subset of the selection ("1 of 2"), and the tint answers "which
+   one?". Tint matches the hovered button's colour. Pure CSS via :has();
+   browsers without :has() just lose the preview, nothing breaks. */
+section:has(.fw-bulk-update-btn:hover) tr.fw-will-update {
+  background-color: color-mix(in oklab, var(--color-warning) 18%, transparent);
+}
+section:has(.fw-bulk-upgrade-btn:hover) tr.fw-will-upgrade {
+  background-color: color-mix(in oklab, var(--color-error) 18%, transparent);
+}

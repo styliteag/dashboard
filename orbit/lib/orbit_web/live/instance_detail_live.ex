@@ -1310,7 +1310,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   defp fw_label("update"), do: "Update"
-  defp fw_label("upgrade"), do: "Series upgrade"
+  defp fw_label("upgrade"), do: "Major version upgrade"
   defp fw_label(_), do: "Check"
 
   defp fw_error_text(_kind, :not_connected), do: "Agent not connected."
@@ -2302,7 +2302,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             >
               {if @fw_busy == "upgrade",
                 do: "Starting…",
-                else: "Series upgrade → #{@firmware["upgrade_major_version"]}"}
+                else: "Major version upgrade → #{@firmware["upgrade_major_version"]}"}
             </button>
           </div>
 
@@ -2318,7 +2318,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               class="w-full max-w-md rounded-lg border border-warning/50 bg-base-200 p-5"
             >
               <h3 class="text-sm font-medium text-warning">
-                Series upgrade to {@firmware["upgrade_major_version"]}
+                Major version upgrade to {@firmware["upgrade_major_version"]}
               </h3>
               <p class="mt-2 text-sm text-base-content/70">
                 This is a major version jump on <span class="font-medium text-base-content">{@instance.name}</span>. The box
@@ -2345,7 +2345,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   disabled={String.trim(@upgrade_confirm) != @instance.name}
                   class="rounded bg-warning px-3 py-1 text-xs text-warning-content hover:bg-warning/80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Start series upgrade
+                  Start major version upgrade
                 </button>
               </div>
             </form>

@@ -79,7 +79,7 @@ defmodule Orbit.Bulk do
       action == "firmware_upgrade" and not Instance.agent_mode?(inst) ->
         # Mirrors the single-instance route: the series upgrade needs the
         # agent to resolve the target on-box and snapshot first.
-        result(inst, false, "series upgrade requires agent mode; use the vendor gui")
+        result(inst, false, "major version upgrade requires agent mode; use the vendor gui")
 
       not Instance.agent_mode?(inst) ->
         run_direct(inst, action, opts)

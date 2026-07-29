@@ -368,7 +368,7 @@ defmodule OrbitWeb.FirmwareLive do
               title={"Install the pending firmware update on the #{@selected_update_count} selected box(es). Stays on the current release series; a box may reboot to finish."}
               data-confirm={"Start the firmware update on #{@selected_update_count} instance(s)? Boxes may reboot to finish updates."}
               disabled={@bulk_busy}
-              class="rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
+              class="fw-bulk-update-btn rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
             >
               {if @bulk_busy, do: "Running…", else: "Update firmware"}
             </button>
@@ -376,20 +376,20 @@ defmodule OrbitWeb.FirmwareLive do
               :if={@selected_series_count > 0}
               phx-click="bulk"
               phx-value-action="firmware_upgrade"
-              title={"Upgrade to the NEXT RELEASE SERIES (major version), not just the pending update. Only agent-mode boxes that report an upgrade target qualify — #{@selected_series_count} of the #{@selected_update_count} selected. Each box downloads the new release and reboots."}
-              data-confirm={"Start the series upgrade on #{@selected_series_count} instance(s)? This is a major version upgrade — each box downloads the new release and reboots."}
+              title={"Upgrade to the NEXT MAJOR VERSION (e.g. OPNsense 24.7 → 25.1, pfSense 2.7 → 2.8), not just the pending update. Only agent-mode boxes that report an upgrade target qualify — #{@selected_series_count} of the #{@selected_update_count} selected. Each box downloads the new release and reboots."}
+              data-confirm={"Start the major version upgrade on #{@selected_series_count} instance(s)? Each box downloads the new release and reboots."}
               disabled={@bulk_busy}
-              class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-error-content hover:bg-error/80 disabled:opacity-50"
+              class="fw-bulk-upgrade-btn rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-error-content hover:bg-error/80 disabled:opacity-50"
             >
               {cond do
                 @bulk_busy ->
                   "Running…"
 
                 @selected_series_count < @selected_update_count ->
-                  "Series upgrade (#{@selected_series_count} of #{@selected_update_count})"
+                  "Major version upgrade (#{@selected_series_count} of #{@selected_update_count})"
 
                 true ->
-                  "Series upgrade"
+                  "Major version upgrade"
               end}
             </button>
           </div>
@@ -451,7 +451,17 @@ defmodule OrbitWeb.FirmwareLive do
               </tr>
             </thead>
             <tbody>
-              <tr :for={r <- @visible_rows} class="border-b border-base-300/50 last:border-0">
+              <%!-- fw-will-* mark the rows each bulk button would fire on;
+                   hovering a button tints them (app.css :has() rule) so
+                   "Major version upgrade (1 of 2)" shows WHICH one. --%>
+              <tr
+                :for={r <- @visible_rows}
+                class={[
+                  "border-b border-base-300/50 last:border-0",
+                  MapSet.member?(@selected, r.id) && eligible?(r) && "fw-will-update",
+                  MapSet.member?(@selected, r.id) && series_eligible?(r) && "fw-will-upgrade"
+                ]}
+              >
                 <td :if={@writable} class="px-3 py-2">
                   <input
                     :if={eligible?(r)}

@@ -143,7 +143,7 @@ defmodule Orbit.FirmwareTest do
   end
 
   test "upgrade refused on a direct-poll instance", ctx do
-    assert {:error, "series upgrade requires agent mode"} =
+    assert {:error, "major version upgrade requires agent mode"} =
              Firmware.upgrade(inst(%{transport: "api"}), user(), hub: ctx.hub, audit: ctx.audit)
 
     refute_receive {:push_frame, _}, 50

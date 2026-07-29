@@ -42,7 +42,9 @@ defmodule OrbitWeb.InstancesLive do
     {"firmware_update", "Update firmware"},
     # Bulk.run/3 has supported this all along (locked boxes skipped,
     # agent-less refused) — it simply had no entry in the menu.
-    {"firmware_upgrade", "Series upgrade"},
+    # "Major version upgrade", not the vendors' "series upgrade" jargon —
+    # operators asked what a "series" is (user decision 2026-07-30).
+    {"firmware_upgrade", "Major version upgrade"},
     {"ipsec_restart", "Restart IPsec"},
     {"reboot", "Reboot"}
   ]

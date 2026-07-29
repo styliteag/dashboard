@@ -92,7 +92,7 @@ defmodule Orbit.Firmware do
   def upgrade(inst, user, opts \\ []) do
     cond do
       inst.firmware_locked -> {:error, :locked}
-      not Instance.agent_mode?(inst) -> {:error, "series upgrade requires agent mode"}
+      not Instance.agent_mode?(inst) -> {:error, "major version upgrade requires agent mode"}
       true -> run_start(inst, user, "firmware.upgrade", @upgrade_timeout_ms, opts)
     end
   end
