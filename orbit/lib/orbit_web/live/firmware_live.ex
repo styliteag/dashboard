@@ -354,27 +354,43 @@ defmodule OrbitWeb.FirmwareLive do
               {t}
             </button>
           </div>
+          <%!-- Two buttons with two DIFFERENT counts read as a riddle
+               ("Series upgrade 1 selected" while 2 are selected) — say the
+               selection once, name the action plainly, and let the series
+               button explain why it covers fewer boxes. --%>
           <div :if={@writable and @selected_update_count > 0} class="ml-auto flex items-center gap-2">
+            <span class="text-xs text-base-content/60">
+              {@selected_update_count} selected:
+            </span>
             <button
               phx-click="bulk"
               phx-value-action="firmware_update"
+              title={"Install the pending firmware update on the #{@selected_update_count} selected box(es). Stays on the current release series; a box may reboot to finish."}
               data-confirm={"Start the firmware update on #{@selected_update_count} instance(s)? Boxes may reboot to finish updates."}
               disabled={@bulk_busy}
               class="rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
             >
-              {if @bulk_busy, do: "Running…", else: "Update #{@selected_update_count} selected"}
+              {if @bulk_busy, do: "Running…", else: "Update firmware"}
             </button>
             <button
               :if={@selected_series_count > 0}
               phx-click="bulk"
               phx-value-action="firmware_upgrade"
+              title={"Upgrade to the NEXT RELEASE SERIES (major version), not just the pending update. Only agent-mode boxes that report an upgrade target qualify — #{@selected_series_count} of the #{@selected_update_count} selected. Each box downloads the new release and reboots."}
               data-confirm={"Start the series upgrade on #{@selected_series_count} instance(s)? This is a major version upgrade — each box downloads the new release and reboots."}
               disabled={@bulk_busy}
               class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-error-content hover:bg-error/80 disabled:opacity-50"
             >
-              {if @bulk_busy,
-                do: "Running…",
-                else: "Series upgrade #{@selected_series_count} selected"}
+              {cond do
+                @bulk_busy ->
+                  "Running…"
+
+                @selected_series_count < @selected_update_count ->
+                  "Series upgrade (#{@selected_series_count} of #{@selected_update_count})"
+
+                true ->
+                  "Series upgrade"
+              end}
             </button>
           </div>
         </div>
