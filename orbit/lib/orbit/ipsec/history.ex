@@ -455,8 +455,13 @@ defmodule Orbit.Ipsec.History do
   reader would fire one query per row — seventy boxes' worth on one page load.
   This is a single query over the instance ids, grouped in memory.
 
-  Deliberately window-only (no per-tunnel row cap): a cap here would silently
-  truncate the middle of somebody's timeline, and the window already bounds it.
+  No per-tunnel row cap inside the window: a cap there would silently
+  truncate the middle of somebody's timeline, and the window already bounds
+  it. Like `read/4`, the newest events of each tunnel from BEFORE the window
+  ride along (`preceding_many/2`) — they are what tells `lanes/4` the state
+  each lane opened in. Without them every fleet lane whose tunnel had at
+  least one event inside the window started as grey "no data" up to that
+  event, while the single-tunnel dialog drew the same window correctly.
 
   The overall `limit` is a runaway guard, not a display choice. If a fleet ever
   hits it the oldest events of some tunnels drop out and those lanes render as
@@ -479,22 +484,24 @@ defmodule Orbit.Ipsec.History do
         _ -> {"", instance_ids}
       end
 
-    Orbit.Repo.query!(
-      "SELECT instance_id, tunnel_id, ts, child_name, event_type, old_value, new_value " <>
-        "FROM ipsec_tunnel_events WHERE instance_id IN (#{placeholders})#{clause} " <>
-        "ORDER BY ts DESC, id DESC LIMIT #{limit}",
-      params
-    ).rows
-    |> tap(fn rows ->
-      if length(rows) >= limit do
-        require Logger
+    rows =
+      Orbit.Repo.query!(
+        "SELECT instance_id, tunnel_id, ts, child_name, event_type, old_value, new_value " <>
+          "FROM ipsec_tunnel_events WHERE instance_id IN (#{placeholders})#{clause} " <>
+          "ORDER BY ts DESC, id DESC LIMIT #{limit}",
+        params
+      ).rows
 
-        Logger.warning(
-          "ipsec.history_truncated rows=#{length(rows)} limit=#{limit} " <>
-            "instances=#{length(instance_ids)} — older events dropped, some lanes will read as no-data"
-        )
-      end
-    end)
+    if length(rows) >= limit do
+      require Logger
+
+      Logger.warning(
+        "ipsec.history_truncated rows=#{length(rows)} limit=#{limit} " <>
+          "instances=#{length(instance_ids)} — older events dropped, some lanes will read as no-data"
+      )
+    end
+
+    (rows ++ preceding_many(instance_ids, since))
     |> Enum.group_by(fn [iid, tid | _] -> {iid, to_string(tid)} end, fn [
                                                                           _iid,
                                                                           _tid,
@@ -516,6 +523,29 @@ defmodule Orbit.Ipsec.History do
     _ -> %{}
   catch
     _kind, _reason -> %{}
+  end
+
+  # The fleet-graph twin of preceding/3: the newest pre-window events of
+  # EVERY tunnel of the given instances in one query, same 12-row-per-tunnel
+  # cap, same column order as read_many/3's main select so the rows can be
+  # concatenated before grouping.
+  defp preceding_many(_instance_ids, nil), do: []
+
+  defp preceding_many(instance_ids, %DateTime{} = since) do
+    placeholders = Enum.map_join(instance_ids, ", ", fn _ -> "?" end)
+
+    Orbit.Repo.query!(
+      "SELECT instance_id, tunnel_id, ts, child_name, event_type, old_value, new_value FROM (" <>
+        "SELECT instance_id, tunnel_id, ts, id, child_name, event_type, old_value, new_value, " <>
+        "ROW_NUMBER() OVER (PARTITION BY instance_id, tunnel_id ORDER BY ts DESC, id DESC) AS rn " <>
+        "FROM ipsec_tunnel_events WHERE instance_id IN (#{placeholders}) AND ts < ?" <>
+        ") ranked WHERE rn <= 12",
+      instance_ids ++ [since]
+    ).rows
+  rescue
+    _ -> []
+  catch
+    _kind, _reason -> []
   end
 
   # One event per lane kind from before the window, so lanes/4 knows the state

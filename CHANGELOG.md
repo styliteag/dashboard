@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The VPN fleet graph no longer opens lanes as grey "no data" for tunnels
+  that were simply up (or down) before the window: the fleet reader now
+  carries each tunnel's newest pre-window events, like the single-tunnel
+  history dialog always did, so a 7d/30d lane starts in the state the
+  tunnel was actually in when the window opened.
+
 ### Added
 
 - The Firmware page can start bulk updates again (parity with the old
