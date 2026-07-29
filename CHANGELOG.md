@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-07-30
+
 ### Fixed
 
 - Tunnel history no longer claims uptime nobody measured. A box that stops
