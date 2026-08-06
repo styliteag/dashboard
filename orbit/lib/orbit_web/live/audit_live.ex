@@ -296,7 +296,7 @@ defmodule OrbitWeb.AuditLive do
           </div>
           <button
             phx-click="refresh"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             Refresh
           </button>
@@ -372,7 +372,7 @@ defmodule OrbitWeb.AuditLive do
           <button
             :if={length(@rows) >= @action_limit}
             phx-click="action_more"
-            class="mt-3 rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="mt-3 rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             Load more
           </button>

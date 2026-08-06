@@ -495,13 +495,13 @@ defmodule OrbitWeb.InstancesLive do
           <a
             :if={@writable}
             href={~p"/instances/new"}
-            class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             New instance
           </a>
           <a
             href={~p"/api/export/instances.csv"}
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             Export CSV
           </a>
@@ -1056,7 +1056,7 @@ defmodule OrbitWeb.InstancesLive do
   defp dot_class("degraded"), do: "bg-warning"
   defp dot_class(_), do: "bg-error"
 
-  defp chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
+  defp chip(true), do: "rounded-full bg-primary px-3 py-1.5 text-xs text-primary-content"
 
   defp chip(false),
     do:

@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Buttons started converging on one vocabulary: a shared button component
+  (primary/secondary/quiet/danger, two sizes) sets the canon, and the most
+  duplicated hand-rolled small-button recipes were aligned to it — the
+  22px-tall py-0.5 variants now meet the 24px click-target floor, and
+  secondary buttons share one text tint.
 - Secondary text is readable in the light designs: every muted tint below
   70% (form labels, tile captions, table headers, row subtexts, hints, the
   footer) moved to the 70% floor — 60% sat below WCAG AA on light

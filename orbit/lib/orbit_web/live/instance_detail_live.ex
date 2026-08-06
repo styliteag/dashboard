@@ -2032,7 +2032,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="agent_update"
               data-confirm={"Push agent #{@served_agent_version} to #{@instance.name}? The agent restarts (canary: one box at a time)."}
               disabled={@agent_busy}
-              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @agent_busy,
                 do: "Pushing…",
@@ -2166,7 +2166,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </p>
           <button
             phx-click="agent_enable"
-            class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             Enable agent mode
           </button>
@@ -2300,7 +2300,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               phx-click="fw_update"
               data-confirm={"Start the firmware update on #{@instance.name}? The box may reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "update", do: "Starting…", else: "Start update"}
             </button>
@@ -2349,7 +2349,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <button
                   type="button"
                   phx-click="fw_upgrade_cancel"
-                  class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
+                  class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
                 >
                   Cancel
                 </button>
@@ -2390,7 +2390,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <button
                 :if={not @upgrading and @upgrade_log != []}
                 phx-click="fw_log_dismiss"
-                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
               >
                 Dismiss
               </button>
@@ -2778,7 +2778,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               </h3>
               <button
                 phx-click="ipsec_diagnose_close"
-                class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
               >
                 Close
               </button>
@@ -2907,7 +2907,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <button
               :if={@if_show_all or hidden > 0}
               phx-click="iface_toggle_all"
-              class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               {if @if_show_all,
                 do: "Only with IP",
@@ -3445,7 +3445,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             ></textarea>
             <button
               type="submit"
-              class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
             >
               Add note
             </button>
@@ -3471,7 +3471,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 phx-click="comment_clear"
                 phx-value-kind={c.kind}
                 phx-value-entity_key={c.entity_key}
-                class="shrink-0 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                class="shrink-0 rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
               >
                 Clear
               </button>

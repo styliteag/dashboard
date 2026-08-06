@@ -389,7 +389,7 @@ defmodule OrbitWeb.SettingsLive do
               phx-click="llm_test"
               phx-value-provider={p.id}
               disabled={@llm_busy != nil}
-              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300 disabled:opacity-50"
+              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-50"
             >
               {if @llm_busy == p.id, do: "Testing…", else: "Test #{p.label}"}
             </button>
@@ -514,7 +514,7 @@ defmodule OrbitWeb.SettingsLive do
           phx-click="clear"
           phx-value-key={@row.key}
           title="Reset to the environment default"
-          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
         >
           ↺
         </button>
@@ -568,7 +568,7 @@ defmodule OrbitWeb.SettingsLive do
         <button
           type="submit"
           disabled
-          class="rounded bg-primary px-2 py-1 text-xs text-primary-content opacity-40 hover:bg-primary/80 disabled:cursor-not-allowed"
+          class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content opacity-40 hover:bg-primary/80 disabled:cursor-not-allowed"
         >
           Save
         </button>
@@ -578,7 +578,7 @@ defmodule OrbitWeb.SettingsLive do
           phx-click="clear"
           phx-value-key={@row.key}
           title="Reset to the environment default"
-          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
         >
           ↺
         </button>

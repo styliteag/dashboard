@@ -861,7 +861,7 @@ defmodule OrbitWeb.VpnLive do
           <button
             :if={(@grouped and @has_pairs) or @has_expandable}
             phx-click="groups_toggle_all"
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             {if @any_collapsed, do: "▾ Expand all", else: "▸ Collapse all"}
           </button>

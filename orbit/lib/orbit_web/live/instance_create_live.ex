@@ -292,7 +292,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                  (UI/UX review U-Q3). --%>
             <a
               href={~p"/instances"}
-              class="rounded border border-base-content/20 px-3 py-1.5 text-sm text-base-content/70 hover:bg-base-300"
+              class="rounded border border-base-content/20 px-3 py-1.5 text-sm text-base-content/80 hover:bg-base-300"
             >
               Cancel
             </a>

@@ -141,7 +141,7 @@ defmodule OrbitWeb.UsersLive do
           </h1>
           <button
             phx-click="toggle_create"
-            class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             {if @show_create, do: "Cancel", else: "New user"}
           </button>
@@ -195,7 +195,7 @@ defmodule OrbitWeb.UsersLive do
           </div>
           <button
             type="submit"
-            class="mt-3 rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="mt-3 rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             Create user
           </button>
@@ -257,7 +257,7 @@ defmodule OrbitWeb.UsersLive do
                     <button
                       phx-click="edit"
                       phx-value-id={u.id}
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                     >
                       {if @editing == u.id, do: "close", else: "edit"}
                     </button>
@@ -304,7 +304,7 @@ defmodule OrbitWeb.UsersLive do
                       <div class="flex items-center gap-2">
                         <button
                           type="submit"
-                          class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+                          class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
                         >
                           Save
                         </button>

@@ -142,7 +142,7 @@ defmodule OrbitWeb.UptimeLive do
           </h1>
           <a
             href={~p"/instances"}
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             ← Instances
           </a>
@@ -249,7 +249,7 @@ defmodule OrbitWeb.UptimeLive do
                 <button
                   phx-click="history_open"
                   phx-value-iid={row.id}
-                  class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                  class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                 >
                   Timeline
                 </button>

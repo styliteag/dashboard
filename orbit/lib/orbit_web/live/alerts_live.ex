@@ -148,7 +148,7 @@ defmodule OrbitWeb.AlertsLive do
           </h1>
           <button
             phx-click="refresh_now"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             Refresh
           </button>

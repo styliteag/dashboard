@@ -121,7 +121,7 @@ defmodule OrbitWeb.ApiKeysLive do
           </h1>
           <button
             phx-click="toggle_create"
-            class="rounded bg-primary px-2 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             {if @show_create, do: "Cancel", else: "New key"}
           </button>
@@ -209,7 +209,7 @@ defmodule OrbitWeb.ApiKeysLive do
           </div>
           <button
             type="submit"
-            class="mt-3 rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+            class="mt-3 rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
           >
             Mint key
           </button>
@@ -257,7 +257,7 @@ defmodule OrbitWeb.ApiKeysLive do
                     :if={is_nil(k.revoked_at) and k.revealable}
                     phx-click="reveal"
                     phx-value-id={k.id}
-                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     reveal
                   </button>

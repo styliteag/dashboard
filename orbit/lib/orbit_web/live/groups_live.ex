@@ -255,7 +255,7 @@ defmodule OrbitWeb.GroupsLive do
                     <button
                       phx-click="rename_toggle"
                       phx-value-group_id={g.id}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                      class="ml-1 rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                     >
                       rename
                     </button>
@@ -281,7 +281,7 @@ defmodule OrbitWeb.GroupsLive do
                       />
                       <button
                         type="submit"
-                        class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+                        class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
                       >
                         Save
                       </button>
@@ -413,7 +413,7 @@ defmodule OrbitWeb.GroupsLive do
         </button>
         <button
           type="submit"
-          class="rounded bg-primary px-3 py-1 text-xs text-primary-content hover:bg-primary/80"
+          class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
         >
           Save
         </button>

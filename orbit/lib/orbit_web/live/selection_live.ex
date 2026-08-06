@@ -102,7 +102,7 @@ defmodule OrbitWeb.SelectionLive do
           </h1>
           <a
             href={~p"/settings"}
-            class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300 hover:text-base-content"
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 hover:text-base-content"
           >
             ← Settings
           </a>
@@ -197,7 +197,7 @@ defmodule OrbitWeb.SelectionLive do
                     phx-value-consumer={r.consumer}
                     phx-value-selector={r.selector}
                     phx-value-instance_id={r.instance_id}
-                    class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/70 hover:bg-base-300"
+                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     remove
                   </button>

@@ -598,7 +598,7 @@ defmodule OrbitWeb.CoreComponents do
           <button
             type="button"
             phx-click={@on_cancel}
-            class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
           >
             Cancel
           </button>
@@ -690,6 +690,44 @@ defmodule OrbitWeb.CoreComponents do
   defp panel_pad(:compact), do: "p-3"
   defp panel_pad(:default), do: "p-4"
   defp panel_pad(:roomy), do: "p-6"
+
+  @doc """
+  Canonical action button — the app grew 100+ hand-rolled button class
+  strings with no rank order between them (UI/UX review 2026-08-06, D-11).
+  Three visual ranks and one destructive variant, two sizes; `sm` keeps the
+  24px minimum target (WCAG 2.5.8). Use for every NEW button; existing
+  markup is being swept toward the same class recipes.
+  """
+  attr :variant, :atom, default: :secondary, values: [:primary, :secondary, :quiet, :danger]
+  attr :size, :atom, default: :sm, values: [:sm, :md]
+  attr :rest, :global, include: ~w(disabled type form name value phx-click phx-value-id)
+  slot :inner_block, required: true
+
+  def btn(assigns) do
+    ~H"""
+    <button
+      class={[
+        "rounded disabled:cursor-not-allowed disabled:opacity-40",
+        btn_size(@size),
+        btn_variant(@variant)
+      ]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  defp btn_size(:sm), do: "px-2 py-1 text-xs"
+  defp btn_size(:md), do: "px-4 py-1.5 text-sm"
+
+  defp btn_variant(:primary), do: "bg-primary text-primary-content hover:bg-primary/80"
+
+  defp btn_variant(:secondary),
+    do: "border border-base-content/20 text-base-content/80 hover:bg-base-300"
+
+  defp btn_variant(:quiet), do: "text-base-content/70 hover:bg-base-300 hover:text-base-content"
+  defp btn_variant(:danger), do: "border border-error/40 text-error hover:bg-error/15"
 
   ## JS Commands
 
