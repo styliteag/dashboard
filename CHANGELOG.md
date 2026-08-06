@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-08-06
+
 ### Fixed
 
 - A pfSense update no longer leaves the box silently pinned to a different
