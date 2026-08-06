@@ -162,7 +162,8 @@ defmodule OrbitWeb.Components.ListKit do
   def chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
 
   def chip(false),
-    do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"
+    do:
+      "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral hover:text-neutral-content"
 
   attr :instance_id, :integer, required: true
   attr :openable, :boolean, required: true, doc: "Orbit.GUI.openable(inst) == :ok, precomputed"

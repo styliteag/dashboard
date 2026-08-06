@@ -352,7 +352,7 @@ defmodule OrbitWeb.CertificatesLive do
                   </span>
                   <span
                     :if={r.is_ca}
-                    class="ml-1 rounded bg-neutral px-1 py-0.5 text-[10px] text-base-content/70"
+                    class="ml-1 rounded bg-neutral px-1 py-0.5 text-[10px] text-neutral-content/80"
                   >
                     CA
                   </span>

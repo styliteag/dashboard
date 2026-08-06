@@ -580,7 +580,7 @@ defmodule OrbitWeb.InstancesLive do
               class={[
                 "rounded-md px-3 py-1.5 capitalize",
                 if(@view == v,
-                  do: "bg-neutral text-base-content",
+                  do: "bg-neutral text-neutral-content",
                   else: "text-base-content/70 hover:text-base-content"
                 )
               ]}
@@ -963,7 +963,8 @@ defmodule OrbitWeb.InstancesLive do
   defp chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
 
   defp chip(false),
-    do: "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral"
+    do:
+      "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral hover:text-neutral-content"
 
   # Relative timestamp. English since 2026-07-20 (user decision) — the old
   # fmtRelative German ("vor 14s") was the React era's one sanctioned

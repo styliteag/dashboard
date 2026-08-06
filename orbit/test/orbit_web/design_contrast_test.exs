@@ -34,9 +34,12 @@ defmodule OrbitWeb.DesignContrastTest do
   end
 
   test "token-content pairs reach AA (solid buttons, filled badges)" do
+    # neutral included: bg-neutral + text-base-content was dark-on-dark in
+    # every light design (active view toggle, CA chip, audit type chip) —
+    # the pair contract is the regression pin.
     failures =
       for {theme, tokens} <- themes(),
-          sem <- @semantic,
+          sem <- @semantic ++ ["neutral"],
           Map.has_key?(tokens, sem) and Map.has_key?(tokens, sem <> "-content"),
           r = ratio(srgb(tokens[sem <> "-content"]), srgb(tokens[sem])),
           r < @aa do

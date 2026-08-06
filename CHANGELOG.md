@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The active List/Grid view toggle, the CA chip on Certificates and the
+  request-type chip on Audit were dark-on-dark in the light designs
+  (bg-neutral paired with the page's ink instead of neutral-content); the
+  filter chips had the same problem on hover. The contrast gate now also
+  pins the neutral/neutral-content pair so this cannot come back.
 - Forms and lists lost fewer operators: the create-instance form has a
   Cancel button (there was no way out except browser-back), the edit form
   has one next to Save, alert rows link to the box's Checks tab instead of

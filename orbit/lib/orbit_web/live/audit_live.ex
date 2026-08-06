@@ -545,6 +545,6 @@ defmodule OrbitWeb.AuditLive do
   defp type_class(:login_fail), do: "bg-error/20 text-error"
   defp type_class(:denial), do: "bg-error/20 text-error"
   defp type_class(:access), do: "bg-info/20 text-info"
-  defp type_class(:request), do: "bg-neutral text-base-content/70"
+  defp type_class(:request), do: "bg-neutral text-neutral-content/80"
   defp type_class(_), do: "bg-warning/20 text-warning"
 end
