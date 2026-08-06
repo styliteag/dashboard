@@ -29,12 +29,12 @@ defmodule OrbitWeb.Components.ConnectivityMonitorDialog do
         <h3 class="text-sm font-medium text-base-content">
           {if @editor.monitor_id, do: "Edit connectivity monitor", else: "Add connectivity monitor"}
         </h3>
-        <p class="mt-1 text-xs text-base-content/60">
+        <p class="mt-1 text-xs text-base-content/70">
           {@editor.instance_name} · pinged from the box on every cycle
         </p>
 
         <form phx-change="conn_change" phx-submit="conn_save" class="mt-4 space-y-3 text-sm">
-          <label class="block text-xs text-base-content/60">
+          <label class="block text-xs text-base-content/70">
             Name *
             <input
               name="monitor[name]"
@@ -43,7 +43,7 @@ defmodule OrbitWeb.Components.ConnectivityMonitorDialog do
               class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
             />
           </label>
-          <label class="block text-xs text-base-content/60">
+          <label class="block text-xs text-base-content/70">
             Source IP (must be box-owned; blank = default route)
             <input
               name="monitor[source]"
@@ -51,7 +51,7 @@ defmodule OrbitWeb.Components.ConnectivityMonitorDialog do
               class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
             />
           </label>
-          <label class="block text-xs text-base-content/60">
+          <label class="block text-xs text-base-content/70">
             Destination *
             <input
               name="monitor[destination]"
@@ -62,7 +62,7 @@ defmodule OrbitWeb.Components.ConnectivityMonitorDialog do
             />
           </label>
           <div class="flex items-end gap-4">
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Pings per cycle
               <input
                 name="monitor[ping_count]"

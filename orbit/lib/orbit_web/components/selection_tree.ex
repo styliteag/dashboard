@@ -247,7 +247,7 @@ defmodule OrbitWeb.Components.SelectionTree do
     <div class="rounded-xl border border-base-300 bg-base-200/60 p-5">
       <div class="flex items-center justify-between">
         <h3 class="flex items-center gap-2 text-sm font-semibold text-base-content">
-          <Icons.icon name={:list_checks} class="h-4 w-4 text-base-content/50" />
+          <Icons.icon name={:list_checks} class="h-4 w-4 text-base-content/70" />
           {if @channel?, do: "Which alerts go to this channel", else: "Exported checks"}
         </h3>
         <button
@@ -261,7 +261,7 @@ defmodule OrbitWeb.Components.SelectionTree do
           {if @test_busy, do: "Sending…", else: "Send test"}
         </button>
       </div>
-      <p class="mt-1 text-xs text-base-content/60">
+      <p class="mt-1 text-xs text-base-content/70">
         Nothing is selected by default. Turn on a whole category globally, or add/mute a
         single service on one instance below. {if @channel?,
           do: "A box-level choice wins over the global one.",
@@ -278,15 +278,15 @@ defmodule OrbitWeb.Components.SelectionTree do
       </p>
 
       <p :if={@test_result} class="mt-3 text-xs">
-        <span class="text-base-content/60">Test: </span>
+        <span class="text-base-content/70">Test: </span>
         <span class={[
           @test_result.status == "sent" && "text-primary",
           @test_result.status == "failed" && "text-error",
-          @test_result.status == "skipped" && "text-base-content/50"
+          @test_result.status == "skipped" && "text-base-content/70"
         ]}>
           {@test_result.status}
         </span>
-        <span :if={@test_result.detail != ""} class="ml-2 text-base-content/50">
+        <span :if={@test_result.detail != ""} class="ml-2 text-base-content/70">
           {@test_result.detail}
         </span>
       </p>
@@ -311,13 +311,13 @@ defmodule OrbitWeb.Components.SelectionTree do
 
       <%!-- Per-instance live preview tree --%>
       <div class="mt-5 flex items-center justify-between">
-        <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/50">
+        <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/70">
           {if @channel?, do: "Per instance", else: "Current export per instance"}
         </h4>
         <button
           phx-click="refresh_preview"
           phx-target={@myself}
-          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-base-content/60 hover:bg-base-300"
+          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
         >
           <Icons.icon name={:refresh} class="h-3 w-3" /> Refresh
         </button>
@@ -335,13 +335,13 @@ defmodule OrbitWeb.Components.SelectionTree do
             class="flex w-full items-center justify-between bg-base-100/70 px-3 py-2 text-left hover:bg-base-100"
           >
             <span class="flex items-center gap-2 text-sm text-base-content">
-              <span class="text-base-content/50">
+              <span class="text-base-content/70">
                 {if MapSet.member?(@open, inst.instance_id), do: "▾", else: "▸"}
               </span>
               {inst.name}
-              <span class="text-xs text-base-content/50">{device_label(inst.device_type)}</span>
+              <span class="text-xs text-base-content/70">{device_label(inst.device_type)}</span>
             </span>
-            <span class="text-xs text-base-content/50">
+            <span class="text-xs text-base-content/70">
               {Enum.count(inst.checks, fn c ->
                 elem(Selection.resolve(@consumer, c.key, inst.instance_id, @rules), 0)
               end)}/{length(inst.checks)} selected
@@ -377,9 +377,9 @@ defmodule OrbitWeb.Components.SelectionTree do
                 {elem(state_badge(c.state), 0)}
               </span>
               <span class="font-mono text-base-content/80">{c.key}</span>
-              <span class="truncate text-base-content/50">{c.summary}</span>
+              <span class="truncate text-base-content/70">{c.summary}</span>
               <span class="ml-auto flex items-center gap-2 whitespace-nowrap">
-                <span class="text-base-content/40">
+                <span class="text-base-content/70">
                   {by_note(elem(Selection.resolve(@consumer, c.key, inst.instance_id, @rules), 1))}
                 </span>
                 <button
@@ -389,7 +389,7 @@ defmodule OrbitWeb.Components.SelectionTree do
                   phx-value-key={c.key}
                   phx-target={@myself}
                   title="Clear this box-level override and inherit"
-                  class="text-base-content/50 hover:text-base-content"
+                  class="text-base-content/70 hover:text-base-content"
                 >
                   ↺
                 </button>
@@ -397,7 +397,7 @@ defmodule OrbitWeb.Components.SelectionTree do
             </li>
           </ul>
         </div>
-        <p :if={@preview == []} class="text-xs text-base-content/50">No instances.</p>
+        <p :if={@preview == []} class="text-xs text-base-content/70">No instances.</p>
       </div>
     </div>
     """

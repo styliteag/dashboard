@@ -324,8 +324,8 @@ defmodule OrbitWeb.FirmwareLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:firmware} class="h-5 w-5 text-base-content/60" /> Firmware
-          <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
+          <Icons.icon name={:firmware} class="h-5 w-5 text-base-content/70" /> Firmware
+          <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
@@ -388,7 +388,7 @@ defmodule OrbitWeb.FirmwareLive do
                selection once, name the action plainly, and let the series
                button explain why it covers fewer boxes. --%>
           <div :if={@writable and @selected_update_count > 0} class="ml-auto flex items-center gap-2">
-            <span class="text-xs text-base-content/60">
+            <span class="text-xs text-base-content/70">
               {@selected_update_count} selected:
             </span>
             <button
@@ -435,7 +435,7 @@ defmodule OrbitWeb.FirmwareLive do
             </span>
             <button
               phx-click="clear_results"
-              class="text-xs text-base-content/60 hover:text-base-content/80"
+              class="text-xs text-base-content/70 hover:text-base-content/80"
             >
               dismiss
             </button>
@@ -444,7 +444,7 @@ defmodule OrbitWeb.FirmwareLive do
             <span class={if r.success, do: "text-primary", else: "text-error"}>
               {r.instance_name}
             </span>
-            <span class="text-base-content/60"> — {r.message}</span>
+            <span class="text-base-content/70"> — {r.message}</span>
           </div>
         </div>
 
@@ -452,7 +452,7 @@ defmodule OrbitWeb.FirmwareLive do
           Firmware state is reported by the on-box agent; direct-API polled devices are not
           listed here.
         </.empty_state>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
@@ -461,7 +461,7 @@ defmodule OrbitWeb.FirmwareLive do
           class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="bg-base-200 text-xs text-base-content/60">
+            <thead class="bg-base-200 text-xs text-base-content/70">
               <tr>
                 <th :if={@writable} class="px-3 py-2">
                   <input
@@ -532,17 +532,17 @@ defmodule OrbitWeb.FirmwareLive do
                   <span
                     :if={r.firmware_locked}
                     title="Firmware locked — excluded from update actions"
-                    class="ml-1 text-base-content/60"
+                    class="ml-1 text-base-content/70"
                   >
                     🔒
                   </span>
                   <.base_url_link base_url={r.base_url} />
                   <.webui_link instance_id={r.id} openable={r.gui_openable} />
                   <.shell_link instance_id={r.id} shell_enabled={r.shell_enabled} />
-                  <div class="text-xs text-base-content/40">{r.device_type}</div>
+                  <div class="text-xs text-base-content/70">{r.device_type}</div>
                 </td>
                 <td class="px-3 py-2 font-mono text-xs text-base-content/70">{r.version}</td>
-                <td class="px-3 py-2 font-mono text-xs text-base-content/60">{r.latest}</td>
+                <td class="px-3 py-2 font-mono text-xs text-base-content/70">{r.latest}</td>
                 <td class="px-3 py-2 text-base-content/70">{r.location}</td>
                 <td class="px-3 py-2 text-base-content/80">
                   {r.summary}

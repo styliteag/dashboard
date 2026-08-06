@@ -278,7 +278,7 @@ defmodule OrbitWeb.AuditLive do
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:audit} class="h-5 w-5 text-base-content/60" /> Audit
+            <Icons.icon name={:audit} class="h-5 w-5 text-base-content/70" /> Audit
           </h1>
           <div class="flex rounded border border-base-300 text-xs">
             <button
@@ -336,7 +336,7 @@ defmodule OrbitWeb.AuditLive do
           </form>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-2 pr-4 font-medium">Time</th>
                   <th class="py-2 pr-4 font-medium">Action</th>
@@ -348,7 +348,7 @@ defmodule OrbitWeb.AuditLive do
               </thead>
               <tbody>
                 <tr :for={r <- @rows} class="border-b border-base-300/50">
-                  <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(r.ts)}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/70">{fmt_ts(r.ts)}</td>
                   <td class="py-2 pr-4 text-base-content/80">{r.action}</td>
                   <td class="py-2 pr-4">
                     <span class={["rounded px-1.5 py-0.5 text-xs", result_class(r.result)]}>
@@ -381,14 +381,14 @@ defmodule OrbitWeb.AuditLive do
         <div :if={@tab == :access}>
           <div class="mb-6 grid gap-4 md:grid-cols-4">
             <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Online now</div>
+              <div class="text-xs text-base-content/70">Online now</div>
               <div class="mt-1 text-2xl text-primary">{length(@summary.online)}</div>
               <div :for={s <- Enum.take(@summary.online, 5)} class="mt-1 text-xs text-base-content/70">
                 {s.username || "user ##{s.user_id}"} · <OrbitWeb.Geo.ip_geo ip={s.ip} class="" />
               </div>
             </div>
             <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Logins ({window_label(@hours)})</div>
+              <div class="text-xs text-base-content/70">Logins ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-base-content">
                 {@summary.logins.ok}
                 <span :if={@summary.logins.failed > 0} class="text-base text-error">
@@ -397,7 +397,7 @@ defmodule OrbitWeb.AuditLive do
               </div>
             </div>
             <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Blocked ({window_label(@hours)})</div>
+              <div class="text-xs text-base-content/70">Blocked ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-error">
                 {@summary.blocks |> Enum.map(& &1.count) |> Enum.sum()}
               </div>
@@ -406,16 +406,16 @@ defmodule OrbitWeb.AuditLive do
               </div>
             </div>
             <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
-              <div class="text-xs text-base-content/60">Requests ({window_label(@hours)})</div>
+              <div class="text-xs text-base-content/70">Requests ({window_label(@hours)})</div>
               <div :for={p <- Enum.take(@summary.principals, 5)} class="mt-1 text-xs">
                 <span class="text-base-content/80">{p.principal}</span>
-                <span class="text-base-content/60"> · {p.count}</span>
+                <span class="text-base-content/70"> · {p.count}</span>
               </div>
             </div>
           </div>
 
           <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
-            <span class="text-base-content/60">Show:</span>
+            <span class="text-base-content/70">Show:</span>
             <button
               :for={{type, label} <- @timeline_types}
               phx-click="toggle_type"
@@ -423,7 +423,7 @@ defmodule OrbitWeb.AuditLive do
               class={[
                 "rounded border px-2 py-0.5",
                 MapSet.member?(@types, type) && "border-primary/60 text-primary",
-                !MapSet.member?(@types, type) && "border-base-content/20 text-base-content/60"
+                !MapSet.member?(@types, type) && "border-base-content/20 text-base-content/70"
               ]}
             >
               {label}
@@ -461,7 +461,7 @@ defmodule OrbitWeb.AuditLive do
 
           <div class="overflow-x-auto">
             <table :if={@grouped} class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-2 pr-4 font-medium">Count</th>
                   <th class="py-2 pr-4 font-medium">Type</th>
@@ -480,18 +480,18 @@ defmodule OrbitWeb.AuditLive do
                   </td>
                   <td class="py-1.5 pr-4 text-base-content/80">{g.who}</td>
                   <td class="py-1.5 pr-4 text-base-content/70">{g.text}</td>
-                  <td class="py-1.5 font-mono text-xs text-base-content/60">{fmt_ts(g.last_ts)}</td>
+                  <td class="py-1.5 font-mono text-xs text-base-content/70">{fmt_ts(g.last_ts)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-base-content/60">
+          <div :if={@grouped and @grouped_rows == []} class="py-4 text-sm text-base-content/70">
             No events for the selected filters.
           </div>
 
           <div class="overflow-x-auto">
             <table :if={not @grouped} class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+              <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-2 pr-4 font-medium">Time</th>
                   <th class="py-2 pr-4 font-medium">Type</th>
@@ -502,7 +502,7 @@ defmodule OrbitWeb.AuditLive do
               </thead>
               <tbody>
                 <tr :for={e <- @timeline} class="border-b border-base-300/50">
-                  <td class="py-2 pr-4 font-mono text-xs text-base-content/60">{fmt_ts(e.ts)}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/70">{fmt_ts(e.ts)}</td>
                   <td class="py-2 pr-4">
                     <span class={["rounded px-1.5 py-0.5 text-xs", type_class(e.type)]}>
                       {type_label(e.type)}
@@ -515,7 +515,7 @@ defmodule OrbitWeb.AuditLive do
               </tbody>
             </table>
           </div>
-          <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-base-content/60">
+          <div :if={not @grouped and @timeline == []} class="py-4 text-sm text-base-content/70">
             No events for the selected types.
           </div>
         </div>

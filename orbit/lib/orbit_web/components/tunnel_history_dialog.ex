@@ -28,7 +28,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-medium text-base-content">
             {if @history.mode == :graph, do: "Tunnel graph", else: "Tunnel history"} — {@history.label}
-            <span class="ml-1 text-xs text-base-content/60">{@history.instance_name}</span>
+            <span class="ml-1 text-xs text-base-content/70">{@history.instance_name}</span>
           </h3>
           <button
             phx-click="history_close"
@@ -42,7 +42,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
              event → now", so two tunnels drew the same picture at wildly
              different scales and neither said over what period. --%>
         <div class="mt-3 flex items-center gap-1">
-          <span class="mr-1 text-[10px] text-base-content/50">Window</span>
+          <span class="mr-1 text-[10px] text-base-content/70">Window</span>
           <button
             :for={{key, label} <- [{"24h", "24h"}, {"7d", "7d"}, {"30d", "30d"}, {"all", "all"}]}
             phx-click="history_window"
@@ -51,7 +51,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
               "rounded px-2 py-0.5 text-[10px]",
               if(@history.window == key,
                 do: "bg-base-300 text-base-content",
-                else: "text-base-content/60 hover:bg-base-300/60"
+                else: "text-base-content/70 hover:bg-base-300/60"
               )
             ]}
           >
@@ -84,7 +84,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
             }
             class="flex items-center gap-2"
           >
-            <span class="w-16 text-right text-[10px] text-base-content/60">{label}</span>
+            <span class="w-16 text-right text-[10px] text-base-content/70">{label}</span>
             <div class={[
               "relative flex-1 overflow-hidden rounded bg-base-300",
               if(@history.mode == :graph, do: "h-7", else: "h-3.5")
@@ -101,7 +101,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
                same whether one of two child SAs dropped or one of eight, and
                that is always the next question. --%>
           <div class="flex items-center gap-2">
-            <span class="w-16 text-right text-[10px] text-base-content/60">P2 count</span>
+            <span class="w-16 text-right text-[10px] text-base-content/70">P2 count</span>
             <div class="relative h-4 flex-1 overflow-hidden rounded bg-base-300/50">
               <div
                 :for={
@@ -125,12 +125,12 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
               </div>
             </div>
           </div>
-          <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/40">
+          <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/70">
             <span :if={@history.events != []}>{fmt_event_ts(lanes.window_start)}</span>
             <span :if={@history.events == []}>no recorded transitions yet</span>
             <span>now</span>
           </div>
-          <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/60">
+          <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/70">
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-primary"></span>up</span>
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-warning"></span>partial</span>
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-error"></span>down</span>
@@ -149,7 +149,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
           :if={@history.mode == :history and @history.events != []}
           class="mt-4 w-full text-left text-xs"
         >
-          <thead class="text-base-content/60">
+          <thead class="text-base-content/70">
             <tr class="border-b border-base-300">
               <th class="py-1 pr-3 font-medium">Time</th>
               <th class="py-1 pr-3 font-medium">Event</th>
@@ -159,16 +159,16 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
           </thead>
           <tbody>
             <tr :for={e <- @history.events} class="border-b border-base-300/50 last:border-0">
-              <td class="py-1 pr-3 font-mono text-base-content/60">{fmt_event_ts(e.ts)}</td>
+              <td class="py-1 pr-3 font-mono text-base-content/70">{fmt_event_ts(e.ts)}</td>
               <td class={["py-1 pr-3", event_color(e.event_type)]}>{e.event_type}</td>
-              <td class="py-1 pr-3 text-base-content/60">{e.child_name}</td>
+              <td class="py-1 pr-3 text-base-content/70">{e.child_name}</td>
               <td class="py-1 text-base-content/70">{e.old_value} → {e.new_value}</td>
             </tr>
           </tbody>
         </table>
         <p
           :if={@history.mode == :history and @history.events == []}
-          class="mt-4 text-sm text-base-content/60"
+          class="mt-4 text-sm text-base-content/70"
         >
           No transitions recorded yet — events appear as soon as the tunnel
           changes state (orbit records them per agent push).
@@ -183,7 +183,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
   def lane_color(:down), do: "bg-error"
   def lane_color(:unknown), do: "bg-neutral"
 
-  def event_color("observation_gap"), do: "text-base-content/50"
+  def event_color("observation_gap"), do: "text-base-content/70"
   def event_color("phase1_up"), do: "text-primary"
   def event_color("ping_ok"), do: "text-primary"
   def event_color("phase1_down"), do: "text-error"

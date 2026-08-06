@@ -410,9 +410,9 @@ defmodule OrbitWeb.ConnectivityLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:connectivity} class="h-5 w-5 text-base-content/60" />
+          <Icons.icon name={:connectivity} class="h-5 w-5 text-base-content/70" />
           Connectivity monitors
-          <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
+          <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-4">
@@ -464,7 +464,7 @@ defmodule OrbitWeb.ConnectivityLive do
           Monitors are configured per instance (Instance → Connectivity) and run on the box
           itself, so results appear here after the next agent push.
         </.empty_state>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
@@ -493,7 +493,7 @@ defmodule OrbitWeb.ConnectivityLive do
                 "rounded px-2 py-0.5 text-[10px]",
                 if(@fleet_window == key,
                   do: "bg-base-300 text-base-content",
-                  else: "text-base-content/60 hover:bg-base-300/60"
+                  else: "text-base-content/70 hover:bg-base-300/60"
                 )
               ]}
             >
@@ -508,7 +508,7 @@ defmodule OrbitWeb.ConnectivityLive do
         >
           <div :for={row <- fleet_lanes(@visible_rows, @fleet_events, @fleet_window)} class="mb-1.5">
             <div class="flex items-center gap-2">
-              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/60">
+              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/70">
                 {row.label}
               </span>
               <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
@@ -524,7 +524,7 @@ defmodule OrbitWeb.ConnectivityLive do
               </div>
             </div>
           </div>
-          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/40">
+          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/70">
             <span>{@fleet_window} ago</span>
             <span>now</span>
           </div>
@@ -532,7 +532,7 @@ defmodule OrbitWeb.ConnectivityLive do
 
         <div class="overflow-x-auto">
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">State</th>
                 <th class="py-2 pr-4 font-medium">Instance</th>

@@ -32,7 +32,7 @@ defmodule OrbitWeb.Components.StatusTest do
     assert dot(:up) =~ "text-primary"
     assert dot(:warn) =~ "text-warning"
     assert dot(:down) =~ "text-error"
-    assert dot(:unknown) =~ "text-base-content/60"
+    assert dot(:unknown) =~ "text-base-content/70"
   end
 
   test "badge variant shows the word visibly on the tinted pill" do

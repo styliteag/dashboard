@@ -7,7 +7,7 @@
     <div class="flex items-center gap-4 text-sm">
       <span class="text-base-content/80">
         {@current_user.username}
-        <span class="text-base-content/60">({@current_user.role})</span>
+        <span class="text-base-content/70">({@current_user.role})</span>
       </span>
       <form action={~p"/logout"} method="post">
         <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
@@ -36,7 +36,7 @@
         Connected agents (live)
       </a>
     </p>
-    <p class="mt-2 text-sm text-base-content/60">
+    <p class="mt-2 text-sm text-base-content/70">
       More LiveView pages land here milestone by milestone.
     </p>
   </section>

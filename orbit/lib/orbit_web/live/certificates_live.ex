@@ -216,8 +216,8 @@ defmodule OrbitWeb.CertificatesLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:certificates} class="h-5 w-5 text-base-content/60" /> Certificates
-          <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
+          <Icons.icon name={:certificates} class="h-5 w-5 text-base-content/70" /> Certificates
+          <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 
         <%!-- 5 tiles — the grid must match or "Healthy" wraps alone onto a
@@ -283,7 +283,7 @@ defmodule OrbitWeb.CertificatesLive do
           Certificates come from the boxes themselves — a firewall that has not pushed yet, or
           one outside your groups, shows nothing here.
         </.empty_state>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
@@ -292,7 +292,7 @@ defmodule OrbitWeb.CertificatesLive do
           class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="bg-base-200 text-xs text-base-content/60">
+            <thead class="bg-base-200 text-xs text-base-content/70">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -341,7 +341,7 @@ defmodule OrbitWeb.CertificatesLive do
                       "ml-1 rounded px-1 py-0.5 text-[10px]",
                       if(r.acme_overdue,
                         do: "bg-error/20 text-error",
-                        else: "bg-base-300 text-base-content/60"
+                        else: "bg-base-300 text-base-content/70"
                       )
                     ]}
                   >
@@ -360,7 +360,7 @@ defmodule OrbitWeb.CertificatesLive do
                     CA
                   </span>
                 </td>
-                <td class="px-3 py-2 text-xs text-base-content/60">{r.issuer}</td>
+                <td class="px-3 py-2 text-xs text-base-content/70">{r.issuer}</td>
                 <td class="px-3 py-2 text-base-content/70" title={r.not_after}>
                   <span :if={r.days < 0} class="text-error">expired {-r.days}d ago</span>
                   <span :if={r.days >= 0}>{r.days}d</span>

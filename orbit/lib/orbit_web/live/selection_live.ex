@@ -97,8 +97,8 @@ defmodule OrbitWeb.SelectionLive do
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:list_checks} class="h-5 w-5 text-base-content/60" /> Selection rules
-            <span class="ml-2 text-sm text-base-content/60">({length(@rules)})</span>
+            <Icons.icon name={:list_checks} class="h-5 w-5 text-base-content/70" /> Selection rules
+            <span class="ml-2 text-sm text-base-content/70">({length(@rules)})</span>
           </h1>
           <a
             href={~p"/settings"}
@@ -108,7 +108,7 @@ defmodule OrbitWeb.SelectionLive do
           </a>
         </div>
 
-        <p class="mb-4 max-w-3xl text-xs text-base-content/60">
+        <p class="mb-4 max-w-3xl text-xs text-base-content/70">
           Routing for the checkmk export and the notification channels. Base default is OFF —
           a consumer only receives a check when an include rule matches; instance rules beat
           global ones, full keys (gateway:WAN) beat categories.
@@ -126,30 +126,30 @@ defmodule OrbitWeb.SelectionLive do
           class="mb-6 flex max-w-4xl flex-wrap items-end gap-2 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Consumer</span>
+            <span class="mb-1 block text-xs text-base-content/70">Consumer</span>
             <select name="rule[consumer]" class={input_cls()}>
               <option :for={c <- Selection.consumers()} value={c}>{c}</option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Category</span>
+            <span class="mb-1 block text-xs text-base-content/70">Category</span>
             <select name="rule[selector]" class={input_cls()}>
               <option :for={c <- Selection.categories_for("mattermost")} value={c}>{c}</option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">…or full key (overrides)</span>
+            <span class="mb-1 block text-xs text-base-content/70">…or full key (overrides)</span>
             <input name="rule[selector_key]" placeholder="gateway:WAN" class={input_cls()} />
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Instance (blank = global)</span>
+            <span class="mb-1 block text-xs text-base-content/70">Instance (blank = global)</span>
             <select name="rule[instance_id]" class={input_cls()}>
               <option value="">— global —</option>
               <option :for={i <- @instances} value={i.id}>{i.name}</option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-base-content/60">Mode</span>
+            <span class="mb-1 block text-xs text-base-content/70">Mode</span>
             <select name="rule[mode]" class={input_cls()}>
               <option value="include">include</option>
               <option value="exclude">exclude</option>
@@ -165,7 +165,7 @@ defmodule OrbitWeb.SelectionLive do
 
         <div class="overflow-x-auto">
           <table class="w-full max-w-4xl text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Consumer</th>
                 <th class="py-2 pr-4 font-medium">Selector</th>

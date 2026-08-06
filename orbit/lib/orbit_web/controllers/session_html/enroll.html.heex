@@ -29,11 +29,11 @@
     </div>
 
     <div class="mb-4 rounded border border-base-300 bg-base-100 p-3">
-      <div class="mb-1 text-xs text-base-content/60">
+      <div class="mb-1 text-xs text-base-content/70">
         Scan the code above, or enter the secret manually:
       </div>
       <code class="break-all font-mono text-sm text-primary">{@secret}</code>
-      <div class="mb-1 mt-3 text-xs text-base-content/60">…or open in your authenticator:</div>
+      <div class="mb-1 mt-3 text-xs text-base-content/70">…or open in your authenticator:</div>
       <a
         href={@uri}
         class="break-all font-mono text-xs text-base-content/70 underline decoration-slate-700"
@@ -45,7 +45,7 @@
     <form action={~p"/login/enroll"} method="post" class="space-y-3">
       <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
       <label class="block text-sm">
-        <span class="mb-1 block text-xs text-base-content/60">Code from your app</span>
+        <span class="mb-1 block text-xs text-base-content/70">Code from your app</span>
         <input
           type="text"
           name="code"

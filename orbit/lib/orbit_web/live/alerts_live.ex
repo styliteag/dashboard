@@ -143,8 +143,8 @@ defmodule OrbitWeb.AlertsLive do
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:alerts} class="h-5 w-5 text-base-content/60" /> Alerts
-            <span class="ml-2 text-sm text-base-content/60">({length(@alerts)})</span>
+            <Icons.icon name={:alerts} class="h-5 w-5 text-base-content/70" /> Alerts
+            <span class="ml-2 text-sm text-base-content/70">({length(@alerts)})</span>
           </h1>
           <button
             phx-click="refresh_now"
@@ -225,13 +225,13 @@ defmodule OrbitWeb.AlertsLive do
         <div :if={@alerts == []} class="text-sm text-primary">
           All clear — no non-OK checks in your scope.
         </div>
-        <div :if={@alerts != [] and @rows == []} class="text-sm text-base-content/60">
+        <div :if={@alerts != [] and @rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
         <div class="overflow-x-auto">
           <table :if={@rows != []} class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">State</th>
                 <th class="py-2 pr-4 font-medium">Instance</th>
@@ -268,7 +268,7 @@ defmodule OrbitWeb.AlertsLive do
                 <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
                 <td class="py-2 pr-4 text-xs">
                   <span :if={a.exported} class="text-primary">exported</span>
-                  <span :if={not a.exported} class="text-base-content/40">excluded</span>
+                  <span :if={not a.exported} class="text-base-content/70">excluded</span>
                 </td>
               </tr>
             </tbody>

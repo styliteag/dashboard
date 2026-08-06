@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Secondary text is readable in the light designs: every muted tint below
+  70% (form labels, tile captions, table headers, row subtexts, hints, the
+  footer) moved to the 70% floor — 60% sat below WCAG AA on light
+  backgrounds and 40% was far below it in every design.
 - Status transitions are announced to screen readers on the instances
   page: when a live refresh flips a box ("pf2 is now offline"), the change
   is voiced through a polite live region instead of happening silently —

@@ -1633,13 +1633,13 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp ip_card(assigns) do
     ~H"""
     <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
-      <div class="flex items-center gap-2 text-xs text-base-content/60">
+      <div class="flex items-center gap-2 text-xs text-base-content/70">
         <Icons.icon name={:globe} class={["h-3.5 w-3.5", @tone]} /> {@label}
       </div>
       <div class="mt-1 flex items-start gap-2">
         <span class={[
           "min-w-0 break-all font-mono text-sm",
-          if(@value, do: "text-base-content", else: "text-base-content/40")
+          if(@value, do: "text-base-content", else: "text-base-content/70")
         ]}>
           {@value || "—"}
         </span>
@@ -1653,12 +1653,12 @@ defmodule OrbitWeb.InstanceDetailLive do
           data-copy={@value}
           title="Copy to clipboard"
           aria-label={"Copy #{@label}"}
-          class="shrink-0 rounded p-1 text-base-content/50 hover:bg-base-300 hover:text-base-content"
+          class="shrink-0 rounded p-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
         >
           <Icons.icon name={:copy} class="h-3.5 w-3.5" />
         </button>
       </div>
-      <p :if={@note != []} class="mt-1 text-[11px] text-base-content/50">{render_slot(@note)}</p>
+      <p :if={@note != []} class="mt-1 text-[11px] text-base-content/70">{render_slot(@note)}</p>
     </div>
     """
   end
@@ -1731,7 +1731,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              phone-width viewport (every page then scrolled sideways). --%>
         <div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> {@instance.name}
+            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> {@instance.name}
             <.base_url_link base_url={@instance.base_url} />
           </h1>
           <span
@@ -1788,7 +1788,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <.kv label="Type" value={@instance.device_type} />
               <.kv label="Transport" value={@instance.transport} />
               <div class="flex justify-between gap-3">
-                <dt class="shrink-0 text-base-content/60">Base URL</dt>
+                <dt class="shrink-0 text-base-content/70">Base URL</dt>
                 <dd class="min-w-0 break-words text-right text-base-content">
                   <.base_url_links base_url={@instance.base_url} />
                 </dd>
@@ -1799,7 +1799,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Live</h2>
-            <div :if={not @connected and @system == %{}} class="text-sm text-base-content/60">
+            <div :if={not @connected and @system == %{}} class="text-sm text-base-content/70">
               No live data — agent not pushing.
             </div>
             <dl :if={@connected or @system != %{}} class="space-y-1 text-sm">
@@ -1881,7 +1881,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <.kv label="Description" value={@config_rev["revision_description"] || "—"} />
               <.kv label="By" value={@config_rev["revision_user"] || "—"} />
             </dl>
-            <div :if={@config_rev == %{}} class="text-sm text-base-content/60">
+            <div :if={@config_rev == %{}} class="text-sm text-base-content/70">
               No config revision reported.
             </div>
           </div>
@@ -1892,7 +1892,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
-            Checks <span class="text-base-content/60">({length(@checks)})</span>
+            Checks <span class="text-base-content/70">({length(@checks)})</span>
           </h2>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
@@ -1922,7 +1922,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                         "ml-1 rounded px-2 py-0.5 text-[11px]",
                         if(Orbit.Selection.is_on_live(consumer, c.key, @instance.id),
                           do: "bg-primary/20 text-primary",
-                          else: "bg-base-300 text-base-content/60"
+                          else: "bg-base-300 text-base-content/70"
                         ),
                         MapSet.member?(@check_rules, {consumer, c.key}) && "ring-1 ring-primary"
                       ]}
@@ -1995,12 +1995,12 @@ defmodule OrbitWeb.InstanceDetailLive do
                parity): live snapshot only — the whole-cycle total has its
                own history chart above. --%>
           <div :if={@section_ms != %{}} class="mt-3">
-            <h3 class="mb-1 text-xs text-base-content/60">Collector runtime (last push)</h3>
+            <h3 class="mb-1 text-xs text-base-content/70">Collector runtime (last push)</h3>
             <div
               :for={{name, ms} <- top_sections(@section_ms)}
               class="flex items-center gap-2 text-xs"
             >
-              <span class="w-28 truncate text-base-content/60">{name}</span>
+              <span class="w-28 truncate text-base-content/70">{name}</span>
               <div class="h-1.5 flex-1 overflow-hidden rounded bg-base-300">
                 <div
                   class={["h-full", if(ms >= 10_000, do: "bg-warning", else: "bg-primary")]}
@@ -2089,7 +2089,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
 
           <div :if={@show_token and @instance.agent_token} class="mt-2 text-xs">
-            <span class="text-base-content/60">Agent token: </span>
+            <span class="text-base-content/70">Agent token: </span>
             <code class="break-all font-mono text-primary">{@instance.agent_token}</code>
           </div>
 
@@ -2106,7 +2106,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </button>
             <div :if={@install_open} class="mt-2 space-y-2">
               <div class="flex items-start justify-between gap-2">
-                <p class="text-base-content/60">
+                <p class="text-base-content/70">
                   Run as root on the box. 1) download, 2) write config {if @enroll_code,
                     do: "(one-time enroll code baked in)",
                     else: "(mint an enroll code above, or paste the token)"}, 3) start.
@@ -2118,7 +2118,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   data-copy={install_script(@instance, @enroll_code)}
                   title="Copy to clipboard"
                   aria-label="Copy install instructions"
-                  class="flex shrink-0 items-center gap-1 rounded border border-base-content/20 px-2 py-1 text-base-content/60 hover:bg-base-300 hover:text-base-content"
+                  class="flex shrink-0 items-center gap-1 rounded border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
                 >
                   <Icons.icon name={:copy} class="h-3.5 w-3.5" /> Copy
                 </button>
@@ -2131,9 +2131,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
 
           <div :if={@enroll_code} class="mt-2 text-sm">
-            <span class="text-base-content/60">Enroll code: </span>
+            <span class="text-base-content/70">Enroll code: </span>
             <span class="font-mono text-primary">{elem(@enroll_code, 0)}</span>
-            <span class="text-xs text-base-content/60">
+            <span class="text-xs text-base-content/70">
               (valid until {cb_ts(elem(@enroll_code, 1))} — run install.sh on the box and paste it)
             </span>
           </div>
@@ -2160,7 +2160,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Agent</h2>
-          <p class="mb-2 text-sm text-base-content/60">
+          <p class="mb-2 text-sm text-base-content/70">
             This box is polled directly. Switch to the push agent for live metrics,
             shell, capture and the GUI tunnel.
           </p>
@@ -2209,7 +2209,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
           </h2>
 
-          <div :if={is_nil(@firmware)} class="text-sm text-base-content/60">
+          <div :if={is_nil(@firmware)} class="text-sm text-base-content/70">
             No firmware data yet — run a check or wait for the next push.
           </div>
 
@@ -2262,7 +2262,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               <tbody>
                 <tr :for={p <- @firmware["packages"] || []} class="border-t border-base-300/50">
                   <td class="py-0.5 pr-3 text-base-content/80">{p["name"]}</td>
-                  <td class="py-0.5 pr-3 text-base-content/60">{p["current"]}</td>
+                  <td class="py-0.5 pr-3 text-base-content/70">{p["current"]}</td>
                   <td class="py-0.5 text-base-content/70">→ {p["new"]}</td>
                 </tr>
               </tbody>
@@ -2279,7 +2279,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-base-100 p-2 font-mono text-base-content/70">{@firmware["update_check_output"]}</pre>
           </details>
 
-          <p :if={not firmware_actionable?(@instance)} class="mt-3 text-xs text-base-content/50">
+          <p :if={not firmware_actionable?(@instance)} class="mt-3 text-xs text-base-content/70">
             Firmware on this device is read-only from the dashboard — the vendor API
             reports the versions but exposes no check or update action.
           </p>
@@ -2383,7 +2383,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <div class="mb-1 flex items-center justify-between">
               <span class={[
                 "text-xs",
-                if(@upgrading, do: "text-warning", else: "text-base-content/60")
+                if(@upgrading, do: "text-warning", else: "text-base-content/70")
               ]}>
                 {if @upgrading, do: "Update running…", else: "Update finished — log kept for review"}
               </span>
@@ -2417,7 +2417,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div class="overflow-x-auto">
             <table :if={@conn_monitors != []} class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="text-xs text-base-content/60">
+              <thead class="text-xs text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-1 pr-3 font-medium">Monitor</th>
                   <th class="py-1 pr-3 font-medium">Source → Destination</th>
@@ -2432,7 +2432,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <tr class="border-b border-base-300/50 last:border-0">
                     <td class="py-1.5 pr-3 text-base-content/80">
                       {m.name}
-                      <span :if={not m.enabled} class="ml-1 text-xs text-base-content/40">(disabled)</span>
+                      <span :if={not m.enabled} class="ml-1 text-xs text-base-content/70">(disabled)</span>
                       <.comment_editor
                         text={
                           CommentEditor.text(@comments, @instance.id, "connectivity", to_string(m.id))
@@ -2482,7 +2482,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </table>
           </div>
 
-          <p :if={@conn_monitors == []} class="text-sm text-base-content/60">
+          <p :if={@conn_monitors == []} class="text-sm text-base-content/70">
             No monitors configured — the box pings each (source, destination) pair
             on every cycle{if not Instance.agent_mode?(@instance),
               do: " (run over SSH; this box has no agent)"}.
@@ -2567,7 +2567,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="text-xs text-base-content/60">
+              <thead class="text-xs text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-1 pr-3 font-medium">Tunnel</th>
                   <th class="py-1 pr-3 font-medium">Remote</th>
@@ -2591,7 +2591,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                         :if={(t["children"] || []) != []}
                         phx-click="ipsec_toggle"
                         phx-value-id={id}
-                        class="mr-1 text-base-content/60 hover:text-base-content/80"
+                        class="mr-1 text-base-content/70 hover:text-base-content/80"
                       >
                         {if MapSet.member?(@ipsec_expanded, id), do: "▾", else: "▸"}
                       </button>
@@ -2727,12 +2727,12 @@ defmodule OrbitWeb.InstanceDetailLive do
                     :if={MapSet.member?(@ipsec_expanded, id)}
                     class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
                   >
-                    <td class="py-1 pl-6 pr-3 text-base-content/60">{ch["name"] || "child"}</td>
-                    <td class="py-1 pr-3 text-base-content/60" colspan="2">
+                    <td class="py-1 pl-6 pr-3 text-base-content/70">{ch["name"] || "child"}</td>
+                    <td class="py-1 pr-3 text-base-content/70" colspan="2">
                       {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
                     </td>
                     <td class={["py-1 pr-3", tunnel_color(ch["status"])]}>{ch["status"] || "?"}</td>
-                    <td class="py-1 pr-3 text-base-content/60" colspan="3">
+                    <td class="py-1 pr-3 text-base-content/70" colspan="3">
                       <% mon = p2_monitor(@ipsec_monitors, id, ch) %>
                       <span
                         :if={ch["ping_state"] not in [nil, "none"]}
@@ -2740,9 +2740,9 @@ defmodule OrbitWeb.InstanceDetailLive do
                       >
                         ping {ch["ping_state"]}
                       </span>
-                      <span :if={mon} class="text-base-content/40">
+                      <span :if={mon} class="text-base-content/70">
                         monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
-                        <span :if={not mon.enabled} class="text-base-content/30">(disabled)</span>
+                        <span :if={not mon.enabled} class="text-base-content/70">(disabled)</span>
                       </span>
                       <button
                         :if={@writable}
@@ -2817,13 +2817,13 @@ defmodule OrbitWeb.InstanceDetailLive do
               >
                 {if @diag_ai_busy, do: "Analyzing…", else: "Analyse with AI"}
               </button>
-              <span class="text-xs text-base-content/40">anonymized before it leaves the box</span>
+              <span class="text-xs text-base-content/70">anonymized before it leaves the box</span>
             </form>
 
             <div :if={@diag_ai_error} class="mt-2 text-xs text-error">{@diag_ai_error}</div>
 
             <div :if={@diag_ai_result} class="mt-3 rounded border border-base-300 bg-base-200 p-3">
-              <div class="mb-2 text-xs text-base-content/60">
+              <div class="mb-2 text-xs text-base-content/70">
                 {@diag_ai_result.provider} · {@diag_ai_result.model}
               </div>
               <OrbitWeb.MarkdownLite.ai_markdown text={@diag_ai_result.findings} />
@@ -2854,7 +2854,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </.ip_card>
           </div>
 
-          <p class="mt-2 text-xs text-base-content/50">
+          <p class="mt-2 text-xs text-base-content/70">
             {source_note(@public_ip)}
           </p>
         </section>
@@ -2866,7 +2866,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Gateways</h2>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="text-base-content/60">
+              <thead class="text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-1 pr-4 font-medium">Name</th>
                   <th class="py-1 pr-4 font-medium">Address</th>
@@ -2916,7 +2916,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
-              <thead class="text-base-content/60">
+              <thead class="text-base-content/70">
                 <tr class="border-b border-base-300">
                   <th class="py-1 pr-4 font-medium">Name</th>
                   <th class="py-1 pr-4 font-medium">Address</th>
@@ -2934,7 +2934,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   </td>
                   <td class="py-1.5 pr-4">
                     <span class={
-                      if(i["status"] == "up", do: "text-primary", else: "text-base-content/60")
+                      if(i["status"] == "up", do: "text-primary", else: "text-base-content/70")
                     }>
                       {i["status"] || "?"}
                     </span>
@@ -2962,7 +2962,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <%!-- "stopped" is not an alarm — plenty of services are off on
                      purpose (iperf, ddclient). The check engine decides what a
                      stopped service means; this list only reports state. --%>
-                <span class={if(s["running"], do: "text-primary", else: "text-base-content/50")}>
+                <span class={if(s["running"], do: "text-primary", else: "text-base-content/70")}>
                   {if s["running"], do: "running", else: "stopped"}
                 </span>
               </li>
@@ -2993,7 +2993,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Top Talkers
-            <span class="font-normal text-base-content/60">· {@pf_top["total_states"]} states</span>
+            <span class="font-normal text-base-content/70">· {@pf_top["total_states"]} states</span>
           </h2>
 
           <div class="grid gap-4 lg:grid-cols-2">
@@ -3011,7 +3011,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
             <span
               :for={p <- @pf_top["protocols"] || []}
-              class="rounded-full border border-base-300 bg-base-100 px-2.5 py-1 text-base-content/60"
+              class="rounded-full border border-base-300 bg-base-100 px-2.5 py-1 text-base-content/70"
               title={bytes(p["bytes"])}
             >
               {p["proto"]}: {p["states"]}
@@ -3023,7 +3023,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             class="mt-4 overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
           >
             <table class="w-full min-w-[46rem] text-sm">
-              <thead class="bg-base-100 text-left text-xs text-base-content/60">
+              <thead class="bg-base-100 text-left text-xs text-base-content/70">
                 <tr>
                   <th class="px-3 py-2">Source</th>
                   <th class="px-3 py-2">Destination</th>
@@ -3060,7 +3060,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Certificates</h2>
           <div class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300">
             <table class="w-full min-w-[46rem] text-sm">
-              <thead class="bg-base-100 text-left text-xs text-base-content/60">
+              <thead class="bg-base-100 text-left text-xs text-base-content/70">
                 <tr>
                   <th class="px-3 py-2">Name</th>
                   <th class="px-3 py-2">Type</th>
@@ -3122,7 +3122,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   :for={[ts, key, old, new, summary] <- @check_history}
                   class="border-b border-base-300/50 last:border-0"
                 >
-                  <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-base-content/60">
+                  <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs text-base-content/70">
                     {cb_ts(ts)}
                   </td>
                   <td class="py-1.5 pr-3 align-top">
@@ -3143,7 +3143,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <section :if={@tab == "checkmk"} class="mt-6 space-y-6">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-1 text-sm font-medium text-base-content/70">Orbit → Checkmk export</h2>
-            <p class="mb-3 text-xs text-base-content/50">
+            <p class="mb-3 text-xs text-base-content/70">
               The services Orbit delivers to a Checkmk server for this instance.
             </p>
             <div
@@ -3154,23 +3154,23 @@ defmodule OrbitWeb.InstanceDetailLive do
                 <span class={["rounded px-1 text-[10px] font-bold", state_class(c.state)]}>
                   {c.state} {state_label(c.state)}
                 </span>
-                <span class="text-base-content/50">{c.key}</span>
+                <span class="text-base-content/70">{c.key}</span>
                 <span class="text-base-content/80">{c.summary}</span>
               </div>
             </div>
-            <p :if={@checks == []} class="text-xs text-base-content/50">No checks evaluated.</p>
+            <p :if={@checks == []} class="text-xs text-base-content/70">No checks evaluated.</p>
           </div>
 
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <div class="mb-3 flex items-baseline justify-between">
               <h2 class="text-sm font-medium text-base-content/70">Agent output</h2>
-              <span class="font-mono text-xs text-base-content/40">check_mk_agent.linux</span>
+              <span class="font-mono text-xs text-base-content/70">check_mk_agent.linux</span>
             </div>
             <pre
               :if={@checkmk_output not in [nil, ""]}
               class="max-h-[36rem] overflow-auto whitespace-pre rounded bg-base-300/40 p-3 font-mono text-xs text-base-content/70"
             ><%= for s <- checkmk_segments(@checkmk_output) do %><span :if={s.header} class="font-semibold text-primary">{s.text}</span><span :if={not s.header}>{s.text}</span><% end %></pre>
-            <p :if={@checkmk_output in [nil, ""]} class="text-xs text-base-content/50">
+            <p :if={@checkmk_output in [nil, ""]} class="text-xs text-base-content/70">
               No Checkmk output received yet — the agent pushes it each cycle.
             </p>
           </div>
@@ -3199,7 +3199,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <tbody>
                 <tr :for={l <- @firewall_log} class="border-b border-base-300/50 last:border-0">
-                  <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-base-content/60">
+                  <td class="whitespace-nowrap py-1 pr-3 font-mono text-xs text-base-content/70">
                     {l["__timestamp__"]}
                   </td>
                   <td class="py-1 pr-3">
@@ -3223,7 +3223,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Logs</h2>
           <div
             :if={@logfiles != []}
-            class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/60"
+            class="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/70"
           >
             <a
               :for={lf <- @logfiles}
@@ -3259,7 +3259,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               </tbody>
             </table>
           </div>
-          <div :if={@log_events == [] and @logfiles != []} class="text-xs text-base-content/60">
+          <div :if={@log_events == [] and @logfiles != []} class="text-xs text-base-content/70">
             No critical events in the latest snapshots.
           </div>
 
@@ -3281,13 +3281,13 @@ defmodule OrbitWeb.InstanceDetailLive do
             >
               {if @ai_busy, do: "Analyzing…", else: "Analyze with AI"}
             </button>
-            <span class="text-xs text-base-content/40">anonymized before it leaves the box</span>
+            <span class="text-xs text-base-content/70">anonymized before it leaves the box</span>
           </form>
 
           <div :if={@ai_error} class="mt-2 text-xs text-error">{@ai_error}</div>
 
           <div :if={@ai_result} class="mt-3 rounded border border-base-300 bg-base-100 p-3">
-            <div class="mb-2 text-xs text-base-content/60">
+            <div class="mb-2 text-xs text-base-content/70">
               {@ai_result.provider} · {@ai_result.model}
             </div>
             <OrbitWeb.MarkdownLite.ai_markdown text={@ai_result.findings} />
@@ -3299,7 +3299,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
-            Config backups <span class="text-base-content/60">({length(@config_backups)})</span>
+            Config backups <span class="text-base-content/70">({length(@config_backups)})</span>
           </h2>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
@@ -3309,7 +3309,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   class="border-b border-base-300/50 last:border-0"
                 >
                   <td class="py-1.5 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
-                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/60">
+                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
                     {String.slice(cb.sha256, 0, 12)}
                   </td>
                   <td class="py-1.5 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
@@ -3345,7 +3345,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             class="mt-3 flex flex-wrap items-end gap-2 text-xs"
           >
             <label class="block">
-              <span class="mb-0.5 block text-base-content/60">From</span>
+              <span class="mb-0.5 block text-base-content/70">From</span>
               <select
                 name="from"
                 class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
@@ -3360,7 +3360,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               </select>
             </label>
             <label class="block">
-              <span class="mb-0.5 block text-base-content/60">To</span>
+              <span class="mb-0.5 block text-base-content/70">To</span>
               <select
                 name="to"
                 class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-base-content"
@@ -3390,7 +3390,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </button>
           </form>
 
-          <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-base-content/60">
+          <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-base-content/70">
             No differences between the selected versions.
           </div>
           <div
@@ -3451,7 +3451,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </button>
           </form>
 
-          <div :if={@comments == []} class="text-sm text-base-content/60">
+          <div :if={@comments == []} class="text-sm text-base-content/70">
             No notes on this instance.
           </div>
 
@@ -3462,7 +3462,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             >
               <div>
                 <div class="text-base-content/80">{c.comment}</div>
-                <div class="mt-0.5 text-xs text-base-content/60">
+                <div class="mt-0.5 text-xs text-base-content/70">
                   {c.kind}<span :if={c.entity_key != ""}>:{c.entity_key}</span> · {c.updated_by}
                 </div>
               </div>
@@ -3492,7 +3492,7 @@ defmodule OrbitWeb.InstanceDetailLive do
          a long base URL) used to push the whole card past the viewport on a
          narrow screen instead of wrapping inside it. --%>
     <div class="flex justify-between gap-3">
-      <dt class="shrink-0 text-base-content/60">{@label}</dt>
+      <dt class="shrink-0 text-base-content/70">{@label}</dt>
       <dd class="min-w-0 break-words text-right text-base-content">{@value}</dd>
     </div>
     """
@@ -3506,7 +3506,7 @@ defmodule OrbitWeb.InstanceDetailLive do
     ~H"""
     <div class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300">
       <table class="w-full min-w-[46rem] text-sm">
-        <thead class="bg-base-100 text-left text-xs text-base-content/60">
+        <thead class="bg-base-100 text-left text-xs text-base-content/70">
           <tr>
             <th class="px-3 py-2">{@title}</th>
             <th class="px-3 py-2 text-right">States</th>
@@ -3596,7 +3596,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   defp conn_badge(true), do: "bg-primary/20 text-primary"
-  defp conn_badge(false), do: "bg-base-300 text-base-content/60"
+  defp conn_badge(false), do: "bg-base-300 text-base-content/70"
 
   defp truthy_str(value), do: value not in [nil, ""]
 
@@ -3626,7 +3626,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   defp gw_color(status) do
     case status |> to_string() |> String.downcase() do
       s when s in @gw_up -> "text-primary"
-      "" -> "text-base-content/60"
+      "" -> "text-base-content/70"
       _ -> "text-error"
     end
   end
@@ -3753,7 +3753,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp ping_state_color("ok"), do: "text-primary"
   defp ping_state_color("fail"), do: "text-error"
-  defp ping_state_color(nil), do: "text-base-content/60"
+  defp ping_state_color(nil), do: "text-base-content/70"
   defp ping_state_color(_), do: "text-warning"
 
   defp num0(v) when is_number(v), do: trunc(v)

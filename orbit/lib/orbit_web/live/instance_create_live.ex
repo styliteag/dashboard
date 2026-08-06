@@ -136,7 +136,7 @@ defmodule OrbitWeb.InstanceCreateLive do
 
       <section class="max-w-2xl p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> New instance
+          <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> New instance
         </h1>
 
         <div

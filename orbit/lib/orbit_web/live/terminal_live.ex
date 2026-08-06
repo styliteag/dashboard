@@ -37,7 +37,7 @@ defmodule OrbitWeb.TerminalLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:terminal} class="h-5 w-5 text-base-content/60" />
+          <Icons.icon name={:terminal} class="h-5 w-5 text-base-content/70" />
           Terminal — {@instance.name}
           <span class="ml-2 rounded bg-error/20 px-2 py-0.5 text-xs text-error">root</span>
         </h1>
@@ -61,7 +61,7 @@ defmodule OrbitWeb.TerminalLive do
           >
             <div class="mb-2 flex items-center gap-2 text-xs">
               <span data-term-status class="text-xs text-warning">connecting…</span>
-              <span class="text-base-content/40">— click to focus; keystrokes stream live to the box.</span>
+              <span class="text-base-content/70">— click to focus; keystrokes stream live to the box.</span>
             </div>
             <div data-term-mount class="h-[32rem] w-full"></div>
           </div>

@@ -116,8 +116,8 @@ defmodule OrbitWeb.ApiKeysLive do
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:password} class="h-5 w-5 text-base-content/60" /> API keys
-            <span class="ml-2 text-sm text-base-content/60">({length(@keys)})</span>
+            <Icons.icon name={:password} class="h-5 w-5 text-base-content/70" /> API keys
+            <span class="ml-2 text-sm text-base-content/70">({length(@keys)})</span>
           </h1>
           <button
             phx-click="toggle_create"
@@ -127,7 +127,7 @@ defmodule OrbitWeb.ApiKeysLive do
           </button>
         </div>
 
-        <p class="mb-4 max-w-3xl text-xs text-base-content/60">
+        <p class="mb-4 max-w-3xl text-xs text-base-content/70">
           Read-only machine keys (Checkmk/Prometheus scrapes). A key without group bindings is
           GLOBAL — minting one is superadmin-only; group admins must bind to their own groups.
         </p>
@@ -176,11 +176,11 @@ defmodule OrbitWeb.ApiKeysLive do
         >
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">
-              <span class="mb-1 block text-xs text-base-content/60">Name</span>
+              <span class="mb-1 block text-xs text-base-content/70">Name</span>
               <input name="key[name]" required class={input_cls()} />
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs text-base-content/60">Purpose (optional)</span>
+              <span class="mb-1 block text-xs text-base-content/70">Purpose (optional)</span>
               <input name="key[purpose]" class={input_cls()} />
             </label>
           </div>
@@ -196,7 +196,7 @@ defmodule OrbitWeb.ApiKeysLive do
             </label>
           </div>
           <div class="mt-3 flex flex-wrap items-center gap-4 text-base-content/80">
-            <span class="text-xs text-base-content/60">Bind to groups:</span>
+            <span class="text-xs text-base-content/70">Bind to groups:</span>
             <label :for={g <- @groups} class="flex items-center gap-1.5">
               <input
                 type="checkbox"
@@ -221,7 +221,7 @@ defmodule OrbitWeb.ApiKeysLive do
 
         <div :if={@keys != []} class="overflow-x-auto">
           <table class="w-full max-w-4xl text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Key</th>
                 <th class="py-2 pr-4 font-medium">Groups</th>
@@ -235,7 +235,7 @@ defmodule OrbitWeb.ApiKeysLive do
                 <td class="py-2 pr-4">
                   <span class="font-mono text-xs text-base-content/80">{k.prefix}…</span>
                   <span class="ml-2 text-base-content">{k.name}</span>
-                  <span :if={k.purpose} class="ml-2 text-xs text-base-content/60">({k.purpose})</span>
+                  <span :if={k.purpose} class="ml-2 text-xs text-base-content/70">({k.purpose})</span>
                 </td>
                 <td class="py-2 pr-4 text-base-content/70">
                   {if k.groups == [],

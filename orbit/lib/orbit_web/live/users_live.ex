@@ -136,8 +136,8 @@ defmodule OrbitWeb.UsersLive do
       <section class="p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:users} class="h-5 w-5 text-base-content/60" /> Users
-            <span class="ml-2 text-sm text-base-content/60">({length(@users)})</span>
+            <Icons.icon name={:users} class="h-5 w-5 text-base-content/70" /> Users
+            <span class="ml-2 text-sm text-base-content/70">({length(@users)})</span>
           </h1>
           <button
             phx-click="toggle_create"
@@ -161,11 +161,11 @@ defmodule OrbitWeb.UsersLive do
         >
           <div class="grid gap-3 md:grid-cols-3">
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-base-content/60">Username</span>
+              <span class="mb-1 block text-xs text-base-content/70">Username</span>
               <input name="user[username]" required class={input_cls()} />
             </label>
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-base-content/60">Password (min 8)</span>
+              <span class="mb-1 block text-xs text-base-content/70">Password (min 8)</span>
               <input
                 name="user[password]"
                 type="password"
@@ -175,7 +175,7 @@ defmodule OrbitWeb.UsersLive do
               />
             </label>
             <label class="block text-sm">
-              <span class="mb-1 block text-xs text-base-content/60">Role</span>
+              <span class="mb-1 block text-xs text-base-content/70">Role</span>
               <select name="user[role]" class={input_cls()}>
                 <option :for={r <- Admin.roles()} value={r}>{r}</option>
               </select>
@@ -207,7 +207,7 @@ defmodule OrbitWeb.UsersLive do
 
         <div :if={@users != []} class="overflow-x-auto">
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">User</th>
                 <th class="py-2 pr-4 font-medium">Role</th>
@@ -250,7 +250,7 @@ defmodule OrbitWeb.UsersLive do
                     >
                       disabled
                     </span>
-                    <span :if={not u.disabled} class="text-base-content/60">active</span>
+                    <span :if={not u.disabled} class="text-base-content/70">active</span>
                   </td>
                   <td class="py-2 pr-4 text-base-content/70">{last_login_text(u)}</td>
                   <td class="py-2 text-right">
@@ -269,7 +269,7 @@ defmodule OrbitWeb.UsersLive do
                       <input type="hidden" name="user_id" value={u.id} />
                       <div class="flex flex-wrap items-end gap-4 text-sm">
                         <label class="block">
-                          <span class="mb-1 block text-xs text-base-content/60">Role</span>
+                          <span class="mb-1 block text-xs text-base-content/70">Role</span>
                           <select name="user[role]" class={input_cls()}>
                             <option :for={r <- Admin.roles()} value={r} selected={u.role == r}>
                               {r}
@@ -287,7 +287,7 @@ defmodule OrbitWeb.UsersLive do
                           /> superadmin
                         </label>
                         <label class="block">
-                          <span class="mb-1 block text-xs text-base-content/60">
+                          <span class="mb-1 block text-xs text-base-content/70">
                             New password (blank = keep)
                           </span>
                           <input

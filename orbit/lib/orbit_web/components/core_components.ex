@@ -522,7 +522,7 @@ defmodule OrbitWeb.CoreComponents do
   defp status_text(:up), do: "text-primary"
   defp status_text(:warn), do: "text-warning"
   defp status_text(:down), do: "text-error"
-  defp status_text(:unknown), do: "text-base-content/60"
+  defp status_text(:unknown), do: "text-base-content/70"
 
   defp status_bg(:up), do: "bg-primary/15"
   defp status_bg(:warn), do: "bg-warning/15"
@@ -806,7 +806,7 @@ defmodule OrbitWeb.CoreComponents do
     assigns = assign(assigns, :urls, split_base_urls(assigns.base_url))
 
     ~H"""
-    <span :if={@urls == []} class="text-base-content/40">—</span>
+    <span :if={@urls == []} class="text-base-content/70">—</span>
     <span :for={{url, idx} <- Enum.with_index(@urls)}>
       <span :if={idx > 0} class="text-base-content/30">, </span>
       <a

@@ -742,8 +742,8 @@ defmodule OrbitWeb.VpnLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:vpn} class="h-5 w-5 text-base-content/60" /> IPsec tunnels
-          <span class="ml-2 text-sm text-base-content/60">({length(@tunnels)})</span>
+          <Icons.icon name={:vpn} class="h-5 w-5 text-base-content/70" /> IPsec tunnels
+          <span class="ml-2 text-sm text-base-content/70">({length(@tunnels)})</span>
         </h1>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
@@ -821,10 +821,10 @@ defmodule OrbitWeb.VpnLive do
           {elem(@msg, 1)}
         </div>
 
-        <div :if={@tunnels == []} class="text-sm text-base-content/60">
+        <div :if={@tunnels == []} class="text-sm text-base-content/70">
           No IPsec tunnels reported in your scope.
         </div>
-        <div :if={@tunnels != [] and @rows == []} class="text-sm text-base-content/60">
+        <div :if={@tunnels != [] and @rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
@@ -874,7 +874,7 @@ defmodule OrbitWeb.VpnLive do
                 "rounded px-2 py-0.5 text-[10px]",
                 if(@fleet_window == key,
                   do: "bg-base-300 text-base-content",
-                  else: "text-base-content/60 hover:bg-base-300/60"
+                  else: "text-base-content/70 hover:bg-base-300/60"
                 )
               ]}
             >
@@ -889,7 +889,7 @@ defmodule OrbitWeb.VpnLive do
         >
           <div :for={row <- fleet_lanes(@rows, @fleet_events, @fleet_window)} class="mb-1.5">
             <div class="flex items-center gap-2">
-              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/60">
+              <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/70">
                 {row.label}
               </span>
               <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
@@ -905,7 +905,7 @@ defmodule OrbitWeb.VpnLive do
               </div>
             </div>
           </div>
-          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/40">
+          <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/70">
             <span>{@fleet_window} ago</span>
             <span>now</span>
           </div>
@@ -916,7 +916,7 @@ defmodule OrbitWeb.VpnLive do
           class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="bg-base-200 text-xs text-base-content/60">
+            <thead class="bg-base-200 text-xs text-base-content/70">
               <tr>
                 <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <.sort_th col="instance" label="Instance" sort_col={@sort_col} sort_dir={@sort_dir} />
@@ -948,12 +948,12 @@ defmodule OrbitWeb.VpnLive do
                     >
                       <td colspan="8" class={["px-3 py-2", open && "border-l-4 border-primary"]}>
                         <span class="inline-flex flex-wrap items-center gap-2 text-base-content/80">
-                          <span class="text-base-content/50">{if open, do: "▾", else: "▸"}</span>
-                          <Icons.icon name={:vpn} class="h-3.5 w-3.5 text-base-content/50" />
+                          <span class="text-base-content/70">{if open, do: "▾", else: "▸"}</span>
+                          <Icons.icon name={:vpn} class="h-3.5 w-3.5 text-base-content/70" />
                           <span class="font-semibold text-base-content">
                             {a.instance_name} ⇄ {b.instance_name}
                           </span>
-                          <span class="font-mono text-base-content/50">
+                          <span class="font-mono text-base-content/70">
                             {if(a.local == "", do: "?", else: a.local)} ↔ {if(a.remote == "",
                               do: "?",
                               else: a.remote
@@ -962,11 +962,11 @@ defmodule OrbitWeb.VpnLive do
                           <span class={["rounded px-1.5 py-0.5", health_class(level)]}>{label}</span>
                           <span
                             :if={max(a.uptime_s, b.uptime_s) > 0}
-                            class="font-mono text-base-content/50"
+                            class="font-mono text-base-content/70"
                           >
                             up {duration(max(a.uptime_s, b.uptime_s))}
                           </span>
-                          <span :if={not open} class="text-base-content/40">
+                          <span :if={not open} class="text-base-content/70">
                             · expand to view ends
                           </span>
                         </span>
@@ -1064,7 +1064,7 @@ defmodule OrbitWeb.VpnLive do
           entity_key={@t.id}
         />
       </td>
-      <td class="px-3 py-2 text-base-content/60">{@t.remote}</td>
+      <td class="px-3 py-2 text-base-content/70">{@t.remote}</td>
       <td class="px-3 py-2 text-base-content/70">
         <span :if={@t.phase2_total > 0}>{@t.phase2_up}/{@t.phase2_total} up</span>
         <span :if={@t.phase2_total == 0}>—</span>
@@ -1158,9 +1158,9 @@ defmodule OrbitWeb.VpnLive do
       class="border-b border-base-300/30 bg-base-100/40 text-xs last:border-0"
     >
       <td class="px-3 py-1"></td>
-      <td class="px-3 py-1 text-base-content/40">{@t.instance_name}</td>
-      <td class="px-3 py-1 pl-8 text-base-content/60">{ch["name"] || "child"}</td>
-      <td class="px-3 py-1 text-base-content/60" colspan="2">
+      <td class="px-3 py-1 text-base-content/70">{@t.instance_name}</td>
+      <td class="px-3 py-1 pl-8 text-base-content/70">{ch["name"] || "child"}</td>
+      <td class="px-3 py-1 text-base-content/70" colspan="2">
         {ch["local_ts"] || "?"} ⇄ {ch["remote_ts"] || "?"}
       </td>
       <td class={
@@ -1170,7 +1170,7 @@ defmodule OrbitWeb.VpnLive do
             # No status text pushed for this child SA — "unknown", not
             # "down". A red "?" here alarmed operators on children of
             # tunnels that were plainly up; muted em dash instead.
-            to_string(ch["status"]) == "" -> "text-base-content/40"
+            to_string(ch["status"]) == "" -> "text-base-content/70"
             child_up?(ch) -> "text-primary"
             true -> "text-error"
           end
@@ -1178,7 +1178,7 @@ defmodule OrbitWeb.VpnLive do
       }>
         {if to_string(ch["status"]) == "", do: "—", else: ch["status"]}
       </td>
-      <td class="px-3 py-1 text-base-content/60" colspan={if @writable, do: 2, else: 1}>
+      <td class="px-3 py-1 text-base-content/70" colspan={if @writable, do: 2, else: 1}>
         <% mon = p2_monitor(@monitors, @t.instance_id, @t.id, ch) %>
         <span
           :if={ch["ping_state"] not in [nil, "none"]}
@@ -1186,7 +1186,7 @@ defmodule OrbitWeb.VpnLive do
         >
           ping {ch["ping_state"]}
         </span>
-        <span :if={mon} class="mr-2 text-base-content/40">
+        <span :if={mon} class="mr-2 text-base-content/70">
           monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
           <span :if={not mon.enabled}>(disabled)</span>
         </span>

@@ -489,8 +489,8 @@ defmodule OrbitWeb.InstancesLive do
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> Instances
-            <span class="ml-2 text-sm text-base-content/60">({length(@instances)})</span>
+            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> Instances
+            <span class="ml-2 text-sm text-base-content/70">({length(@instances)})</span>
           </h1>
           <a
             :if={@writable}
@@ -591,7 +591,7 @@ defmodule OrbitWeb.InstancesLive do
           {elem(@update_msg, 1)}
           <button
             phx-click="clear_update_msg"
-            class="ml-2 text-xs text-base-content/60 hover:text-base-content/80"
+            class="ml-2 text-xs text-base-content/70 hover:text-base-content/80"
           >
             dismiss
           </button>
@@ -667,7 +667,7 @@ defmodule OrbitWeb.InstancesLive do
             </.link>
           </div>
           <div :if={@writable and MapSet.size(@selected) > 0} class="flex items-center gap-2">
-            <span class="text-xs text-base-content/60">{MapSet.size(@selected)} selected:</span>
+            <span class="text-xs text-base-content/70">{MapSet.size(@selected)} selected:</span>
             <%!-- No data-confirm here: the bulk dialog must name the boxes
                  and escalate with blast radius (UI/UX review U-Q4/U-M5) —
                  native confirm() rendered "Reboot" identical to "Check
@@ -703,7 +703,7 @@ defmodule OrbitWeb.InstancesLive do
             </span>
             <button
               phx-click="clear_results"
-              class="text-xs text-base-content/60 hover:text-base-content/80"
+              class="text-xs text-base-content/70 hover:text-base-content/80"
             >
               dismiss
             </button>
@@ -712,7 +712,7 @@ defmodule OrbitWeb.InstancesLive do
             <span class={if r.success, do: "text-primary", else: "text-error"}>
               {r.instance_name}
             </span>
-            <span class="text-base-content/60"> — {r.message}</span>
+            <span class="text-base-content/70"> — {r.message}</span>
           </div>
         </div>
 
@@ -730,7 +730,7 @@ defmodule OrbitWeb.InstancesLive do
             </a>
           </:action>
         </.empty_state>
-        <div :if={@instances != [] and @rows == []} class="text-sm text-base-content/60">
+        <div :if={@instances != [] and @rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
@@ -781,7 +781,7 @@ defmodule OrbitWeb.InstancesLive do
                   {t}
                 </span>
               </div>
-              <div class="text-base-content/60" title={ts_abs(i.last_success_at)}>
+              <div class="text-base-content/70" title={ts_abs(i.last_success_at)}>
                 {ts_rel(i.last_success_at)}
               </div>
             </div>
@@ -810,7 +810,7 @@ defmodule OrbitWeb.InstancesLive do
           class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="bg-base-200 text-xs text-base-content/60">
+            <thead class="bg-base-200 text-xs text-base-content/70">
               <tr>
                 <th :if={@writable} class="px-3 py-2">
                   <input
@@ -863,7 +863,7 @@ defmodule OrbitWeb.InstancesLive do
                     instance_id={i.id}
                     kind="notes"
                   />
-                  <div class="flex items-center gap-2 text-xs text-base-content/40">
+                  <div class="flex items-center gap-2 text-xs text-base-content/70">
                     <span>{i.device_type}</span>
                     <div :if={i.base_url != ""} class="truncate">
                       <.base_url_links
@@ -878,8 +878,8 @@ defmodule OrbitWeb.InstancesLive do
                 <td class="px-3 py-2 text-base-content/70">{i.location || "—"}</td>
                 <td class="px-3 py-2 text-base-content/70">
                   <span :if={i.agent_mode} title={"agent line: #{i.agent_line}"}>
-                    agent <span class="text-base-content/40">{i.agent_line}</span>
-                    <span :if={i.agent_version} class="text-base-content/40">v{i.agent_version}</span>
+                    agent <span class="text-base-content/70">{i.agent_line}</span>
+                    <span :if={i.agent_version} class="text-base-content/70">v{i.agent_version}</span>
                     <span
                       :if={i.update_available}
                       class="text-warning"
@@ -900,7 +900,7 @@ defmodule OrbitWeb.InstancesLive do
                     </span>
                   </div>
                 </td>
-                <td class="px-3 py-2 text-xs text-base-content/60" title={ts_abs(i.last_success_at)}>
+                <td class="px-3 py-2 text-xs text-base-content/70" title={ts_abs(i.last_success_at)}>
                   {ts_rel(i.last_success_at)}
                 </td>
                 <td :if={@writable} class="px-3 py-2 text-xs">

@@ -194,8 +194,8 @@ defmodule OrbitWeb.GroupsLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:groups} class="h-5 w-5 text-base-content/60" /> Groups
-          <span class="ml-2 text-sm text-base-content/60">({length(@groups)})</span>
+          <Icons.icon name={:groups} class="h-5 w-5 text-base-content/70" /> Groups
+          <span class="ml-2 text-sm text-base-content/70">({length(@groups)})</span>
         </h1>
 
         <div
@@ -226,7 +226,7 @@ defmodule OrbitWeb.GroupsLive do
 
         <div :if={@groups != []} class="overflow-x-auto">
           <table class="w-full max-w-2xl text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Group</th>
                 <th class="py-2 pr-4 text-right font-medium">Members</th>
@@ -290,7 +290,7 @@ defmodule OrbitWeb.GroupsLive do
                 </tr>
                 <tr :if={@channels_for == g.id} class="border-b border-base-300/50 bg-base-200/60">
                   <td colspan="4" class="p-3">
-                    <p class="mb-2 text-xs text-base-content/60">
+                    <p class="mb-2 text-xs text-base-content/70">
                       A configured channel replaces the global target for this group's
                       instances; removing it falls back to the global channel.
                     </p>
@@ -319,12 +319,12 @@ defmodule OrbitWeb.GroupsLive do
              instances between groups; the move applies immediately. --%>
         <div class="mt-8 max-w-2xl rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
           <h2 class="text-sm font-medium text-base-content/80">Instance assignment</h2>
-          <p class="mt-1 text-xs text-base-content/60">
+          <p class="mt-1 text-xs text-base-content/70">
             Pick a group per instance — the move applies immediately.
           </p>
-          <p :if={@assignments == []} class="mt-3 text-sm text-base-content/60">No instances yet.</p>
+          <p :if={@assignments == []} class="mt-3 text-sm text-base-content/70">No instances yet.</p>
           <table :if={@assignments != []} class="mt-3 w-full text-left text-sm">
-            <thead class="text-xs text-base-content/60">
+            <thead class="text-xs text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-1 pr-4 font-medium">Instance</th>
                 <th class="py-1 font-medium">Group</th>
@@ -333,7 +333,7 @@ defmodule OrbitWeb.GroupsLive do
             <tbody>
               <tr :for={a <- @assignments} class="border-b border-base-300/50 last:border-0">
                 <td class="py-2 pr-4 text-base-content">
-                  {a.name} <span class="ml-1 text-xs text-base-content/60">{a.slug}</span>
+                  {a.name} <span class="ml-1 text-xs text-base-content/70">{a.slug}</span>
                 </td>
                 <td class="py-2">
                   <form phx-change="move_instance">
@@ -381,14 +381,14 @@ defmodule OrbitWeb.GroupsLive do
         </span>
         <span
           :if={is_nil(@configured)}
-          class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
+          class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/70"
         >
           using global
         </span>
       </div>
       <div class="mt-2 space-y-2">
         <div :for={f <- Channels.fields(@channel)} class="space-y-0.5">
-          <label class="text-[10px] text-base-content/60">
+          <label class="text-[10px] text-base-content/70">
             {f.name}{if f.required, do: " *"}
           </label>
           <input

@@ -31,7 +31,7 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
         <h3 class="text-sm font-medium text-base-content">
           {if @editor.monitor_id, do: "Edit ping monitor", else: "Add ping monitor"}
         </h3>
-        <p class="mt-1 text-xs text-base-content/60">
+        <p class="mt-1 text-xs text-base-content/70">
           {@editor.instance_name} · {@editor.child_name}
           <span :if={@editor.local_ts != ""}>
             · {@editor.local_ts} ⇄ {@editor.remote_ts}
@@ -39,7 +39,7 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
         </p>
 
         <form phx-change="p2mon_change" phx-submit="p2mon_save" class="mt-4 space-y-3 text-sm">
-          <label class="block text-xs text-base-content/60">
+          <label class="block text-xs text-base-content/70">
             Source IP (must be box-owned; blank = default route)
             <input
               name="mon[source]"
@@ -47,7 +47,7 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
               class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-sm text-base-content"
             />
           </label>
-          <label class="block text-xs text-base-content/60">
+          <label class="block text-xs text-base-content/70">
             Destination *
             <input
               name="mon[destination]"
@@ -58,7 +58,7 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
             />
           </label>
           <div class="flex items-end gap-4">
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Pings per cycle
               <input
                 name="mon[ping_count]"

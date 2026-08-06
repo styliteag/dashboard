@@ -51,7 +51,7 @@ defmodule OrbitWeb.Components.TagPicker do
 
     ~H"""
     <div id="tag-picker" phx-hook="TagPicker" class="block text-sm md:col-span-2">
-      <span class="mb-1 block text-xs text-base-content/60">Tags</span>
+      <span class="mb-1 block text-xs text-base-content/70">Tags</span>
       <input type="hidden" name={@name} value={Enum.join(@tags, ",")} />
       <div class="relative">
         <div class="flex flex-wrap items-center gap-1 rounded border border-base-content/20 bg-base-100 px-2 py-1 focus-within:border-primary">
@@ -65,7 +65,7 @@ defmodule OrbitWeb.Components.TagPicker do
               phx-click="tag_remove"
               phx-value-tag={tag}
               aria-label={"Remove tag #{tag}"}
-              class="text-base-content/60 hover:text-base-content"
+              class="text-base-content/70 hover:text-base-content"
             >
               <.icon name="hero-x-mark" class="size-3" />
             </button>

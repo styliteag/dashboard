@@ -231,9 +231,9 @@ defmodule OrbitWeb.SettingsLive do
 
       <section class="p-6">
         <h1 class="mb-1 flex items-center gap-2 text-lg font-medium text-base-content">
-          <Icons.icon name={:settings} class="h-5 w-5 text-base-content/60" /> Settings
+          <Icons.icon name={:settings} class="h-5 w-5 text-base-content/70" /> Settings
         </h1>
-        <p class="mb-4 text-xs text-base-content/60">
+        <p class="mb-4 text-xs text-base-content/70">
           Override the defaults that otherwise come from the environment / <code>.env</code>.
           Infra and security settings (database URL, master key, proxy hops…) stay
           environment-only.
@@ -308,7 +308,7 @@ defmodule OrbitWeb.SettingsLive do
             :for={{group, rows} <- @tab_sections}
             class="rounded-xl border border-base-300 bg-base-200/60 p-5"
           >
-            <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/50">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/70">
               {group}
             </h4>
             <div class="mt-1 divide-y divide-base-300/60">
@@ -317,7 +317,7 @@ defmodule OrbitWeb.SettingsLive do
           </section>
         </div>
 
-        <p :if={@tab_sections != []} class="mt-3 text-xs text-base-content/40">
+        <p :if={@tab_sections != []} class="mt-3 text-xs text-base-content/70">
           “Needs restart” settings take effect after the next backend restart; all others
           apply live.
         </p>
@@ -327,7 +327,7 @@ defmodule OrbitWeb.SettingsLive do
             @tab_sections == [] and
               @tab not in ["mattermost", "telegram", "email", "checkmk", "prometheus"]
           }
-          class="text-sm text-base-content/60"
+          class="text-sm text-base-content/70"
         >
           No settings in this tab.
         </p>
@@ -340,9 +340,9 @@ defmodule OrbitWeb.SettingsLive do
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <span class="flex items-center gap-2 text-sm font-medium text-base-content">
-                <Icons.icon name={:power} class="h-4 w-4 text-base-content/50" /> Backend service
+                <Icons.icon name={:power} class="h-4 w-4 text-base-content/70" /> Backend service
               </span>
-              <p class="mt-0.5 text-xs text-base-content/60">
+              <p class="mt-0.5 text-xs text-base-content/70">
                 Restart the backend process to apply “needs restart” settings. Takes a few
                 seconds — the UI reconnects automatically, agents re-attach on their own.
               </p>
@@ -445,7 +445,7 @@ defmodule OrbitWeb.SettingsLive do
           <%!-- Copy-paste scrape job (python parity): the bearer-token shape
                is the part people get wrong. --%>
           <div>
-            <p class="mb-1 text-xs text-base-content/60">Example scrape config:</p>
+            <p class="mb-1 text-xs text-base-content/70">Example scrape config:</p>
             <pre class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3 font-mono text-xs text-base-content/80">scrape_configs:
     - job_name: orbit
     metrics_path: /api/export/prometheus
@@ -475,7 +475,7 @@ defmodule OrbitWeb.SettingsLive do
           <span class="text-sm font-medium text-base-content">{@row.label}</span>
           <span
             :if={not @row.overridden}
-            class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/60"
+            class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] text-base-content/70"
           >
             {if @row.secret, do: "not set", else: "default"}
           </span>
@@ -492,8 +492,8 @@ defmodule OrbitWeb.SettingsLive do
             needs restart
           </span>
         </div>
-        <p :if={@row.help != ""} class="mt-0.5 text-xs text-base-content/60">{@row.help}</p>
-        <p class="mt-0.5 font-mono text-[11px] text-base-content/40">
+        <p :if={@row.help != ""} class="mt-0.5 text-xs text-base-content/70">{@row.help}</p>
+        <p class="mt-0.5 font-mono text-[11px] text-base-content/70">
           {@row.key}{if not @row.secret and @row.default not in [nil, ""],
             do: " · default #{@row.default}"}
         </p>
@@ -613,13 +613,13 @@ defmodule OrbitWeb.SettingsLive do
           <h3 class="flex items-center gap-2 text-sm font-semibold text-base-content">
             <Icons.icon
               name={@icon}
-              class={["h-4 w-4", if(@on, do: "text-warning", else: "text-base-content/50")]}
+              class={["h-4 w-4", if(@on, do: "text-warning", else: "text-base-content/70")]}
             /> {@title}
           </h3>
-          <p class="mt-0.5 text-xs text-base-content/60">
+          <p class="mt-0.5 text-xs text-base-content/70">
             {if @on, do: @active_note, else: @idle_note}
           </p>
-          <p :if={@hint} class="mt-0.5 text-xs text-base-content/40">{@hint}</p>
+          <p :if={@hint} class="mt-0.5 text-xs text-base-content/70">{@hint}</p>
         </div>
 
         <button

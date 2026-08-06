@@ -201,20 +201,20 @@ defmodule OrbitWeb.AccessControlLive do
 
       <section class="max-w-3xl p-6">
         <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
-          <Icons.icon name={:access_control} class="h-5 w-5 text-base-content/60" />
+          <Icons.icon name={:access_control} class="h-5 w-5 text-base-content/70" />
           Access control (GeoIP)
         </h1>
 
         <div class="mb-4 grid gap-3 text-sm md:grid-cols-3">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">GeoIP database</div>
+            <div class="text-xs text-base-content/70">GeoIP database</div>
             <div class={if @db_available, do: "text-primary", else: "text-error"}>
               {if @db_available, do: "loaded", else: "NOT available (gate fails open)"}
             </div>
-            <div class="mt-1 text-xs text-base-content/60">
+            <div class="mt-1 text-xs text-base-content/70">
               last refresh: {refresh_text(@last_refresh)}
             </div>
-            <div :if={@viewer_geo} class="mt-1 text-xs text-base-content/60">
+            <div :if={@viewer_geo} class="mt-1 text-xs text-base-content/70">
               you are connecting from: <span class="text-base-content/80">{@viewer_geo}</span>
             </div>
             <button
@@ -226,19 +226,19 @@ defmodule OrbitWeb.AccessControlLive do
             </button>
           </div>
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">CrowdSec blocklist</div>
-            <div class={if @crowdsec.configured, do: "text-primary", else: "text-base-content/60"}>
+            <div class="text-xs text-base-content/70">CrowdSec blocklist</div>
+            <div class={if @crowdsec.configured, do: "text-primary", else: "text-base-content/70"}>
               {if @crowdsec.configured,
                 do: "#{@crowdsec.banned_count} bans · #{@crowdsec.detail}",
                 else: "not configured"}
             </div>
           </div>
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Denials (all time)</div>
+            <div class="text-xs text-base-content/70">Denials (all time)</div>
             <div :for={{reason, n} <- @blocks} class="text-xs text-base-content/80">
               {reason}: {n}
             </div>
-            <div :if={@blocks == []} class="text-base-content/60">none</div>
+            <div :if={@blocks == []} class="text-base-content/70">none</div>
           </div>
         </div>
 
@@ -271,14 +271,14 @@ defmodule OrbitWeb.AccessControlLive do
           </label>
 
           <label class="mb-3 block">
-            <span class="mb-1 block text-xs text-base-content/60">
+            <span class="mb-1 block text-xs text-base-content/70">
               Allowed countries (ISO codes, comma-separated; empty + empty whitelist = allow all)
             </span>
             <input name="cfg[countries]" value={@countries_text} class={input_cls()} />
           </label>
 
           <label class="mb-3 block">
-            <span class="mb-1 block text-xs text-base-content/60">
+            <span class="mb-1 block text-xs text-base-content/70">
               Whitelist — one CIDR/IP or DynDNS hostname per line (always allowed; beats the blocklist)
             </span>
             <textarea name="cfg[whitelist]" rows="5" class={input_cls()}>{@whitelist_text}</textarea>
@@ -297,7 +297,7 @@ defmodule OrbitWeb.AccessControlLive do
           </button>
         </form>
 
-        <div :if={@resolved != []} class="mt-4 text-xs text-base-content/60">
+        <div :if={@resolved != []} class="mt-4 text-xs text-base-content/70">
           DynDNS whitelist currently resolves to: {Enum.join(@resolved, ", ")}
         </div>
       </section>

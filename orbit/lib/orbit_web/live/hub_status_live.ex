@@ -247,10 +247,10 @@ defmodule OrbitWeb.HubStatusLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-1 text-lg font-medium text-base-content">
-          <Icons.icon name={:hub} class="h-5 w-5 text-base-content/60" /> Hub status
-          <span class="ml-2 text-sm text-base-content/60">({length(@agents)} connected)</span>
+          <Icons.icon name={:hub} class="h-5 w-5 text-base-content/70" /> Hub status
+          <span class="ml-2 text-sm text-base-content/70">({length(@agents)} connected)</span>
         </h1>
-        <p class="mb-4 max-w-3xl text-xs leading-relaxed text-base-content/60">
+        <p class="mb-4 max-w-3xl text-xs leading-relaxed text-base-content/70">
           Live state of the agent WebSocket hub, in memory since {local_time_tag(
             @started_at,
             "datetime"
@@ -350,7 +350,7 @@ defmodule OrbitWeb.HubStatusLive do
             :for={{key, label} <- error_counters()}
             class="rounded-xl border border-base-300 bg-base-200/60 px-4 py-3"
           >
-            <p class="text-xs text-base-content/60">{label}</p>
+            <p class="text-xs text-base-content/70">{label}</p>
             <p class={[
               "text-lg font-semibold",
               if(Map.get(@counters, key, 0) > 0, do: "text-error", else: "text-base-content")
@@ -372,7 +372,7 @@ defmodule OrbitWeb.HubStatusLive do
             :for={{key, label} <- traffic_counters()}
             class="rounded-xl border border-base-300 bg-base-200/60 px-4 py-3"
           >
-            <p class="text-xs text-base-content/60">{label}</p>
+            <p class="text-xs text-base-content/70">{label}</p>
             <p class="text-lg font-semibold text-base-content">{Map.get(@counters, key, 0)}</p>
           </div>
         </div>
@@ -404,7 +404,7 @@ defmodule OrbitWeb.HubStatusLive do
 
         <div class="overflow-x-auto">
           <table :if={@agents != []} class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Instance</th>
                 <th class="py-2 pr-4 font-medium">Platform</th>
@@ -437,8 +437,8 @@ defmodule OrbitWeb.HubStatusLive do
                 </td>
                 <td class="py-2 pr-4 text-base-content/80">{cpu_text(a.cpu)}</td>
                 <td class="py-2 pr-4 text-base-content/70">{a.pushes}</td>
-                <td class="py-2 pr-4 text-base-content/60">{push_text(a.connected_at)}</td>
-                <td class="py-2 pr-4 text-base-content/60">{push_text(a.last_push_at)}</td>
+                <td class="py-2 pr-4 text-base-content/70">{push_text(a.connected_at)}</td>
+                <td class="py-2 pr-4 text-base-content/70">{push_text(a.last_push_at)}</td>
               </tr>
             </tbody>
           </table>

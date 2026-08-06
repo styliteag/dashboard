@@ -35,7 +35,7 @@ defmodule OrbitWeb.Geo do
 
   attr :ip, :string, default: nil
   attr :geo, :string, default: nil, doc: "pre-resolved label; looked up when omitted"
-  attr :class, :string, default: "text-base-content/60"
+  attr :class, :string, default: "text-base-content/70"
 
   @doc """
   An address with its location beside it.
@@ -54,7 +54,7 @@ defmodule OrbitWeb.Geo do
     ~H"""
     <span class={@class}>
       {@ip || "—"}
-      <span :if={resolve(@geo, @ip)} class="ml-1 text-xs text-base-content/40">
+      <span :if={resolve(@geo, @ip)} class="ml-1 text-xs text-base-content/70">
         {resolve(@geo, @ip)}
       </span>
     </span>

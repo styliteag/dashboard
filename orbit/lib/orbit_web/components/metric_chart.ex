@@ -48,7 +48,7 @@ defmodule OrbitWeb.Components.MetricChart do
       class="rounded-xl border border-base-300 bg-base-200/60 p-4"
     >
       <div class="mb-3 flex items-baseline justify-between gap-3">
-        <h3 class="text-xs text-base-content/60">{@label}</h3>
+        <h3 class="text-xs text-base-content/70">{@label}</h3>
         <%!-- Readout is filled by the ChartHover hook on pointer move and
              cleared on leave; the last value stays visible when idle. --%>
         <span data-readout class="truncate text-xs text-base-content/70"></span>
@@ -56,7 +56,7 @@ defmodule OrbitWeb.Components.MetricChart do
           {fmt_val(List.last(@values))}{@unit}
         </span>
       </div>
-      <p :if={@line == nil} class="py-8 text-center text-sm text-base-content/40">
+      <p :if={@line == nil} class="py-8 text-center text-sm text-base-content/70">
         No data for this range.
       </p>
       <div :if={@line != nil}>
@@ -116,9 +116,9 @@ defmodule OrbitWeb.Components.MetricChart do
             <title>{d.title}</title>
           </circle>
         </svg>
-        <div class="mt-1 flex justify-between text-[10px] text-base-content/40">
+        <div class="mt-1 flex justify-between text-[10px] text-base-content/70">
           <span>{fmt_ts(List.first(@points))}</span>
-          <span class="text-base-content/60">0–{fmt_val(@ymax)}{@unit}</span>
+          <span class="text-base-content/70">0–{fmt_val(@ymax)}{@unit}</span>
           <span>{fmt_ts(List.last(@points))}</span>
         </div>
       </div>

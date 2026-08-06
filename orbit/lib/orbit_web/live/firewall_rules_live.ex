@@ -252,12 +252,12 @@ defmodule OrbitWeb.FirewallRulesLive do
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:firewall} class="h-5 w-5 text-base-content/60" />
+            <Icons.icon name={:firewall} class="h-5 w-5 text-base-content/70" />
             Firewall rules — {@instance.name}
           </h1>
           <a
             href={~p"/instances/#{@instance.id}"}
-            class="text-xs text-base-content/60 hover:text-base-content/80"
+            class="text-xs text-base-content/70 hover:text-base-content/80"
           >
             back to detail
           </a>
@@ -334,7 +334,7 @@ defmodule OrbitWeb.FirewallRulesLive do
             {if @editor_uuid, do: "Edit rule", else: "New rule"}
           </h2>
           <div class="grid gap-3 md:grid-cols-3">
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Action
               <select
                 name="rule[action]"
@@ -345,7 +345,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Interface
               <select
                 name="rule[interface]"
@@ -361,7 +361,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Direction
               <select
                 name="rule[direction]"
@@ -372,7 +372,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               TCP/IP version
               <select
                 name="rule[ipprotocol]"
@@ -382,7 +382,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 <option value="inet6" selected={@editor["ipprotocol"] == "inet6"}>IPv6</option>
               </select>
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Protocol
               <select
                 name="rule[protocol]"
@@ -397,7 +397,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 </option>
               </select>
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Description
               <input
                 name="rule[description]"
@@ -414,7 +414,7 @@ defmodule OrbitWeb.FirewallRulesLive do
             <datalist id="fw-ports">
               <option :for={o <- @field_options.ports} value={o.value}>{o.label}</option>
             </datalist>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Source
               <input
                 name="rule[source_net]"
@@ -424,7 +424,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Source port
               <input
                 name="rule[source_port]"
@@ -433,7 +433,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Destination
               <input
                 name="rule[destination_net]"
@@ -443,7 +443,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                 class="mt-0.5 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 font-mono text-sm text-base-content"
               />
             </label>
-            <label class="block text-xs text-base-content/60">
+            <label class="block text-xs text-base-content/70">
               Destination port
               <input
                 name="rule[destination_port]"
@@ -498,7 +498,7 @@ defmodule OrbitWeb.FirewallRulesLive do
 
         <div class="overflow-x-auto">
           <table class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="text-base-content/60">
+            <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-3 font-medium">On</th>
                 <th class="py-2 pr-3 font-medium">Action</th>
@@ -545,7 +545,7 @@ defmodule OrbitWeb.FirewallRulesLive do
                     >
                       {if r.enabled, do: "on", else: "off"}
                     </button>
-                    <span :if={not r.editable} class="text-xs text-base-content/40">
+                    <span :if={not r.editable} class="text-xs text-base-content/70">
                       {if r.enabled, do: "on", else: "off"}
                     </span>
                   </td>
@@ -620,14 +620,14 @@ defmodule OrbitWeb.FirewallRulesLive do
                     >
                       delete
                     </button>
-                    <span :if={not r.editable} class="text-xs text-base-content/40">legacy</span>
+                    <span :if={not r.editable} class="text-xs text-base-content/70">legacy</span>
                   </td>
                 </tr>
               <% end %>
             </tbody>
           </table>
         </div>
-        <div :if={@visible == [] and is_nil(@error)} class="py-4 text-sm text-base-content/60">
+        <div :if={@visible == [] and is_nil(@error)} class="py-4 text-sm text-base-content/70">
           {if @rules == [], do: "No rules on this interface.", else: "No matches."}
         </div>
       </section>

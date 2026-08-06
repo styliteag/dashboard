@@ -171,12 +171,12 @@ defmodule OrbitWeb.InstanceEditLive do
       <section class="max-w-2xl p-6">
         <div class="mb-4 flex items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" />
+            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" />
             Edit {@instance.name}
           </h1>
           <a
             href={~p"/instances/#{@instance.id}"}
-            class="text-xs text-base-content/60 hover:text-base-content/80"
+            class="text-xs text-base-content/70 hover:text-base-content/80"
           >
             back to detail
           </a>
@@ -250,7 +250,7 @@ defmodule OrbitWeb.InstanceEditLive do
 
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">
-              Credentials <span class="text-base-content/60">(blank = keep existing)</span>
+              Credentials <span class="text-base-content/70">(blank = keep existing)</span>
             </h2>
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="API key">
@@ -316,7 +316,7 @@ defmodule OrbitWeb.InstanceEditLive do
             class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-1 text-sm font-medium text-base-content/70">SSH access</h2>
-            <p class="mb-3 text-xs text-base-content/60">
+            <p class="mb-3 text-xs text-base-content/70">
               A Securepoint has no agent. With SSH the dashboard reads rich IPsec state
               via swanctl (SPIs, IKE cookies, byte counters), runs the ping monitors on
               the box and can open a terminal. See docs/securepoint-ssh.md.

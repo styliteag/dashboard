@@ -40,7 +40,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-medium text-base-content">
             Monitor history — {@history.label}
-            <span class="ml-1 text-xs text-base-content/60">{@history.instance_name}</span>
+            <span class="ml-1 text-xs text-base-content/70">{@history.instance_name}</span>
           </h3>
           <button
             phx-click="monitor_history_close"
@@ -53,7 +53,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
         <% lane = History.lane(@history.events, @history.live_state, DateTime.utc_now()) %>
         <div class="mt-4 space-y-2">
           <div class="flex items-center gap-2">
-            <span class="w-16 text-right text-[10px] text-base-content/60">State</span>
+            <span class="w-16 text-right text-[10px] text-base-content/70">State</span>
             <div class="relative h-7 flex-1 overflow-hidden rounded bg-base-300">
               <div
                 :for={seg <- lane.segments}
@@ -63,12 +63,12 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
               </div>
             </div>
           </div>
-          <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/40">
+          <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/70">
             <span :if={@history.events != []}>{fmt_ts(lane.window_start)}</span>
             <span :if={@history.events == []}>no recorded transitions yet</span>
             <span>now</span>
           </div>
-          <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/60">
+          <div class="flex gap-3 pl-[4.5rem] text-[10px] text-base-content/70">
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-primary"></span>OK</span>
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-warning"></span>WARN</span>
             <span><span class="mr-1 inline-block h-2 w-2 rounded-sm bg-error"></span>CRIT</span>
@@ -79,7 +79,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
         </div>
 
         <table :if={@history.events != []} class="mt-4 w-full text-left text-xs">
-          <thead class="text-base-content/60">
+          <thead class="text-base-content/70">
             <tr class="border-b border-base-300">
               <th class="py-1 pr-3 font-medium">Time</th>
               <th class="py-1 pr-3 font-medium">Change</th>
@@ -88,7 +88,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
           </thead>
           <tbody>
             <tr :for={e <- @history.events} class="border-b border-base-300/50 last:border-0">
-              <td class="py-1 pr-3 font-mono text-base-content/60">{fmt_ts(e.ts)}</td>
+              <td class="py-1 pr-3 font-mono text-base-content/70">{fmt_ts(e.ts)}</td>
               <td class={["py-1 pr-3", state_color(e.new_state)]}>
                 {History.state_label(e.old_state)} → {History.state_label(e.new_state)}
               </td>
@@ -96,7 +96,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
             </tr>
           </tbody>
         </table>
-        <p :if={@history.events == []} class="mt-4 text-sm text-base-content/60">
+        <p :if={@history.events == []} class="mt-4 text-sm text-base-content/70">
           No transitions recorded yet — a row appears the moment the monitor changes
           state. Failures are debounced over three polls, so a short blip may leave
           no trace at all.
@@ -114,7 +114,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
   defp state_color(0), do: "text-primary"
   defp state_color(1), do: "text-warning"
   defp state_color(2), do: "text-error"
-  defp state_color(_), do: "text-base-content/60"
+  defp state_color(_), do: "text-base-content/70"
 
   defp fmt_ts(ts), do: OrbitWeb.CoreComponents.local_time_tag(ts, "datetime-sec")
 end

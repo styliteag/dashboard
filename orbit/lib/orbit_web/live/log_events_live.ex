@@ -129,8 +129,8 @@ defmodule OrbitWeb.LogEventsLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-2 text-lg font-medium text-base-content">
-          <Icons.icon name={:logs} class="h-5 w-5 text-base-content/60" /> Log events
-          <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
+          <Icons.icon name={:logs} class="h-5 w-5 text-base-content/70" /> Log events
+          <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 
         <.data_note>
@@ -216,13 +216,13 @@ defmodule OrbitWeb.LogEventsLive do
           Agents push their logfiles about once an hour and only warning-or-worse lines are
           kept — a quiet fleet legitimately shows nothing here.
         </.empty_state>
-        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/60">
+        <div :if={@rows != [] and @visible_rows == []} class="text-sm text-base-content/70">
           No matches.
         </div>
 
         <div class="overflow-x-auto">
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
-            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/60">
+            <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
               <tr class="border-b border-base-300">
                 <th class="py-2 pr-4 font-medium">Sev</th>
                 <th class="py-2 pr-4 font-medium">Instance</th>
@@ -256,13 +256,13 @@ defmodule OrbitWeb.LogEventsLive do
                       phx-click="toggle_sample"
                       phx-value-id={r.event.id}
                       title="Show the raw (un-masked) log line for this pattern — admin only"
-                      class="ml-2 rounded border border-base-content/20 px-1 py-0 align-middle text-[10px] text-base-content/50 hover:bg-base-300 hover:text-base-content/80"
+                      class="ml-2 rounded border border-base-content/20 px-1 py-0 align-middle text-[10px] text-base-content/70 hover:bg-base-300 hover:text-base-content/80"
                     >
                       raw
                     </button>
                   </td>
                   <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
-                  <td class="py-2 pr-4 text-base-content/60">{r.event.last_ts}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{r.event.last_ts}</td>
                 </tr>
                 <%!-- Raw un-masked sample line for this pattern (admin only —
                      invariant 4). Full-width row, not a floating popover, so
@@ -272,7 +272,7 @@ defmodule OrbitWeb.LogEventsLive do
                   class="border-b border-base-300/50 bg-base-200/40"
                 >
                   <td colspan="6" class="px-3 py-2">
-                    <div class="mb-1 flex items-center justify-between text-[11px] text-base-content/50">
+                    <div class="mb-1 flex items-center justify-between text-[11px] text-base-content/70">
                       <span>Raw sample · {r.event.log_name} · last seen {r.event.last_ts}</span>
                       <button phx-click="close_sample" class="hover:text-base-content/80">
                         ✕ close

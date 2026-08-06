@@ -30,9 +30,9 @@ defmodule OrbitWeb.Components.ListKit do
   def stat_tile(assigns) do
     ~H"""
     <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-      <div class="text-xs text-base-content/60">{@label}</div>
+      <div class="text-xs text-base-content/70">{@label}</div>
       <div class={["text-2xl font-semibold", @color]}>{@value}</div>
-      <div :if={@hint != []} class="mt-0.5 text-[11px] leading-tight text-base-content/50">
+      <div :if={@hint != []} class="mt-0.5 text-[11px] leading-tight text-base-content/70">
         {render_slot(@hint)}
       </div>
     </div>
@@ -56,7 +56,7 @@ defmodule OrbitWeb.Components.ListKit do
     ~H"""
     <div class="rounded-[var(--radius-box)] border border-dashed border-base-300 bg-base-200/40 px-4 py-8 text-center">
       <p class="text-sm text-base-content/70">{@title}</p>
-      <p :if={@inner_block != []} class="mx-auto mt-1 max-w-lg text-xs text-base-content/50">
+      <p :if={@inner_block != []} class="mx-auto mt-1 max-w-lg text-xs text-base-content/70">
         {render_slot(@inner_block)}
       </p>
       <div :if={@action != []} class="mt-3">
@@ -102,7 +102,7 @@ defmodule OrbitWeb.Components.ListKit do
 
   def data_note(assigns) do
     ~H"""
-    <p class="mb-2 max-w-3xl text-xs leading-relaxed text-base-content/60">
+    <p class="mb-2 max-w-3xl text-xs leading-relaxed text-base-content/70">
       {render_slot(@inner_block)}
     </p>
     """
@@ -157,7 +157,7 @@ defmodule OrbitWeb.Components.ListKit do
         )
       ]}
     >
-      <div class="text-xs text-base-content/60">{@label}</div>
+      <div class="text-xs text-base-content/70">{@label}</div>
       <div class={["text-2xl font-semibold", @color]}>{@value}</div>
     </button>
     """

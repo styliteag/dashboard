@@ -184,7 +184,7 @@ defmodule OrbitWeb.Components.Nav do
       <div class="absolute right-0 top-10 z-50 w-60 overflow-hidden rounded-[var(--radius-box)] border border-base-300 bg-base-200 shadow-xl">
         <div class="border-b border-base-300 px-3 py-2">
           <p class="truncate text-sm font-medium text-base-content">{@current_user.username}</p>
-          <p class="text-xs text-base-content/50">{role_label(@current_user)}</p>
+          <p class="text-xs text-base-content/70">{role_label(@current_user)}</p>
         </div>
 
         <nav class="py-1">
@@ -197,7 +197,7 @@ defmodule OrbitWeb.Components.Nav do
         </nav>
 
         <div class="border-t border-base-300 px-3 py-2">
-          <p class="mb-1.5 text-[10px] uppercase tracking-wide text-base-content/50">Appearance</p>
+          <p class="mb-1.5 text-[10px] uppercase tracking-wide text-base-content/70">Appearance</p>
           <.theme_controls />
         </div>
 
@@ -213,7 +213,7 @@ defmodule OrbitWeb.Components.Nav do
           </form>
         </div>
 
-        <div class="border-t border-base-300 px-3 py-1.5 text-[11px] text-base-content/40">
+        <div class="border-t border-base-300 px-3 py-1.5 text-[11px] text-base-content/70">
           STYLiTE Orbit{edition_suffix()} v{app_version()}
         </div>
       </div>

@@ -137,8 +137,8 @@ defmodule OrbitWeb.UptimeLive do
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/60" /> Uptime
-            <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
+            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> Uptime
+            <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
           </h1>
           <a
             href={~p"/instances"}
@@ -155,7 +155,7 @@ defmodule OrbitWeb.UptimeLive do
                 "rounded px-2 py-0.5 text-xs",
                 if(@window == key,
                   do: "bg-base-300 text-base-content",
-                  else: "text-base-content/60 hover:bg-base-300/60"
+                  else: "text-base-content/70 hover:bg-base-300/60"
                 )
               ]}
             >
@@ -166,15 +166,15 @@ defmodule OrbitWeb.UptimeLive do
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Total</div>
+            <div class="text-xs text-base-content/70">Total</div>
             <div class="text-xl font-medium">{length(@rows)}</div>
           </div>
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Online</div>
+            <div class="text-xs text-base-content/70">Online</div>
             <div class="text-xl font-medium text-primary">{@online_count}</div>
           </div>
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
-            <div class="text-xs text-base-content/60">Offline</div>
+            <div class="text-xs text-base-content/70">Offline</div>
             <div class="text-xl font-medium text-error">{@offline_count}</div>
           </div>
         </div>
@@ -192,7 +192,7 @@ defmodule OrbitWeb.UptimeLive do
               phx-value-iid={row.id}
               title="Show recorded transitions"
             >
-              <span class="w-44 truncate text-right text-[10px] text-base-content/60">
+              <span class="w-44 truncate text-right text-[10px] text-base-content/70">
                 {row.name}
               </span>
               <div class="relative h-3.5 flex-1 overflow-hidden rounded bg-base-300">
@@ -205,18 +205,18 @@ defmodule OrbitWeb.UptimeLive do
               </div>
             </div>
           </div>
-          <div class="mt-1 flex justify-between pl-[11.5rem] text-[10px] text-base-content/50">
+          <div class="mt-1 flex justify-between pl-[11.5rem] text-[10px] text-base-content/70">
             <span>{@window} ago</span>
             <span>now</span>
           </div>
         </div>
 
-        <div :if={@rows == []} class="text-sm text-base-content/60">
+        <div :if={@rows == []} class="text-sm text-base-content/70">
           No instances visible.
         </div>
 
         <table :if={@rows != []} class="w-full text-left text-sm">
-          <thead class="text-xs text-base-content/60">
+          <thead class="text-xs text-base-content/70">
             <tr class="border-b border-base-300">
               <th scope="col" class="py-2 pr-3 font-medium">State</th>
               <th scope="col" class="py-2 pr-3 font-medium">Instance</th>

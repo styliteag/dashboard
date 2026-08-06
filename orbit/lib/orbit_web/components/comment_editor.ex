@@ -44,7 +44,7 @@ defmodule OrbitWeb.Components.CommentEditor do
       <summary
         class={[
           "inline-flex cursor-pointer items-center rounded p-0.5 hover:bg-base-300",
-          if(present?(@text), do: "text-warning/80", else: "text-base-content/40")
+          if(present?(@text), do: "text-warning/80", else: "text-base-content/70")
         ]}
         title={@text || "Add comment"}
       >

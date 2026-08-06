@@ -132,7 +132,7 @@ defmodule OrbitWeb.SecurityLive do
            only page that floated mid-screen). --%>
       <section class="max-w-2xl p-6">
         <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-          <Icons.icon name={:security} class="h-5 w-5 text-base-content/60" /> Security
+          <Icons.icon name={:security} class="h-5 w-5 text-base-content/70" /> Security
         </h1>
         <p class="mt-1 text-sm text-base-content/70">
           Two-factor authentication is mandatory. Manage your authenticator and passkeys here.
@@ -195,7 +195,7 @@ defmodule OrbitWeb.SecurityLive do
           <table class="mt-4 w-full text-sm">
             <tbody>
               <tr :if={@passkeys == []}>
-                <td class="py-2 text-xs text-base-content/60">No passkeys registered.</td>
+                <td class="py-2 text-xs text-base-content/70">No passkeys registered.</td>
               </tr>
               <tr :for={p <- @passkeys} class="border-t border-base-300">
                 <td class="py-2 text-base-content">{p.name || "Passkey ##{p.id}"}</td>
