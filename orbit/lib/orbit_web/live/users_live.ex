@@ -12,6 +12,8 @@ defmodule OrbitWeb.UsersLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit, only: [empty_state: 1]
+
   alias Orbit.Accounts
   alias Orbit.Accounts.Admin
   alias Orbit.Audit
@@ -199,7 +201,11 @@ defmodule OrbitWeb.UsersLive do
           </button>
         </form>
 
-        <div class="overflow-x-auto">
+        <.empty_state :if={@users == []} title="No user accounts yet.">
+          Create the first one above; group membership decides which instances an account can see.
+        </.empty_state>
+
+        <div :if={@users != []} class="overflow-x-auto">
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="text-base-content/60">
               <tr class="border-b border-base-300">

@@ -22,7 +22,7 @@ defmodule OrbitWeb.InstancesLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit,
-    only: [webui_link: 1, shell_link: 1, gui_open_row: 3, base_url_link: 1]
+    only: [webui_link: 1, shell_link: 1, gui_open_row: 3, base_url_link: 1, empty_state: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
@@ -637,9 +637,20 @@ defmodule OrbitWeb.InstancesLive do
           </div>
         </div>
 
-        <div :if={@instances == []} class="text-sm text-base-content/60">
-          No instances in your scope.
-        </div>
+        <%!-- Zero instances conflated "fresh install" with "account has no
+             group" and offered no next step (UI/UX review U-Q5). --%>
+        <.empty_state :if={@instances == []} title="No instances visible for your account.">
+          Either none exist yet, or your account is in no group — group membership
+          decides what you can see; ask a superadmin if you expected instances here.
+          <:action :if={@writable}>
+            <a
+              href={~p"/instances/new"}
+              class="rounded bg-primary px-3 py-1.5 text-sm text-primary-content hover:bg-primary/80"
+            >
+              New instance
+            </a>
+          </:action>
+        </.empty_state>
         <div :if={@instances != [] and @rows == []} class="text-sm text-base-content/60">
           No matches.
         </div>

@@ -255,7 +255,16 @@ defmodule OrbitWeb.AlertsLive do
                   <.webui_link instance_id={a.inst.id} openable={a.gui_openable} />
                   <.shell_link instance_id={a.inst.id} shell_enabled={a.shell_enabled} />
                 </td>
-                <td class="py-2 pr-4 text-base-content/70">{a.check.key}</td>
+                <td class="py-2 pr-4">
+                  <%!-- The row IS a check — link to the box's Checks tab, not
+                       its Overview (UI/UX review U-Q6). --%>
+                  <a
+                    href={~p"/instances/#{a.inst.id}/checks"}
+                    class="text-base-content/70 hover:text-primary hover:underline"
+                  >
+                    {a.check.key}
+                  </a>
+                </td>
                 <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
                 <td class="py-2 pr-4 text-xs">
                   <span :if={a.exported} class="text-primary">exported</span>

@@ -52,6 +52,19 @@ defmodule OrbitWeb.Components.ListKitTest do
     assert html =~ "sampled under floods"
   end
 
+  # UI/UX review 2026-08-06, U-Q5: an empty state without a next step is a
+  # dead end — the action slot carries the CTA.
+  test "empty_state renders the action slot when given" do
+    html =
+      render_component(&ListKit.empty_state/1,
+        title: "No instances visible for your account.",
+        action: [%{inner_block: fn _, _ -> "New instance" end}]
+      )
+
+    assert html =~ "No instances visible"
+    assert html =~ "New instance"
+  end
+
   # UI/UX review 2026-08-06, A-m10/m12: sortable headers must tell assistive
   # tech the column role and the current sort — the ↑/↓ glyph alone reads as
   # a stray character.

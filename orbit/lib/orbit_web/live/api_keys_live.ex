@@ -10,6 +10,8 @@ defmodule OrbitWeb.ApiKeysLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit, only: [empty_state: 1]
+
   alias Orbit.ApiKeys
   alias Orbit.Audit
 
@@ -213,7 +215,11 @@ defmodule OrbitWeb.ApiKeysLive do
           </button>
         </form>
 
-        <div class="overflow-x-auto">
+        <.empty_state :if={@keys == []} title="No API keys yet.">
+          Mint the first one above — keys are read-only and scoped to the groups you pick.
+        </.empty_state>
+
+        <div :if={@keys != []} class="overflow-x-auto">
           <table class="w-full max-w-4xl text-left text-sm">
             <thead class="text-base-content/60">
               <tr class="border-b border-base-300">

@@ -278,12 +278,22 @@ defmodule OrbitWeb.InstanceCreateLive do
             </label>
           </div>
 
-          <button
-            type="submit"
-            class="rounded bg-primary px-4 py-1.5 text-sm text-primary-content hover:bg-primary/80"
-          >
-            Create instance
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              type="submit"
+              class="rounded bg-primary px-4 py-1.5 text-sm text-primary-content hover:bg-primary/80"
+            >
+              Create instance
+            </button>
+            <%!-- The form had no way out except the browser back button
+                 (UI/UX review U-Q3). --%>
+            <a
+              href={~p"/instances"}
+              class="rounded border border-base-content/20 px-3 py-1.5 text-sm text-base-content/70 hover:bg-base-300"
+            >
+              Cancel
+            </a>
+          </div>
         </form>
       </section>
     </main>

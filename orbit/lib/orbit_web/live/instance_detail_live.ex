@@ -2882,7 +2882,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     {g["address"] || "—"}
                   </td>
                   <td class="py-1.5 pr-4">
-                    <span class={gw_color(g["status"])}>{g["status"] || "?"}</span>
+                    <span class={gw_color(g["status"])}>{gw_label(g["status"])}</span>
                   </td>
                   <td class="py-1.5 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
                   <td class="py-1.5 text-base-content/70">{g["loss"] || "—"}</td>
@@ -3625,6 +3625,17 @@ defmodule OrbitWeb.InstanceDetailLive do
       s when s in @gw_up -> "text-primary"
       "" -> "text-base-content/60"
       _ -> "text-error"
+    end
+  end
+
+  # OPNsense reports a healthy gateway as literally "none" (= no alarm). A
+  # word painted success-green must read as good news without knowing that
+  # vocabulary (UI/UX review D-5) — every other status passes through.
+  defp gw_label(status) do
+    case status |> to_string() |> String.downcase() do
+      "none" -> "OK (no alarm)"
+      "" -> "?"
+      _ -> status
     end
   end
 

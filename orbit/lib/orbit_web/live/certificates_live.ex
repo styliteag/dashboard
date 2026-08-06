@@ -220,7 +220,9 @@ defmodule OrbitWeb.CertificatesLive do
           <span class="ml-2 text-sm text-base-content/60">({length(@rows)})</span>
         </h1>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <%!-- 5 tiles — the grid must match or "Healthy" wraps alone onto a
+             second row (UI/UX review D-2). --%>
+        <div class="mb-4 grid gap-3 sm:grid-cols-5">
           <.kpi_tile
             label="Total"
             value={length(@rows)}

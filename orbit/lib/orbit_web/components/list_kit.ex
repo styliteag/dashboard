@@ -48,6 +48,10 @@ defmodule OrbitWeb.Components.ListKit do
   attr :title, :string, required: true
   slot :inner_block, doc: "one line on why it is empty / what to do next"
 
+  slot :action,
+    doc:
+      "optional call to action (a link or button) — an empty state without a next step is a dead end"
+
   def empty_state(assigns) do
     ~H"""
     <div class="rounded-lg border border-dashed border-base-300 bg-base-200/40 px-4 py-8 text-center">
@@ -55,6 +59,9 @@ defmodule OrbitWeb.Components.ListKit do
       <p :if={@inner_block != []} class="mx-auto mt-1 max-w-lg text-xs text-base-content/50">
         {render_slot(@inner_block)}
       </p>
+      <div :if={@action != []} class="mt-3">
+        {render_slot(@action)}
+      </div>
     </div>
     """
   end

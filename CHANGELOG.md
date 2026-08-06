@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Forms and lists lost fewer operators: the create-instance form has a
+  Cancel button (there was no way out except browser-back), the edit form
+  has one next to Save, alert rows link to the box's Checks tab instead of
+  its Overview (the row IS a check), the Certificates tile row no longer
+  wraps "Healthy" onto its own line, a healthy OPNsense gateway reads
+  "OK (no alarm)" instead of the vendor's bare "none", and empty admin
+  pages (API keys, users, groups, instances) explain why they are empty
+  and what to do next instead of showing a table header over whitespace.
 - Screen-reader and keyboard basics across the app: status dots on /uptime
   now say online/offline instead of being empty colored circles, bulk-select
   checkboxes name their instance ("Select pf1"), sortable table headers

@@ -396,6 +396,15 @@ defmodule OrbitWeb.InstanceEditLive do
             >
               Save
             </button>
+            <%!-- Second way out next to Save: the "back to detail" link in the
+                 header is ~600px from where the eyes are at submit time
+                 (UI/UX review U-Q3). --%>
+            <a
+              href={~p"/instances/#{@instance.id}"}
+              class="rounded border border-base-content/20 px-3 py-1.5 text-sm text-base-content/70 hover:bg-base-300"
+            >
+              Cancel
+            </a>
             <button
               type="button"
               phx-click="delete"

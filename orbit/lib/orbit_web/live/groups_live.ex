@@ -10,6 +10,8 @@ defmodule OrbitWeb.GroupsLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit, only: [empty_state: 1]
+
   alias Orbit.Accounts
   alias Orbit.Accounts.Admin
   alias Orbit.Audit
@@ -218,7 +220,11 @@ defmodule OrbitWeb.GroupsLive do
           </button>
         </form>
 
-        <div class="overflow-x-auto">
+        <.empty_state :if={@groups == []} title="No groups yet.">
+          Create the first one above — users and instances meet in groups; an account without a group sees no instances.
+        </.empty_state>
+
+        <div :if={@groups != []} class="overflow-x-auto">
           <table class="w-full max-w-2xl text-left text-sm">
             <thead class="text-base-content/60">
               <tr class="border-b border-base-300">
