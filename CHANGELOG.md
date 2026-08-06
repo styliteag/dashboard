@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Status colors in the light designs are readable again. Soft light's WARN
+  amber sat at 2.19:1 against the page — degraded badges, EXPIRING/UPDATE
+  chips and the root-terminal icon were near-invisible — and five of the
+  seven semantic colors missed WCAG AA in at least one light design; solid
+  red buttons in all three dark designs had the same problem. All tokens
+  are retuned (same hues, darker inks) and a computed contrast test now
+  pins every theme to >= 4.5:1, including themes added downstream.
 - Deleting an instance now really frees its name and slug. The delete is a
   soft delete, and while the name had the "active only" unique treatment,
   the slug's DB unique still counted deleted rows — recreating a box under
