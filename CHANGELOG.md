@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A shared status indicator: statuses carry a distinct glyph shape per
+  state (disc/triangle/cross/dash) on top of colour and the state word, so
+  up/warn/down stay distinguishable for color-blind operators and in
+  greyscale. First adopters: the /uptime state column and the VPN tunnel
+  dot.
 - New `/uptime` page (linked from the instances page): every instance as
   one availability lane over a shared 24h/7d/30d window — a fleet-wide
   outage reads as a vertical stripe — plus online/offline counts and a

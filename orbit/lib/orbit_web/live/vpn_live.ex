@@ -1009,17 +1009,10 @@ defmodule OrbitWeb.VpnLive do
         >
           {if MapSet.member?(@expanded, @key), do: "▾", else: "▸"}
         </button>
-        <%!-- title + sr-only text: colour must not be the only
-                         carrier of up/down (a11y), the dot has no label. --%>
-        <span
-          title={if @t.up, do: "Tunnel up", else: "Tunnel down"}
-          class={[
-            "inline-block h-2.5 w-2.5 rounded-full",
-            if(@t.up, do: "bg-primary", else: "bg-error")
-          ]}
-        >
-          <span class="sr-only">{if @t.up, do: "up", else: "down"}</span>
-        </span>
+        <.status
+          state={if @t.up, do: :up, else: :down}
+          label={if @t.up, do: "Tunnel up", else: "Tunnel down"}
+        />
       </td>
       <td class="px-3 py-2">
         <a

@@ -226,17 +226,10 @@ defmodule OrbitWeb.UptimeLive do
           <tbody>
             <tr :for={row <- @rows} class="border-b border-base-300/50 last:border-0">
               <td class="py-2 pr-3">
-                <%!-- title + sr-only text: colour must not be the only
-                     carrier of online/offline (a11y), the dot has no label. --%>
-                <span
-                  title={if row.online, do: "online", else: "offline"}
-                  class={[
-                    "inline-block h-2.5 w-2.5 rounded-full",
-                    if(row.online, do: "bg-primary", else: "bg-error")
-                  ]}
-                >
-                  <span class="sr-only">{if row.online, do: "online", else: "offline"}</span>
-                </span>
+                <.status
+                  state={if row.online, do: :up, else: :down}
+                  label={if row.online, do: "online", else: "offline"}
+                />
                 <span :if={row.maintenance} class="ml-1 text-[10px] text-warning">maint</span>
               </td>
               <td class="py-2 pr-3">

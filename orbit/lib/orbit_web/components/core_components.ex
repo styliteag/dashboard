@@ -451,6 +451,84 @@ defmodule OrbitWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Status indicator with three redundant channels: semantic colour, a
+  state-specific glyph (shape, not just hue — red/green blindness and
+  greyscale must survive), and the state word — visible in `:badge`,
+  `sr-only` + `title` in `:dot`.
+
+  Colour must never be the only carrier of up/down (UI/UX review 2026-08-06,
+  A-B3/S1; the rule was first written at the VPN tunnel dot). Use this for
+  every new status marker instead of a bare coloured `<span>`.
+
+  ## Examples
+
+      <.status state={:up} label="online" />
+      <.status state={:warn} label="degraded" variant={:badge} />
+  """
+  attr :state, :atom, required: true, values: [:up, :warn, :down, :unknown]
+  attr :label, :string, default: nil, doc: "state word; defaults to the state name"
+  attr :variant, :atom, default: :dot, values: [:dot, :badge]
+
+  def status(assigns) do
+    assigns = assign(assigns, :label, assigns.label || Atom.to_string(assigns.state))
+
+    ~H"""
+    <span
+      :if={@variant == :dot}
+      data-state={@state}
+      title={@label}
+      class={["inline-flex items-center", status_text(@state)]}
+    >
+      <.status_glyph state={@state} />
+      <span class="sr-only">{@label}</span>
+    </span>
+    <span
+      :if={@variant == :badge}
+      data-state={@state}
+      class={[
+        "inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs",
+        status_text(@state),
+        status_bg(@state)
+      ]}
+    >
+      <.status_glyph state={@state} />
+      {@label}
+    </span>
+    """
+  end
+
+  # One shape per state: disc / triangle / cross / dash. 10px viewBox,
+  # currentColor, so the glyph inherits the semantic text colour.
+  attr :state, :atom, required: true
+
+  defp status_glyph(assigns) do
+    ~H"""
+    <svg viewBox="0 0 10 10" class="h-2.5 w-2.5 shrink-0" aria-hidden="true" fill="currentColor">
+      <circle :if={@state == :up} cx="5" cy="5" r="4" />
+      <path :if={@state == :warn} d="M5 0.8 L9.4 9.2 H0.6 Z" />
+      <path
+        :if={@state == :down}
+        d="M1.6 1.6 L8.4 8.4 M8.4 1.6 L1.6 8.4"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+      />
+      <rect :if={@state == :unknown} x="1" y="4" width="8" height="2" rx="1" />
+    </svg>
+    """
+  end
+
+  defp status_text(:up), do: "text-primary"
+  defp status_text(:warn), do: "text-warning"
+  defp status_text(:down), do: "text-error"
+  defp status_text(:unknown), do: "text-base-content/60"
+
+  defp status_bg(:up), do: "bg-primary/15"
+  defp status_bg(:warn), do: "bg-warning/15"
+  defp status_bg(:down), do: "bg-error/15"
+  defp status_bg(:unknown), do: "bg-base-content/10"
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
