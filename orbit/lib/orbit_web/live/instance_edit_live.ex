@@ -190,7 +190,7 @@ defmodule OrbitWeb.InstanceEditLive do
         </div>
 
         <form phx-submit="save" class="space-y-4">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">General</h2>
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="Name">
@@ -224,7 +224,7 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">
               Intervals (blank = global default)
             </h2>
@@ -248,7 +248,7 @@ defmodule OrbitWeb.InstanceEditLive do
             </div>
           </div>
 
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">
               Credentials <span class="text-base-content/60">(blank = keep existing)</span>
             </h2>
@@ -281,7 +281,7 @@ defmodule OrbitWeb.InstanceEditLive do
             </.field>
           </div>
 
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Flags</h2>
             <div class="grid gap-2 md:grid-cols-2">
               <.flag name="instance[ssl_verify]" checked={@instance.ssl_verify} label="Verify TLS" />
@@ -313,7 +313,7 @@ defmodule OrbitWeb.InstanceEditLive do
                the dashboard to log in for swanctl and the ping monitors. --%>
           <div
             :if={@instance.device_type == "securepoint"}
-            class="rounded-lg border border-base-300 bg-base-200 p-4"
+            class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-1 text-sm font-medium text-base-content/70">SSH access</h2>
             <p class="mb-3 text-xs text-base-content/60">

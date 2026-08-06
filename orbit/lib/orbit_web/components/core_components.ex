@@ -659,6 +659,38 @@ defmodule OrbitWeb.CoreComponents do
     """
   end
 
+  @doc """
+  The app's panel surface — card border/background plus the THEME's box
+  radius. Radius comes from `--radius-box`, not a fixed utility: every
+  design defines its own shape (orbit 0.75rem, bench square, soft pills)
+  and hardcoded `rounded-lg` silently overrode all of them, reducing the
+  designs to palettes (UI/UX review 2026-08-06, D-8/D-10). New panels use
+  this component; existing markup was swept to the same token classes.
+  """
+  attr :density, :atom, default: :default, values: [:compact, :default, :roomy]
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def panel(assigns) do
+    ~H"""
+    <div
+      class={[
+        "rounded-[var(--radius-box)] border border-base-300 bg-base-200",
+        panel_pad(@density),
+        @class
+      ]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  defp panel_pad(:compact), do: "p-3"
+  defp panel_pad(:default), do: "p-4"
+  defp panel_pad(:roomy), do: "p-6"
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

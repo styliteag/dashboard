@@ -123,7 +123,7 @@ defmodule OrbitWeb.SelectionLive do
 
         <form
           phx-submit="add_rule"
-          class="mb-6 flex max-w-4xl flex-wrap items-end gap-2 rounded-lg border border-base-300 bg-base-200 p-3 text-sm"
+          class="mb-6 flex max-w-4xl flex-wrap items-end gap-2 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3 text-sm"
         >
           <label class="block">
             <span class="mb-1 block text-xs text-base-content/60">Consumer</span>

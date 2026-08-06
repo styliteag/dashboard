@@ -54,7 +54,7 @@ defmodule OrbitWeb.Components.CommentEditor do
            the list table's overflow-x-auto clip; starts hidden until placed. --%>
       <div
         data-cmt-panel
-        class="fixed z-50 hidden w-64 rounded-lg border border-base-300 bg-base-200 p-2 shadow-xl"
+        class="fixed z-50 hidden w-64 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-2 shadow-xl"
       >
         <form phx-submit="comment_save">
           <input type="hidden" name="instance_id" value={@instance_id} />

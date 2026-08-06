@@ -380,14 +380,14 @@ defmodule OrbitWeb.AuditLive do
 
         <div :if={@tab == :access}>
           <div class="mb-6 grid gap-4 md:grid-cols-4">
-            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
               <div class="text-xs text-base-content/60">Online now</div>
               <div class="mt-1 text-2xl text-primary">{length(@summary.online)}</div>
               <div :for={s <- Enum.take(@summary.online, 5)} class="mt-1 text-xs text-base-content/70">
                 {s.username || "user ##{s.user_id}"} · <OrbitWeb.Geo.ip_geo ip={s.ip} class="" />
               </div>
             </div>
-            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
               <div class="text-xs text-base-content/60">Logins ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-base-content">
                 {@summary.logins.ok}
@@ -396,7 +396,7 @@ defmodule OrbitWeb.AuditLive do
                 </span>
               </div>
             </div>
-            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
               <div class="text-xs text-base-content/60">Blocked ({window_label(@hours)})</div>
               <div class="mt-1 text-2xl text-error">
                 {@summary.blocks |> Enum.map(& &1.count) |> Enum.sum()}
@@ -405,7 +405,7 @@ defmodule OrbitWeb.AuditLive do
                 {b.reason} · {b.count}
               </div>
             </div>
-            <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+            <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
               <div class="text-xs text-base-content/60">Requests ({window_label(@hours)})</div>
               <div :for={p <- Enum.take(@summary.principals, 5)} class="mt-1 text-xs">
                 <span class="text-base-content/80">{p.principal}</span>

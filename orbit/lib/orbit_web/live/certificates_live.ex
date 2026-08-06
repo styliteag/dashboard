@@ -287,7 +287,10 @@ defmodule OrbitWeb.CertificatesLive do
           No matches.
         </div>
 
-        <div :if={@visible_rows != []} class="overflow-x-auto rounded-lg border border-base-300">
+        <div
+          :if={@visible_rows != []}
+          class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
+        >
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>

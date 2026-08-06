@@ -29,7 +29,7 @@ defmodule OrbitWeb.Components.ListKit do
 
   def stat_tile(assigns) do
     ~H"""
-    <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+    <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
       <div class="text-xs text-base-content/60">{@label}</div>
       <div class={["text-2xl font-semibold", @color]}>{@value}</div>
       <div :if={@hint != []} class="mt-0.5 text-[11px] leading-tight text-base-content/50">
@@ -54,7 +54,7 @@ defmodule OrbitWeb.Components.ListKit do
 
   def empty_state(assigns) do
     ~H"""
-    <div class="rounded-lg border border-dashed border-base-300 bg-base-200/40 px-4 py-8 text-center">
+    <div class="rounded-[var(--radius-box)] border border-dashed border-base-300 bg-base-200/40 px-4 py-8 text-center">
       <p class="text-sm text-base-content/70">{@title}</p>
       <p :if={@inner_block != []} class="mx-auto mt-1 max-w-lg text-xs text-base-content/50">
         {render_slot(@inner_block)}
@@ -150,7 +150,7 @@ defmodule OrbitWeb.Components.ListKit do
       phx-value-bucket={@value_name}
       aria-pressed={to_string(@active)}
       class={[
-        "rounded-lg border p-3 text-left",
+        "rounded-[var(--radius-box)] border p-3 text-left",
         if(@active,
           do: "border-primary bg-base-200",
           else: "border-base-300 bg-base-200 hover:border-base-content/20"

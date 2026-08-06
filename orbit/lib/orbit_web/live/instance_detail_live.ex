@@ -1632,7 +1632,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp ip_card(assigns) do
     ~H"""
-    <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+    <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
       <div class="flex items-center gap-2 text-xs text-base-content/60">
         <Icons.icon name={:globe} class={["h-3.5 w-3.5", @tone]} /> {@label}
       </div>
@@ -1782,7 +1782,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <.instance_tabs instance={@instance} active={@tab} entry={@cache_entry} patch?={true} />
 
         <div :if={@tab == "overview"} class="grid gap-6 md:grid-cols-2">
-          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Instance</h2>
             <dl class="space-y-1 text-sm">
               <.kv label="Type" value={@instance.device_type} />
@@ -1797,7 +1797,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             </dl>
           </div>
 
-          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Live</h2>
             <div :if={not @connected and @system == %{}} class="text-sm text-base-content/60">
               No live data — agent not pushing.
@@ -1840,7 +1840,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              (ConfigSection parity). Sections the box never reported stay
              hidden (no-data ⇒ no tile, never a fake 0). --%>
         <div :if={@tab == "overview"} class="mt-6 grid gap-6 md:grid-cols-2">
-          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">System health</h2>
             <dl class="space-y-1 text-sm">
               <.kv
@@ -1874,7 +1874,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           <%!-- Inside the overview-only grid — a stray tab=="config" gate here
                meant this card rendered on NO tab at all and left a hole next
                to System health. --%>
-          <div class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Config revision</h2>
             <dl :if={@config_rev != %{}} class="space-y-1 text-sm">
               <.kv label="Last change" value={rev_time(@config_rev["revision_time"])} />
@@ -1889,7 +1889,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "checks" and @checks != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Checks <span class="text-base-content/60">({length(@checks)})</span>
@@ -1976,7 +1976,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "agent" and Instance.agent_mode?(@instance)}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Agent</h2>
           <dl class="space-y-1 text-sm">
@@ -2157,7 +2157,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             @tab == "agent" and not Instance.agent_mode?(@instance) and @writable and
               @instance.device_type != "securepoint"
           }
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Agent</h2>
           <p class="mb-2 text-sm text-base-content/60">
@@ -2184,7 +2184,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "firmware"}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 flex items-center gap-2 text-sm font-medium text-base-content/70">
             Firmware
@@ -2407,7 +2407,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              agent echoes each monitor's id, so results join by id. --%>
         <div
           :if={@tab == "connectivity" and Instance.monitors_runnable?(@instance)}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Connectivity monitors</h2>
 
@@ -2511,7 +2511,7 @@ defmodule OrbitWeb.InstanceDetailLive do
              reload path (never `service strongswan restart`). --%>
         <div
           :if={@tab == "security" and @ipsec != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-medium text-base-content/70">
@@ -2861,7 +2861,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "network" and @gateways != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Gateways</h2>
           <div class="overflow-x-auto">
@@ -2894,7 +2894,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "network" and @interfaces != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <%!-- Address-less interfaces (VLAN legs, bridge members, bonds —
                dozens on a hypervisor) hide by default; the toggle shows the
@@ -2953,7 +2953,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <div :if={@tab in ["overview", "network"]} class="mt-6 grid items-start gap-6 md:grid-cols-2">
           <div
             :if={@tab == "overview" and @services != []}
-            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
+            class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Services</h2>
             <ul class="space-y-1 text-sm">
@@ -2971,7 +2971,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={@tab == "overview" and @disks != []}
-            class="min-w-0 rounded-lg border border-base-300 bg-base-200 p-4"
+            class="min-w-0 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
           >
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Disks</h2>
             <ul class="space-y-1 text-sm">
@@ -2989,7 +2989,7 @@ defmodule OrbitWeb.InstanceDetailLive do
               (direct/Securepoint instances never have pf_top). --%>
         <div
           :if={@tab == "network" and (@pf_top["total_states"] || 0) > 0}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Top Talkers
@@ -3020,7 +3020,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
           <div
             :if={(@pf_top["top_flows"] || []) != []}
-            class="mt-4 overflow-x-auto rounded-lg border border-base-300"
+            class="mt-4 overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
           >
             <table class="w-full min-w-[46rem] text-sm">
               <thead class="bg-base-100 text-left text-xs text-base-content/60">
@@ -3055,10 +3055,10 @@ defmodule OrbitWeb.InstanceDetailLive do
               not_after at render so the countdown never freezes on stale pushes. --%>
         <div
           :if={@tab == "overview" and @certificates != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Certificates</h2>
-          <div class="overflow-x-auto rounded-lg border border-base-300">
+          <div class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300">
             <table class="w-full min-w-[46rem] text-sm">
               <thead class="bg-base-100 text-left text-xs text-base-content/60">
                 <tr>
@@ -3112,7 +3112,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "checks" and @check_history != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Check history</h2>
           <div class="overflow-x-auto">
@@ -3141,7 +3141,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <%!-- Checkmk tab (linux nodes): what Orbit exports to Checkmk for this
              box, and the raw check_mk_agent.linux dump the agent pushed. --%>
         <section :if={@tab == "checkmk"} class="mt-6 space-y-6">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-1 text-sm font-medium text-base-content/70">Orbit → Checkmk export</h2>
             <p class="mb-3 text-xs text-base-content/50">
               The services Orbit delivers to a Checkmk server for this instance.
@@ -3161,7 +3161,7 @@ defmodule OrbitWeb.InstanceDetailLive do
             <p :if={@checks == []} class="text-xs text-base-content/50">No checks evaluated.</p>
           </div>
 
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <div class="mb-3 flex items-baseline justify-between">
               <h2 class="text-sm font-medium text-base-content/70">Agent output</h2>
               <span class="font-mono text-xs text-base-content/40">check_mk_agent.linux</span>
@@ -3192,7 +3192,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "log" and @firewall_log != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Firewall log (latest)</h2>
           <div class="overflow-x-auto">
@@ -3218,7 +3218,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "log" and (@logfiles != [] or @log_events != [])}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Logs</h2>
           <div
@@ -3296,7 +3296,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
         <div
           :if={@tab == "config" and @config_backups != []}
-          class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">
             Config backups <span class="text-base-content/60">({length(@config_backups)})</span>
@@ -3413,7 +3413,10 @@ defmodule OrbitWeb.InstanceDetailLive do
           </div>
         </div>
 
-        <div :if={@tab == "overview"} class="mt-6 rounded-lg border border-base-300 bg-base-200 p-4">
+        <div
+          :if={@tab == "overview"}
+          class="mt-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
+        >
           <h2 class="mb-3 text-sm font-medium text-base-content/70">Notes</h2>
 
           <form :if={@writable} phx-submit="comment_save" class="mb-4 space-y-2">
@@ -3501,7 +3504,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   # One Top-Talkers table (source or destination) — ip / states / bytes.
   defp talker_table(assigns) do
     ~H"""
-    <div class="overflow-x-auto rounded-lg border border-base-300">
+    <div class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300">
       <table class="w-full min-w-[46rem] text-sm">
         <thead class="bg-base-100 text-left text-xs text-base-content/60">
           <tr>

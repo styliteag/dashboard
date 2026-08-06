@@ -181,7 +181,7 @@ defmodule OrbitWeb.Components.Nav do
         </svg>
       </summary>
 
-      <div class="absolute right-0 top-10 z-50 w-60 overflow-hidden rounded-lg border border-base-300 bg-base-200 shadow-xl">
+      <div class="absolute right-0 top-10 z-50 w-60 overflow-hidden rounded-[var(--radius-box)] border border-base-300 bg-base-200 shadow-xl">
         <div class="border-b border-base-300 px-3 py-2">
           <p class="truncate text-sm font-medium text-base-content">{@current_user.username}</p>
           <p class="text-xs text-base-content/50">{role_label(@current_user)}</p>
@@ -298,7 +298,7 @@ defmodule OrbitWeb.Components.Nav do
       >
         Theme
       </summary>
-      <div class="absolute right-0 top-8 z-50 w-52 rounded-lg border border-base-300 bg-base-200 p-3 shadow-xl">
+      <div class="absolute right-0 top-8 z-50 w-52 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3 shadow-xl">
         <.theme_controls />
       </div>
     </details>

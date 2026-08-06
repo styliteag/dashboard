@@ -177,7 +177,7 @@ defmodule OrbitWeb.CaptureLive do
         <%!-- Two modes, and they were two unlabelled forms stacked on top of
              each other with the same field names — impossible to tell apart.
              Each gets its own card and a line saying what it does. --%>
-        <div class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4">
+        <div class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
           <h2 class="text-sm font-medium text-base-content/70">Live stream</h2>
           <p class="mb-3 text-xs text-base-content/60">
             Streams packets to this page as they arrive. Nothing is stored — close the page
@@ -215,7 +215,7 @@ defmodule OrbitWeb.CaptureLive do
         </div>
 
         <%!-- Snapshot mode: bounded capture, downloadable pcap + parsed view. --%>
-        <div class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4">
+        <div class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
           <h2 class="text-sm font-medium text-base-content/70">Snapshot</h2>
           <p class="mb-3 text-xs text-base-content/60">
             Captures for a fixed number of seconds, then keeps the result: a packet list you
@@ -261,7 +261,7 @@ defmodule OrbitWeb.CaptureLive do
 
         <div
           :if={@snap_packets != []}
-          class="mb-4 rounded-lg border border-base-300 bg-base-100 p-3"
+          class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3"
         >
           <form phx-change="snap_filter" onsubmit="return false" class="mb-2">
             <input
@@ -336,7 +336,7 @@ defmodule OrbitWeb.CaptureLive do
           data-instance-id={@instance.id}
           data-interface={@interface}
           data-filter={@filter}
-          class="rounded-lg border border-base-300 bg-base-100 p-3"
+          class="rounded-[var(--radius-box)] border border-base-300 bg-base-100 p-3"
         >
           <div class="mb-2 text-xs text-base-content/60">
             Status: <span data-cap-status class="text-base-content/80">connecting…</span>

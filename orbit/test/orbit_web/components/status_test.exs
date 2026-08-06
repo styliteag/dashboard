@@ -46,4 +46,23 @@ defmodule OrbitWeb.Components.StatusTest do
   test "label defaults to the state name" do
     assert dot(:down) =~ ~s|title="down"|
   end
+
+  # UI/UX review 2026-08-06, D-8: panels take the THEME's box radius — a
+  # fixed rounded-lg silently overrode every design's shape tokens.
+  test "panel uses the theme radius token and maps densities to padding" do
+    panel = fn opts ->
+      render_component(
+        &OrbitWeb.CoreComponents.panel/1,
+        Keyword.merge(
+          [inner_block: [%{inner_block: fn _, _ -> "BODY" end}]],
+          opts
+        )
+      )
+    end
+
+    assert panel.([]) =~ "rounded-[var(--radius-box)]"
+    assert panel.([]) =~ "p-4"
+    assert panel.(density: :compact) =~ "p-3"
+    assert panel.(density: :roomy) =~ "p-6"
+  end
 end

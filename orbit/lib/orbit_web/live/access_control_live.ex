@@ -206,7 +206,7 @@ defmodule OrbitWeb.AccessControlLive do
         </h1>
 
         <div class="mb-4 grid gap-3 text-sm md:grid-cols-3">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">GeoIP database</div>
             <div class={if @db_available, do: "text-primary", else: "text-error"}>
               {if @db_available, do: "loaded", else: "NOT available (gate fails open)"}
@@ -225,7 +225,7 @@ defmodule OrbitWeb.AccessControlLive do
               {if @refresh_busy, do: "Downloading…", else: "Refresh now"}
             </button>
           </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">CrowdSec blocklist</div>
             <div class={if @crowdsec.configured, do: "text-primary", else: "text-base-content/60"}>
               {if @crowdsec.configured,
@@ -233,7 +233,7 @@ defmodule OrbitWeb.AccessControlLive do
                 else: "not configured"}
             </div>
           </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">Denials (all time)</div>
             <div :for={{reason, n} <- @blocks} class="text-xs text-base-content/80">
               {reason}: {n}
@@ -255,7 +255,10 @@ defmodule OrbitWeb.AccessControlLive do
           {@warning}
         </div>
 
-        <form phx-submit="save" class="rounded-lg border border-base-300 bg-base-200 p-4 text-sm">
+        <form
+          phx-submit="save"
+          class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 text-sm"
+        >
           <label class="mb-3 flex items-center gap-2 text-base-content/80">
             <input type="hidden" name="cfg[enabled]" value="false" />
             <input

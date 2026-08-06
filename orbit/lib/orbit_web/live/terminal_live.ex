@@ -57,7 +57,7 @@ defmodule OrbitWeb.TerminalLive do
             phx-hook="Terminal"
             phx-update="ignore"
             data-instance-id={@instance.id}
-            class="rounded-lg border border-base-300 bg-black p-3"
+            class="rounded-[var(--radius-box)] border border-base-300 bg-black p-3"
           >
             <div class="mb-2 flex items-center gap-2 text-xs">
               <span data-term-status class="text-xs text-warning">connecting…</span>

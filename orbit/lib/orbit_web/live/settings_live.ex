@@ -335,7 +335,7 @@ defmodule OrbitWeb.SettingsLive do
         <%!-- General tab: restart card (applies needs-restart settings). --%>
         <div
           :if={@tab == "general"}
-          class="mt-4 rounded-lg border border-base-300 bg-base-200/60 p-4"
+          class="mt-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200/60 p-4"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
@@ -446,7 +446,7 @@ defmodule OrbitWeb.SettingsLive do
                is the part people get wrong. --%>
           <div>
             <p class="mb-1 text-xs text-base-content/60">Example scrape config:</p>
-            <pre class="overflow-x-auto rounded-lg border border-base-300 bg-base-200 p-3 font-mono text-xs text-base-content/80">scrape_configs:
+            <pre class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3 font-mono text-xs text-base-content/80">scrape_configs:
     - job_name: orbit
     metrics_path: /api/export/prometheus
     scheme: https

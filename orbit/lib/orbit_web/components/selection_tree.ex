@@ -295,7 +295,7 @@ defmodule OrbitWeb.Components.SelectionTree do
       <div class="mt-4 grid gap-2 sm:grid-cols-2">
         <label
           :for={cat <- Selection.categories_for(@consumer)}
-          class="flex cursor-pointer items-center justify-between rounded-lg border border-base-300 bg-base-100/60 px-3 py-2"
+          class="flex cursor-pointer items-center justify-between rounded-[var(--radius-box)] border border-base-300 bg-base-100/60 px-3 py-2"
         >
           <span class="text-sm text-base-content/80">{category_label(cat)}</span>
           <input
@@ -326,7 +326,7 @@ defmodule OrbitWeb.Components.SelectionTree do
       <div class="mt-2 space-y-2">
         <div
           :for={inst <- @preview}
-          class="overflow-hidden rounded-lg border border-base-300"
+          class="overflow-hidden rounded-[var(--radius-box)] border border-base-300"
         >
           <button
             phx-click="toggle_open"

@@ -504,7 +504,7 @@ defmodule OrbitWeb.ConnectivityLive do
 
         <div
           :if={@fleet_graph and @visible_rows != []}
-          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <div :for={row <- fleet_lanes(@visible_rows, @fleet_events, @fleet_window)} class="mb-1.5">
             <div class="flex items-center gap-2">

@@ -885,7 +885,7 @@ defmodule OrbitWeb.VpnLive do
 
         <div
           :if={@fleet_graph and @rows != []}
-          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <div :for={row <- fleet_lanes(@rows, @fleet_events, @fleet_window)} class="mb-1.5">
             <div class="flex items-center gap-2">
@@ -911,7 +911,10 @@ defmodule OrbitWeb.VpnLive do
           </div>
         </div>
 
-        <div :if={@rows != []} class="overflow-x-auto rounded-lg border border-base-300">
+        <div
+          :if={@rows != []}
+          class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
+        >
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">
               <tr>

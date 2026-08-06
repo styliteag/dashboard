@@ -670,7 +670,7 @@ defmodule OrbitWeb.InstancesLive do
 
         <div
           :if={@bulk_results}
-          class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4 text-sm"
+          class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 text-sm"
         >
           <div class="mb-2 flex items-center gap-3">
             <span class="text-base-content/80">
@@ -716,7 +716,7 @@ defmodule OrbitWeb.InstancesLive do
         <div :if={@view == "grid" and @rows != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div
             :for={i <- @rows}
-            class="rounded-lg border border-base-300 bg-base-200 p-4 transition-colors hover:border-base-content/20"
+            class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 transition-colors hover:border-base-content/20"
           >
             <div class="flex items-center gap-2">
               <input
@@ -785,7 +785,7 @@ defmodule OrbitWeb.InstancesLive do
         <%!-- List view --%>
         <div
           :if={@view == "list" and @rows != []}
-          class="overflow-x-auto rounded-lg border border-base-300"
+          class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/60">

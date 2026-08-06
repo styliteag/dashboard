@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The designs finally control their shapes: every panel, tile and card now
+  takes its corner radius from the active design's own token instead of a
+  hardcoded value — Bench gets its square corners, Soft its soft pills,
+  exactly what those designs always declared but never received. New
+  panels use a shared component with three densities.
 - A shared status indicator: statuses carry a distinct glyph shape per
   state (disc/triangle/cross/dash) on top of colour and the state word, so
   up/warn/down stay distinguishable for color-blind operators and in

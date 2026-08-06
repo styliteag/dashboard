@@ -165,15 +165,15 @@ defmodule OrbitWeb.UptimeLive do
         </div>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">Total</div>
             <div class="text-xl font-medium">{length(@rows)}</div>
           </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">Online</div>
             <div class="text-xl font-medium text-primary">{@online_count}</div>
           </div>
-          <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/60">Offline</div>
             <div class="text-xl font-medium text-error">{@offline_count}</div>
           </div>
@@ -181,7 +181,10 @@ defmodule OrbitWeb.UptimeLive do
 
         <%!-- Fleet graph: shared window, one availability lane per box, so a
              fleet-wide event reads as a vertical stripe. --%>
-        <div :if={@rows != []} class="mb-4 rounded-lg border border-base-300 bg-base-200 p-4">
+        <div
+          :if={@rows != []}
+          class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
+        >
           <div :for={row <- @rows} class="mb-1.5">
             <div
               class="flex cursor-pointer items-center gap-2"

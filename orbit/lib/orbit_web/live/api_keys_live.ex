@@ -172,7 +172,7 @@ defmodule OrbitWeb.ApiKeysLive do
         <form
           :if={@show_create}
           phx-submit="create_key"
-          class="mb-6 max-w-3xl rounded-lg border border-base-300 bg-base-200 p-4 text-sm"
+          class="mb-6 max-w-3xl rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 text-sm"
         >
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">

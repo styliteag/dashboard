@@ -317,7 +317,7 @@ defmodule OrbitWeb.GroupsLive do
 
         <%!-- Instance assignment (GroupsPage parity) — the one place to move
              instances between groups; the move applies immediately. --%>
-        <div class="mt-8 max-w-2xl rounded-lg border border-base-300 bg-base-200 p-4">
+        <div class="mt-8 max-w-2xl rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
           <h2 class="text-sm font-medium text-base-content/80">Instance assignment</h2>
           <p class="mt-1 text-xs text-base-content/60">
             Pick a group per instance — the move applies immediately.
@@ -367,7 +367,7 @@ defmodule OrbitWeb.GroupsLive do
     ~H"""
     <form
       phx-submit="channel_save"
-      class="rounded-lg border border-base-300 bg-base-100/40 p-3"
+      class="rounded-[var(--radius-box)] border border-base-300 bg-base-100/40 p-3"
     >
       <input type="hidden" name="group_id" value={@group_id} />
       <input type="hidden" name="channel" value={@channel} />

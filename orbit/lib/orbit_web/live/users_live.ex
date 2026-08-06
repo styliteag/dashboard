@@ -157,7 +157,7 @@ defmodule OrbitWeb.UsersLive do
         <form
           :if={@show_create}
           phx-submit="create_user"
-          class="mb-6 rounded-lg border border-base-300 bg-base-200 p-4"
+          class="mb-6 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
           <div class="grid gap-3 md:grid-cols-3">
             <label class="block text-sm">

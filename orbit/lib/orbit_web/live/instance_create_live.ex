@@ -148,7 +148,7 @@ defmodule OrbitWeb.InstanceCreateLive do
         </div>
 
         <form phx-change="form_change" phx-submit="create" class="space-y-4">
-          <div class="rounded-lg border border-base-300 bg-base-200 p-4">
+          <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="Name" required>
                 <input
