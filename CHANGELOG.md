@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Deleting an instance now really frees its name and slug. The delete is a
+  soft delete, and while the name had the "active only" unique treatment,
+  the slug's DB unique still counted deleted rows — recreating a box under
+  its old name failed with "instance name or slug already exists" although
+  no such instance was visible anywhere.
+
 ## [4.3.4] - 2026-08-06
 
 ### Fixed
