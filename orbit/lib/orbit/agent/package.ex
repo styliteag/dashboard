@@ -13,9 +13,9 @@ defmodule Orbit.Agent.Package do
     historical name so the deployed firewall fleet's self-update path is
     byte-for-byte unchanged.
   - `:linux` — `orbit_agent_linux.py` (generic Linux nodes, §25). Served
-    to `device_type == "linux"` instances; on the box it still lands at
-    /usr/local/orbit-agent/orbit_agent.py, so supervisor + systemd unit
-    stay untouched.
+    to every Linux-based device type (`linux`, `proxmox`, `truenas`); on
+    the box it still lands at /usr/local/orbit-agent/orbit_agent.py, so
+    supervisor + systemd unit stay untouched.
 
   Agent files are mounted read-only at AGENT_DIR (/app/agent), same as the
   python backend.
@@ -31,13 +31,23 @@ defmodule Orbit.Agent.Package do
   @doc "The two agent lines."
   def lines, do: Map.keys(@agent_files)
 
+  # TrueNAS deliberately counts as Linux: the supported target is SCALE
+  # (Debian). A CORE (FreeBSD) box would need the firewall line's fetch/rc.d
+  # plumbing that its EOL trajectory no longer justifies.
+  @linux_types ~w(linux proxmox truenas)
+
   @doc """
-  Which agent line an instance's device_type gets. Everything that is not a
-  Linux node is the firewall line — Securepoint is pull-only and never asks.
+  Which agent line an instance's device_type gets. Every Linux-based device
+  type (#{Enum.join(@linux_types, ", ")}) is the linux line; everything else
+  is the firewall line — Securepoint is pull-only and never asks.
   """
   @spec line_for(String.t() | nil) :: :firewall | :linux
-  def line_for("linux"), do: :linux
+  def line_for(type) when type in @linux_types, do: :linux
   def line_for(_other), do: :firewall
+
+  @doc "True when the device_type runs the linux agent line (systemd, curl)."
+  @spec linux_line?(String.t() | nil) :: boolean()
+  def linux_line?(type), do: line_for(type) == :linux
 
   @doc "AGENT_DIR from the env (defaults to /app/agent)."
   def agent_dir, do: System.get_env("AGENT_DIR", "/app/agent")

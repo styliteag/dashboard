@@ -962,7 +962,16 @@ defmodule OrbitWeb.InstanceDetailLive do
     |> Enum.join("\n\n")
   end
 
-  defp install_download_cmds(%Instance{device_type: "linux"}) do
+  # Dispatch on the agent LINE, not on device_type == "linux": proxmox and
+  # truenas are Debian-based too — the FreeBSD block's fetch/rc.d/sysrc
+  # simply don't exist there ("Proxmox has no fetch", 2026-08-06).
+  defp install_download_cmds(%Instance{device_type: type} = inst) do
+    if Orbit.Agent.Package.linux_line?(type),
+      do: install_download_linux(),
+      else: install_download_freebsd(inst)
+  end
+
+  defp install_download_linux do
     base = dash_url()
 
     """
@@ -975,7 +984,7 @@ defmodule OrbitWeb.InstanceDetailLive do
     """
   end
 
-  defp install_download_cmds(_inst) do
+  defp install_download_freebsd(_inst) do
     base = dash_url()
 
     """
@@ -989,7 +998,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   defp install_config_cmd(inst, enroll_code) do
-    interval = if inst.device_type == "linux", do: 120, else: 30
+    interval = if Orbit.Agent.Package.linux_line?(inst.device_type), do: 120, else: 30
 
     cred =
       case enroll_code do
@@ -1014,13 +1023,13 @@ defmodule OrbitWeb.InstanceDetailLive do
   # snippet) must end with the agent running on the NEW config. `--now` leaves
   # a running unit alone with its old config, and on FreeBSD `start` aborts on
   # "daemon: process already running" and the box quietly keeps the old agent.
-  defp install_start_cmd(%Instance{device_type: "linux"}) do
-    "systemctl daemon-reload\nsystemctl enable orbit-agent\nsystemctl restart orbit-agent\n" <>
-      "# verify it came up and is pushing:\njournalctl -u orbit-agent -n 30 --no-pager"
-  end
-
-  defp install_start_cmd(_inst) do
-    "sysrc orbit_agent_enable=YES\nservice orbit_agent restart"
+  defp install_start_cmd(%Instance{device_type: type}) do
+    if Orbit.Agent.Package.linux_line?(type) do
+      "systemctl daemon-reload\nsystemctl enable orbit-agent\nsystemctl restart orbit-agent\n" <>
+        "# verify it came up and is pushing:\njournalctl -u orbit-agent -n 30 --no-pager"
+    else
+      "sysrc orbit_agent_enable=YES\nservice orbit_agent restart"
+    end
   end
 
   # One place for both ways a code is minted: the agent card's button and the
@@ -2049,7 +2058,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                  needs an explicit nil check — `struct and x` raises
                  BadBooleanError while rendering. --%>
             <button
-              :if={@agent != nil and @instance.device_type != "linux"}
+              :if={@agent != nil and not Orbit.Agent.Package.linux_line?(@instance.device_type)}
               phx-click="agent_test_api"
               title="Authenticated API call through the agent relay"
               class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"

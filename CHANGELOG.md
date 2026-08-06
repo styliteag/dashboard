@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the slug's DB unique still counted deleted rows — recreating a box under
   its old name failed with "instance name or slug already exists" although
   no such instance was visible anywhere.
+- Proxmox and TrueNAS instances now get the Linux agent everywhere: the
+  install card shows the systemd/curl commands (it printed FreeBSD
+  `fetch`/`rc.d`/`sysrc` lines that don't exist on a Debian-based box), and
+  self-update, Checkmk-script refresh, tabs and the agent card treat both
+  as Linux nodes instead of firewalls.
 
 ## [4.3.4] - 2026-08-06
 

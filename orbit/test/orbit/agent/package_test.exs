@@ -49,8 +49,13 @@ defmodule Orbit.Agent.PackageTest do
     assert params["signature"] == "bGludXgtc2ln"
   end
 
-  test "line_for: only device_type linux gets the linux line" do
+  test "line_for: every Linux-based device type gets the linux line" do
+    # Regression: proxmox/truenas resolved to :firewall — the install card
+    # printed FreeBSD commands (fetch/rc.d) for a Debian hypervisor, and a
+    # later self-update would have pushed the FreeBSD agent onto the box.
     assert Package.line_for("linux") == :linux
+    assert Package.line_for("proxmox") == :linux
+    assert Package.line_for("truenas") == :linux
     assert Package.line_for("opnsense") == :firewall
     assert Package.line_for("pfsense") == :firewall
     assert Package.line_for("securepoint") == :firewall

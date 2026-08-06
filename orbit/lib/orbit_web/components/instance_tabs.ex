@@ -38,7 +38,9 @@ defmodule OrbitWeb.Components.InstanceTabs do
   """
   def tabs_for(inst, entry \\ nil) do
     agent = Instance.agent_mode?(inst)
-    linux = inst.device_type == "linux"
+    # Line-based, not name-based: proxmox/truenas are Linux nodes too — no
+    # config.xml, no VPN, Checkmk-dump tab instead.
+    linux = Orbit.Agent.Package.linux_line?(inst.device_type)
 
     # Linux nodes push a raw Checkmk-agent dump; the tab shows it and what
     # Orbit exports to Checkmk for the box.

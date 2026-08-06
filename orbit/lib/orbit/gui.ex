@@ -19,7 +19,9 @@ defmodule Orbit.GUI do
   def openable(%Instance{} = inst) do
     cond do
       not Application.get_env(:orbit, :gui_proxy_enabled, false) -> {:error, :disabled}
-      inst.device_type in ["linux"] -> {:error, :no_webif}
+      # Linux-line nodes: proxmox/truenas do have web UIs, but the agent's
+      # gui.login session-minting only exists on the firewall platforms.
+      Orbit.Agent.Package.linux_line?(inst.device_type) -> {:error, :no_webif}
       Orbit.Hub.get(inst.id) == nil -> {:error, :not_connected}
       true -> :ok
     end

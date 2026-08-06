@@ -39,11 +39,14 @@ defmodule OrbitWeb.AgentSocket do
      }}
   end
 
-  # Linux nodes only: no other platform runs the vendored script.
-  defp maybe_refresh_checkmk(instance_id, "linux", reported_sha) do
+  # Linux-line nodes only: no other platform runs the vendored script.
+  defp maybe_refresh_checkmk(instance_id, device_type, reported_sha) do
     served = Orbit.Agent.Package.checkmk_sha256()
 
     cond do
+      not Orbit.Agent.Package.linux_line?(device_type) ->
+        :ok
+
       is_nil(served) ->
         :ok
 
@@ -65,8 +68,6 @@ defmodule OrbitWeb.AgentSocket do
         end
     end
   end
-
-  defp maybe_refresh_checkmk(_instance_id, _platform, _sha), do: :ok
 
   @impl true
   def handle_in({text, [opcode: :text]}, state) do
