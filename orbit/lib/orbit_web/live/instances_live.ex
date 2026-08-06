@@ -439,14 +439,6 @@ defmodule OrbitWeb.InstancesLive do
           >
             Export CSV
           </a>
-          <%!-- Right-aligned: /uptime is navigation, not an action like the
-               create/export buttons next to the title. --%>
-          <.link
-            navigate={~p"/uptime"}
-            class="ml-auto rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
-          >
-            Uptime
-          </.link>
         </div>
 
         <%!-- KPI tiles double as status filter (US-3.4 / KpiTile parity);
@@ -595,6 +587,14 @@ defmodule OrbitWeb.InstancesLive do
             >
               {v}
             </button>
+            <%!-- Third "view" of the same fleet — navigates to /uptime
+                 rather than toggling, so it is never the active segment. --%>
+            <.link
+              navigate={~p"/uptime"}
+              class="rounded-md px-3 py-1.5 text-base-content/70 hover:text-base-content"
+            >
+              Uptime
+            </.link>
           </div>
           <div :if={@writable and MapSet.size(@selected) > 0} class="flex items-center gap-2">
             <span class="text-xs text-base-content/60">{MapSet.size(@selected)} selected:</span>
