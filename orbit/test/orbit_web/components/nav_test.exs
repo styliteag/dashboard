@@ -93,4 +93,24 @@ defmodule OrbitWeb.Components.NavTest do
     assert nav(user(role: "admin")) =~ ~s|href="/settings"|
     assert nav(user(role: "admin")) =~ ~s|href="/audit"|
   end
+
+  # UI/UX review 2026-08-06, A-m9: the active page was marked by color alone;
+  # assistive tech needs aria-current="page" on exactly the active link.
+  test "the active nav item carries aria-current, inactive ones do not" do
+    active =
+      render_component(&Nav.top_nav/1,
+        active: :instances,
+        current_user: user(groups: [%Group{id: 1, name: "A"}])
+      )
+
+    assert active =~ ~s|aria-current="page"|
+
+    none =
+      render_component(&Nav.top_nav/1,
+        active: nil,
+        current_user: user(groups: [%Group{id: 1, name: "A"}])
+      )
+
+    refute none =~ ~s|aria-current="page"|
+  end
 end

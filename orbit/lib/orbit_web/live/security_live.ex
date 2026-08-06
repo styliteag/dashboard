@@ -125,7 +125,7 @@ defmodule OrbitWeb.SecurityLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:security} current_user={@current_user} />
 
       <%!-- Left-aligned like every other page (was mx-auto-centered, the

@@ -290,7 +290,7 @@ defmodule OrbitWeb.FirmwareLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:firmware} current_user={@current_user} />
 
       <section class="p-6">
@@ -439,6 +439,7 @@ defmodule OrbitWeb.FirmwareLive do
                     phx-click="select_all"
                     checked={@all_eligible_selected}
                     title="Select all update-eligible rows"
+                    aria-label="Select all update-eligible instances"
                     class="accent-primary"
                   />
                 </th>
@@ -469,6 +470,7 @@ defmodule OrbitWeb.FirmwareLive do
                     phx-click="toggle_select"
                     phx-value-id={r.id}
                     checked={MapSet.member?(@selected, r.id)}
+                    aria-label={"Select #{r.name}"}
                     class="accent-primary"
                   />
                 </td>

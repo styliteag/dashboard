@@ -417,7 +417,7 @@ defmodule OrbitWeb.InstancesLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="p-6">
@@ -657,6 +657,7 @@ defmodule OrbitWeb.InstancesLive do
                 phx-click="toggle_select"
                 phx-value-id={i.id}
                 checked={MapSet.member?(@selected, i.id)}
+                aria-label={"Select #{i.name}"}
                 class="accent-primary"
               />
               <a
@@ -728,6 +729,7 @@ defmodule OrbitWeb.InstancesLive do
                     checked={
                       MapSet.size(@selected) > 0 and MapSet.size(@selected) == @selectable_count
                     }
+                    aria-label="Select all instances"
                     class="accent-primary"
                   />
                 </th>
@@ -754,6 +756,7 @@ defmodule OrbitWeb.InstancesLive do
                     phx-click="toggle_select"
                     phx-value-id={i.id}
                     checked={MapSet.member?(@selected, i.id)}
+                    aria-label={"Select #{i.name}"}
                     class="accent-primary"
                   />
                 </td>
@@ -869,10 +872,18 @@ defmodule OrbitWeb.InstancesLive do
 
   defp sort_th(assigns) do
     ~H"""
-    <th class="px-3 py-2 font-medium">
+    <th
+      scope="col"
+      aria-sort={
+        if @sort_col == @col,
+          do: if(@sort_dir == :asc, do: "ascending", else: "descending"),
+          else: "none"
+      }
+      class="px-3 py-2 font-medium"
+    >
       <button phx-click="sort" phx-value-col={@col} class="hover:text-base-content/80">
         {@label}
-        <span :if={@sort_col == @col}>{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
+        <span :if={@sort_col == @col} aria-hidden="true">{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>
     </th>
     """

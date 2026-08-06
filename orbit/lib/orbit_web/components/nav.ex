@@ -314,6 +314,7 @@ defmodule OrbitWeb.Components.Nav do
     ~H"""
     <a
       href={@href}
+      aria-current={if @active == @key, do: "page"}
       class={[
         "flex items-center gap-1.5 rounded-md px-2 py-1",
         if(@active == @key,

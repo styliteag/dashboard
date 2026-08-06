@@ -737,7 +737,7 @@ defmodule OrbitWeb.VpnLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:vpn} current_user={@current_user} />
 
       <section class="p-6">
@@ -918,10 +918,18 @@ defmodule OrbitWeb.VpnLive do
               <%= for item <- @display do %>
                 <%= case item do %>
                   <% {:group, %{members: [a, b]}, gkey, {level, label}, open} -> %>
+                    <%!-- tabindex+role+phx-keydown: the row is the only
+                         expand/collapse affordance, so it must be reachable
+                         and operable by keyboard too (WCAG 2.1.1). --%>
                     <tr
                       phx-click="group_toggle"
+                      phx-keydown="group_toggle"
+                      phx-key="Enter"
                       phx-value-key={gkey}
                       phx-value-open={to_string(open)}
+                      tabindex="0"
+                      role="button"
+                      aria-expanded={to_string(open)}
                       class="cursor-pointer border-b border-base-300/50 bg-base-200/70 text-sm last:border-0 hover:bg-base-200"
                     >
                       <td colspan="8" class={["px-3 py-2", open && "border-l-4 border-primary"]}>

@@ -51,4 +51,39 @@ defmodule OrbitWeb.Components.ListKitTest do
 
     assert html =~ "sampled under floods"
   end
+
+  # UI/UX review 2026-08-06, A-m10/m12: sortable headers must tell assistive
+  # tech the column role and the current sort — the ↑/↓ glyph alone reads as
+  # a stray character.
+  test "sort_th carries scope and aria-sort for the active and inactive column" do
+    th = fn col, sort_col, dir ->
+      render_component(&ListKit.sort_th/1,
+        col: col,
+        label: "Name",
+        sort_col: sort_col,
+        sort_dir: dir
+      )
+    end
+
+    active = th.("name", "name", :asc)
+    assert active =~ ~s|scope="col"|
+    assert active =~ ~s|aria-sort="ascending"|
+
+    assert th.("name", "name", :desc) =~ ~s|aria-sort="descending"|
+    assert th.("name", "status", :asc) =~ ~s|aria-sort="none"|
+  end
+
+  # UI/UX review 2026-08-06, A-M7: on /instances these two icons are the ONLY
+  # path to the tunneled GUI and the root terminal, so they must meet the
+  # 24x24 px target floor (WCAG 2.5.8) — p-1.5 + h-3.5 icon = 26px.
+  test "webui_link and shell_link render with the enlarged click target" do
+    webui =
+      render_component(&ListKit.webui_link/1, instance_id: 1, openable: true)
+
+    shell =
+      render_component(&ListKit.shell_link/1, instance_id: 1, shell_enabled: true)
+
+    assert webui =~ "p-1.5"
+    assert shell =~ "p-1.5"
+  end
 end

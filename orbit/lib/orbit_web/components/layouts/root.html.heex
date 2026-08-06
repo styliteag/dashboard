@@ -10,6 +10,14 @@
     </script>
   </head>
   <body>
+    <%!-- Skip link: first tab stop, visible only while focused. Every page's
+         <main> carries id="main" as its target. --%>
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded focus:bg-base-200 focus:px-3 focus:py-2 focus:text-sm"
+    >
+      Skip to content
+    </a>
     {@inner_content}
     <%!-- Login has no top nav — give it the switcher top-right. In-app the
          switcher lives in the nav header (Components.Nav.theme_switcher). --%>

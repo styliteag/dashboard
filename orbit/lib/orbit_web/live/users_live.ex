@@ -128,7 +128,7 @@ defmodule OrbitWeb.UsersLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:users} current_user={@current_user} />
 
       <section class="p-6">

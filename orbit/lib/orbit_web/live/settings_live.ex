@@ -226,7 +226,7 @@ defmodule OrbitWeb.SettingsLive do
     assigns = assign(assigns, tab_sections: sections_for_tab(assigns.rows, assigns.tab))
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">

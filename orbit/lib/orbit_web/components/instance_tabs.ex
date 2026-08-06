@@ -106,6 +106,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
         <.link
           :if={kind == :tab and @patch?}
           patch={tab_path(@instance, key)}
+          aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
         >
           {label}
@@ -113,6 +114,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
         <.link
           :if={kind == :tab and not @patch?}
           navigate={tab_path(@instance, key)}
+          aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
         >
           {label}
@@ -120,6 +122,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
         <.link
           :if={kind == :link}
           navigate={link_path(@instance, key)}
+          aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
         >
           {label}

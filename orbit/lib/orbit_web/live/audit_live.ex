@@ -272,7 +272,7 @@ defmodule OrbitWeb.AuditLive do
     assigns = Phoenix.Component.assign(assigns, :timeline_types, @timeline_types)
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:audit} current_user={@current_user} />
 
       <section class="p-6">

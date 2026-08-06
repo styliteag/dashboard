@@ -128,8 +128,11 @@ defmodule OrbitWeb.UptimeLive do
       )
 
     ~H"""
-    <main class="min-h-screen bg-base-100 text-base-content">
-      <.top_nav active={:instances} current_user={@current_user} />
+    <main id="main" class="min-h-screen bg-base-100 text-base-content">
+      <%!-- :uptime matches no nav item on purpose: this page has no nav slot
+           yet, and highlighting Instances here misreported where you are
+           (UI/UX review U-Q2). --%>
+      <.top_nav active={:uptime} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
@@ -212,21 +215,28 @@ defmodule OrbitWeb.UptimeLive do
         <table :if={@rows != []} class="w-full text-left text-sm">
           <thead class="text-xs text-base-content/60">
             <tr class="border-b border-base-300">
-              <th class="py-2 pr-3 font-medium">State</th>
-              <th class="py-2 pr-3 font-medium">Instance</th>
-              <th class="py-2 pr-3 font-medium">Type</th>
-              <th class="py-2 pr-3 font-medium">Group</th>
-              <th class="py-2 pr-3 font-medium">Last seen</th>
-              <th class="py-2 font-medium">History</th>
+              <th scope="col" class="py-2 pr-3 font-medium">State</th>
+              <th scope="col" class="py-2 pr-3 font-medium">Instance</th>
+              <th scope="col" class="py-2 pr-3 font-medium">Type</th>
+              <th scope="col" class="py-2 pr-3 font-medium">Group</th>
+              <th scope="col" class="py-2 pr-3 font-medium">Last seen</th>
+              <th scope="col" class="py-2 font-medium">History</th>
             </tr>
           </thead>
           <tbody>
             <tr :for={row <- @rows} class="border-b border-base-300/50 last:border-0">
               <td class="py-2 pr-3">
-                <span class={[
-                  "inline-block h-2.5 w-2.5 rounded-full",
-                  if(row.online, do: "bg-primary", else: "bg-error")
-                ]}></span>
+                <%!-- title + sr-only text: colour must not be the only
+                     carrier of online/offline (a11y), the dot has no label. --%>
+                <span
+                  title={if row.online, do: "online", else: "offline"}
+                  class={[
+                    "inline-block h-2.5 w-2.5 rounded-full",
+                    if(row.online, do: "bg-primary", else: "bg-error")
+                  ]}
+                >
+                  <span class="sr-only">{if row.online, do: "online", else: "offline"}</span>
+                </span>
                 <span :if={row.maintenance} class="ml-1 text-[10px] text-warning">maint</span>
               </td>
               <td class="py-2 pr-3">

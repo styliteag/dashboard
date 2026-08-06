@@ -134,10 +134,18 @@ defmodule OrbitWeb.Components.ListKit do
 
   def sort_th(assigns) do
     ~H"""
-    <th class="px-3 py-2 font-medium">
+    <th
+      scope="col"
+      aria-sort={
+        if @sort_col == @col,
+          do: if(@sort_dir == :asc, do: "ascending", else: "descending"),
+          else: "none"
+      }
+      class="px-3 py-2 font-medium"
+    >
       <button phx-click="sort" phx-value-col={@col} class="hover:text-base-content/80">
         {@label}
-        <span :if={@sort_col == @col}>{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
+        <span :if={@sort_col == @col} aria-hidden="true">{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>
     </th>
     """
@@ -167,7 +175,7 @@ defmodule OrbitWeb.Components.ListKit do
       phx-value-path={@path}
       title={@title}
       aria-label={@title}
-      class="inline-flex items-center rounded p-0.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
+      class="inline-flex items-center rounded p-1.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
     >
       <%!-- heroicon: arrow-top-right-on-square (outline) --%>
       <svg
@@ -199,7 +207,7 @@ defmodule OrbitWeb.Components.ListKit do
       rel="noopener"
       title="Open root terminal"
       aria-label="Open root terminal"
-      class="inline-flex items-center rounded p-0.5 align-text-bottom text-warning/80 hover:bg-base-300 hover:text-warning"
+      class="inline-flex items-center rounded p-1.5 align-text-bottom text-warning/80 hover:bg-base-300 hover:text-warning"
     >
       <%!-- heroicon: command-line (outline) --%>
       <svg
@@ -245,7 +253,7 @@ defmodule OrbitWeb.Components.ListKit do
       rel="noreferrer"
       title={@title}
       aria-label={@title}
-      class="inline-flex items-center rounded p-0.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
+      class="inline-flex items-center rounded p-1.5 align-text-bottom text-base-content/70 hover:bg-base-300 hover:text-base-content"
     >
       <%!-- heroicon: globe-alt (outline) --%>
       <svg

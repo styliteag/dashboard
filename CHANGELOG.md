@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Screen-reader and keyboard basics across the app: status dots on /uptime
+  now say online/offline instead of being empty colored circles, bulk-select
+  checkboxes name their instance ("Select pf1"), sortable table headers
+  announce their sort state, the active nav item and instance tab carry
+  aria-current, VPN group rows toggle with Enter, every page has a
+  skip-to-content link, and the WebGUI/terminal row icons meet the minimum
+  click-target size. /uptime also no longer highlights "Instances" in the
+  nav as if you were on that page.
 - Status colors in the light designs are readable again. Soft light's WARN
   amber sat at 2.19:1 against the page — degraded badges, EXPIRING/UPDATE
   chips and the root-terminal icon were near-invisible — and five of the
