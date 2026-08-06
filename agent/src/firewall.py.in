@@ -56,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.12"
+__version__ = "4.2.13"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1679,30 +1679,38 @@ def _pfsense_train_key(train: str) -> tuple:
 
 
 def _pfsense_is_prerelease(conf_path: str, descr: str) -> bool:
-    """True for a beta / development train — must never be auto-offered as an update.
+    """True for a beta / RC / development train — must never be auto-offered.
 
     pfSense Plus publishes the NEXT release as its own **numeric** train (e.g.
     ``26_07``) that sorts ABOVE the installed stable one, so the plain numeric
     compare in ``_pfsense_newer_branch`` would flag the beta as an available
     upgrade even though the box is pinned to a stable branch and the GUI never
     offers it. Two independent signals, so a momentarily-missing ``.descr`` (seen
-    mid ``pfSense-repoc`` rewrite) still can't leak a beta:
+    mid ``pfSense-repoc`` rewrite) still can't leak a prerelease:
 
     - the ``.descr`` sidecar (the GUI branch-dropdown label) — "Beta Version
-      (26.07)" on Plus, "DEVEL version (devel)" on CE;
+      (26.07)" / "RC Version (26.07)" on Plus, "DEVEL version (devel)" on CE;
     - the repo host / package name — Plus beta is served from
-      ``…-beta.netgate.com``, CE devel from ``beta.pfsense.org`` / ``pfSense_master``.
+      ``…-beta.netgate.com``, CE devel from ``beta.pfsense.org`` / ``pfSense_master``;
+      an rc-marked host/train (``…-rc.…`` / ``…_rc_…``) counts the same way.
 
     Confirmed live on pfSense Plus 26.03 (cvo-gigu): a box on 26_03 saw beta 26_07
-    dropped into the repos dir and mis-reported "update to 26.07".
+    dropped into the repos dir and mis-reported "update to 26.07". Second round
+    2026-08-06: Netgate promoted that beta to RC — new label "RC Version", repo
+    off the -beta. host — and the same boxes offered the RC as an update.
+    ``rc`` is matched as a standalone word only (``\\brc\\b``), never as a
+    substring ("search", "circa" must not trip it).
     """
-    if any(k in descr.lower() for k in ("beta", "devel", "alpha", "snapshot")):
+    low = descr.lower()
+    if any(k in low for k in ("beta", "devel", "alpha", "snapshot", "candidate")):
+        return True
+    if re.search(r"\brc\b", low):
         return True
     try:
         raw = Path(conf_path).read_text(errors="replace").lower()
     except OSError:
         return False
-    return "beta." in raw or "pfsense_master" in raw
+    return bool("beta." in raw or "pfsense_master" in raw or re.search(r"[-_]rc[._-]", raw))
 
 
 def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
@@ -1740,7 +1748,18 @@ def _pfsense_newer_branch(active: str) -> "tuple[str, str]":
                 except OSError:
                     descr = ""
                 if _pfsense_is_prerelease(str(conf), descr):
-                    continue  # beta/dev train — the GUI never auto-offers it
+                    continue  # beta/RC/dev train — the GUI never auto-offers it
+                if descr and "stable" not in descr.lower():
+                    # Positive gate on top of the denylist above: every train
+                    # Netgate actually releases carries "stable" in its label
+                    # ("Current/Previous Stable Version" on Plus, "Latest
+                    # stable version" on CE). A labeled train WITHOUT it is a
+                    # prerelease flavor we haven't met yet — RC was the first
+                    # to slip past the beta keywords (2026-08-06). CE's
+                    # "PREVIOUS version" (no "stable") is also skipped: it is
+                    # older than the latest-stable train, which wins the
+                    # numeric compare whenever both are newer than the active.
+                    continue
                 best_train, best_key, best_descr = train, key, descr
             break  # first dir with confs — mirrors _list_pfsense_branches
     except Exception:

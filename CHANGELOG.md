@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- pfSense Plus boxes no longer get a release candidate offered as a firmware
+  update (agent 4.2.13). When Netgate promoted the 26.07 beta to RC, its repo
+  label changed from "Beta Version" to "RC Version" and moved off the beta
+  host, slipping past both existing prerelease signals — boxes on stable
+  26.03.1 showed "update to 26.07". The agent now also recognizes RC labels
+  and rc-marked repo hosts, and additionally requires a "stable" label on any
+  named train before offering it, so future prerelease flavors (whatever
+  Netgate calls them) stay hidden as well.
+
 ## [4.3.1] - 2026-07-30
 
 ### Added

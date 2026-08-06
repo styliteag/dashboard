@@ -370,6 +370,55 @@ def test_pfsense_newer_branch_skips_beta_without_descr(fake_fs: dict) -> None:
     assert agent._pfsense_newer_branch("26_03") == ("", "")
 
 
+def test_pfsense_newer_branch_skips_numeric_rc_train(fake_fs: dict) -> None:
+    # Regression (cvo fleet, 2026-08-06): Netgate promoted the 26.07 beta to RC —
+    # the .descr flipped from "Beta Version (26.07)" to "RC Version (26.07)" and
+    # the repo moved off the -beta. host, so BOTH beta signals went dark and the
+    # dashboard offered the RC as a regular update to boxes on stable 26.03.1.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_07_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.descr"] = "RC Version (26.07)\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_1_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.descr"] = "Current Stable Version (26.03.1)\n"
+    assert agent._pfsense_newer_branch("26_03_1") == ("", "")
+    # A box one stable behind still gets the stable train, never the RC.
+    fake_fs[_REPO_DIR + "pfSense-repo-0002.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0002.descr"] = "Previous Stable Version (26.03)\n"
+    assert agent._pfsense_newer_branch("26_03") == ("26_03_1", "26.03.1")
+
+
+def test_pfsense_newer_branch_skips_rc_without_descr_via_host(fake_fs: dict) -> None:
+    # Mid-repoc rewrite the .descr can be absent; an rc-marked repo URL must
+    # still keep the train from being offered (mirrors the beta-host guard).
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg-rc.netgate.com/pfSense_plus-v26_07_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    assert agent._pfsense_newer_branch("26_03") == ("", "")
+
+
+def test_pfsense_newer_branch_requires_stable_label(fake_fs: dict) -> None:
+    # Forward guard: a labeled train WITHOUT "stable" in its .descr is some
+    # prerelease flavor we have not seen yet (RC was the first surprise after
+    # beta) — never offer it, whatever Netgate calls the next one.
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v27_00_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0000.descr"] = "Preview Version (27.00)\n"
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.conf"] = (
+        'url: "pkg+https://pfsense-plus-pkg.netgate.com/pfSense_plus-v26_03_aarch64-core"'
+    )
+    fake_fs[_REPO_DIR + "pfSense-repo-0001.descr"] = "Current Stable Version (26.03)\n"
+    assert agent._pfsense_newer_branch("26_03") == ("", "")
+
+
 def test_collect_firmware_pfsense_flags_newer_train(
     fake_fs: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
