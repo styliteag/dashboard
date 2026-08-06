@@ -23,6 +23,7 @@ defmodule Orbit.Hub.CacheTest do
         "services" => [%{"name" => "unbound", "running" => true}],
         "certificates" => [%{"cn" => "box.example"}],
         "firmware" => %{"current" => "2.8.1"},
+        "storage" => %{"disks" => [%{"name" => "ada0"}], "system_disks" => ["ada0"]},
         "pf_top" => %{"states" => 123},
         "connectivity" => [%{"id" => 1, "ok" => true}],
         "firewall_log" => [%{"line" => 1}],
@@ -46,6 +47,7 @@ defmodule Orbit.Hub.CacheTest do
             "services" => [],
             "certificates" => [],
             "firmware" => %{},
+            "storage" => %{},
             "pf_top" => nil
           },
           @now
@@ -57,6 +59,7 @@ defmodule Orbit.Hub.CacheTest do
       assert entry["services"] == [%{"name" => "unbound", "running" => true}]
       assert entry["certificates"] == [%{"cn" => "box.example"}]
       assert entry["firmware"] == %{"current" => "2.8.1"}
+      assert entry["storage"] == %{"disks" => [%{"name" => "ada0"}], "system_disks" => ["ada0"]}
       assert entry["pf_top"] == %{"states" => 123}
     end
 

@@ -56,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.14"
+__version__ = "4.2.15"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -598,6 +598,80 @@ def collect_disk() -> list[dict]:
         }
         for r in _collapse_zfs_pools(rows)
     ]
+
+
+# Non-disks in `geom disk list`: SPI boot flash (flash/spi0), the eMMC's tiny
+# hardware boot partitions (mmcsd0boot0/1) and optical drives.
+_STORAGE_SKIP_RE = re.compile(r"^cd\d|^mmcsd\d+boot|/")
+
+
+def _parse_geom_disks(text: str) -> list[dict]:
+    """``geom disk list`` stanzas → ``{name, size_bytes, descr}`` rows."""
+    disks: list[dict] = []
+    cur: dict = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("Geom name:"):
+            cur = {"name": line.split(":", 1)[1].strip(), "size_bytes": None, "descr": ""}
+            disks.append(cur)
+        elif cur and line.startswith("Mediasize:"):
+            try:
+                cur["size_bytes"] = int(line.split(":", 1)[1].split()[0])
+            except (ValueError, IndexError):
+                pass
+        elif cur and line.startswith("descr:"):
+            cur["descr"] = line.split(":", 1)[1].strip()
+    return disks
+
+
+def _match_disk(token: str, names: list) -> str:
+    """The disk a partition/vdev token belongs to, by LONGEST-prefix match —
+    ``mmcsd0s2a`` maps to ``mmcsd0``, never to the sibling ``mmcsd0boot0``."""
+    best = ""
+    for name in names:
+        if token.startswith(name) and len(name) > len(best):
+            best = name
+    return best
+
+
+def _root_disks(names: list) -> list:
+    """Disk name(s) backing ``/``: for a ZFS root the root pool's leaf vdevs
+    (``zpool status -L`` resolves labels to base devices, e.g. ``ada0s3a``),
+    for UFS the df device itself. ``[]`` when the root device is undeterminable
+    — the check side treats that as "could not check", never as OK."""
+    lines = _run(["df", "-T", "/"]).splitlines()
+    parts = lines[-1].split() if len(lines) >= 2 else []
+    if len(parts) < 2:
+        return []
+    device, fstype = parts[0], parts[1]
+    if fstype == "zfs":
+        tokens = _run(["zpool", "status", "-L", device.split("/", 1)[0]]).split()
+    else:
+        tokens = [device[5:] if device.startswith("/dev/") else device]
+    found: list = []
+    for token in tokens:
+        hit = _match_disk(token, names)
+        if hit and hit not in found:
+            found.append(hit)
+    return found
+
+
+def collect_storage() -> dict:
+    """Physical disk inventory plus which disk(s) back the root filesystem.
+
+    Netgate hardware often carries both an internal eMMC and a (factory- or
+    field-fitted) SSD; the dashboard's storage check flags a box that still
+    runs from the small eMMC although a larger SSD is installed. Returns ``{}``
+    when geom yields nothing (non-FreeBSD, tool missing) so the hub's
+    truthy-guard keeps the previous inventory."""
+    disks = [
+        d
+        for d in _parse_geom_disks(_run(["geom", "disk", "list"]))
+        if not _STORAGE_SKIP_RE.search(d["name"])
+    ]
+    if not disks:
+        return {}
+    return {"disks": disks, "system_disks": _root_disks([d["name"] for d in disks])}
 
 
 def _netstat_int(token: str) -> int:
@@ -2844,6 +2918,7 @@ _SNAPSHOT_SECTIONS = (
     ("cpu", "collect_cpu"),
     ("memory", "collect_memory"),
     ("disks", "collect_disk"),
+    ("storage", "collect_storage"),
     ("pf", "collect_pf"),
     ("pf_top", "collect_pf_top"),
     ("ntp", "collect_ntp"),

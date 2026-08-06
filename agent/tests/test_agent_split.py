@@ -33,6 +33,7 @@ FIREWALL_SECTIONS = (
     "cpu",
     "memory",
     "disks",
+    "storage",
     "pf",
     "pf_top",
     "ntp",

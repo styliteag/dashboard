@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New "Boot device" check for hardware firewalls with an internal eMMC
+  (agent 4.2.15): when a larger SSD/NVMe is installed but the system still
+  runs from the small eMMC — the Netgate factory-install default — the box
+  now shows a WARN naming both disks and sizes. Boxes that boot from the
+  SSD show an OK service; VMs and SSD-only boxes are unaffected. The agent
+  pushes a new `storage` section (disk inventory from `geom disk list` plus
+  the disk backing the root filesystem).
+
 ### Fixed
 
 - The VPN fleet graph no longer opens long-stable tunnels with a grey

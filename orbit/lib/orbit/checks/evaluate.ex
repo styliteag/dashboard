@@ -62,7 +62,8 @@ defmodule Orbit.Checks.Evaluate do
       pf_states_check(status["pf"]),
       ntp_check(status["ntp"]),
       collect_check(status["collect_ms"]),
-      firmware_check(status["firmware"] || sections["firmware"])
+      firmware_check(status["firmware"] || sections["firmware"]),
+      storage_check(status["storage"] || sections["storage"])
     ]
     |> Enum.concat(disk_checks(status["disks"] || []))
     |> Enum.concat(iface_error_checks(status["interfaces"] || []))
@@ -260,6 +261,85 @@ defmodule Orbit.Checks.Evaluate do
       }
     end
   end
+
+  @doc """
+  Boot-device check for hardware with an internal eMMC (agent `storage`
+  section, collect_storage): a larger SSD/NVMe that is installed but not
+  backing the root filesystem is dormant capacity the operator almost
+  certainly meant to boot from — Netgate factory installs land on the small
+  eMMC unless the box was reinstalled onto the SSD. WARN then; OK when the
+  system runs from the SSD or the SSD is no bigger than the eMMC. nil
+  without the section or without an eMMC+SSD pair, so VMs and SSD-only
+  boxes never see this check (no-data never emits). `da*` (USB) is
+  deliberately NOT an SSD candidate — a plugged-in USB stick must not fire
+  this warning.
+  """
+  def storage_check(%{"disks" => [_ | _] = disks} = storage) do
+    emmc = Enum.filter(disks, &disk_named?(&1, ~r/^mmcsd\d/))
+    ssds = Enum.filter(disks, &disk_named?(&1, ~r/^(ada|nvd|nda)\d/))
+    build_storage_check(emmc, ssds, List.wrap(storage["system_disks"]))
+  end
+
+  def storage_check(_), do: nil
+
+  defp disk_named?(%{"name" => name}, re) when is_binary(name), do: Regex.match?(re, name)
+  defp disk_named?(_, _), do: false
+
+  defp build_storage_check([], _ssds, _system), do: nil
+  defp build_storage_check(_emmc, [], _system), do: nil
+
+  defp build_storage_check(emmc, ssds, system) do
+    biggest = Enum.max_by(ssds, &(&1["size_bytes"] || 0))
+    emmc_max = emmc |> Enum.map(&(&1["size_bytes"] || 0)) |> Enum.max()
+    root_ssd = Enum.find(ssds, &(&1["name"] in system))
+    root_emmc = Enum.find(emmc, &(&1["name"] in system))
+
+    cond do
+      system == [] ->
+        # "Could not check" is WARN, never OK — but only where the check
+        # applies at all (both disk kinds present).
+        %ServiceCheck{
+          key: "storage",
+          state: 1,
+          summary: "Could not determine the system disk (eMMC and SSD present)"
+        }
+
+      root_ssd ->
+        %ServiceCheck{
+          key: "storage",
+          state: 0,
+          summary: "System on SSD #{root_ssd["name"]} (#{gb(root_ssd["size_bytes"])})"
+        }
+
+      (biggest["size_bytes"] || 0) > emmc_max ->
+        from =
+          if root_emmc,
+            do: "eMMC #{root_emmc["name"]} (#{gb(root_emmc["size_bytes"])})",
+            else: Enum.join(system, ", ")
+
+        %ServiceCheck{
+          key: "storage",
+          state: 1,
+          summary:
+            "SSD #{biggest["name"]} (#{gb(biggest["size_bytes"])}) installed " <>
+              "but system runs from #{from}"
+        }
+
+      true ->
+        disk = root_emmc || hd(emmc)
+
+        %ServiceCheck{
+          key: "storage",
+          state: 0,
+          summary: "System on eMMC #{disk["name"]} (#{gb(disk["size_bytes"])})"
+        }
+    end
+  end
+
+  defp gb(bytes) when is_number(bytes) and bytes > 0,
+    do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
+
+  defp gb(_), do: "unknown size"
 
   @doc """
   5-min load average normalised per core. nil when no data (cores<=0: direct

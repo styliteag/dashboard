@@ -671,4 +671,64 @@ defmodule Orbit.Checks.EvaluateTest do
       assert Enum.map(checks, & &1.key) == ["zfs:rpool"]
     end
   end
+
+  describe "storage_check — SSD installed but system still on eMMC" do
+    # Real pfplus1 inventory (Netgate ARM: 9.7G internal eMMC + 119G M.2 SATA).
+    @ssd %{
+      "name" => "ada0",
+      "size_bytes" => 128_035_676_160,
+      "descr" => "KINGSTON OM4P0S3128Q-A0"
+    }
+    @emmc %{"name" => "mmcsd0", "size_bytes" => 10_427_039_744, "descr" => "MMCHC TX2932"}
+
+    defp storage(disks, system), do: %{"disks" => disks, "system_disks" => system}
+
+    test "no section / no eMMC / no SSD → nil (VMs and SSD-only boxes get no check)" do
+      assert Evaluate.storage_check(nil) == nil
+      assert Evaluate.storage_check(%{}) == nil
+      assert Evaluate.storage_check(storage([@ssd], ["ada0"])) == nil
+      assert Evaluate.storage_check(storage([@emmc], ["mmcsd0"])) == nil
+    end
+
+    test "bigger SSD present but system runs from eMMC → WARN" do
+      c = Evaluate.storage_check(storage([@emmc, @ssd], ["mmcsd0"]))
+      assert %ServiceCheck{key: "storage", state: 1} = c
+
+      assert c.summary ==
+               "SSD ada0 (119.2 GB) installed but system runs from eMMC mmcsd0 (9.7 GB)"
+    end
+
+    test "system on the SSD → OK" do
+      c = Evaluate.storage_check(storage([@emmc, @ssd], ["ada0"]))
+      assert %ServiceCheck{key: "storage", state: 0} = c
+      assert c.summary == "System on SSD ada0 (119.2 GB)"
+    end
+
+    test "SSD not bigger than the eMMC → OK on eMMC (warn only for a larger disk)" do
+      small = %{@ssd | "size_bytes" => 8_000_000_000}
+      c = Evaluate.storage_check(storage([@emmc, small], ["mmcsd0"]))
+      assert %ServiceCheck{state: 0} = c
+      assert c.summary == "System on eMMC mmcsd0 (9.7 GB)"
+    end
+
+    test "both disks present but root disk undeterminable → WARN, never OK" do
+      c = Evaluate.storage_check(storage([@emmc, @ssd], []))
+      assert %ServiceCheck{key: "storage", state: 1} = c
+      assert c.summary == "Could not determine the system disk (eMMC and SSD present)"
+    end
+
+    test "NVMe counts as SSD" do
+      nvme = %{@ssd | "name" => "nda0"}
+      assert %ServiceCheck{state: 1} = Evaluate.storage_check(storage([@emmc, nvme], ["mmcsd0"]))
+    end
+
+    test "evaluate/1 wires the top-level storage section (truthy-guarded, not in status)" do
+      keys =
+        %{"status" => %{}, "storage" => storage([@emmc, @ssd], ["mmcsd0"])}
+        |> Evaluate.evaluate()
+        |> Enum.map(& &1.key)
+
+      assert "storage" in keys
+    end
+  end
 end

@@ -9,7 +9,7 @@ defmodule Orbit.Hub.Cache do
 
   - **truthy-guard** — empty/missing section = collector failure, keep the
     previous value: `gateways`, `ipsec`, `services`, `certificates`,
-    `firmware`, `external_ip` (any-address-present), `pf_top`.
+    `firmware`, `external_ip` (any-address-present), `pf_top`, `storage`.
   - **presence-guard** — empty is legitimate (nothing configured), cache
     whenever the key is present: `connectivity`, `firewall_log`.
   - always: the raw snapshot status sections (`system/cpu/memory/...`) via
@@ -23,7 +23,7 @@ defmodule Orbit.Hub.Cache do
 
   @type t :: %{optional(integer()) => map()}
 
-  @truthy_sections ~w(gateways ipsec services certificates firmware pf_top)
+  @truthy_sections ~w(gateways ipsec services certificates firmware pf_top storage)
   @presence_sections ~w(connectivity firewall_log)
   # Vendor/extension passthrough: any pushed section whose key starts with
   # `x_` is stored verbatim (truthy-guarded like the real sections). This is
