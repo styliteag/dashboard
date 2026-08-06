@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Instance forms state their rules: Name carries a visible required marker,
+  Group / Device type / Transport say "Cannot be changed after creation."
+  right in the form (they are silently immutable — discovering that later
+  on the edit page was the only hint), form labels moved from the
+  AA-failing /60 grey to /70, and the error banner is announced to
+  assistive tech. One shared field wrapper now serves both instance forms.
 - The firmware page's bulk actions use the same tiered dialog: the bulk
   major version upgrade — previously one native confirm away from
   rebooting N production firewalls, while the single-box upgrade demanded

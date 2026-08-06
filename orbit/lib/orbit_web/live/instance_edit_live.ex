@@ -329,7 +329,7 @@ defmodule OrbitWeb.InstanceEditLive do
             />
 
             <div class="mt-3 grid gap-3 md:grid-cols-2">
-              <label class="block text-xs text-base-content/60">
+              <label class="block text-xs text-base-content/70">
                 SSH port
                 <input
                   name="instance[ssh_port]"
@@ -337,7 +337,7 @@ defmodule OrbitWeb.InstanceEditLive do
                   class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
                 />
               </label>
-              <label class="block text-xs text-base-content/60">
+              <label class="block text-xs text-base-content/70">
                 SSH user
                 <input
                   name="instance[ssh_user]"
@@ -347,7 +347,7 @@ defmodule OrbitWeb.InstanceEditLive do
               </label>
             </div>
 
-            <label class="mt-3 block text-xs text-base-content/60">
+            <label class="mt-3 block text-xs text-base-content/70">
               SSH private key (ed25519 PEM) — leave empty to keep the stored one <textarea
                 name="instance[ssh_key]"
                 rows="4"
@@ -417,18 +417,6 @@ defmodule OrbitWeb.InstanceEditLive do
         </form>
       </section>
     </main>
-    """
-  end
-
-  attr :label, :string, required: true
-  slot :inner_block, required: true
-
-  defp field(assigns) do
-    ~H"""
-    <label class="block text-sm">
-      <span class="mb-1 block text-xs text-base-content/60">{@label}</span>
-      {render_slot(@inner_block)}
-    </label>
     """
   end
 

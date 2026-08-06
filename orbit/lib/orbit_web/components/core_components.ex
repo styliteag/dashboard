@@ -632,6 +632,33 @@ defmodule OrbitWeb.CoreComponents do
   defp confirm_button(:type_to_confirm),
     do: "bg-warning text-warning-content hover:bg-warning/80"
 
+  @doc """
+  Form-field wrapper: the label at readable contrast (/70 — /60 fails AA in
+  the light designs, UI/UX review A-M1), a visible required marker, an
+  optional constraint note ("Cannot be changed after creation.") and an
+  optional field-level error. The input itself comes in via the slot, so
+  input/select/textarea all work unchanged.
+  """
+  attr :label, :string, required: true
+  attr :required, :boolean, default: false
+  attr :note, :string, default: nil, doc: "constraint the operator must know before submitting"
+  attr :error, :string, default: nil
+  slot :inner_block, required: true
+
+  def field(assigns) do
+    ~H"""
+    <label class="block text-sm">
+      <span class="mb-1 block text-xs text-base-content/70">
+        {@label}
+        <span :if={@required} class="text-error" title="required">*</span>
+      </span>
+      {render_slot(@inner_block)}
+      <span :if={@note} class="mt-1 block text-xs text-base-content/70">{@note}</span>
+      <span :if={@error} role="alert" class="mt-1 block text-xs text-error">{@error}</span>
+    </label>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

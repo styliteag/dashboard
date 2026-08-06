@@ -141,6 +141,7 @@ defmodule OrbitWeb.InstanceCreateLive do
 
         <div
           :if={@error}
+          role="alert"
           class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
@@ -149,12 +150,16 @@ defmodule OrbitWeb.InstanceCreateLive do
         <form phx-change="form_change" phx-submit="create" class="space-y-4">
           <div class="rounded-lg border border-base-300 bg-base-200 p-4">
             <div class="grid gap-3 md:grid-cols-2">
-              <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Name</span>
-                <input name="instance[name]" value={@form["name"]} required class={input_cls()} />
-              </label>
-              <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Group</span>
+              <.field label="Name" required>
+                <input
+                  name="instance[name]"
+                  value={@form["name"]}
+                  required
+                  aria-required="true"
+                  class={input_cls()}
+                />
+              </.field>
+              <.field label="Group" note="Cannot be changed after creation.">
                 <select name="instance[group_id]" class={input_cls()}>
                   <option
                     :for={g <- @groups}
@@ -164,9 +169,8 @@ defmodule OrbitWeb.InstanceCreateLive do
                     {g.name}
                   </option>
                 </select>
-              </label>
-              <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Device type</span>
+              </.field>
+              <.field label="Device type" note="Cannot be changed after creation.">
                 <select name="instance[device_type]" class={input_cls()}>
                   <option
                     :for={t <- Orbit.Instances.device_types()}
@@ -176,9 +180,8 @@ defmodule OrbitWeb.InstanceCreateLive do
                     {t}
                   </option>
                 </select>
-              </label>
-              <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Transport</span>
+              </.field>
+              <.field label="Transport" note="Cannot be changed after creation.">
                 <select name="instance[transport]" class={input_cls()}>
                   <option value="push" selected={@form["transport"] == "push"}>
                     push (agent)
@@ -187,13 +190,13 @@ defmodule OrbitWeb.InstanceCreateLive do
                     direct (API poll)
                   </option>
                 </select>
-              </label>
+              </.field>
               <label :if={direct_fields?(@form)} class="block text-sm md:col-span-2">
-                <span class="mb-1 block text-xs text-base-content/60">Base URL (direct API)</span>
+                <span class="mb-1 block text-xs text-base-content/70">Base URL (direct API)</span>
                 <input name="instance[base_url]" value={@form["base_url"]} class={input_cls()} />
               </label>
               <label :if={direct_fields?(@form)} class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">API key (direct only)</span>
+                <span class="mb-1 block text-xs text-base-content/70">API key (direct only)</span>
                 <input
                   name="instance[api_key]"
                   value={@form["api_key"]}
@@ -202,7 +205,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                 />
               </label>
               <label :if={direct_fields?(@form)} class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">API secret</span>
+                <span class="mb-1 block text-xs text-base-content/70">API secret</span>
                 <input
                   name="instance[api_secret]"
                   value={@form["api_secret"]}
@@ -212,11 +215,11 @@ defmodule OrbitWeb.InstanceCreateLive do
                 />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Location</span>
+                <span class="mb-1 block text-xs text-base-content/70">Location</span>
                 <input name="instance[location]" value={@form["location"]} class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">Slug (optional)</span>
+                <span class="mb-1 block text-xs text-base-content/70">Slug (optional)</span>
                 <input name="instance[slug]" value={@form["slug"]} class={input_cls()} />
               </label>
               <.tag_picker
@@ -226,13 +229,13 @@ defmodule OrbitWeb.InstanceCreateLive do
                 open={@tag_open}
               />
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">
+                <span class="mb-1 block text-xs text-base-content/70">
                   Ping URL (availability probe)
                 </span>
                 <input name="instance[ping_url]" value={@form["ping_url"]} class={input_cls()} />
               </label>
               <label class="block text-sm">
-                <span class="mb-1 block text-xs text-base-content/60">
+                <span class="mb-1 block text-xs text-base-content/70">
                   Push interval (s) — blank = global default
                 </span>
                 <input
@@ -243,7 +246,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                 />
               </label>
               <label class="block text-sm md:col-span-2">
-                <span class="mb-1 block text-xs text-base-content/60">Notes</span>
+                <span class="mb-1 block text-xs text-base-content/70">Notes</span>
                 <input name="instance[notes]" value={@form["notes"]} class={input_cls()} />
               </label>
             </div>
@@ -264,7 +267,7 @@ defmodule OrbitWeb.InstanceCreateLive do
                  collects locally and pushes, so the dashboard makes no
                  outbound HTTPS call to verify (2.1.5 parity). --%>
             <label :if={direct_fields?(@form)} class="mt-3 block text-sm">
-              <span class="mb-1 block text-xs text-base-content/60">
+              <span class="mb-1 block text-xs text-base-content/70">
                 CA bundle (PEM, direct only) — lets TLS verification succeed against a
                 firewall's own CA instead of turning verification off
               </span>
