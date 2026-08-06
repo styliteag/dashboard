@@ -439,9 +439,11 @@ defmodule OrbitWeb.InstancesLive do
           >
             Export CSV
           </a>
+          <%!-- Right-aligned: /uptime is navigation, not an action like the
+               create/export buttons next to the title. --%>
           <.link
             navigate={~p"/uptime"}
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+            class="ml-auto rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
           >
             Uptime
           </.link>
