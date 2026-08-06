@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A pfSense update no longer leaves the box silently pinned to a different
+  update branch (agent 4.2.14). pfSense stores the chosen branch as a path to
+  a repo slot file, and Netgate's repo tool re-numbers those slots after an
+  upgrade — live on a Plus box the dashboard series upgrade to 26.03.1 landed
+  on the 26.07 RC train that way, and the next check offered the RC as an
+  update. The agent now records the intended train by name before any
+  dashboard-initiated update and re-points the branch on the next firmware
+  check when the slots were shuffled.
 - pfSense Plus boxes no longer get a release candidate offered as a firmware
   update (agent 4.2.13). When Netgate promoted the 26.07 beta to RC, its repo
   label changed from "Beta Version" to "RC Version" and moved off the beta

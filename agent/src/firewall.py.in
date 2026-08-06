@@ -56,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.13"
+__version__ = "4.2.14"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -369,6 +369,92 @@ def _pfsense_switch_train(train: str) -> str:
     if lines and lines[-1].strip() == "ok":
         return ""
     return (lines[-1].strip() if lines else "") or "branch switch produced no output"
+
+
+# pfSense stores the update branch as a PATH to a repo slot file
+# (pkg_repo_conf_path -> pfSense-repo-NNNN.conf) and pfSense-repoc
+# re-enumerates those slots after an upgrade — the same path can then mean a
+# DIFFERENT train. Live on pfplus1 (Plus 25.07.1 -> 26.03.1, Netgate ARM64,
+# 2026-08-06): post-reboot slot 0000 had become the 26.07 **RC** train (0001
+# the stable 26_03_1), so config + symlink silently pinned the box to the RC
+# and `pfSense-upgrade -c` offered "26.07.r.20260801.1756". The pin file
+# records the train an orbit-initiated update expects BY NAME; the firmware
+# check heals a mismatch by re-running the GUI switch code path.
+_TRAIN_PIN_FILE = "/usr/local/etc/orbit-agent.train"
+# Stop re-pinning after this many failed switch attempts — a box where the
+# GUI code path keeps erroring must not fight a (possibly deliberate) branch
+# choice forever.
+_TRAIN_PIN_MAX_ATTEMPTS = 3
+
+
+def _write_train_pin(train: str) -> None:
+    """Best-effort: a pin write failure must never block the update itself."""
+    try:
+        _write_private(Path(_TRAIN_PIN_FILE), json.dumps({"train": train, "attempts": 0}))
+    except Exception:
+        pass
+
+
+def _read_train_pin() -> dict:
+    try:
+        data = json.loads(Path(_TRAIN_PIN_FILE).read_text())
+    except Exception:
+        return {}
+    if isinstance(data, dict) and data.get("train"):
+        return data
+    return {}
+
+
+def _clear_train_pin() -> None:
+    try:
+        os.unlink(_TRAIN_PIN_FILE)
+    except OSError:
+        pass
+
+
+def _pfsense_heal_train_pin() -> "tuple[bool, str]":
+    """Undo a repoc slot reorder that silently re-pinned the update branch.
+
+    Returns (healed, note). No pin file (the overwhelmingly common case) is a
+    cheap no-op. The pin is dropped once the active train matches, when the
+    vendor no longer offers the pinned train (nothing safe to re-pin to), or
+    after _TRAIN_PIN_MAX_ATTEMPTS failed switches. Callers must treat
+    healed=True as "the previous `-c` checked the wrong train" and re-check.
+    """
+    pin = _read_train_pin()
+    if not pin:
+        return False, ""
+    train = str(pin.get("train", ""))
+    active = _read_pfsense_branch()
+    if not active or active == train:
+        _clear_train_pin()
+        return False, ""
+    if train not in _list_pfsense_branches():
+        _clear_train_pin()
+        return False, ""
+    try:
+        attempts = int(pin.get("attempts", 0))
+    except (TypeError, ValueError):
+        attempts = 0
+    if attempts >= _TRAIN_PIN_MAX_ATTEMPTS:
+        _clear_train_pin()
+        return False, ""
+    try:
+        _write_private(
+            Path(_TRAIN_PIN_FILE), json.dumps({"train": train, "attempts": attempts + 1})
+        )
+    except Exception:
+        pass
+    err = _pfsense_switch_train(train)
+    if err:
+        return False, "update branch re-pin to %s failed: %s" % (train, err)
+    _clear_train_pin()
+    # pkg_switch_repo just spawned rc.update_pkg_metadata (holds the
+    # pfSense-upgrade lockfile) — wait it out, or the caller's fresh `-c`
+    # aborts after the wrapper's 5s lockf timeout into a false "check
+    # failed" (same lesson as _cmd_firmware_upgrade, pf2 2026-07-16).
+    _pfsense_wait_updater_idle()
+    return True, "update branch re-pinned to %s after a repo slot reorder" % train
 
 
 def collect_cpu() -> dict:
@@ -1936,6 +2022,14 @@ def collect_firmware() -> dict:
             if Path("/usr/local/sbin/pfSense-repoc").exists():
                 _run(["/usr/local/sbin/pfSense-repoc"], timeout=60)
             out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            # AFTER the -c (it repairs the repoc-dangled symlink first): undo
+            # a slot reorder that re-pinned the branch. A heal invalidates the
+            # verdict above — it checked the wrong (mis-pinned) train.
+            healed, heal_note = _pfsense_heal_train_pin()
+            if healed:
+                out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            if heal_note:
+                out = (out.strip() + "\n" + heal_note).strip()
             branch = _read_pfsense_branch()
             known_branches = _list_pfsense_branches()
             upgrade_available = _pfsense_update_available(out)
@@ -3912,6 +4006,13 @@ def _cmd_firmware_check(params: dict) -> dict:
     with _FW_CHECK_LOCK:
         if plat == "pfsense":
             out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            # Mirrors collect_firmware: a healed branch means the -c above
+            # checked the wrong (mis-pinned) train — re-check fresh.
+            healed, heal_note = _pfsense_heal_train_pin()
+            if healed:
+                out = _run(["/usr/local/sbin/pfSense-upgrade", "-c"], timeout=60)
+            if heal_note:
+                out = (out.strip() + "\n" + heal_note).strip()
             version = _read_pfsense_version()
             branch = _read_pfsense_branch()
             known = _list_pfsense_branches()
@@ -4051,6 +4152,13 @@ def _cmd_firmware_update(params: dict) -> dict:
     installed = _read_pfsense_version() if plat == "pfsense" else _read_opnsense_version()
     be = _zfs_boot_snapshot(installed)
     snapshot_note = "; boot environment %s created" % be if be else ""
+    if plat == "pfsense":
+        # The reboot runs pfSense-repoc, which may re-enumerate the repo
+        # slots — pin the branch the box must STAY on so the next firmware
+        # check can heal a reorder (see _TRAIN_PIN_FILE).
+        current = _read_pfsense_branch()
+        if current:
+            _write_train_pin(current)
     if plat == "pfsense" and not _pfsense_wait_updater_idle():
         return {
             "success": False,
@@ -4089,6 +4197,11 @@ def _cmd_firmware_upgrade(params: dict) -> dict:
         err = _pfsense_switch_train(train)
         if err:
             return {"success": False, "output": "update branch switch failed: %s" % err}
+        # Post-reboot repoc may re-enumerate the repo slots and leave the
+        # stored conf PATH pointing at a different train (pfplus1 2026-08-06:
+        # slot 0000 turned into the 26.07 RC) — pin the target train by name
+        # so the next firmware check re-points the branch if that happens.
+        _write_train_pin(train)
         be = _zfs_boot_snapshot(_read_pfsense_version())
         # The wait is load-bearing here: pkg_switch_repo just spawned
         # rc.update_pkg_metadata in the background, which holds the
