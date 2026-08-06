@@ -52,6 +52,40 @@ defmodule OrbitWeb.Components.ListKitTest do
     assert html =~ "sampled under floods"
   end
 
+  # UI/UX review 2026-08-06, U-Q1: pages that mount pre-filtered must say so
+  # in words, and the notice is the app's clear-filter affordance.
+  test "filter_notice states shown/total and offers Show all" do
+    html =
+      render_component(&ListKit.filter_notice/1,
+        shown: 2,
+        total: 8,
+        noun: "tunnels",
+        filter_label: "down",
+        event: "state_filter"
+      )
+
+    assert html =~ "Showing 2 of 8 tunnels (down)."
+    assert html =~ "Show all"
+    assert html =~ ~s|phx-value-bucket="all"|
+  end
+
+  # UI/UX review 2026-08-06, D-1/U-Q1: one kpi_tile implementation, and the
+  # active filter tile must be announced as pressed.
+  test "kpi_tile carries aria-pressed matching its active state" do
+    tile = fn active ->
+      render_component(&ListKit.kpi_tile/1,
+        label: "Down",
+        value: 2,
+        event: "state_filter",
+        value_name: "down",
+        active: active
+      )
+    end
+
+    assert tile.(true) =~ ~s|aria-pressed="true"|
+    assert tile.(false) =~ ~s|aria-pressed="false"|
+  end
+
   # UI/UX review 2026-08-06, U-Q5: an empty state without a next step is a
   # dead end — the action slot carries the CTA.
   test "empty_state renders the action slot when given" do

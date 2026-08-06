@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Filtered lists say so now: VPN and Logs open pre-filtered (down tunnels /
+  ERR patterns), and the only hint was a thin border on one KPI tile while
+  the Total count contradicted the visible rows — a "Showing 2 of 8
+  tunnels (down). Show all" line above the table names the filter and is
+  the missing clear-filter control. The instances page's own KPI-tile copy
+  was replaced by the shared one, so the active-tile treatment (including
+  the previously suppressed border on "Total") and the new aria-pressed
+  state are identical on every fleet page.
 - The active List/Grid view toggle, the CA chip on Certificates and the
   request-type chip on Audit were dark-on-dark in the light designs
   (bg-neutral paired with the page's ink instead of neutral-content); the

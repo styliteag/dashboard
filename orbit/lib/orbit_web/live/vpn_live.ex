@@ -772,6 +772,17 @@ defmodule OrbitWeb.VpnLive do
           />
         </div>
 
+        <%!-- The page mounts pre-filtered to down tunnels; without this line
+             the Total tile contradicts the visible rows (UI/UX review U-Q1). --%>
+        <.filter_notice
+          :if={@state_filter != "all"}
+          shown={if @state_filter == "down", do: @down_count, else: @up_count}
+          total={length(@tunnels)}
+          noun="tunnels"
+          filter_label={@state_filter}
+          event="state_filter"
+        />
+
         <form phx-change="search" onsubmit="return false" class="mb-3 max-w-md">
           <input
             type="text"

@@ -178,6 +178,17 @@ defmodule OrbitWeb.LogEventsLive do
           />
         </div>
 
+        <%!-- The page mounts pre-filtered to ERR; without this line the
+             Total tile contradicts the visible rows (UI/UX review U-Q1). --%>
+        <.filter_notice
+          :if={@sev_filter != "all"}
+          shown={length(@visible_rows)}
+          total={length(@rows)}
+          noun="log patterns"
+          filter_label={String.upcase(@sev_filter)}
+          event="sev_filter"
+        />
+
         <div class="mb-3 flex flex-wrap items-center gap-3">
           <form phx-change="search" onsubmit="return false" class="max-w-md flex-1">
             <input

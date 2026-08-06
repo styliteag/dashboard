@@ -108,6 +108,34 @@ defmodule OrbitWeb.Components.ListKit do
     """
   end
 
+  @doc """
+  One-line filter-state disclosure above a table: "Showing X of Y <noun>
+  (<filter>) — Show all". Pages that mount pre-filtered (VPN: down, Logs:
+  err) otherwise open with a Total tile that contradicts the visible rows,
+  and the app has no other clear-filter affordance (UI/UX review U-Q1).
+  """
+  attr :shown, :integer, required: true
+  attr :total, :integer, required: true
+  attr :noun, :string, required: true, doc: "what is being counted, e.g. \"tunnels\""
+  attr :filter_label, :string, required: true
+  attr :event, :string, required: true
+  attr :value_name, :string, default: "all", doc: "phx-value-bucket that clears the filter"
+
+  def filter_notice(assigns) do
+    ~H"""
+    <div class="mb-2 text-xs text-base-content/70">
+      Showing {@shown} of {@total} {@noun} ({@filter_label}).
+      <button
+        phx-click={@event}
+        phx-value-bucket={@value_name}
+        class="ml-1 underline hover:text-base-content"
+      >
+        Show all
+      </button>
+    </div>
+    """
+  end
+
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :color, :string, default: "text-base-content"
@@ -120,6 +148,7 @@ defmodule OrbitWeb.Components.ListKit do
     <button
       phx-click={@event}
       phx-value-bucket={@value_name}
+      aria-pressed={to_string(@active)}
       class={[
         "rounded-lg border p-3 text-left",
         if(@active,

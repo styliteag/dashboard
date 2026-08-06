@@ -22,7 +22,14 @@ defmodule OrbitWeb.InstancesLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.ListKit,
-    only: [webui_link: 1, shell_link: 1, gui_open_row: 3, base_url_link: 1, empty_state: 1]
+    only: [
+      webui_link: 1,
+      shell_link: 1,
+      gui_open_row: 3,
+      base_url_link: 1,
+      empty_state: 1,
+      kpi_tile: 1
+    ]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
 
@@ -449,28 +456,32 @@ defmodule OrbitWeb.InstancesLive do
             value={length(@instances)}
             color="text-base-content"
             active={@status_filter == "all"}
-            bucket="all"
+            event="status_filter"
+            value_name="all"
           />
           <.kpi_tile
             label="Online"
             value={@counts["online"] || 0}
             color="text-primary"
             active={@status_filter == "online"}
-            bucket="online"
+            event="status_filter"
+            value_name="online"
           />
           <.kpi_tile
             label="Degraded"
             value={@counts["degraded"] || 0}
             color="text-warning"
             active={@status_filter == "degraded"}
-            bucket="degraded"
+            event="status_filter"
+            value_name="degraded"
           />
           <.kpi_tile
             label="Offline"
             value={@counts["offline"] || 0}
             color="text-error"
             active={@status_filter == "offline"}
-            bucket="offline"
+            event="status_filter"
+            value_name="offline"
           />
         </div>
 
@@ -850,31 +861,6 @@ defmodule OrbitWeb.InstancesLive do
   end
 
   # ---- small components ------------------------------------------------------
-
-  attr :label, :string, required: true
-  attr :value, :integer, required: true
-  attr :color, :string, required: true
-  attr :active, :boolean, required: true
-  attr :bucket, :string, required: true
-
-  defp kpi_tile(assigns) do
-    ~H"""
-    <button
-      phx-click="status_filter"
-      phx-value-bucket={@bucket}
-      class={[
-        "rounded-lg border p-3 text-left",
-        if(@active and @bucket != "all",
-          do: "border-primary bg-base-200",
-          else: "border-base-300 bg-base-200 hover:border-base-content/20"
-        )
-      ]}
-    >
-      <div class="text-xs text-base-content/60">{@label}</div>
-      <div class={["text-2xl font-semibold", @color]}>{@value}</div>
-    </button>
-    """
-  end
 
   attr :col, :string, required: true
   attr :label, :string, required: true
