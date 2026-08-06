@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Status transitions are announced to screen readers on the instances
+  page: when a live refresh flips a box ("pf2 is now offline"), the change
+  is voiced through a polite live region instead of happening silently —
+  the product's core signal was invisible to assistive tech.
 - Instance forms state their rules: Name carries a visible required marker,
   Group / Device type / Transport say "Cannot be changed after creation."
   right in the form (they are silently immutable — discovering that later

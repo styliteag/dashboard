@@ -73,6 +73,7 @@ defmodule OrbitWeb.InstancesLive do
         selected: MapSet.new(),
         confirm: nil,
         confirm_typed: "",
+        status_announcement: nil,
         bulk_busy: false,
         bulk_results: nil,
         search: "",
@@ -396,6 +397,24 @@ defmodule OrbitWeb.InstancesLive do
         _ -> "fw #{served.firewall || "—"} · linux #{served.linux || "—"}"
       end
 
+    # Screen readers never hear a LiveView patch flip a box offline (UI/UX
+    # review A-M6) — diff the status buckets against the previous load and
+    # voice only real transitions into the sr-only aria-live region.
+    # Coalesced into one sentence per refresh; unchanged text is not
+    # re-announced, so quiet refreshes stay silent.
+    old_buckets = Map.new(socket.assigns[:instances] || [], &{&1.id, &1.bucket})
+
+    changes =
+      for row <- rows,
+          old = old_buckets[row.id],
+          old != nil and old != row.bucket,
+          do: "#{row.name} is now #{row.bucket}"
+
+    socket =
+      if changes == [],
+        do: socket,
+        else: assign(socket, status_announcement: Enum.join(changes, "; "))
+
     assign(socket,
       instances: rows,
       served_version: served_label,
@@ -463,6 +482,9 @@ defmodule OrbitWeb.InstancesLive do
     ~H"""
     <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
+      <p :if={@status_announcement} aria-live="polite" class="sr-only">
+        {@status_announcement}
+      </p>
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
