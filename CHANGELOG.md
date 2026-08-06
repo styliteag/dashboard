@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `/uptime` page (linked from the instances page): every instance as
+  one availability lane over a shared 24h/7d/30d window — a fleet-wide
+  outage reads as a vertical stripe — plus online/offline counts and a
+  lean list. Clicking a row opens the recorded offline/online transitions,
+  drawn from the availability history orbit has been writing all along.
+
 ### Fixed
 
 - Deleting an instance now really frees its name and slug. The delete is a

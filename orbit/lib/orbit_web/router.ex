@@ -98,6 +98,7 @@ defmodule OrbitWeb.Router do
       live "/certificates", CertificatesLive
       live "/firmware", FirmwareLive
       live "/vpn", VpnLive
+      live "/uptime", UptimeLive
       live "/security", SecurityLive
     end
 

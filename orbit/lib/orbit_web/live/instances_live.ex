@@ -439,6 +439,12 @@ defmodule OrbitWeb.InstancesLive do
           >
             Export CSV
           </a>
+          <.link
+            navigate={~p"/uptime"}
+            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
+          >
+            Uptime
+          </.link>
         </div>
 
         <%!-- KPI tiles double as status filter (US-3.4 / KpiTile parity);
