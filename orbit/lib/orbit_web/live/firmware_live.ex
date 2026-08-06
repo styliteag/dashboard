@@ -49,6 +49,8 @@ defmodule OrbitWeb.FirmwareLive do
        sort_col: "state",
        sort_dir: :asc,
        selected: MapSet.new(),
+       confirm: nil,
+       confirm_typed: "",
        bulk_busy: false,
        bulk_results: nil,
        writable: socket.assigns.current_user.role in ~w(admin user)
@@ -118,23 +120,50 @@ defmodule OrbitWeb.FirmwareLive do
     {:noreply, assign(socket, selected: selected)}
   end
 
-  def handle_event("bulk", %{"action" => action}, socket)
+  # Step 1: build the tiered confirmation (UI/UX review U-M5 — the BULK
+  # major upgrade had a plain native confirm while the single-box one had
+  # type-to-confirm: protection inverse to blast radius).
+  def handle_event("bulk_ask", %{"action" => action}, socket)
       when action in ~w(firmware_update firmware_upgrade) do
-    targets = bulk_targets(visible(socket.assigns), socket.assigns.selected, action)
+    names = bulk_target_names(socket.assigns, action)
+
+    if not socket.assigns.writable or socket.assigns.bulk_busy or names == [] do
+      {:noreply, socket}
+    else
+      {:noreply, assign(socket, confirm: %{action: action, names: names}, confirm_typed: "")}
+    end
+  end
+
+  def handle_event("confirm_typing", %{"typed" => typed}, socket),
+    do: {:noreply, assign(socket, confirm_typed: typed)}
+
+  def handle_event("bulk_cancel", _params, socket),
+    do: {:noreply, assign(socket, confirm: nil, confirm_typed: "")}
+
+  # Step 2: execute. The typed count is re-verified HERE for the upgrade —
+  # the disabled dialog button is the prompt, not the gate.
+  def handle_event("bulk_run", params, socket) do
+    confirm = socket.assigns.confirm
+
+    targets =
+      confirm && bulk_targets(visible(socket.assigns), socket.assigns.selected, confirm.action)
 
     cond do
-      not socket.assigns.writable ->
+      is_nil(confirm) or not socket.assigns.writable or socket.assigns.bulk_busy or
+          targets == [] ->
         {:noreply, socket}
 
-      socket.assigns.bulk_busy or targets == [] ->
+      confirm.action == "firmware_upgrade" and
+          String.trim(params["typed"] || "") != to_string(length(confirm.names)) ->
         {:noreply, socket}
 
       true ->
         user = socket.assigns.current_user
+        action = confirm.action
 
         {:noreply,
          socket
-         |> assign(bulk_busy: true, bulk_results: nil)
+         |> assign(bulk_busy: true, bulk_results: nil, confirm: nil, confirm_typed: "")
          |> start_async(:bulk, fn -> Bulk.run(targets, action, user) end)}
     end
   end
@@ -363,10 +392,9 @@ defmodule OrbitWeb.FirmwareLive do
               {@selected_update_count} selected:
             </span>
             <button
-              phx-click="bulk"
+              phx-click="bulk_ask"
               phx-value-action="firmware_update"
               title={"Install the pending firmware update on the #{@selected_update_count} selected box(es). Stays on the current release series; a box may reboot to finish."}
-              data-confirm={"Start the firmware update on #{@selected_update_count} instance(s)? Boxes may reboot to finish updates."}
               disabled={@bulk_busy}
               class="fw-bulk-update-btn rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-content hover:bg-warning/80 disabled:opacity-50"
             >
@@ -374,10 +402,9 @@ defmodule OrbitWeb.FirmwareLive do
             </button>
             <button
               :if={@selected_series_count > 0}
-              phx-click="bulk"
+              phx-click="bulk_ask"
               phx-value-action="firmware_upgrade"
               title={"Upgrade to the NEXT MAJOR VERSION (e.g. OPNsense 24.7 → 25.1, pfSense 2.7 → 2.8), not just the pending update. Only agent-mode boxes that report an upgrade target qualify — #{@selected_series_count} of the #{@selected_update_count} selected. Each box downloads the new release and reboots."}
-              data-confirm={"Start the major version upgrade on #{@selected_series_count} instance(s)? Each box downloads the new release and reboots."}
               disabled={@bulk_busy}
               class="fw-bulk-upgrade-btn rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-error-content hover:bg-error/80 disabled:opacity-50"
             >
@@ -534,9 +561,43 @@ defmodule OrbitWeb.FirmwareLive do
           </table>
         </div>
       </section>
+      <.confirm_dialog
+        :if={@confirm}
+        title={fw_bulk_title(@confirm.action, length(@confirm.names))}
+        tier={if @confirm.action == "firmware_upgrade", do: :type_to_confirm, else: :danger}
+        confirm_label={fw_bulk_title(@confirm.action, length(@confirm.names))}
+        on_confirm="bulk_run"
+        on_cancel="bulk_cancel"
+        typed={@confirm_typed}
+        must_type={to_string(length(@confirm.names))}
+        items={@confirm.names}
+      >
+        {fw_bulk_consequence(@confirm.action, length(@confirm.names))}
+      </.confirm_dialog>
     </main>
     """
   end
+
+  defp bulk_target_names(assigns, action) do
+    eligible = if action == "firmware_upgrade", do: &series_eligible?/1, else: &eligible?/1
+
+    assigns
+    |> visible()
+    |> Enum.filter(eligible)
+    |> Enum.filter(&MapSet.member?(assigns.selected, &1.id))
+    |> Enum.map(& &1.name)
+    |> Enum.sort()
+  end
+
+  defp fw_bulk_title("firmware_update", n), do: "Update firmware on #{n} instance(s)"
+  defp fw_bulk_title("firmware_upgrade", n), do: "Major version upgrade on #{n} instance(s)"
+
+  defp fw_bulk_consequence("firmware_update", _n),
+    do: "Updates start immediately on the boxes below; some may reboot to finish."
+
+  defp fw_bulk_consequence("firmware_upgrade", n),
+    do:
+      "Every box below downloads the next major release, installs it and REBOOTS; not undoable from here. Type #{n} to confirm."
 
   defp state_label(0), do: "OK"
   defp state_label(1), do: "UPDATE"

@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The firmware page's bulk actions use the same tiered dialog: the bulk
+  major version upgrade — previously one native confirm away from
+  rebooting N production firewalls, while the single-box upgrade demanded
+  type-to-confirm — now names every target box and requires typing the box
+  count, re-checked server-side.
 - Bulk actions on the instances page confirm in proportion to their blast
   radius. "Reboot" no longer looks and confirms exactly like "Check
   updates": a styled dialog names every affected box, states the
