@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The /uptime timeline is readable without perfect colour vision and
+  answers "when": down and partial segments carry diagonal hatches on top
+  of their colour (adjacent lane colours are near-identical in luminance —
+  greyscale showed nothing), a legend names the four states, every segment
+  reveals its time range on hover and to screen readers, resolved history
+  is dimmed so the outage that is STILL running stands out, the axis got
+  quarter ticks between the window start and "now", and lanes open their
+  transition history from the keyboard.
 - Buttons started converging on one vocabulary: a shared button component
   (primary/secondary/quiet/danger, two sizes) sets the canon, and the most
   duplicated hand-rolled small-button recipes were aligned to it — the

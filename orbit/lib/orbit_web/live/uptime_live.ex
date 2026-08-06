@@ -108,16 +108,43 @@ defmodule OrbitWeb.UptimeLive do
             start
           )
 
-        {row.id, lane.segments}
+        segments =
+          Enum.map(lane.segments, &Map.put(&1, :label, seg_label(&1, lane.window_start, now)))
+
+        {row.id, segments}
       end)
 
-    assign(socket, rows: rows, lanes: lanes)
+    axis_start = start || now
+    span = max(DateTime.diff(now, axis_start), 1)
+
+    axis =
+      for p <- [0.0, 0.25, 0.5, 0.75] do
+        fmt_ts(DateTime.add(axis_start, trunc(p * span)))
+      end
+
+    assign(socket, rows: rows, lanes: lanes, axis: axis)
   end
 
+  # "down 08-06 14:02–14:37" — the bare coloured block said nothing about
+  # WHEN (UI/UX review A-B2); shown as title on hover and sr-only for AT.
+  defp seg_label(seg, window_start, now) do
+    span = max(DateTime.diff(now, window_start), 1)
+    from = DateTime.add(window_start, trunc(seg.left / 100 * span))
+    to = DateTime.add(window_start, trunc((seg.left + seg.width) / 100 * span))
+    "#{seg.state} #{fmt_ts(from)}–#{Calendar.strftime(to, "%H:%M")}"
+  end
+
+  defp fmt_ts(dt), do: Calendar.strftime(dt, "%m-%d %H:%M")
+
   defp lane_color(:up), do: "bg-primary"
-  defp lane_color(:partial), do: "bg-warning"
-  defp lane_color(:down), do: "bg-error"
+  defp lane_color(:partial), do: "bg-warning lane-hatch-partial"
+  defp lane_color(:down), do: "bg-error lane-hatch-down"
   defp lane_color(_), do: "bg-neutral"
+
+  # Resolved history at reduced weight; only the segment still running at
+  # "now" keeps full chroma, so the live outage outranks last week's
+  # (UI/UX review D-15).
+  defp lane_dim(seg), do: if(seg.left + seg.width < 99.9, do: "opacity-60")
 
   @impl true
   def render(assigns) do
@@ -185,11 +212,34 @@ defmodule OrbitWeb.UptimeLive do
           :if={@rows != []}
           class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
+          <%!-- Legend: the four lane states were never named on the page
+               (UI/UX review U-Q2); down/partial additionally carry a hatch
+               so the states survive greyscale (A-B2). --%>
+          <div class="mb-2 flex flex-wrap items-center gap-3 text-[10px] text-base-content/70">
+            <span><span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-primary"></span>up</span>
+            <span>
+              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-warning lane-hatch-partial"></span>
+              partial
+            </span>
+            <span>
+              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-error lane-hatch-down"></span>
+              down
+            </span>
+            <span>
+              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-neutral"></span>no data
+            </span>
+            <span class="ml-auto">resolved history is dimmed; full colour = still current</span>
+          </div>
           <div :for={row <- @rows} class="mb-1.5">
             <div
               class="flex cursor-pointer items-center gap-2"
               phx-click="history_open"
+              phx-keydown="history_open"
+              phx-key="Enter"
               phx-value-iid={row.id}
+              tabindex="0"
+              role="button"
+              aria-label={"#{row.name} — open the recorded transitions"}
               title="Show recorded transitions"
             >
               <span class="w-44 truncate text-right text-[10px] text-base-content/70">
@@ -198,15 +248,19 @@ defmodule OrbitWeb.UptimeLive do
               <div class="relative h-3.5 flex-1 overflow-hidden rounded bg-base-300">
                 <div
                   :for={seg <- @lanes[row.id] || []}
-                  class={["absolute h-full", lane_color(seg.state)]}
+                  class={["absolute h-full", lane_color(seg.state), lane_dim(seg)]}
                   style={"left: #{seg.left}%; width: #{seg.width}%"}
+                  title={seg.label}
                 >
+                  <span class="sr-only">{seg.label}</span>
                 </div>
               </div>
             </div>
           </div>
+          <%!-- Tick scale: with only the two end labels no outage could be
+               dated (UI/UX review A-B2/D-15). --%>
           <div class="mt-1 flex justify-between pl-[11.5rem] text-[10px] text-base-content/70">
-            <span>{@window} ago</span>
+            <span :for={label <- @axis}>{label}</span>
             <span>now</span>
           </div>
         </div>

@@ -300,3 +300,22 @@ section:has(.fw-bulk-update-btn:hover) tr.fw-will-update {
 section:has(.fw-bulk-upgrade-btn:hover) tr.fw-will-upgrade {
   background-color: color-mix(in oklab, var(--color-error) 18%, transparent);
 }
+
+/* Availability lanes: colour alone cannot separate up|warn|down (adjacent
+   luminance ~1.1:1 in every theme, invisible in greyscale) — down and
+   partial carry opposite diagonal hatches on top of their semantic colour.
+   UI/UX review 2026-08-06, A-B2. */
+.lane-hatch-down {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 3px,
+    oklch(0% 0 0 / 0.35) 3px 5px
+  );
+}
+.lane-hatch-partial {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    oklch(100% 0 0 / 0.45) 3px 5px
+  );
+}
