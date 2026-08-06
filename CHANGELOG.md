@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.3] - 2026-08-06
+
 ### Added
 
 - New "Boot device" check for hardware firewalls with an internal eMMC
