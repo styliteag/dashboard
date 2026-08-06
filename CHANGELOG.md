@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The VPN fleet graph no longer opens long-stable tunnels with a grey
+  "no data" stretch on the 7d/30d views. The lane's opening state comes from
+  the newest events before the window, and a flat newest-12 cap let frequent
+  ping/phase-2 rows crowd out the one rare phase-1 event that carried it —
+  precisely on the tunnels that had been up the longest. The pre-window
+  lookup is now per event kind, and when nothing survives at all (retention
+  pruning), the first in-window transition's old side seeds the lane instead
+  of grey.
+
 ## [4.3.2] - 2026-08-06
 
 ### Fixed

@@ -253,6 +253,69 @@ defmodule Orbit.Ipsec.HistoryTest do
       assert List.last(lane).state == :down
     end
 
+    test "no pre-window event: the opening state is inferred from the first transition" do
+      # Retention pruning (or the preceding-row cap) can leave a window whose
+      # tunnel flapped without any earlier event surviving. The first
+      # transition's old side still says what the lane opened in: a
+      # phase1_down at -12h proves the tunnel was up before it. Grey here
+      # painted a month of measured uptime as "no data" on the fleet graph.
+      events = [evt("phase1_down", 12)]
+      window = DateTime.add(@now, -24 * 3600)
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: false, phase2_up: 0, phase2_total: 1}, @now, window)
+
+      assert %{state: :up} = Enum.min_by(lane, & &1.left)
+    end
+
+    test "ping and phase2 lanes infer their opening state from the event's old side" do
+      window = DateTime.add(@now, -24 * 3600)
+
+      events = [
+        %{
+          ts: DateTime.add(@now, -12 * 3600),
+          event_type: "ping_fail",
+          old_value: "ok",
+          new_value: "fail",
+          child_name: "c"
+        },
+        %{
+          ts: DateTime.add(@now, -12 * 3600),
+          event_type: "phase2_changed",
+          old_value: "2/2",
+          new_value: "1/2",
+          child_name: ""
+        }
+      ]
+
+      %{ping: ping, phase2: p2} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 2}, @now, window)
+
+      assert %{state: :up} = Enum.min_by(ping, & &1.left)
+      assert %{state: :up} = Enum.min_by(p2, & &1.left)
+    end
+
+    test "a first ping event out of \"none\" leaves the opening grey" do
+      # old_value "none" means the ping monitor only just started — nothing
+      # is known about the stretch before, and grey is the honest answer.
+      window = DateTime.add(@now, -24 * 3600)
+
+      events = [
+        %{
+          ts: DateTime.add(@now, -12 * 3600),
+          event_type: "ping_ok",
+          old_value: "none",
+          new_value: "ok",
+          child_name: "c"
+        }
+      ]
+
+      %{ping: ping} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 1}, @now, window)
+
+      assert %{state: :unknown} = Enum.min_by(ping, & &1.left)
+    end
+
     test "window_start/2 is shared so both pages mean the same by \"7d\"" do
       assert History.window_start("24h", @now) == DateTime.add(@now, -86_400)
       assert History.window_start("7d", @now) == DateTime.add(@now, -604_800)
@@ -279,6 +342,26 @@ defmodule Orbit.Ipsec.HistoryTest do
     test "a stretch with no known count is left out rather than labelled zero" do
       segs = History.phase2_numeric([], %{phase2_up: 2, phase2_total: 2}, @now)
       assert [%{label: "2/2", left: +0.0, width: 100.0}] = segs
+    end
+
+    test "opening count is inferred from the first in-window change's old side" do
+      # Same gap as the colour lanes: no surviving pre-window event, but the
+      # first phase2_changed inside the window carries the prior count.
+      window = DateTime.add(@now, -24 * 3600)
+
+      events = [
+        %{
+          ts: DateTime.add(@now, -12 * 3600),
+          event_type: "phase2_changed",
+          old_value: "2/2",
+          new_value: "1/2",
+          child_name: ""
+        }
+      ]
+
+      segs = History.phase2_numeric(events, %{phase2_up: 1, phase2_total: 2}, @now, window)
+
+      assert %{label: "2/2"} = Enum.min_by(segs, & &1.left)
     end
   end
 

@@ -65,6 +65,33 @@ defmodule Orbit.Ipsec.HistoryReadManyTest do
     assert %{state: :up} = Enum.min_by(lane, & &1.left)
   end
 
+  test "a phase-1 event buried under newer ping noise still rides along" do
+    # phase-1 flips are rare (a tunnel stays up for months) while ping flaps
+    # pile up. A flat newest-N pre-window cap let the ping rows crowd out the
+    # one event that carries the lane's opening state — the fleet graph then
+    # opened grey on exactly the tunnels that had been up the longest.
+    now = DateTime.utc_now()
+
+    History.record(@iid, DateTime.add(now, -20 * 86_400), [
+      event("con3", "phase1_up", "down", "established")
+    ])
+
+    for i <- 1..13 do
+      {kind, old, new} =
+        if rem(i, 2) == 0, do: {"ping_ok", "fail", "ok"}, else: {"ping_fail", "ok", "fail"}
+
+      History.record(@iid, DateTime.add(now, -15 * 86_400 + i * 3600), [
+        event("con3", kind, old, new)
+      ])
+    end
+
+    since = DateTime.add(now, -7 * 86_400)
+    events = History.read_many([@iid], since)[{@iid, "con3"}]
+
+    assert Enum.any?(events, &(&1.event_type == "phase1_up")),
+           "phase1 event crowded out of the pre-window rows"
+  end
+
   test "read_many without a window still returns everything, ungrouped by time" do
     now = DateTime.utc_now()
 

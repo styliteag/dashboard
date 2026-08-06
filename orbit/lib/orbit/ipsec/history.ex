@@ -258,7 +258,7 @@ defmodule Orbit.Ipsec.History do
           &phase1_state/1,
           live_up_state(live.up),
           x,
-          carried(before, &phase1_state/1),
+          opening(before, sorted, &phase1_state/1, &phase1_before/1),
           silent
         ),
       phase2:
@@ -267,10 +267,18 @@ defmodule Orbit.Ipsec.History do
           &phase2_state/1,
           p2_state(live.phase2_up, live.phase2_total),
           x,
-          carried(before, &phase2_state/1),
+          opening(before, sorted, &phase2_state/1, &phase2_before/1),
           silent
         ),
-      ping: build_lane(sorted, &ping_state/1, nil, x, carried(before, &ping_state/1), silent)
+      ping:
+        build_lane(
+          sorted,
+          &ping_state/1,
+          nil,
+          x,
+          opening(before, sorted, &ping_state/1, &ping_before/1),
+          silent
+        )
     }
   end
 
@@ -324,12 +332,19 @@ defmodule Orbit.Ipsec.History do
     span = max(DateTime.diff(now, window_start), 1)
     x = fn ts -> min(max(DateTime.diff(ts, window_start) / span * 100, 0.0), 100.0) end
 
+    # Newest pre-window count — or, when no pre-window event survived pruning
+    # or the preceding-row cap, the old side of the first in-window change
+    # (same inference as the colour lanes' opening/4).
     initial =
       before
       |> Enum.reverse()
       |> Enum.find_value(nil, fn e ->
         if e.event_type == "phase2_changed", do: to_string(e.new_value)
-      end)
+      end) ||
+        Enum.find_value(within, nil, fn e ->
+          if e.event_type == "phase2_changed" and to_string(e.old_value) != "",
+            do: to_string(e.old_value)
+        end)
 
     cuts =
       for e <- within, e.event_type == "phase2_changed", do: {x.(e.ts), to_string(e.new_value)}
@@ -366,12 +381,57 @@ defmodule Orbit.Ipsec.History do
   end
 
   # The state this lane was in when the window opened: the newest event before
-  # it that says anything about this lane.
+  # it that says anything about this lane. When pruning or the preceding-row
+  # cap left nothing (a tunnel whose last phase-1 flap predates retention),
+  # the first in-window transition still knows — its old side IS the opening
+  # state. Grey only remains when neither source says anything.
+  defp opening(before, sorted, state_fn, before_fn) do
+    case carried(before, state_fn) do
+      :unknown ->
+        Enum.find_value(sorted, :unknown, fn e ->
+          if state_fn.(e), do: before_fn.(e) || :unknown
+        end)
+
+      state ->
+        state
+    end
+  end
+
   defp carried(before, state_fn) do
     before
     |> Enum.reverse()
     |> Enum.find_value(:unknown, fn e -> state_fn.(e) end)
   end
+
+  # ---- the old side of each transition: what the lane was BEFORE the event --
+
+  defp phase1_before(%{event_type: "phase1_up"}), do: :down
+  defp phase1_before(%{event_type: "phase1_down"}), do: :up
+  # phase1_changed never crosses the up/down boundary, so the state before it
+  # equals the state after it.
+  defp phase1_before(%{event_type: "phase1_changed"} = e), do: phase1_state(e)
+  defp phase1_before(_), do: nil
+
+  defp phase2_before(%{event_type: "phase2_changed", old_value: v}) do
+    case String.split(to_string(v), "/", parts: 2) do
+      [up, total] -> p2_state(int(up), int(total))
+      _ -> nil
+    end
+  end
+
+  defp phase2_before(_), do: nil
+
+  # old_value "none" = the ping monitor only just started; nothing is known
+  # about the stretch before it, and grey stays the honest answer.
+  defp ping_before(%{event_type: t, old_value: v}) when t in ["ping_ok", "ping_fail"] do
+    case to_string(v) do
+      "ok" -> :up
+      s when s in ["fail", "error"] -> :down
+      _ -> nil
+    end
+  end
+
+  defp ping_before(_), do: nil
 
   defp live_up_state(true), do: :up
   defp live_up_state(_), do: :down
@@ -583,9 +643,12 @@ defmodule Orbit.Ipsec.History do
   end
 
   # The fleet-graph twin of preceding/3: the newest pre-window events of
-  # EVERY tunnel of the given instances in one query, same 12-row-per-tunnel
-  # cap, same column order as read_many/3's main select so the rows can be
-  # concatenated before grouping.
+  # EVERY tunnel of the given instances in one query, same per-kind cap,
+  # same column order as read_many/3's main select so the rows can be
+  # concatenated before grouping. Partitioned by event_type, not just by
+  # tunnel: a flat newest-N cap let frequent ping/phase2 rows crowd out the
+  # one rare phase-1 event carrying a lane's opening state — the fleet graph
+  # then opened grey on exactly the tunnels that had been up the longest.
   defp preceding_many(_instance_ids, nil), do: []
 
   defp preceding_many(instance_ids, %DateTime{} = since) do
@@ -594,9 +657,10 @@ defmodule Orbit.Ipsec.History do
     Orbit.Repo.query!(
       "SELECT instance_id, tunnel_id, ts, child_name, event_type, old_value, new_value FROM (" <>
         "SELECT instance_id, tunnel_id, ts, id, child_name, event_type, old_value, new_value, " <>
-        "ROW_NUMBER() OVER (PARTITION BY instance_id, tunnel_id ORDER BY ts DESC, id DESC) AS rn " <>
+        "ROW_NUMBER() OVER (PARTITION BY instance_id, tunnel_id, event_type " <>
+        "ORDER BY ts DESC, id DESC) AS rn " <>
         "FROM ipsec_tunnel_events WHERE instance_id IN (#{placeholders}) AND ts < ?" <>
-        ") ranked WHERE rn <= 12",
+        ") ranked WHERE rn <= 3",
       instance_ids ++ [since]
     ).rows
   rescue
@@ -605,14 +669,18 @@ defmodule Orbit.Ipsec.History do
     _kind, _reason -> []
   end
 
-  # One event per lane kind from before the window, so lanes/4 knows the state
-  # the window opened in. Three rows at most, not the whole history.
+  # The newest few events per KIND from before the window, so lanes/4 knows
+  # the state the window opened in. Per-kind, not a flat newest-N: ping noise
+  # otherwise crowds out the rare phase-1 event (see preceding_many/2).
   defp preceding(_instance_id, _tunnel_id, nil), do: []
 
   defp preceding(instance_id, tunnel_id, %DateTime{} = since) do
     Orbit.Repo.query!(
-      "SELECT ts, child_name, event_type, old_value, new_value FROM ipsec_tunnel_events " <>
-        "WHERE instance_id = ? AND tunnel_id = ? AND ts < ? ORDER BY ts DESC, id DESC LIMIT 12",
+      "SELECT ts, child_name, event_type, old_value, new_value FROM (" <>
+        "SELECT ts, id, child_name, event_type, old_value, new_value, " <>
+        "ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY ts DESC, id DESC) AS rn " <>
+        "FROM ipsec_tunnel_events WHERE instance_id = ? AND tunnel_id = ? AND ts < ?" <>
+        ") ranked WHERE rn <= 3 ORDER BY ts DESC, id DESC",
       [instance_id, tunnel_id, since]
     ).rows
   rescue
