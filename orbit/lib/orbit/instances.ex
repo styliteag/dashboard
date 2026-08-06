@@ -220,7 +220,7 @@ defmodule Orbit.Instances do
 
   def heal_device_type(_instance_id, _platform), do: :ok
 
-  @device_types ~w(opnsense pfsense proxmox truenas qnap securepoint linux)
+  @device_types ~w(opnsense pfsense proxmox truenas securepoint linux)
   # Push-only device types have no direct API — base_url must stay empty (DR-9).
   @push_only_types ~w(linux)
 

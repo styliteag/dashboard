@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   self-update, Checkmk-script refresh, tabs and the agent card treat both
   as Linux nodes instead of firewalls.
 
+### Removed
+
+- The `qnap` device type — never wired to any collector, vendor view or
+  agent line; existing fleets have zero qnap instances.
+
 ## [4.3.4] - 2026-08-06
 
 ### Fixed

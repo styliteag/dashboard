@@ -6,7 +6,7 @@ Domänenbegriffe des Orbit-Dashboards. Quelle der Wahrheit ist der Code.
   (`Instance`, `db/models.py`). Träger von `device_type`, `transport`, Credentials,
   Gruppen-Zuordnung.
 - **Device-Type** — Geräteklasse einer Instanz (`devices/types.py`): `opnsense`,
-  `pfsense`, `securepoint`, `proxmox`, `truenas`, `qnap`, geplant `linux` (§25).
+  `pfsense`, `securepoint`, `proxmox`, `truenas`, geplant `linux` (§25).
   Bestimmt Client-Wahl und Capabilities, nicht den Transport.
 - **Transport** — wie Daten die Instanz erreichen/verlassen: `pull` (Backend pollt
   HTTP-API) oder `push` (Agent liefert per WebSocket). Entkoppelt vom Device-Type
