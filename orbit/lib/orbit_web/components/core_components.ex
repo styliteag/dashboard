@@ -529,6 +529,109 @@ defmodule OrbitWeb.CoreComponents do
   defp status_bg(:down), do: "bg-error/15"
   defp status_bg(:unknown), do: "bg-base-content/10"
 
+  @doc """
+  Styled confirmation dialog in three tiers — replaces native `data-confirm`
+  for consequential actions (UI/UX review 2026-08-06, U-M5): native
+  confirm() cannot name the affected boxes, looks identical for "check
+  updates" and "reboot 12 firewalls", and some browsers offer "prevent
+  additional dialogs", which silently disables every remaining safeguard.
+
+  Tiers: `:info` (neutral ack), `:danger` (destructive, red framing),
+  `:type_to_confirm` (danger + the operator must type `must_type` — use for
+  anything that reboots a box or touches more than one). The comparison for
+  `:type_to_confirm` MUST also happen server-side in the `on_confirm`
+  handler; the disabled submit here is the prompt, not the gate (pattern
+  from the single-box major-upgrade modal in instance_detail_live).
+
+  Escape cancels; `items` lists the affected instance names so the dialog
+  says WHICH boxes, not just how many.
+  """
+  attr :title, :string, required: true
+  attr :tier, :atom, default: :danger, values: [:info, :danger, :type_to_confirm]
+  attr :confirm_label, :string, default: "Confirm"
+  attr :on_confirm, :string, required: true, doc: "phx event fired on confirm/submit"
+  attr :on_cancel, :string, required: true
+  attr :on_type, :string, default: "confirm_typing", doc: "phx-change event (type_to_confirm)"
+  attr :typed, :string, default: ""
+  attr :must_type, :string, default: nil, doc: "string the operator must type (type_to_confirm)"
+  attr :items, :list, default: [], doc: "affected instance names, shown as chips"
+  slot :inner_block, required: true, doc: "the consequence sentence"
+
+  def confirm_dialog(assigns) do
+    ~H"""
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-base-100/80 p-4"
+      phx-window-keydown={@on_cancel}
+      phx-key="escape"
+      role="dialog"
+      aria-modal="true"
+      aria-label={@title}
+    >
+      <form
+        phx-submit={@on_confirm}
+        phx-change={@tier == :type_to_confirm && @on_type}
+        class={[
+          "w-full max-w-md rounded-lg border bg-base-200 p-5",
+          confirm_border(@tier)
+        ]}
+      >
+        <h3 class={["text-sm font-medium", confirm_title(@tier)]}>{@title}</h3>
+        <p class="mt-2 text-sm text-base-content/70">{render_slot(@inner_block)}</p>
+        <div :if={@items != []} class="mt-2 flex flex-wrap gap-1.5">
+          <span
+            :for={name <- @items}
+            class="rounded bg-base-300 px-2 py-0.5 text-xs text-base-content/80"
+          >
+            {name}
+          </span>
+        </div>
+        <input
+          :if={@tier == :type_to_confirm}
+          name="typed"
+          value={@typed}
+          autocomplete="off"
+          spellcheck="false"
+          placeholder={@must_type}
+          class="mt-3 w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-warning focus:outline-none"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            phx-click={@on_cancel}
+            class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/70 hover:bg-base-300"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={@tier == :type_to_confirm and String.trim(@typed) != @must_type}
+            class={[
+              "rounded px-3 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40",
+              confirm_button(@tier)
+            ]}
+          >
+            {@confirm_label}
+          </button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp confirm_border(:info), do: "border-base-300"
+  defp confirm_border(:danger), do: "border-error/50"
+  defp confirm_border(:type_to_confirm), do: "border-warning/50"
+
+  defp confirm_title(:info), do: "text-base-content"
+  defp confirm_title(:danger), do: "text-error"
+  defp confirm_title(:type_to_confirm), do: "text-warning"
+
+  defp confirm_button(:info), do: "bg-primary text-primary-content hover:bg-primary/80"
+  defp confirm_button(:danger), do: "bg-error text-error-content hover:bg-error/80"
+
+  defp confirm_button(:type_to_confirm),
+    do: "bg-warning text-warning-content hover:bg-warning/80"
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

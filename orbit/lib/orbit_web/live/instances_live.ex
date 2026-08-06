@@ -71,6 +71,8 @@ defmodule OrbitWeb.InstancesLive do
       assign(socket,
         writable: socket.assigns.current_user.role in @write_roles,
         selected: MapSet.new(),
+        confirm: nil,
+        confirm_typed: "",
         bulk_busy: false,
         bulk_results: nil,
         search: "",
@@ -167,21 +169,56 @@ defmodule OrbitWeb.InstancesLive do
     {:noreply, assign(socket, selected: selected)}
   end
 
-  def handle_event("bulk", %{"action" => action}, socket) do
+  # Step 1 of the bulk flow: build the tiered confirmation. Reboot and the
+  # major upgrade escalate to type-to-confirm (blast radius: every selected
+  # box reboots); the dialog names the boxes (UI/UX review U-Q4/U-M5).
+  def handle_event("bulk_ask", %{"action" => action}, socket)
+      when action in ~w(firmware_check firmware_update firmware_upgrade ipsec_restart reboot) do
+    if not socket.assigns.writable or socket.assigns.bulk_busy or
+         MapSet.size(socket.assigns.selected) == 0 do
+      {:noreply, socket}
+    else
+      names =
+        socket.assigns.instances
+        |> Enum.filter(&MapSet.member?(socket.assigns.selected, &1.id))
+        |> Enum.map(& &1.name)
+        |> Enum.sort()
+
+      {:noreply,
+       assign(socket,
+         confirm: %{action: action, names: names},
+         confirm_typed: ""
+       )}
+    end
+  end
+
+  def handle_event("confirm_typing", %{"typed" => typed}, socket),
+    do: {:noreply, assign(socket, confirm_typed: typed)}
+
+  def handle_event("bulk_cancel", _params, socket),
+    do: {:noreply, assign(socket, confirm: nil, confirm_typed: "")}
+
+  # Step 2: execute. The type-to-confirm comparison is re-checked HERE — the
+  # disabled submit button in the dialog is the prompt, not the gate.
+  def handle_event("bulk_run", params, socket) do
+    confirm = socket.assigns.confirm
+
     cond do
-      not socket.assigns.writable ->
+      is_nil(confirm) or not socket.assigns.writable or socket.assigns.bulk_busy ->
         {:noreply, socket}
 
-      socket.assigns.bulk_busy or MapSet.size(socket.assigns.selected) == 0 ->
+      bulk_tier(confirm.action) == :type_to_confirm and
+          String.trim(params["typed"] || "") != to_string(length(confirm.names)) ->
         {:noreply, socket}
 
       true ->
         ids = MapSet.to_list(socket.assigns.selected)
         user = socket.assigns.current_user
+        action = confirm.action
 
         {:noreply,
          socket
-         |> assign(bulk_busy: true, bulk_results: nil)
+         |> assign(bulk_busy: true, bulk_results: nil, confirm: nil, confirm_typed: "")
          |> start_async(:bulk, fn -> Bulk.run(ids, action, user) end)}
     end
   end
@@ -609,13 +646,22 @@ defmodule OrbitWeb.InstancesLive do
           </div>
           <div :if={@writable and MapSet.size(@selected) > 0} class="flex items-center gap-2">
             <span class="text-xs text-base-content/60">{MapSet.size(@selected)} selected:</span>
+            <%!-- No data-confirm here: the bulk dialog must name the boxes
+                 and escalate with blast radius (UI/UX review U-Q4/U-M5) —
+                 native confirm() rendered "Reboot" identical to "Check
+                 updates". bulk_ask builds the tiered confirm_dialog. --%>
             <button
               :for={{action, label} <- @bulk_actions}
-              phx-click="bulk"
+              phx-click="bulk_ask"
               phx-value-action={action}
-              data-confirm={"#{label} on #{MapSet.size(@selected)} instance(s)?"}
               disabled={@bulk_busy}
-              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
+              class={[
+                "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40",
+                if(action in ~w(firmware_upgrade reboot),
+                  do: "border-error/40 text-error hover:bg-error/15",
+                  else: "border-base-content/20 text-base-content/80 hover:bg-base-300"
+                )
+              ]}
             >
               {if @bulk_busy, do: "Running…", else: label}
             </button>
@@ -856,9 +902,51 @@ defmodule OrbitWeb.InstancesLive do
           </table>
         </div>
       </section>
+      <.confirm_dialog
+        :if={@confirm}
+        title={bulk_title(@confirm.action, length(@confirm.names))}
+        tier={bulk_tier(@confirm.action)}
+        confirm_label={bulk_title(@confirm.action, length(@confirm.names))}
+        on_confirm="bulk_run"
+        on_cancel="bulk_cancel"
+        typed={@confirm_typed}
+        must_type={to_string(length(@confirm.names))}
+        items={@confirm.names}
+      >
+        {bulk_consequence(@confirm.action, length(@confirm.names))}
+      </.confirm_dialog>
     </main>
     """
   end
+
+  # The dialog copy states the consequence, not just the action; reboot and
+  # the major upgrade require typing the box COUNT (typing 12 names is not
+  # a safeguard, it is a punishment).
+  defp bulk_tier(a) when a in ~w(firmware_upgrade reboot), do: :type_to_confirm
+  defp bulk_tier("firmware_check"), do: :info
+  defp bulk_tier(_), do: :danger
+
+  defp bulk_title("firmware_check", n), do: "Check updates on #{n} instance(s)"
+  defp bulk_title("firmware_update", n), do: "Update firmware on #{n} instance(s)"
+  defp bulk_title("firmware_upgrade", n), do: "Major version upgrade on #{n} instance(s)"
+  defp bulk_title("ipsec_restart", n), do: "Restart IPsec on #{n} instance(s)"
+  defp bulk_title("reboot", n), do: "Reboot #{n} instance(s)"
+
+  defp bulk_consequence("firmware_check", _n),
+    do: "Runs an update check on the selected boxes. Nothing is installed."
+
+  defp bulk_consequence("firmware_update", _n),
+    do: "Firmware updates start immediately on all selected boxes; some may reboot to apply."
+
+  defp bulk_consequence("firmware_upgrade", n),
+    do:
+      "Major version jump — every selected box downloads, installs and REBOOTS; not undoable from here. Type #{n} to confirm."
+
+  defp bulk_consequence("ipsec_restart", _n),
+    do: "All IPsec tunnels on the selected boxes drop and re-establish."
+
+  defp bulk_consequence("reboot", n),
+    do: "All selected boxes go down for a couple of minutes. Type #{n} to confirm."
 
   # ---- small components ------------------------------------------------------
 

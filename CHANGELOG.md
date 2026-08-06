@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bulk actions on the instances page confirm in proportion to their blast
+  radius. "Reboot" no longer looks and confirms exactly like "Check
+  updates": a styled dialog names every affected box, states the
+  consequence, and Reboot / Major version upgrade additionally require
+  typing the box count (re-checked server-side). Escape cancels. This
+  replaces the native browser confirm, which couldn't name boxes and which
+  browsers can silently suppress ("prevent additional dialogs").
 - Filtered lists say so now: VPN and Logs open pre-filtered (down tunnels /
   ERR patterns), and the only hint was a thin border on one KPI tile while
   the Total count contradicted the visible rows — a "Showing 2 of 8
