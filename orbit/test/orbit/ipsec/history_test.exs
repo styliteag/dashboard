@@ -324,6 +324,136 @@ defmodule Orbit.Ipsec.HistoryTest do
     end
   end
 
+  describe "observation gaps (orbit or the box was not watching)" do
+    # Events are only recorded on ingest: while orbit is down or a box is
+    # silent, nothing is written, and the lanes painted the surrounding
+    # states straight across the hole as measured fact.
+
+    defp gap(start_hours_ago, end_hours_ago) do
+      %{
+        ts: DateTime.add(@now, -end_hours_ago * 3600),
+        event_type: "observation_gap",
+        old_value: DateTime.to_iso8601(DateTime.add(@now, -start_hours_ago * 3600)),
+        new_value: "no data",
+        child_name: ""
+      }
+    end
+
+    test "observation_gaps/3 emits one event per tunnel once the gap exceeds the threshold" do
+      prev = DateTime.add(@now, -3600)
+      tunnels = [%{"id" => "t1"}, %{"description" => "t2"}]
+
+      events = History.observation_gaps(prev, @now, tunnels)
+
+      assert [%{tunnel_id: "t1"}, %{tunnel_id: "t2"}] = events
+      assert Enum.all?(events, &(&1.event_type == "observation_gap"))
+      assert [%{old_value: iso} | _] = events
+      assert {:ok, ^prev, 0} = DateTime.from_iso8601(iso)
+    end
+
+    test "observation_gaps/3 accepts the rehydrated ISO-string timestamp" do
+      # After an orbit restart the cache comes from the JSON snapshot, where
+      # last_metrics_ts is a string — exactly the case (orbit was down) the
+      # gap exists for.
+      prev = DateTime.add(@now, -7200)
+
+      assert [%{tunnel_id: "t1"}] =
+               History.observation_gaps(DateTime.to_iso8601(prev), @now, [%{"id" => "t1"}])
+    end
+
+    test "observation_gaps/3 stays quiet on fresh pushes, nil and garbage" do
+      assert History.observation_gaps(DateTime.add(@now, -60), @now, [%{"id" => "t1"}]) == []
+      assert History.observation_gaps(nil, @now, [%{"id" => "t1"}]) == []
+      assert History.observation_gaps("not-a-ts", @now, [%{"id" => "t1"}]) == []
+    end
+
+    test "the gap stretch is grey; the lane resumes with the next transition's old side" do
+      # up before the gap, gap 12h→6h ago, then a drop 2h ago: the stretch
+      # between gap end and the drop was observed (no transitions = no
+      # change), so it takes the drop's old side (:up), not grey.
+      window = DateTime.add(@now, -24 * 3600)
+      events = [evt("phase1_up", 20), gap(12, 6), evt("phase1_down", 2)]
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: false, phase2_up: 0, phase2_total: 1}, @now, window)
+
+      states = lane |> Enum.sort_by(& &1.left) |> Enum.map(& &1.state)
+      # leading :down = inferred old side of the phase1_up (was down before it)
+      assert states == [:down, :up, :unknown, :up, :down]
+    end
+
+    test "a gap with no later event resumes in the live state" do
+      window = DateTime.add(@now, -24 * 3600)
+      events = [evt("phase1_up", 20), gap(12, 6)]
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 1}, @now, window)
+
+      states = lane |> Enum.sort_by(& &1.left) |> Enum.map(& &1.state)
+      assert states == [:down, :up, :unknown, :up]
+    end
+
+    test "the opening state is never inferred across a gap" do
+      # Only events: a gap, then a drop. What the tunnel did before the gap
+      # is unknowable — the drop's old side must not be painted back across.
+      window = DateTime.add(@now, -24 * 3600)
+      events = [gap(12, 6), evt("phase1_down", 2)]
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: false, phase2_up: 0, phase2_total: 1}, @now, window)
+
+      assert %{state: :unknown} = Enum.min_by(lane, & &1.left)
+    end
+
+    test "carried state from before the window stops at a pre-window gap" do
+      # phase1_up, then a gap, both before the window: the up is stale
+      # knowledge from before the hole and must not seed the lane.
+      window = DateTime.add(@now, -24 * 3600)
+      events = [evt("phase1_up", 80), gap(60, 40)]
+
+      %{phase1: lane} =
+        History.lanes(events, %{up: true, phase2_up: 1, phase2_total: 1}, @now, window)
+
+      # No in-window events either: only the live tail is known... which
+      # covers the whole window. The honest opening comes from resumed/live —
+      # via the gap's resume rule the lane is live-up end to end here, but a
+      # DOWN live must not paint pre-gap green:
+      assert Enum.all?(lane, &(&1.state in [:up, :unknown]))
+
+      %{phase1: lane_down} =
+        History.lanes(
+          [evt("phase1_up", 80), gap(60, 40)],
+          %{up: false, phase2_up: 0, phase2_total: 1},
+          @now,
+          window
+        )
+
+      refute Enum.any?(lane_down, &(&1.state == :up))
+    end
+
+    test "phase2_numeric shows no count over the gap and resumes on the old side" do
+      window = DateTime.add(@now, -24 * 3600)
+
+      events = [
+        gap(12, 6),
+        %{
+          ts: DateTime.add(@now, -2 * 3600),
+          event_type: "phase2_changed",
+          old_value: "2/2",
+          new_value: "1/2",
+          child_name: ""
+        }
+      ]
+
+      segs = History.phase2_numeric(events, %{phase2_up: 1, phase2_total: 2}, @now, window)
+
+      # Nothing labelled inside the gap stretch (50%→75% of the window).
+      refute Enum.any?(segs, fn s -> s.left >= 50.0 and s.left < 74.9 end)
+      # Observed stretch between gap end and the change carries the old count.
+      assert Enum.any?(segs, fn s -> abs(s.left - 75.0) < 0.2 and s.label == "2/2" end)
+    end
+  end
+
   describe "phase2_numeric/4" do
     test "carries the actual counts, ending on the live one" do
       # The colour lane says "partial" whether one of two child SAs dropped or

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Tunnel-history lanes no longer paint stretches nobody observed. Transitions
+  are only recorded while pushes arrive, so a dashboard outage (or a box that
+  went silent and came back) left no trace — the lanes stretched the
+  surrounding states across the hole as measured fact, and a dev stack that
+  had been off for a day still drew a solid-green 24h. The hub now records an
+  `observation_gap` event per tunnel when a push arrives after more than 15
+  minutes of silence (including the first push after a restart, via the
+  rehydrated snapshot timestamp), and the fleet graph, the history dialog
+  lanes and the phase-2 count bar grey that stretch out; opening-state
+  carry-over and inference stop at a gap instead of painting across it.
+
 ## [4.3.3] - 2026-08-06
 
 ### Added

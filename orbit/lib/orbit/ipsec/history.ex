@@ -127,6 +127,59 @@ defmodule Orbit.Ipsec.History do
 
   defp truthy_flag(v), do: v == true
 
+  # ---- observation gaps ------------------------------------------------------
+
+  # Transitions are only written on ingest: while orbit is down or a box is
+  # silent, nothing is recorded, and the lanes painted the surrounding states
+  # straight across the hole as measured fact (a dev stack off for a day drew
+  # a solid-green 24h). 15 min — comfortably above 4× the longest normal push
+  # interval, same reasoning as the cache's @max_rate_window; deliberately a
+  # constant, not the per-instance Staleness threshold: the hub ingest path
+  # must not read instance settings, and a false negative just means a short
+  # hole stays painted over.
+  @gap_seconds 900
+
+  @doc """
+  One `observation_gap` event per tunnel when the previous push is older than
+  #{@gap_seconds}s — the hub calls this with the pre-ingest cache timestamp on
+  every push. `prev_ts` may be a DateTime (in-memory cache) or an ISO-8601
+  string (cache rehydrated from the JSON snapshot after a restart — exactly
+  the "orbit was down" case this exists for). The gap start rides in
+  `old_value` so `lanes/4` can grey the stretch; anything unparseable or
+  fresh yields [].
+  """
+  def observation_gaps(prev_ts, %DateTime{} = now, tunnels) when is_list(tunnels) do
+    with %DateTime{} = start <- cache_ts(prev_ts),
+         true <- DateTime.diff(now, start) > @gap_seconds do
+      Enum.map(tunnels, &event(tunnel_key(&1), "", "observation_gap", iso(start), "no data"))
+    else
+      _ -> []
+    end
+  end
+
+  def observation_gaps(_prev_ts, _now, _tunnels), do: []
+
+  defp cache_ts(%DateTime{} = ts), do: ts
+
+  defp cache_ts(ts) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _offset} -> dt
+      _ -> nil
+    end
+  end
+
+  defp cache_ts(_), do: nil
+
+  defp iso(%DateTime{} = dt), do: dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+  # `{gap_start, gap_end}` for an observation_gap event, nil for everything
+  # else. An unparseable start collapses to a zero-width gap at the event —
+  # still an honest "continuity broken here" cut for opening/4 and carried/2.
+  defp gap_bounds(%{event_type: "observation_gap"} = e),
+    do: {cache_ts(to_string(e.old_value)) || e.ts, e.ts}
+
+  defp gap_bounds(_), do: nil
+
   # ---- dup persistence (hub-side streak, 3 consecutive pushes) --------------
 
   @dup_persist_polls 3
@@ -256,6 +309,7 @@ defmodule Orbit.Ipsec.History do
         build_lane(
           sorted,
           &phase1_state/1,
+          &phase1_before/1,
           live_up_state(live.up),
           x,
           opening(before, sorted, &phase1_state/1, &phase1_before/1),
@@ -265,6 +319,7 @@ defmodule Orbit.Ipsec.History do
         build_lane(
           sorted,
           &phase2_state/1,
+          &phase2_before/1,
           p2_state(live.phase2_up, live.phase2_total),
           x,
           opening(before, sorted, &phase2_state/1, &phase2_before/1),
@@ -274,6 +329,7 @@ defmodule Orbit.Ipsec.History do
         build_lane(
           sorted,
           &ping_state/1,
+          &ping_before/1,
           nil,
           x,
           opening(before, sorted, &ping_state/1, &ping_before/1),
@@ -334,20 +390,44 @@ defmodule Orbit.Ipsec.History do
 
     # Newest pre-window count — or, when no pre-window event survived pruning
     # or the preceding-row cap, the old side of the first in-window change
-    # (same inference as the colour lanes' opening/4).
-    initial =
-      before
-      |> Enum.reverse()
-      |> Enum.find_value(nil, fn e ->
-        if e.event_type == "phase2_changed", do: to_string(e.new_value)
-      end) ||
-        Enum.find_value(within, nil, fn e ->
-          if e.event_type == "phase2_changed" and to_string(e.old_value) != "",
-            do: to_string(e.old_value)
-        end)
+    # (same inference as the colour lanes' opening/4). Both lookups stop at
+    # an observation gap: counts do not carry across a hole.
+    initial = numeric_opening(before, within)
 
+    live_label = "#{live.phase2_up}/#{live.phase2_total}"
+
+    items =
+      Enum.flat_map(within, fn e ->
+        case gap_bounds(e) do
+          {gs, ge} ->
+            [{:gap, x.(gs), x.(ge)}]
+
+          nil ->
+            if e.event_type == "phase2_changed",
+              do: [{:cut, x.(e.ts), to_string(e.new_value), old_label(e)}],
+              else: []
+        end
+      end)
+
+    # A gap cuts to "no label" (bare track) at its start; the stretch after
+    # it resumes on the next change's old side — same rule as resumed/2.
     cuts =
-      for e <- within, e.event_type == "phase2_changed", do: {x.(e.ts), to_string(e.new_value)}
+      items
+      |> Enum.with_index()
+      |> Enum.flat_map(fn
+        {{:cut, xpos, label, _old}, _i} ->
+          [{xpos, label}]
+
+        {{:gap, gs, ge}, i} ->
+          resumed =
+            case Enum.at(items, i + 1) do
+              {:cut, _x, _label, old} -> old
+              {:gap, _gs, _ge} -> nil
+              nil -> live_label
+            end
+
+          [{gs, nil}, {ge, resumed}]
+      end)
 
     {segments, last_left, _last_label} =
       Enum.reduce(cuts, {[], 0.0, initial}, fn {cut, label}, {acc, left, cur} ->
@@ -359,8 +439,6 @@ defmodule Orbit.Ipsec.History do
     # measured is a made-up number). The silent stretch carries no label and
     # drops out below, leaving bare track: exactly how this bar already draws
     # a stretch with no known count.
-    live_label = "#{live.phase2_up}/#{live.phase2_total}"
-
     tail =
       case silent_cut(live, x) do
         nil ->
@@ -380,6 +458,44 @@ defmodule Orbit.Ipsec.History do
     |> Enum.reject(&(&1.width <= 0.0 or is_nil(&1.label)))
   end
 
+  defp old_label(e) do
+    case to_string(e.old_value) do
+      "" -> nil
+      old -> old
+    end
+  end
+
+  # The count the numeric bar opens with: the newest pre-window change, else
+  # the old side of the first in-window change — either lookup ends at an
+  # observation gap (a count from before a hole is stale knowledge).
+  defp numeric_opening(before, within) do
+    carried =
+      before
+      |> Enum.reverse()
+      |> Enum.find_value(fn e ->
+        cond do
+          gap_bounds(e) -> :hole
+          e.event_type == "phase2_changed" -> {:label, to_string(e.new_value)}
+          true -> nil
+        end
+      end)
+
+    seeded =
+      Enum.find_value(within, fn e ->
+        cond do
+          gap_bounds(e) -> :hole
+          e.event_type == "phase2_changed" and old_label(e) != nil -> {:label, old_label(e)}
+          true -> nil
+        end
+      end)
+
+    case {carried, seeded} do
+      {{:label, label}, _} -> label
+      {_, {:label, label}} -> label
+      _ -> nil
+    end
+  end
+
   # The state this lane was in when the window opened: the newest event before
   # it that says anything about this lane. When pruning or the preceding-row
   # cap left nothing (a tunnel whose last phase-1 flap predates retention),
@@ -388,8 +504,14 @@ defmodule Orbit.Ipsec.History do
   defp opening(before, sorted, state_fn, before_fn) do
     case carried(before, state_fn) do
       :unknown ->
+        # Inference stops at a gap: the first transition AFTER a hole says
+        # nothing about the stretch before it.
         Enum.find_value(sorted, :unknown, fn e ->
-          if state_fn.(e), do: before_fn.(e) || :unknown
+          cond do
+            gap_bounds(e) -> :unknown
+            state_fn.(e) -> before_fn.(e) || :unknown
+            true -> nil
+          end
         end)
 
       state ->
@@ -397,10 +519,14 @@ defmodule Orbit.Ipsec.History do
     end
   end
 
+  # Newest-first; a gap breaks the carry — state from before a hole is stale
+  # knowledge, not the state the window opened in.
   defp carried(before, state_fn) do
     before
     |> Enum.reverse()
-    |> Enum.find_value(:unknown, fn e -> state_fn.(e) end)
+    |> Enum.find_value(:unknown, fn e ->
+      if gap_bounds(e), do: :unknown, else: state_fn.(e)
+    end)
   end
 
   # ---- the old side of each transition: what the lane was BEFORE the event --
@@ -471,10 +597,21 @@ defmodule Orbit.Ipsec.History do
   end
 
   # One lane: fold the mapped events into state cuts; unknown before the
-  # first relevant event; live_state (when given) overrides the tail.
-  defp build_lane(sorted_events, state_fn, live_state, x, initial, silent) do
+  # first relevant event; live_state (when given) overrides the tail. A gap
+  # event cuts to :unknown at its start and resumes at its end (resumed/2).
+  defp build_lane(sorted_events, state_fn, before_fn, live_state, x, initial, silent) do
+    items = lane_items(sorted_events, state_fn, before_fn, x)
+
     cuts =
-      for e <- sorted_events, state = state_fn.(e), state != nil, do: {x.(e.ts), state}
+      items
+      |> Enum.with_index()
+      |> Enum.flat_map(fn
+        {{:cut, xpos, state, _before}, _i} ->
+          [{xpos, state}]
+
+        {{:gap, gs, ge}, i} ->
+          [{gs, :unknown}, {ge, resumed(items, i, live_state)}]
+      end)
 
     {segments, last_left, last_state} =
       Enum.reduce(cuts, {[], 0.0, initial}, fn {cut, state}, {acc, left, cur} ->
@@ -489,6 +626,36 @@ defmodule Orbit.Ipsec.History do
     |> Enum.reject(&(&1.width <= 0.0))
     |> Enum.map(&widen/1)
     |> Enum.sort_by(&paint_rank/1)
+  end
+
+  # Lane-relevant events and gaps, in window order, as renderable items.
+  defp lane_items(sorted_events, state_fn, before_fn, x) do
+    Enum.flat_map(sorted_events, fn e ->
+      case gap_bounds(e) do
+        {gs, ge} ->
+          [{:gap, x.(gs), x.(ge)}]
+
+        nil ->
+          case state_fn.(e) do
+            nil -> []
+            state -> [{:cut, x.(e.ts), state, before_fn.(e)}]
+          end
+      end
+    end)
+  end
+
+  # The state a lane resumes in after a gap. The stretch from gap end to the
+  # next transition was OBSERVED (the push that closed the gap re-opened the
+  # record), so no transition there means no change: the next cut's old side
+  # is the state since the gap ended. Only the IMMEDIATE next item counts — a
+  # second gap right after means that stretch ends in another hole and stays
+  # unknown. No item at all: the live state, like every other tail.
+  defp resumed(items, i, live_state) do
+    case Enum.at(items, i + 1) do
+      {:cut, _x, _state, before} -> before || :unknown
+      {:gap, _gs, _ge} -> :unknown
+      nil -> live_state || :unknown
+    end
   end
 
   # The right edge is the tunnel's LIVE state — but "live" is the hub cache,

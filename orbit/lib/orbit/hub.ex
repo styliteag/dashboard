@@ -486,7 +486,11 @@ defmodule Orbit.Hub do
     {data, dup_streaks} =
       Orbit.Ipsec.History.annotate_dup(data, Map.get(dup_state, instance_id, %{}))
 
-    prev_ipsec = Orbit.Hub.Cache.entry(state.cache, instance_id)["ipsec"]
+    prev_entry = Orbit.Hub.Cache.entry(state.cache, instance_id)
+    prev_ipsec = prev_entry["ipsec"]
+    # DateTime in memory, ISO string after snapshot rehydrate — the gap
+    # detector parses both (the string case IS the "orbit was down" case).
+    prev_push_ts = prev_entry["last_metrics_ts"]
 
     # Linux nodes push one checkmk blob instead of per-section numbers —
     # expand it here, once, so the cache AND the metric-history writer below
@@ -497,7 +501,7 @@ defmodule Orbit.Hub do
     maybe_persist_config_backup(instance_id, data)
     maybe_persist_metrics(instance_id, now, data)
     maybe_persist_snapshot(instance_id, cache)
-    maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data)
+    maybe_persist_ipsec_events(instance_id, now, prev_ipsec, prev_push_ts, data)
 
     {:noreply,
      state
@@ -715,11 +719,17 @@ defmodule Orbit.Hub do
   # the pre-ingest cache; an empty/absent ipsec section in the push is a
   # collector failure and never diffs (truthy-guard semantics, same as the
   # cache). Shares the :write_metrics test gate — same table-less test DB.
-  defp maybe_persist_ipsec_events(instance_id, now, prev_ipsec, data) do
+  # When the previous push is old (orbit was down, or the box went silent
+  # and came back), observation_gap events are recorded FIRST, so the
+  # history lanes grey the unobserved stretch instead of painting the
+  # last-known state across it; the diff still runs — transitions across
+  # the hole are real information, stamped at reconnect time.
+  defp maybe_persist_ipsec_events(instance_id, now, prev_ipsec, prev_push_ts, data) do
     with true <- Application.get_env(:orbit, :write_metrics, true),
          %{"tunnels" => prev_tunnels} <- prev_ipsec,
          %{"tunnels" => new_tunnels} when new_tunnels != [] <- data["ipsec"] do
-      case Orbit.Ipsec.History.diff(prev_tunnels, new_tunnels) do
+      case Orbit.Ipsec.History.observation_gaps(prev_push_ts, now, new_tunnels) ++
+             Orbit.Ipsec.History.diff(prev_tunnels, new_tunnels) do
         [] -> :ok
         events -> Task.start(fn -> Orbit.Ipsec.History.record(instance_id, now, events) end)
       end

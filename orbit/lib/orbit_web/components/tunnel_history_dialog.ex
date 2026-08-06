@@ -183,6 +183,7 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
   def lane_color(:down), do: "bg-error"
   def lane_color(:unknown), do: "bg-neutral"
 
+  def event_color("observation_gap"), do: "text-base-content/50"
   def event_color("phase1_up"), do: "text-primary"
   def event_color("ping_ok"), do: "text-primary"
   def event_color("phase1_down"), do: "text-error"
