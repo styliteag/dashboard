@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Operator comments show their text right in the row (truncated, full
+  text on hover) instead of hiding behind a bare pencil icon — the
+  comment is exactly what the next operator was supposed to see, and it
+  was hover-only and invisible on phones. Applies to instance notes and
+  the VPN-tunnel/connectivity-monitor comments; an empty comment keeps
+  the quiet pencil.
+
 ## [4.4.2] - 2026-08-07
 
 ## [4.4.1] - 2026-08-07

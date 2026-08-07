@@ -30,12 +30,17 @@ defmodule OrbitWeb.Components.CommentEditor do
 
   def comment_editor(assigns) do
     ~H"""
+    <%!-- The comment TEXT shows inline (truncated; full text in the title):
+         a pencil-only badge hid the one thing the next operator was meant
+         to read — hover-only and invisible on phones (designer feedback
+         2026-08-07). Empty state stays the quiet pencil affordance. --%>
     <span
       :if={not @writable and present?(@text)}
       title={@text}
-      class="ml-1 cursor-help align-text-bottom text-warning/80"
+      class="ml-1 inline-flex max-w-[16rem] cursor-help items-center gap-1 align-text-bottom text-warning/90"
     >
       <.pencil filled={true} />
+      <span class="truncate text-xs italic">{@text}</span>
     </span>
     <details
       :if={@writable}
@@ -45,12 +50,13 @@ defmodule OrbitWeb.Components.CommentEditor do
     >
       <summary
         class={[
-          "inline-flex cursor-pointer items-center rounded p-0.5 hover:bg-base-300",
-          if(present?(@text), do: "text-warning/80", else: "text-base-content/70")
+          "inline-flex max-w-[16rem] cursor-pointer items-center gap-1 rounded p-0.5 hover:bg-base-300",
+          if(present?(@text), do: "text-warning/90", else: "text-base-content/70")
         ]}
         title={@text || "Add comment"}
       >
         <.pencil filled={present?(@text)} />
+        <span :if={present?(@text)} class="truncate text-xs italic">{@text}</span>
       </summary>
       <%!-- position:fixed (set by the CommentPop hook) so the panel escapes
            the list table's overflow-x-auto clip; starts hidden until placed. --%>
