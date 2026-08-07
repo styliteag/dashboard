@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A display-density toggle (Comfy / Compact) in the account menu next to
+  the theme switcher: Compact tightens table rows, page paddings and
+  cards for operators who want more fleet on one screen. Cookie-backed
+  like the design choice; Comfy stays exactly the previous rendering.
+
+### Changed
+
+- The grid view earns its footprint: every instance card now carries a
+  live line from the agent's latest push — CPU %, memory % and the
+  firmware version — on top of the status, alert chips, tags and links
+  it already shared with the list. The same card is the phone layout, so
+  small screens get the richer view too.
+
 ## [4.4.0] - 2026-08-07
 
 ### Added
@@ -124,10 +139,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (primary/secondary/quiet/danger, two sizes) sets the canon, and the most
   duplicated hand-rolled small-button recipes were aligned to it — the
   22px-tall py-0.5 variants now meet the 24px click-target floor, and
-  secondary buttons share one text tint. The most common recipe (the small
-  secondary button — Refresh, Close, reveal, Timeline, the AI-analysis
-  submits, …) was then swept onto the component across 12 files, so those
-  17 buttons can no longer drift apart.
+  secondary buttons share one text tint. The sweep is complete now: ~100
+  buttons across the app went onto the shared component in three batches,
+  and the exceptions that stay hand-rolled are explicit ones — filled
+  semantic warning/info/error actions, square icon buttons, and the login
+  page's large CTAs.
 - Secondary text is readable in the light designs: every muted tint below
   70% (form labels, tile captions, table headers, row subtexts, hints, the
   footer) moved to the 70% floor — 60% sat below WCAG AA on light

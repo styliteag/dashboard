@@ -346,6 +346,7 @@ defmodule OrbitWeb.InstancesLive do
         agent = agents[inst.id]
         agent_connected = MapSet.member?(connected_ids, inst.id)
         served_for = served[Orbit.Agent.Package.line_for(inst.device_type)]
+        entry = Hub.cache_entry(inst.id)
 
         %{
           id: inst.id,
@@ -379,12 +380,13 @@ defmodule OrbitWeb.InstancesLive do
           # reports one is the exception worth seeing. The detail page has
           # said so for a while; from the list there was no way to tell which
           # boxes deviate without opening each one.
-          console_pw:
-            get_in(Hub.cache_entry(inst.id), [
-              "status",
-              "system",
-              "console_password_protected"
-            ]) == true
+          console_pw: get_in(entry, ["status", "system", "console_password_protected"]) == true,
+          # Grid-card live line (UI/UX review D-16: the grid cost 3× the
+          # space and showed strictly less than the list — now it shows
+          # MORE): cheap in-memory cache reads, no metric queries.
+          cpu: get_in(entry, ["status", "cpu", "total_pct"]),
+          mem_pct: get_in(entry, ["status", "memory", "used_pct"]),
+          fw_version: get_in(entry, ["status", "system", "version"])
         }
       end)
 
@@ -990,6 +992,16 @@ defmodule OrbitWeb.InstancesLive do
       </div>
       <div class="mt-2 space-y-1 text-xs text-base-content/70">
         <div>{@i.device_type} · {if @i.agent_mode, do: "agent", else: "api"}</div>
+        <%!-- Live line from the hub cache (D-16): the reason the card earns
+             its 3× footprint over a list row. --%>
+        <div
+          :if={@i.cpu || @i.mem_pct || @i.fw_version}
+          class="flex flex-wrap gap-x-2 font-mono text-[11px]"
+        >
+          <span :if={is_number(@i.cpu)}>CPU {round(@i.cpu)}%</span>
+          <span :if={is_number(@i.mem_pct)}>Mem {round(@i.mem_pct)}%</span>
+          <span :if={@i.fw_version} class="max-w-[14rem] truncate">{@i.fw_version}</span>
+        </div>
         <div :if={@i.base_url != ""} class="truncate">
           <.base_url_links base_url={@i.base_url} class="hover:text-base-content/70" />
         </div>
