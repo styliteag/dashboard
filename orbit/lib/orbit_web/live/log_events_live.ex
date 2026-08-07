@@ -28,6 +28,8 @@ defmodule OrbitWeb.LogEventsLive do
        search: "",
        sev_filter: "err",
        tag_filter: "all",
+       sort_col: "sev",
+       sort_dir: :asc,
        open_sample: nil
      )
      |> load()}
@@ -62,6 +64,18 @@ defmodule OrbitWeb.LogEventsLive do
   def handle_event("close_sample", _params, socket),
     do: {:noreply, assign(socket, open_sample: nil)}
 
+  # Worst-first stays the DEFAULT; a header click overrides it for the
+  # session (UI/UX review U-N1).
+  def handle_event("sort", %{"col" => col}, socket)
+      when col in ~w(sev instance program count last_seen) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> load()}
+  end
+
   @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
@@ -76,10 +90,20 @@ defmodule OrbitWeb.LogEventsLive do
       |> Enum.flat_map(fn inst ->
         for e <- Store.list_events(inst.id), do: %{instance: inst, event: e}
       end)
-      |> Enum.sort_by(fn %{instance: i, event: e} -> {e.severity, -e.count, i.name} end)
+      |> Enum.sort_by(sort_key(socket.assigns.sort_col), socket.assigns.sort_dir)
 
     assign(socket, rows: rows)
   end
+
+  defp sort_key("sev"), do: fn %{instance: i, event: e} -> {e.severity, -e.count, i.name} end
+  defp sort_key("instance"), do: fn r -> String.downcase(r.instance.name) end
+  defp sort_key("program"), do: fn r -> String.downcase(r.event.program || "") end
+  defp sort_key("count"), do: fn r -> r.event.count end
+
+  # Unix seconds, not the DateTime struct: :asc/:desc compares structurally,
+  # which mis-orders DateTimes across month boundaries.
+  defp sort_key("last_seen"),
+    do: fn r -> DateTime.to_unix(r.event.updated_at || ~U[1970-01-01 00:00:00Z]) end
 
   defp visible(a) do
     q = String.downcase(a.search)
@@ -150,7 +174,7 @@ defmodule OrbitWeb.LogEventsLive do
           </span>
         </.data_note>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
             value={length(@rows)}
@@ -230,12 +254,22 @@ defmodule OrbitWeb.LogEventsLive do
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
             <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
               <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Sev</th>
-                <th class="py-2 pr-4 font-medium">Instance</th>
-                <th class="py-2 pr-4 font-medium">Program</th>
-                <th class="py-2 pr-4 font-medium">Pattern</th>
-                <th class="py-2 pr-4 text-right font-medium">Count</th>
-                <th class="py-2 pr-4 font-medium">Last seen</th>
+                <.sort_th col="sev" label="Sev" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="instance"
+                  label="Instance"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <.sort_th col="program" label="Program" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <th scope="col" class="py-2 pr-4 font-medium">Pattern</th>
+                <.sort_th col="count" label="Count" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="last_seen"
+                  label="Last seen"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
               </tr>
             </thead>
             <tbody>

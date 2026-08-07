@@ -12,7 +12,7 @@ defmodule OrbitWeb.UsersLive do
 
   use OrbitWeb, :live_view
 
-  import OrbitWeb.Components.ListKit, only: [empty_state: 1]
+  import OrbitWeb.Components.ListKit, only: [empty_state: 1, sort_th: 1]
 
   alias Orbit.Accounts
   alias Orbit.Accounts.Admin
@@ -20,14 +20,42 @@ defmodule OrbitWeb.UsersLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(editing: nil, error: nil, show_create: false) |> reload()}
+    {:ok,
+     socket
+     |> assign(editing: nil, error: nil, show_create: false, sort_col: "user", sort_dir: :asc)
+     |> reload()}
   end
 
   defp reload(socket) do
-    assign(socket, users: Accounts.list_users(), groups: Orbit.Repo.all(Orbit.Accounts.Group))
+    users =
+      Accounts.list_users()
+      |> Enum.sort_by(sort_key(socket.assigns.sort_col), socket.assigns.sort_dir)
+
+    assign(socket, users: users, groups: Orbit.Repo.all(Orbit.Accounts.Group))
   end
 
+  defp sort_key("user"), do: fn u -> String.downcase(u.username) end
+  defp sort_key("role"), do: fn u -> {u.role, String.downcase(u.username)} end
+  defp sort_key("twofa"), do: fn u -> {u.totp_enabled, String.downcase(u.username)} end
+  defp sort_key("status"), do: fn u -> {u.disabled, String.downcase(u.username)} end
+
+  # Unix seconds, not the DateTime struct: :asc/:desc compares structurally,
+  # which mis-orders DateTimes across month boundaries.
+  defp sort_key("last_login"),
+    do: fn u -> DateTime.to_unix(u.last_login_at || ~U[1970-01-01 00:00:00Z]) end
+
   @impl true
+  # Header click re-orders for the session (UI/UX review U-N1).
+  def handle_event("sort", %{"col" => col}, socket)
+      when col in ~w(user role twofa status last_login) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> reload()}
+  end
+
   def handle_event("toggle_create", _p, socket) do
     {:noreply, assign(socket, show_create: not socket.assigns.show_create, error: nil)}
   end
@@ -209,13 +237,18 @@ defmodule OrbitWeb.UsersLive do
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">User</th>
-                <th class="py-2 pr-4 font-medium">Role</th>
-                <th class="py-2 pr-4 font-medium">2FA</th>
-                <th class="py-2 pr-4 font-medium">Groups</th>
-                <th class="py-2 pr-4 font-medium">Status</th>
-                <th class="py-2 pr-4 font-medium">Last login</th>
-                <th class="py-2 font-medium"></th>
+                <.sort_th col="user" label="User" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="role" label="Role" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="twofa" label="2FA" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <th scope="col" class="py-2 pr-4 font-medium">Groups</th>
+                <.sort_th col="status" label="Status" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="last_login"
+                  label="Last login"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <th scope="col" class="py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>

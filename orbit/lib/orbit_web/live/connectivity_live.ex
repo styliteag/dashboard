@@ -48,6 +48,8 @@ defmodule OrbitWeb.ConnectivityLive do
      |> assign(
        search: "",
        state_filter: "all",
+       sort_col: "state",
+       sort_dir: :asc,
        writable: socket.assigns.current_user.role in ~w(admin user),
        conn_editor: nil,
        conn_test: nil,
@@ -65,6 +67,18 @@ defmodule OrbitWeb.ConnectivityLive do
 
   @impl true
   def handle_event("search", %{"q" => q}, socket), do: {:noreply, assign(socket, search: q)}
+
+  # Worst-first stays the DEFAULT; a header click overrides it for the
+  # session (UI/UX review U-N1).
+  def handle_event("sort", %{"col" => col}, socket)
+      when col in ~w(state instance monitor rtt loss) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> load()}
+  end
 
   def handle_event("state_filter", %{"bucket" => b}, socket) when b in ~w(all ok warn crit) do
     b = if socket.assigns.state_filter == b, do: "all", else: b
@@ -307,14 +321,22 @@ defmodule OrbitWeb.ConnectivityLive do
           }
         end
       end)
-      |> Enum.sort_by(fn %{check: c, instance_name: n} ->
-        {-ServiceCheck.severity(c.state), n, c.key}
-      end)
+      |> Enum.sort_by(sort_key(socket.assigns.sort_col), socket.assigns.sort_dir)
 
     socket
     |> assign(rows: rows, comments: CommentEditor.lookup(monitor_instances))
     |> load_charts()
   end
+
+  defp sort_key("state") do
+    fn %{check: c, instance_name: n} -> {-ServiceCheck.severity(c.state), n, c.key} end
+  end
+
+  defp sort_key("instance"), do: fn r -> String.downcase(r.instance_name) end
+  defp sort_key("monitor"), do: fn r -> String.downcase(r.check.summary || "") end
+  # nil metrics sort behind every real measurement, in both directions.
+  defp sort_key("rtt"), do: fn r -> r.rtt || 1.0e12 end
+  defp sort_key("loss"), do: fn r -> r.loss || 1.0e12 end
 
   # RTT history for expanded rows only — one indexed series read each; a
   # fully collapsed table pays nothing. The series is written per push by
@@ -415,7 +437,7 @@ defmodule OrbitWeb.ConnectivityLive do
           <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
             value={length(@rows)}
@@ -534,12 +556,17 @@ defmodule OrbitWeb.ConnectivityLive do
           <table :if={@visible_rows != []} class="w-full min-w-[46rem] text-left text-sm">
             <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">State</th>
-                <th class="py-2 pr-4 font-medium">Instance</th>
-                <th class="py-2 pr-4 font-medium">Monitor</th>
-                <th class="py-2 pr-4 text-right font-medium">RTT</th>
-                <th class="py-2 pr-4 text-right font-medium">Loss</th>
-                <th class="py-2 font-medium"></th>
+                <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="instance"
+                  label="Instance"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <.sort_th col="monitor" label="Monitor" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="rtt" label="RTT" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="loss" label="Loss" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <th scope="col" class="py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>

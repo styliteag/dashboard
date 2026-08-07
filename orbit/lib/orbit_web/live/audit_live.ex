@@ -16,6 +16,8 @@ defmodule OrbitWeb.AuditLive do
 
   use OrbitWeb, :live_view
 
+  import OrbitWeb.Components.ListKit, only: [sort_th: 1]
+
   require Logger
 
   alias Orbit.Access
@@ -47,7 +49,9 @@ defmodule OrbitWeb.AuditLive do
         grouped: true,
         action_q: "",
         action_hours: nil,
-        action_limit: 100
+        action_limit: 100,
+        sort_col: "time",
+        sort_dir: :desc
       )
       |> load()
 
@@ -86,6 +90,19 @@ defmodule OrbitWeb.AuditLive do
 
   def handle_event("action_more", _params, socket) do
     {:noreply, socket |> assign(action_limit: socket.assigns.action_limit + 200) |> load()}
+  end
+
+  # Newest-first stays the DEFAULT; a header click re-orders SERVER-side
+  # (UI/UX review U-N1) — the page shows a LIMIT window, so sorting only the
+  # loaded rows would silently hide matches outside it.
+  def handle_event("sort", %{"col" => col}, socket)
+      when col in ~w(time action result user) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> load()}
   end
 
   def handle_event("refresh", _params, socket) do
@@ -168,14 +185,15 @@ defmodule OrbitWeb.AuditLive do
           a[:action_q] || "",
           a[:action_hours],
           a[:action_limit] || @limit,
-          a.current_user
+          a.current_user,
+          {a[:sort_col] || "time", a[:sort_dir] || :desc}
         )
     )
   end
 
   # Actions-tab filters (AuditPage parity): free-text on action/target,
   # hours window, load-more pagination; user_id resolves to the username.
-  defp load_rows(q, hours, limit, current_user) do
+  defp load_rows(q, hours, limit, current_user, sort) do
     {where, params} =
       []
       |> then(fn acc ->
@@ -205,7 +223,8 @@ defmodule OrbitWeb.AuditLive do
     %{rows: rows} =
       Orbit.Repo.query!(
         "SELECT ts, action, result, user_id, target_type, target_id, source_ip " <>
-          "FROM audit_log" <> where_sql <> " ORDER BY id DESC LIMIT #{limit}",
+          "FROM audit_log LEFT JOIN users u ON u.id = audit_log.user_id" <>
+          where_sql <> " ORDER BY " <> order_sql(sort) <> " LIMIT #{limit}",
         params
       )
 
@@ -222,6 +241,20 @@ defmodule OrbitWeb.AuditLive do
         ip: ip,
         geo: OrbitWeb.Geo.label(ip)
       }
+    end
+  end
+
+  # Column whitelist compiled here, never from user input: the sort event's
+  # guard admits four strings, dir is one of two atoms — nothing user-typed
+  # reaches the SQL.
+  defp order_sql({col, dir}) do
+    d = if dir == :asc, do: "ASC", else: "DESC"
+
+    case col do
+      "action" -> "audit_log.action #{d}, audit_log.id DESC"
+      "result" -> "audit_log.result #{d}, audit_log.id DESC"
+      "user" -> "u.username #{d}, audit_log.id DESC"
+      _time -> "audit_log.id #{d}"
     end
   end
 
@@ -338,12 +371,22 @@ defmodule OrbitWeb.AuditLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
                 <tr class="border-b border-base-300">
-                  <th class="py-2 pr-4 font-medium">Time</th>
-                  <th class="py-2 pr-4 font-medium">Action</th>
-                  <th class="py-2 pr-4 font-medium">Result</th>
-                  <th class="py-2 pr-4 font-medium">User</th>
-                  <th class="py-2 pr-4 font-medium">Target</th>
-                  <th class="py-2 pr-4 font-medium">IP</th>
+                  <.sort_th col="time" label="Time" sort_col={@sort_col} sort_dir={@sort_dir} />
+                  <.sort_th
+                    col="action"
+                    label="Action"
+                    sort_col={@sort_col}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_th
+                    col="result"
+                    label="Result"
+                    sort_col={@sort_col}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_th col="user" label="User" sort_col={@sort_col} sort_dir={@sort_dir} />
+                  <th scope="col" class="py-2 pr-4 font-medium">Target</th>
+                  <th scope="col" class="py-2 pr-4 font-medium">IP</th>
                 </tr>
               </thead>
               <tbody>

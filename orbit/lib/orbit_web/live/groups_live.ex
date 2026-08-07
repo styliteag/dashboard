@@ -10,7 +10,7 @@ defmodule OrbitWeb.GroupsLive do
 
   use OrbitWeb, :live_view
 
-  import OrbitWeb.Components.ListKit, only: [empty_state: 1]
+  import OrbitWeb.Components.ListKit, only: [empty_state: 1, sort_th: 1]
 
   alias Orbit.Accounts
   alias Orbit.Accounts.Admin
@@ -26,17 +26,27 @@ defmodule OrbitWeb.GroupsLive do
        renaming: nil,
        channels_for: nil,
        group_channels: %{},
-       channel_error: nil
+       channel_error: nil,
+       sort_col: "name",
+       sort_dir: :asc
      )
      |> reload()}
   end
 
   defp reload(socket) do
+    groups =
+      Accounts.list_groups()
+      |> Enum.sort_by(sort_key(socket.assigns.sort_col), socket.assigns.sort_dir)
+
     assign(socket,
-      groups: Accounts.list_groups(),
+      groups: groups,
       assignments: list_assignments()
     )
   end
+
+  defp sort_key("members"), do: fn g -> g.user_count end
+  defp sort_key("instances"), do: fn g -> g.instance_count end
+  defp sort_key(_name), do: fn g -> String.downcase(g.name) end
 
   # Superadmin-only surface: the assignment table deliberately reads ALL
   # live instances without scope — moving instances between groups is
@@ -59,6 +69,16 @@ defmodule OrbitWeb.GroupsLive do
   end
 
   @impl true
+  # Header click re-orders for the session (UI/UX review U-N1).
+  def handle_event("sort", %{"col" => col}, socket) when col in ~w(name members instances) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> reload()}
+  end
+
   def handle_event("create_group", %{"group" => %{"name" => name}}, socket) do
     case Admin.create_group(name) do
       {:ok, group} ->
@@ -228,10 +248,20 @@ defmodule OrbitWeb.GroupsLive do
           <table class="w-full max-w-2xl text-left text-sm">
             <thead class="text-base-content/70">
               <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">Group</th>
-                <th class="py-2 pr-4 text-right font-medium">Members</th>
-                <th class="py-2 pr-4 text-right font-medium">Instances</th>
-                <th class="py-2 font-medium"></th>
+                <.sort_th col="name" label="Group" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="members"
+                  label="Members"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <.sort_th
+                  col="instances"
+                  label="Instances"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <th scope="col" class="py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -323,36 +353,38 @@ defmodule OrbitWeb.GroupsLive do
             Pick a group per instance — the move applies immediately.
           </p>
           <p :if={@assignments == []} class="mt-3 text-sm text-base-content/70">No instances yet.</p>
-          <table :if={@assignments != []} class="mt-3 w-full text-left text-sm">
-            <thead class="text-xs text-base-content/70">
-              <tr class="border-b border-base-300">
-                <th class="py-1 pr-4 font-medium">Instance</th>
-                <th class="py-1 font-medium">Group</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={a <- @assignments} class="border-b border-base-300/50 last:border-0">
-                <td class="py-2 pr-4 text-base-content">
-                  {a.name} <span class="ml-1 text-xs text-base-content/70">{a.slug}</span>
-                </td>
-                <td class="py-2">
-                  <form phx-change="move_instance">
-                    <input type="hidden" name="instance_id" value={a.id} />
-                    <select
-                      name="group_id"
-                      disabled={length(@groups) < 2}
-                      title={if length(@groups) < 2, do: "Create a second group first"}
-                      class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content/80 disabled:opacity-50"
-                    >
-                      <option :for={g <- @groups} value={g.id} selected={g.id == a.group_id}>
-                        {g.name}
-                      </option>
-                    </select>
-                  </form>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div :if={@assignments != []} class="overflow-x-auto">
+            <table class="mt-3 w-full text-left text-sm">
+              <thead class="text-xs text-base-content/70">
+                <tr class="border-b border-base-300">
+                  <th class="py-1 pr-4 font-medium">Instance</th>
+                  <th class="py-1 font-medium">Group</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={a <- @assignments} class="border-b border-base-300/50 last:border-0">
+                  <td class="py-2 pr-4 text-base-content">
+                    {a.name} <span class="ml-1 text-xs text-base-content/70">{a.slug}</span>
+                  </td>
+                  <td class="py-2">
+                    <form phx-change="move_instance">
+                      <input type="hidden" name="instance_id" value={a.id} />
+                      <select
+                        name="group_id"
+                        disabled={length(@groups) < 2}
+                        title={if length(@groups) < 2, do: "Create a second group first"}
+                        class="rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content/80 disabled:opacity-50"
+                      >
+                        <option :for={g <- @groups} value={g.id} selected={g.id == a.group_id}>
+                          {g.name}
+                        </option>
+                      </select>
+                    </form>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
