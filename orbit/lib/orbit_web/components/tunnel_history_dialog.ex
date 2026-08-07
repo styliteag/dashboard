@@ -181,37 +181,10 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
     """
   end
 
-  # Hatches on top of colour, like the availability lanes (A-B2: adjacent
-  # lane colours are near-identical in luminance — colour alone vanishes in
-  # greyscale; user request 2026-08-07 to roll the pattern out here).
-  def lane_color(:up), do: "bg-primary"
-  def lane_color(:partial), do: "bg-warning lane-hatch-partial"
-  def lane_color(:down), do: "bg-error lane-hatch-down"
-  def lane_color(:unknown), do: "bg-neutral"
-
-  @doc """
-  The availability page's lane legend, shared by every lane surface (VPN
-  and connectivity fleet graphs): names the four states — a bare coloured
-  block explains nothing (U-Q2) — and shows their hatches.
-  """
-  def lane_legend(assigns) do
-    ~H"""
-    <div class="mb-2 flex flex-wrap items-center gap-3 text-[10px] text-base-content/70">
-      <span><span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-primary"></span>up</span>
-      <span>
-        <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-warning lane-hatch-partial"></span>
-        partial
-      </span>
-      <span>
-        <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-error lane-hatch-down"></span> down
-      </span>
-      <span>
-        <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-neutral"></span>no data
-      </span>
-      <span class="ml-auto">resolved history is dimmed; full colour = still current</span>
-    </div>
-    """
-  end
+  # Moved to the shared viz vocabulary (docs/dataviz-language.md DR-DV1);
+  # delegates keep existing call sites working while surfaces migrate.
+  defdelegate lane_color(state), to: OrbitWeb.Components.Viz
+  defdelegate lane_legend(assigns), to: OrbitWeb.Components.Viz
 
   def event_color("observation_gap"), do: "text-base-content/70"
   def event_color("phase1_up"), do: "text-primary"
