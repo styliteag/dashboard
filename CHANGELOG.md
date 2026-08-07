@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.6] - 2026-08-07
+
 ### Fixed
 
 - Syslog "Last seen" can no longer sit in the future: zone-less RFC3164
