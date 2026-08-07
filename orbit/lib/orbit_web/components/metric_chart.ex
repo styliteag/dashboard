@@ -16,7 +16,10 @@ defmodule OrbitWeb.Components.MetricChart do
 
   attr :label, :string, required: true
   attr :points, :list, required: true, doc: "[%{ts: DateTime, value: float}] oldest first"
-  attr :color, :string, default: "#10b981"
+  # Theme token, not a raw hex — charts must recolor with the design
+  # (UI/UX review D-9); pages needing a second series colour pass another
+  # var(--color-*) token.
+  attr :color, :string, default: "var(--color-primary)"
   # :auto = scale to the data max (nice-rounded); a number pins the domain (0..max).
   attr :domain_max, :any, default: 100
   attr :scale, :any, default: 1, doc: "divide raw values before plotting (ms → s etc.)"
@@ -59,7 +62,17 @@ defmodule OrbitWeb.Components.MetricChart do
       <p :if={@line == nil} class="py-8 text-center text-sm text-base-content/70">
         No data for this range.
       </p>
-      <div :if={@line != nil}>
+      <div :if={@line != nil} class="relative">
+        <%!-- y labels live in HTML, not the SVG: the viewBox is stretched
+             non-uniformly, SVG text would distort. Max top, 0 bottom — the
+             old centered "0–100" string in the footer read as a third
+             timestamp (UI/UX review D-4). --%>
+        <span class="pointer-events-none absolute right-1 top-0 text-[10px] text-base-content/70">
+          {fmt_val(@ymax)}{@unit}
+        </span>
+        <span class="pointer-events-none absolute bottom-0 right-1 text-[10px] text-base-content/70">
+          0
+        </span>
         <svg viewBox="0 0 100 40" preserveAspectRatio="none" class="h-40 w-full text-base-content">
           <defs>
             <linearGradient id={@grad_id} x1="0" y1="0" x2="0" y2="1">
@@ -94,7 +107,7 @@ defmodule OrbitWeb.Components.MetricChart do
             y1={@ref_line_y}
             x2="100"
             y2={@ref_line_y}
-            stroke="#f59e0b"
+            stroke="var(--color-warning)"
             stroke-width="0.4"
             stroke-dasharray="2 2"
             stroke-opacity="0.7"
@@ -118,7 +131,6 @@ defmodule OrbitWeb.Components.MetricChart do
         </svg>
         <div class="mt-1 flex justify-between text-[10px] text-base-content/70">
           <span>{fmt_ts(List.first(@points))}</span>
-          <span class="text-base-content/70">0–{fmt_val(@ymax)}{@unit}</span>
           <span>{fmt_ts(List.last(@points))}</span>
         </div>
       </div>

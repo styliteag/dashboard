@@ -26,7 +26,7 @@ defmodule OrbitWeb.Components.MetricChartTest do
 
     # 0% sits on the floor (y=40), 50% mid (y=20), 100% on the ceiling (y=0).
     assert html =~ "0,40.0 50.0,20.0 100.0,0.0"
-    assert html =~ "0–100"
+    assert html =~ ~r/top-0[^>]*>\s*100\s*</
   end
 
   test "scale divides raw values and the WARN reference line lands in domain units" do
@@ -41,8 +41,8 @@ defmodule OrbitWeb.Components.MetricChartTest do
       )
 
     # ymax = nice(max(4s, ref 10s)) = 10s → ref line at the top (y=0).
-    assert html =~ "0–10s"
-    assert html =~ ~s(stroke="#f59e0b")
+    assert html =~ ~r/top-0[^>]*>\s*10s\s*</
+    assert html =~ ~s|stroke="var(--color-warning)"|
   end
 
   test "auto domain nice-rounds the data max" do
@@ -53,7 +53,7 @@ defmodule OrbitWeb.Components.MetricChartTest do
         domain_max: :auto
       )
 
-    assert html =~ "0–5"
+    assert html =~ ~r/top-0[^>]*>\s*5\s*</
   end
 
   test "hover dots carry native title tooltips" do

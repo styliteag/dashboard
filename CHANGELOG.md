@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Metric charts got a real y-axis and follow the design's colours: the
+  scale maximum sits at the top right of the plot and 0 at the bottom
+  (the old centered "0–100" string between two timestamps read as a third
+  timestamp), and the series line, area fill and WARN reference line take
+  their colours from the active design instead of fixed hex values.
 - The /uptime timeline is readable without perfect colour vision and
   answers "when": down and partial segments carry diagonal hatches on top
   of their colour (adjacent lane colours are near-identical in luminance —
