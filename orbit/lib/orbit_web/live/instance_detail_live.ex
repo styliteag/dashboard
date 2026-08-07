@@ -105,6 +105,7 @@ defmodule OrbitWeb.InstanceDetailLive do
           monitor_history: nil,
           upgrade_confirm: "",
           upgrade_confirm_open: false,
+          ai_confirm: nil,
           # Per-tab lazy loading (UI/UX review U-L1): nil = not loaded yet.
           # mount used to run EVERY tab's queries up front; now each loader
           # runs on the first visit of a tab that needs it (handle_params →
@@ -395,6 +396,10 @@ defmodule OrbitWeb.InstanceDetailLive do
   # tab kept an analyse button. The bundle is flattened to text and goes
   # through the same Orbit.LLM.Analyze path as the logs, so the anonymiser
   # and the character caps apply unchanged (invariant 4).
+  # UI/UX review U-M6: sending box content to an external provider was one
+  # silent click with an 11px disclosure. Both AI entry points now stage an
+  # egress confirmation that names the provider and shows the exact
+  # anonymized payload; only the confirm handler performs the send.
   def handle_event("diag_ai_analyze", %{"provider" => provider}, socket) do
     cond do
       not socket.assigns.admin or socket.assigns.diag_ai_busy ->
@@ -405,13 +410,40 @@ defmodule OrbitWeb.InstanceDetailLive do
 
       true ->
         text = diagnosis_text(socket.assigns.diagnosis)
+        {:noreply, assign(socket, ai_confirm: egress_confirm(:diagnosis, provider, text))}
+    end
+  end
 
+  def handle_event("ai_egress_cancel", _params, socket),
+    do: {:noreply, assign(socket, ai_confirm: nil)}
+
+  # Gates re-checked here (never trust hidden UI): the dialog only exists
+  # for admins, but the event must refuse on its own.
+  def handle_event("ai_egress_confirm", _params, socket) do
+    case socket.assigns.ai_confirm do
+      %{kind: :diagnosis, provider: provider, text: text} when socket.assigns.admin ->
         {:noreply,
          socket
-         |> assign(diag_ai_busy: true, diag_ai_result: nil, diag_ai_error: nil)
+         |> assign(
+           ai_confirm: nil,
+           diag_ai_busy: true,
+           diag_ai_result: nil,
+           diag_ai_error: nil
+         )
          |> start_async(:diag_ai_analyze, fn ->
            Orbit.LLM.Analyze.analyze_logs(provider, text)
          end)}
+
+      %{kind: :logs, provider: provider, text: text} when socket.assigns.admin ->
+        {:noreply,
+         socket
+         |> assign(ai_confirm: nil, ai_busy: true, ai_result: nil, ai_error: nil)
+         |> start_async(:ai_analyze, fn ->
+           Orbit.LLM.Analyze.analyze_logs(provider, text)
+         end)}
+
+      _ ->
+        {:noreply, assign(socket, ai_confirm: nil)}
     end
   end
 
@@ -849,21 +881,35 @@ defmodule OrbitWeb.InstanceDetailLive do
   # AI log analysis (AiLogAnalysisSection parity) — admin-only like the raw
   # logs (the LLM sees anonymized text only, invariant 4; still an admin
   # surface). Runs async: anonymize + provider call take seconds.
+  # Egress-confirmed like diag_ai_analyze above (UI/UX review U-M6).
   def handle_event("ai_analyze", %{"provider" => provider}, socket) do
     cond do
       not socket.assigns.admin or socket.assigns.ai_busy ->
         {:noreply, socket}
 
       true ->
-        instance_id = socket.assigns.instance.id
-
-        {:noreply,
-         socket
-         |> assign(ai_busy: true, ai_result: nil, ai_error: nil)
-         |> start_async(:ai_analyze, fn ->
-           Orbit.LLM.Analyze.analyze_logs(provider, log_text_for(instance_id))
-         end)}
+        text = log_text_for(socket.assigns.instance.id)
+        {:noreply, assign(socket, ai_confirm: egress_confirm(:logs, provider, text))}
     end
+  end
+
+  # What the operator confirms is what leaves: the SAME anonymizer the send
+  # path applies (Orbit.LLM.Analyze), run here for the preview. `text` stays
+  # raw — analyze_logs anonymizes again on send, so the two can never drift.
+  # Public only for the DB-free unit test.
+  @doc false
+  def egress_confirm(kind, provider_id, text) do
+    p = Orbit.LLM.Analyze.provider(provider_id)
+    anonymized = Orbit.LLM.Anonymize.anonymize(text)
+
+    %{
+      kind: kind,
+      provider: provider_id,
+      label: (p && p.label) || provider_id,
+      chars: String.length(anonymized),
+      preview: String.slice(anonymized, 0, 800),
+      text: text
+    }
   end
 
   # The diagnose bundle as one text blob for the analyser: section titles
@@ -3549,6 +3595,30 @@ defmodule OrbitWeb.InstanceDetailLive do
             </li>
           </ul>
         </div>
+
+        <%!-- AI-egress confirmation (UI/UX review U-M6): names the provider
+             and shows the exact anonymized payload before anything leaves
+             the dashboard. One dialog serves both AI entry points. --%>
+        <.confirm_dialog
+          :if={@ai_confirm}
+          title={"Send to #{@ai_confirm.label}?"}
+          tier={:info}
+          confirm_label={"Send to #{@ai_confirm.label}"}
+          on_confirm="ai_egress_confirm"
+          on_cancel="ai_egress_cancel"
+        >
+          <span>
+            {@ai_confirm.chars} characters of anonymized {if @ai_confirm.kind == :diagnosis,
+              do: "IPsec diagnosis",
+              else: "log content"} leave this dashboard for {@ai_confirm.label} (external provider).
+            Private addresses stay readable by design; public IPs, MAC vendor
+            prefixes and hostnames are masked, secrets are redacted. This is
+            the payload:
+          </span>
+          <span class="mt-2 block max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-base-300 p-2 font-mono text-xs text-base-content/80">{@ai_confirm.preview}<span :if={
+            @ai_confirm.chars > 800
+          }>…</span></span>
+        </.confirm_dialog>
       </section>
     </main>
     """

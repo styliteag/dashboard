@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Analyze with AI" asks before anything leaves: both AI entry points
+  (log analysis, IPsec diagnosis) now open a confirmation that names the
+  external provider and shows the exact anonymized payload — public IPs,
+  MAC vendor prefixes and hostnames masked, secrets redacted, private
+  addresses kept readable — instead of sending on a single click with an
+  11px disclosure.
 - Every fleet and admin list is sortable now: Alerts, Availability,
   Connectivity, Syslog, Audit, Users and Groups joined the pages that
   already had clickable headers (Instances, Firmware, Certificates, VPN)
