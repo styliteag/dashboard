@@ -203,7 +203,9 @@ defmodule OrbitWeb.Components.ListKit do
   end
 
   @doc "Filter chip class (active/emerald vs idle/slate)."
-  def chip(true), do: "rounded-full bg-primary px-3 py-1.5 text-xs text-primary-content"
+  # Same box as the idle chip — the active one used to be py-1.5 and shoved
+  # its whole row 2px on every selection (found during the lifecycle E2E).
+  def chip(true), do: "rounded-full bg-primary px-3 py-1 text-xs text-primary-content"
 
   def chip(false),
     do:
