@@ -195,7 +195,7 @@ defmodule OrbitWeb.Components.MetricChart do
       %{
         x: x_of(i, max(n, 2)),
         y: y_of(v, ymax),
-        title: "#{Calendar.strftime(p.ts, "%m-%d %H:%M")} — #{fmt_val(v)}"
+        title: "#{Calendar.strftime(p.ts, "%m-%d %H:%M")} UTC — #{fmt_val(v)}"
       }
     end)
   end
@@ -203,7 +203,10 @@ defmodule OrbitWeb.Components.MetricChart do
   # ---- labels ---------------------------------------------------------------
 
   defp fmt_ts(nil), do: ""
-  defp fmt_ts(%{ts: ts}), do: Calendar.strftime(ts, "%m-%d %H:%M")
+  # Static SVG text the client-side <time> localiser cannot reach — the
+  # suffix says WHICH clock, or the axis sits a timezone offset away from
+  # every localised timestamp around it (prod feedback 2026-08-07).
+  defp fmt_ts(%{ts: ts}), do: Calendar.strftime(ts, "%m-%d %H:%M UTC")
 
   defp fmt_val(v) when is_float(v) do
     if v == Float.round(v), do: trunc(v), else: Float.round(v, 1)

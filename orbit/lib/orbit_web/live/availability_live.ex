@@ -152,10 +152,12 @@ defmodule OrbitWeb.AvailabilityLive do
     span = max(DateTime.diff(now, window_start), 1)
     from = DateTime.add(window_start, trunc(seg.left / 100 * span))
     to = DateTime.add(window_start, trunc((seg.left + seg.width) / 100 * span))
-    "#{seg.state} #{fmt_ts(from)}–#{Calendar.strftime(to, "%H:%M")}"
+    "#{seg.state} #{Calendar.strftime(from, "%m-%d %H:%M")}–#{Calendar.strftime(to, "%H:%M")} UTC"
   end
 
-  defp fmt_ts(dt), do: Calendar.strftime(dt, "%m-%d %H:%M")
+  # Axis ticks and titles the client-side <time> localiser cannot reach —
+  # the suffix says WHICH clock (same rule as ts_abs and the chart axis).
+  defp fmt_ts(dt), do: Calendar.strftime(dt, "%m-%d %H:%M UTC")
 
   defp sort_key("state"), do: fn r -> {r.online, String.downcase(r.name)} end
   defp sort_key("instance"), do: fn r -> String.downcase(r.name) end

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Chart axes, chart tooltips and availability-lane tooltips say "UTC":
+  they are server-rendered strings the browser-side clock localiser
+  cannot reach, so they sat a timezone offset away from every localised
+  timestamp around them without saying which clock they were on. The
+  app-wide rule is explicit now — times without a suffix are your local
+  clock, times marked UTC are UTC.
+
 ## [4.4.5] - 2026-08-07
 
 ### Fixed
