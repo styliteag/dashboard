@@ -200,7 +200,7 @@ defmodule OrbitWeb.AccessControlLive do
       <.top_nav active={:users} current_user={@current_user} />
 
       <section class="max-w-3xl p-6">
-        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 mb-4 text-xl font-semibold text-base-content">
           <Icons.icon name={:access_control} class="h-5 w-5 text-base-content/70" />
           Access control (GeoIP)
         </h1>

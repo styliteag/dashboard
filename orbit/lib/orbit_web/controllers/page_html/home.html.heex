@@ -22,7 +22,7 @@
   </header>
 
   <section class="p-6">
-    <h1 class="mb-2 text-lg font-medium text-base-content">Signed in</h1>
+    <h1 class="mb-2 text-xl font-semibold text-base-content">Signed in</h1>
     <p class="text-sm text-base-content/70">
       Groups: {Enum.map_join(@current_user.groups, ", ", & &1.name)}
       <span :if={@current_user.groups == []}>none — no instances visible</span>

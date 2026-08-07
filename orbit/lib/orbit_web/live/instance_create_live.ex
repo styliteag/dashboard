@@ -151,7 +151,7 @@ defmodule OrbitWeb.InstanceCreateLive do
       <.top_nav active={:instances} current_user={@current_user} />
 
       <section class="max-w-2xl p-6">
-        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 mb-4 text-xl font-semibold text-base-content">
           <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> New instance
         </h1>
 

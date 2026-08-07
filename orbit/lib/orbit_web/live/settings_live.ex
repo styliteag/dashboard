@@ -230,7 +230,7 @@ defmodule OrbitWeb.SettingsLive do
       <.top_nav active={:settings} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="mb-1 flex items-center gap-2 text-lg font-medium text-base-content">
+        <h1 class="mb-1 flex items-center gap-2 text-xl font-semibold text-base-content">
           <Icons.icon name={:settings} class="h-5 w-5 text-base-content/70" /> Settings
         </h1>
         <p class="mb-4 text-xs text-base-content/70">

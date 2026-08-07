@@ -490,7 +490,7 @@ defmodule OrbitWeb.InstancesLive do
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
-          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+          <h1 class="flex items-center gap-2 text-xl font-semibold text-base-content">
             <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> Instances
             <span class="ml-2 text-sm text-base-content/70">({length(@instances)})</span>
           </h1>

@@ -213,7 +213,7 @@ defmodule OrbitWeb.GroupsLive do
       <.top_nav active={:groups} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="flex items-center gap-2 mb-4 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 mb-4 text-xl font-semibold text-base-content">
           <Icons.icon name={:groups} class="h-5 w-5 text-base-content/70" /> Groups
           <span class="ml-2 text-sm text-base-content/70">({length(@groups)})</span>
         </h1>
@@ -348,8 +348,8 @@ defmodule OrbitWeb.GroupsLive do
             <table class="mt-3 w-full text-left text-sm">
               <thead class="text-xs text-base-content/70">
                 <tr class="border-b border-base-300">
-                  <th class="py-1 pr-4 font-medium">Instance</th>
-                  <th class="py-1 font-medium">Group</th>
+                  <th class="py-2 pr-4 font-medium">Instance</th>
+                  <th class="py-2 font-medium">Group</th>
                 </tr>
               </thead>
               <tbody>

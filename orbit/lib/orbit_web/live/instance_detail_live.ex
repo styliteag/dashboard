@@ -1884,7 +1884,7 @@ defmodule OrbitWeb.InstanceDetailLive do
         <%!-- Wraps: the five action buttons pushed the page ~190px wide on a
              phone-width viewport (every page then scrolled sideways). --%>
         <div class="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+          <h1 class="flex items-center gap-2 text-xl font-semibold text-base-content">
             <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> {@instance.name}
             <.base_url_link base_url={@instance.base_url} />
           </h1>
@@ -2052,12 +2052,12 @@ defmodule OrbitWeb.InstanceDetailLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <tbody>
                 <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
-                  <td class="w-16 py-1.5 pr-4 align-top">
+                  <td class="w-16 py-2 pr-4 align-top">
                     <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
                       {state_label(c.state)}
                     </span>
                   </td>
-                  <td class="whitespace-nowrap py-1.5 pr-4 align-top text-base-content/70">
+                  <td class="whitespace-nowrap py-2 pr-4 align-top text-base-content/70">
                     {c.key}
                   </td>
                   <td class="py-1.5 align-top text-base-content/80">{c.summary}</td>
@@ -2560,7 +2560,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <th class="py-1 pr-3 font-medium">Source → Destination</th>
                   <th class="py-1 pr-3 font-medium">State</th>
                   <th class="py-1 pr-3 font-medium">RTT / Loss</th>
-                  <th class="py-1 font-medium"></th>
+                  <th class="py-2 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -2705,7 +2705,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <th class="py-1 pr-3 font-medium">In / Out</th>
                   <th
                     :if={@writable and Instance.monitors_runnable?(@instance)}
-                    class="py-1 font-medium"
+                    class="py-2 font-medium"
                   >
                   </th>
                 </tr>
@@ -2988,24 +2988,24 @@ defmodule OrbitWeb.InstanceDetailLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <thead class="text-base-content/70">
                 <tr class="border-b border-base-300">
-                  <th class="py-1 pr-4 font-medium">Name</th>
-                  <th class="py-1 pr-4 font-medium">Address</th>
-                  <th class="py-1 pr-4 font-medium">Status</th>
-                  <th class="py-1 pr-4 font-medium">Delay</th>
-                  <th class="py-1 font-medium">Loss</th>
+                  <th class="py-2 pr-4 font-medium">Name</th>
+                  <th class="py-2 pr-4 font-medium">Address</th>
+                  <th class="py-2 pr-4 font-medium">Status</th>
+                  <th class="py-2 pr-4 font-medium">Delay</th>
+                  <th class="py-2 font-medium">Loss</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :for={g <- @gateways} class="border-b border-base-300/50 last:border-0">
-                  <td class="py-1.5 pr-4 text-base-content/80">{g["name"]}</td>
-                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                  <td class="py-2 pr-4 text-base-content/80">{g["name"]}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/70">
                     {g["address"] || "—"}
                   </td>
-                  <td class="py-1.5 pr-4">
+                  <td class="py-2 pr-4">
                     <span class={gw_color(g["status"])}>{gw_label(g["status"])}</span>
                   </td>
-                  <td class="py-1.5 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
-                  <td class="py-1.5 text-base-content/70">{g["loss"] || "—"}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{g["delay"] || "—"}</td>
+                  <td class="py-2 text-base-content/70">{g["loss"] || "—"}</td>
                 </tr>
               </tbody>
             </table>
@@ -3060,20 +3060,20 @@ defmodule OrbitWeb.InstanceDetailLive do
               </thead>
               <tbody>
                 <tr :for={i <- shown} class="border-b border-base-300/50 last:border-0">
-                  <td class="py-1.5 pr-4 text-base-content/80">{i["name"]}</td>
-                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                  <td class="py-2 pr-4 text-base-content/80">{i["name"]}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/70">
                     {i["address"] || "—"}
                   </td>
-                  <td class="py-1.5 pr-4">
+                  <td class="py-2 pr-4">
                     <span class={
                       if(i["status"] == "up", do: "text-primary", else: "text-base-content/70")
                     }>
                       {i["status"] || "?"}
                     </span>
                   </td>
-                  <td class="py-1.5 pr-4 text-base-content/70">{rate(i["rx_rate"])}</td>
-                  <td class="py-1.5 pr-4 text-base-content/70">{rate(i["tx_rate"])}</td>
-                  <td class="py-1.5 text-base-content/70">
+                  <td class="py-2 pr-4 text-base-content/70">{rate(i["rx_rate"])}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{rate(i["tx_rate"])}</td>
+                  <td class="py-2 text-base-content/70">
                     {i["in_errors"] || 0}/{i["out_errors"] || 0}
                   </td>
                 </tr>
@@ -3263,7 +3263,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                     </span>
                   </td>
                   <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
-                  <td class="py-1.5 text-base-content/80">{summary}</td>
+                  <td class="py-2 text-base-content/80">{summary}</td>
                 </tr>
               </tbody>
             </table>
@@ -3439,11 +3439,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                   :for={cb <- @config_backups}
                   class="border-b border-base-300/50 last:border-0"
                 >
-                  <td class="py-1.5 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
-                  <td class="py-1.5 pr-4 font-mono text-xs text-base-content/70">
+                  <td class="py-2 pr-4 text-base-content/80">{cb_ts(cb.collected_at)}</td>
+                  <td class="py-2 pr-4 font-mono text-xs text-base-content/70">
                     {String.slice(cb.sha256, 0, 12)}
                   </td>
-                  <td class="py-1.5 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
+                  <td class="py-2 pr-4 text-base-content/70">{cb.bytes} bytes · {cb.source}</td>
                   <td class="py-1.5 text-right">
                     <a
                       :if={@admin}

@@ -131,7 +131,7 @@ defmodule OrbitWeb.SecurityLive do
       <%!-- Left-aligned like every other page (was mx-auto-centered, the
            only page that floated mid-screen). --%>
       <section class="max-w-2xl p-6">
-        <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+        <h1 class="flex items-center gap-2 text-xl font-semibold text-base-content">
           <Icons.icon name={:security} class="h-5 w-5 text-base-content/70" /> Security
         </h1>
         <p class="mt-1 text-sm text-base-content/70">

@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Page titles finally outrank body text: every page h1 moved from 18px
+  medium — one step above table text — to the 20px semibold the login
+  pages already used, and the instance-detail sub-tables (interfaces,
+  gateways, services) share the fleet tables' row rhythm instead of
+  their own tighter one.
 - The grid view earns its footprint: every instance card now carries a
   live line from the agent's latest push — CPU %, memory % and the
   firmware version — on top of the status, alert chips, tags and links
