@@ -21,4 +21,38 @@ defmodule OrbitWeb.PageControllerTest do
     conn = post(conn, ~p"/logout")
     assert redirected_to(conn) == ~p"/login"
   end
+
+  describe "landing/1" do
+    alias Orbit.Accounts.{Group, User}
+    alias OrbitWeb.PageController
+
+    defp user(attrs) do
+      struct!(
+        %User{id: 1, username: "u", role: "user", is_superadmin: false, groups: []},
+        attrs
+      )
+    end
+
+    # UI/UX review U-M1 / decision E1: anyone who can see the fleet lands on
+    # the fleet — including admins, who used to land on /hub (the transport
+    # roster, not the fleet).
+    test "an account with groups lands on /instances regardless of role" do
+      groups = [%Group{id: 1, name: "A"}]
+
+      assert PageController.landing(user(groups: groups)) == "/instances"
+      assert PageController.landing(user(role: "admin", groups: groups)) == "/instances"
+
+      assert PageController.landing(user(is_superadmin: true, groups: groups)) ==
+               "/instances"
+    end
+
+    test "group-less accounts keep the first-usable-page fallbacks" do
+      assert PageController.landing(user(role: "admin", groups: [])) == "/hub"
+
+      assert PageController.landing(user(role: "view_only", is_superadmin: true, groups: [])) ==
+               "/users"
+
+      assert PageController.landing(user(role: "user", groups: [])) == "/security"
+    end
+  end
 end

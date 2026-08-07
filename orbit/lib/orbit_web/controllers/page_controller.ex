@@ -3,15 +3,17 @@ defmodule OrbitWeb.PageController do
 
   alias Orbit.Accounts.User
 
-  # The old M0 landing page is gone (user decision): the hub roster is the
-  # default view after login.
+  # Landing = the fleet, whenever the account can see one (UI/UX review
+  # U-M1, decision E1): /hub is about the dashboard's transport, not the
+  # fleet, so sending admins there made "home" mean different things per
+  # role. Now every account with instance visibility lands on /instances.
   #
-  # It cannot be the landing page for EVERY account, though. /hub is
-  # admin-only and require_admin bounces non-admins back to "/" — a plain
-  # "/" -> "/hub" redirect is an infinite loop for them. And instance pages
-  # are empty for an account without groups (Scope: zero groups = zero
-  # instances), so a superadmin would land on a blank list. Send each account
-  # to the first page it can actually use.
+  # The fallbacks stay: /hub is admin-only and require_admin bounces
+  # non-admins back to "/" — a plain "/" -> "/hub" redirect is an infinite
+  # loop for them. And instance pages are empty for an account without
+  # groups (Scope: zero groups = zero instances), so a group-less admin
+  # still goes to /hub and a pure superadmin to /users — the first page
+  # each can actually use.
   def home(conn, _params) do
     redirect(conn, to: landing(conn.assigns.current_user))
   end
@@ -20,10 +22,11 @@ defmodule OrbitWeb.PageController do
   # bookmarks and muscle memory survive.
   def uptime(conn, _params), do: redirect(conn, to: ~p"/availability")
 
-  defp landing(%User{} = user) do
+  @doc "Public for the DB-free unit test — routing rules above."
+  def landing(%User{} = user) do
     cond do
-      User.admin?(user) -> ~p"/hub"
       MapSet.size(User.group_id_set(user)) > 0 -> ~p"/instances"
+      User.admin?(user) -> ~p"/hub"
       user.is_superadmin -> ~p"/users"
       true -> ~p"/security"
     end
