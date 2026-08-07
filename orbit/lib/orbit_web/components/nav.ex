@@ -151,6 +151,7 @@ defmodule OrbitWeb.Components.Nav do
     <details :if={@items != []} data-popover class="relative">
       <summary
         data-nav-admin
+        title="Admin"
         class={[
           "flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1",
           if(@active in @admin_keys,
@@ -159,7 +160,8 @@ defmodule OrbitWeb.Components.Nav do
           )
         ]}
       >
-        <.nav_icon name={:settings} /> Admin
+        <.nav_icon name={:settings} />
+        <span class="sr-only sm:not-sr-only">Admin</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3">
           <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
         </svg>
@@ -357,8 +359,12 @@ defmodule OrbitWeb.Components.Nav do
 
   defp nav_link(assigns) do
     ~H"""
+    <%!-- Below sm the bar collapses to an icon strip (UI/UX review D-18:
+         the full labels cost ~250px of a phone's first screen). sr-only
+         keeps the name for assistive tech; title covers sighted hover. --%>
     <a
       href={@href}
+      title={@label}
       aria-current={if @active == @key, do: "page"}
       class={[
         "flex items-center gap-1.5 rounded-md px-2 py-1",
@@ -369,7 +375,7 @@ defmodule OrbitWeb.Components.Nav do
       ]}
     >
       <.nav_icon name={@key} />
-      {@label}
+      <span class="sr-only sm:not-sr-only">{@label}</span>
     </a>
     """
   end

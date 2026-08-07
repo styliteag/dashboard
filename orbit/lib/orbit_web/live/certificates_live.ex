@@ -222,7 +222,7 @@ defmodule OrbitWeb.CertificatesLive do
 
         <%!-- 5 tiles — the grid must match or "Healthy" wraps alone onto a
              second row (UI/UX review D-2). --%>
-        <div class="mb-4 grid gap-3 sm:grid-cols-5">
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <.kpi_tile
             label="Total"
             value={length(@rows)}

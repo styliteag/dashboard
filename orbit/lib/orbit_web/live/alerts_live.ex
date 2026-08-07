@@ -186,7 +186,7 @@ defmodule OrbitWeb.AlertsLive do
           WARN entirely — so a quiet page can still mean a loud box.
         </.data_note>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
             value={length(@alerts)}

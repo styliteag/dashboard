@@ -38,14 +38,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hiding inside the instances page's view toggle.
 - The "Logs" page is called "Syslog" now — it shows the boxes' syslog
   events, and "Logs" read like the dashboard's own logs.
+- Logging in lands on the fleet: every account that can see instances
+  starts on /instances now. Admins used to land on /hub — the dashboard's
+  transport roster, not the fleet — so "home" meant something different
+  per role. Group-less accounts keep their first-usable-page fallbacks
+  (admin → /hub, superadmin → /users).
+- The dashboard is usable on a phone: below tablet width the nav collapses
+  to an icon strip (labels stay for assistive tech and on hover), the KPI
+  tiles pack into a compact grid instead of stacking full-size, the
+  instances list renders as cards (the grid view's card, reused) instead
+  of a sideways-scrolling table, and the three tables that still ran off
+  the right edge (availability, passkeys, group assignment) scroll inside
+  their own container. Data rows now fit on a 390px screen's first view —
+  previously nav plus tiles filled it entirely.
+- Instance-detail tabs stopped silently varying and loading everything:
+  a tab a box's device class can never have stays hidden, but a tab that
+  is merely unavailable in the box's current state (no agent enrolled, no
+  SSH set up, no data yet) now shows disabled with the reason as tooltip
+  instead of vanishing; opening a tab URL a box does not have says so in
+  a flash instead of silently swapping to Overview; and each tab loads
+  its own data on first visit — the metric charts (the six heaviest
+  queries) render a skeleton while they arrive instead of delaying the
+  whole page at mount.
+- The instance forms validate while you type and became one family:
+  create is structured into the same titled sections as edit (Basics /
+  Connection / Details), both forms flag a missing name, a bad slug, a
+  scheme-less URL or a non-numeric interval next to the field the moment
+  it is typed (submit-time enforcement unchanged), typed edits survive
+  re-renders on the edit form too, and direct-API instances got a
+  "Test connection" button on the edit page that probes the saved record
+  the way the poller will.
 
 ### Fixed
 
-- Alerts and /availability are sortable: State/Instance/Check on Alerts,
-  State/Instance/Type/Group/Last seen on /availability — click a header
-  to order, click again to flip. Worst-first stays the default
-  everywhere; Alerts previously had a hardcoded order and /availability
-  none at all.
+- Every fleet and admin list is sortable now: Alerts, Availability,
+  Connectivity, Syslog, Audit, Users and Groups joined the pages that
+  already had clickable headers (Instances, Firmware, Certificates, VPN)
+  — click a header to order, click again to flip. Worst-first (or
+  newest-first on Audit) stays the default everywhere until a header is
+  clicked; Audit re-orders in the database so the sort covers the whole
+  filtered log, not just the loaded page.
 - Metric charts got a real y-axis and follow the design's colours: the
   scale maximum sits at the top right of the plot and 0 at the bottom
   (the old centered "0–100" string between two timestamps read as a third

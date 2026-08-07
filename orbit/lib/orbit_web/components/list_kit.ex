@@ -145,12 +145,14 @@ defmodule OrbitWeb.Components.ListKit do
 
   def kpi_tile(assigns) do
     ~H"""
+    <%!-- Compact below sm: the stacked full-size tiles pushed every data row
+         off a phone's first screen (UI/UX review D-18). --%>
     <button
       phx-click={@event}
       phx-value-bucket={@value_name}
       aria-pressed={to_string(@active)}
       class={[
-        "rounded-[var(--radius-box)] border p-3 text-left",
+        "rounded-[var(--radius-box)] border p-2 text-left sm:p-3",
         if(@active,
           do: "border-primary bg-base-200",
           else: "border-base-300 bg-base-200 hover:border-base-content/20"
@@ -158,7 +160,7 @@ defmodule OrbitWeb.Components.ListKit do
       ]}
     >
       <div class="text-xs text-base-content/70">{@label}</div>
-      <div class={["text-2xl font-semibold", @color]}>{@value}</div>
+      <div class={["text-lg font-semibold sm:text-2xl", @color]}>{@value}</div>
     </button>
     """
   end

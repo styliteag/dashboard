@@ -192,27 +192,29 @@ defmodule OrbitWeb.SecurityLive do
             </button>
           </div>
 
-          <table class="mt-4 w-full text-sm">
-            <tbody>
-              <tr :if={@passkeys == []}>
-                <td class="py-2 text-xs text-base-content/70">No passkeys registered.</td>
-              </tr>
-              <tr :for={p <- @passkeys} class="border-t border-base-300">
-                <td class="py-2 text-base-content">{p.name || "Passkey ##{p.id}"}</td>
-                <td class="py-2 text-xs text-base-content/70">{used_text(p)}</td>
-                <td class="py-2 text-right">
-                  <button
-                    type="button"
-                    phx-click="remove_passkey"
-                    phx-value-id={p.id}
-                    class="rounded px-2 py-1 text-xs text-error hover:bg-base-300"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="mt-4 w-full text-sm">
+              <tbody>
+                <tr :if={@passkeys == []}>
+                  <td class="py-2 text-xs text-base-content/70">No passkeys registered.</td>
+                </tr>
+                <tr :for={p <- @passkeys} class="border-t border-base-300">
+                  <td class="py-2 text-base-content">{p.name || "Passkey ##{p.id}"}</td>
+                  <td class="py-2 text-xs text-base-content/70">{used_text(p)}</td>
+                  <td class="py-2 text-right">
+                    <button
+                      type="button"
+                      phx-click="remove_passkey"
+                      phx-value-id={p.id}
+                      class="rounded px-2 py-1 text-xs text-error hover:bg-base-300"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>

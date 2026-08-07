@@ -509,7 +509,9 @@ defmodule OrbitWeb.InstancesLive do
 
         <%!-- KPI tiles double as status filter (US-3.4 / KpiTile parity);
              counted from the row buckets so tiles and badges can't drift. --%>
-        <div class="mb-4 grid gap-3 sm:grid-cols-4">
+        <%!-- 2×2 compact on phones: stacked full-size tiles pushed every
+             data row below the fold (UI/UX review D-18). --%>
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
             value={length(@instances)}
@@ -736,78 +738,31 @@ defmodule OrbitWeb.InstancesLive do
 
         <%!-- Grid view (InstanceCard parity, compact) --%>
         <div :if={@view == "grid" and @rows != []} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div
+          <.instance_card
             :for={i <- @rows}
-            class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 transition-colors hover:border-base-content/20"
-          >
-            <div class="flex items-center gap-2">
-              <input
-                :if={@writable and not i.firmware_locked}
-                type="checkbox"
-                phx-click="toggle_select"
-                phx-value-id={i.id}
-                checked={MapSet.member?(@selected, i.id)}
-                aria-label={"Select #{i.name}"}
-                class="accent-primary"
-              />
-              <a
-                href={~p"/instances/#{i.id}"}
-                class="font-medium text-base-content hover:text-primary"
-              >
-                {i.name}
-              </a>
-              <.base_url_link base_url={i.base_url} />
-              <.webui_link instance_id={i.id} openable={i.gui_openable} />
-              <.shell_link instance_id={i.id} shell_enabled={i.shell_enabled} />
-              <.comment_editor
-                text={CommentEditor.text(@comments, i.id, "notes", "")}
-                writable={@writable}
-                instance_id={i.id}
-                kind="notes"
-              />
-              <.status_badge row={i} />
-            </div>
-            <div class="mt-2 space-y-1 text-xs text-base-content/70">
-              <div>{i.device_type} · {if i.agent_mode, do: "agent", else: "api"}</div>
-              <div :if={i.base_url != ""} class="truncate">
-                <.base_url_links base_url={i.base_url} class="hover:text-base-content/70" />
-              </div>
-              <div :if={i.location}>{i.location}</div>
-              <div :if={i.tags != []} class="flex flex-wrap gap-1">
-                <span
-                  :for={t <- i.tags}
-                  class="rounded bg-base-300 px-1.5 py-0.5 text-base-content/70"
-                >
-                  {t}
-                </span>
-              </div>
-              <div class="text-base-content/70" title={ts_abs(i.last_success_at)}>
-                {ts_rel(i.last_success_at)}
-              </div>
-            </div>
-            <div :if={@writable} class="mt-3 flex gap-2 text-xs">
-              <a
-                href={~p"/instances/#{i.id}/edit"}
-                class="text-base-content/70 hover:text-base-content"
-              >
-                Edit
-              </a>
-              <button
-                phx-click="delete"
-                phx-value-id={i.id}
-                data-confirm={"Delete #{i.name}? The instance is soft-deleted and disappears from all views."}
-                class="text-error/70 hover:text-error"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
+            i={i}
+            writable={@writable}
+            selected={@selected}
+            comments={@comments}
+          />
+        </div>
+
+        <%!-- Below sm the list table needed sideways scrolling for every
+             row; phones get the grid card instead (UI/UX review D-18). --%>
+        <div :if={@view == "list" and @rows != []} class="grid gap-4 sm:hidden">
+          <.instance_card
+            :for={i <- @rows}
+            i={i}
+            writable={@writable}
+            selected={@selected}
+            comments={@comments}
+          />
         </div>
 
         <%!-- List view --%>
         <div
           :if={@view == "list" and @rows != []}
-          class="overflow-x-auto rounded-[var(--radius-box)] border border-base-300"
+          class="hidden overflow-x-auto rounded-[var(--radius-box)] border border-base-300 sm:block"
         >
           <table class="w-full min-w-[46rem] text-left text-sm">
             <thead class="bg-base-200 text-xs text-base-content/70">
@@ -993,6 +948,81 @@ defmodule OrbitWeb.InstancesLive do
         <span :if={@sort_col == @col} aria-hidden="true">{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>
     </th>
+    """
+  end
+
+  # One card, two habitats: the grid view, and the phone rendering of the
+  # list view (UI/UX review D-18) — extracted so both stay identical.
+  attr :i, :map, required: true
+  attr :writable, :boolean, required: true
+  attr :selected, :any, required: true
+  attr :comments, :map, required: true
+
+  defp instance_card(assigns) do
+    ~H"""
+    <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4 transition-colors hover:border-base-content/20">
+      <div class="flex items-center gap-2">
+        <input
+          :if={@writable and not @i.firmware_locked}
+          type="checkbox"
+          phx-click="toggle_select"
+          phx-value-id={@i.id}
+          checked={MapSet.member?(@selected, @i.id)}
+          aria-label={"Select #{@i.name}"}
+          class="accent-primary"
+        />
+        <a
+          href={~p"/instances/#{@i.id}"}
+          class="font-medium text-base-content hover:text-primary"
+        >
+          {@i.name}
+        </a>
+        <.base_url_link base_url={@i.base_url} />
+        <.webui_link instance_id={@i.id} openable={@i.gui_openable} />
+        <.shell_link instance_id={@i.id} shell_enabled={@i.shell_enabled} />
+        <.comment_editor
+          text={CommentEditor.text(@comments, @i.id, "notes", "")}
+          writable={@writable}
+          instance_id={@i.id}
+          kind="notes"
+        />
+        <.status_badge row={@i} />
+      </div>
+      <div class="mt-2 space-y-1 text-xs text-base-content/70">
+        <div>{@i.device_type} · {if @i.agent_mode, do: "agent", else: "api"}</div>
+        <div :if={@i.base_url != ""} class="truncate">
+          <.base_url_links base_url={@i.base_url} class="hover:text-base-content/70" />
+        </div>
+        <div :if={@i.location}>{@i.location}</div>
+        <div :if={@i.tags != []} class="flex flex-wrap gap-1">
+          <span
+            :for={t <- @i.tags}
+            class="rounded bg-base-300 px-1.5 py-0.5 text-base-content/70"
+          >
+            {t}
+          </span>
+        </div>
+        <div class="text-base-content/70" title={ts_abs(@i.last_success_at)}>
+          {ts_rel(@i.last_success_at)}
+        </div>
+      </div>
+      <div :if={@writable} class="mt-3 flex gap-2 text-xs">
+        <a
+          href={~p"/instances/#{@i.id}/edit"}
+          class="text-base-content/70 hover:text-base-content"
+        >
+          Edit
+        </a>
+        <button
+          phx-click="delete"
+          phx-value-id={@i.id}
+          data-confirm={"Delete #{@i.name}? The instance is soft-deleted and disappears from all views."}
+          class="text-error/70 hover:text-error"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
     """
   end
 

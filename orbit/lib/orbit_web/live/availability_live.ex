@@ -226,7 +226,7 @@ defmodule OrbitWeb.AvailabilityLive do
           A box's own uptime counter is on its Overview tab.
         </p>
 
-        <div class="mb-4 grid gap-3 sm:grid-cols-3">
+        <div class="mb-4 grid grid-cols-3 gap-2 sm:gap-3">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/70">Total</div>
             <div class="text-xl font-medium">{length(@rows)}</div>
@@ -304,58 +304,60 @@ defmodule OrbitWeb.AvailabilityLive do
           No instances visible.
         </div>
 
-        <table :if={@rows != []} class="w-full text-left text-sm">
-          <thead class="text-xs text-base-content/70">
-            <tr class="border-b border-base-300">
-              <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
-              <.sort_th
-                col="instance"
-                label="Instance"
-                sort_col={@sort_col}
-                sort_dir={@sort_dir}
-              />
-              <.sort_th col="type" label="Type" sort_col={@sort_col} sort_dir={@sort_dir} />
-              <.sort_th col="group" label="Group" sort_col={@sort_col} sort_dir={@sort_dir} />
-              <.sort_th
-                col="last_seen"
-                label="Last seen"
-                sort_col={@sort_col}
-                sort_dir={@sort_dir}
-              />
-              <th scope="col" class="py-2 font-medium">History</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @rows} class="border-b border-base-300/50 last:border-0">
-              <td class="py-2 pr-3">
-                <.status
-                  state={if row.online, do: :up, else: :down}
-                  label={if row.online, do: "online", else: "offline"}
+        <div :if={@rows != []} class="overflow-x-auto">
+          <table class="w-full min-w-[40rem] text-left text-sm">
+            <thead class="text-xs text-base-content/70">
+              <tr class="border-b border-base-300">
+                <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="instance"
+                  label="Instance"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
                 />
-                <span :if={row.maintenance} class="ml-1 text-[10px] text-warning">maint</span>
-              </td>
-              <td class="py-2 pr-3">
-                <.link navigate={~p"/instances/#{row.id}"} class="text-base-content hover:underline">
-                  {row.name}
-                </.link>
-              </td>
-              <td class="py-2 pr-3 text-base-content/70">{row.device_type}</td>
-              <td class="py-2 pr-3 text-base-content/70">{row.group}</td>
-              <td class="py-2 pr-3 text-base-content/70">
-                {OrbitWeb.CoreComponents.local_time_tag(row.last_success_at, "datetime-sec")}
-              </td>
-              <td class="py-2">
-                <button
-                  phx-click="history_open"
-                  phx-value-iid={row.id}
-                  class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-                >
-                  Timeline
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <.sort_th col="type" label="Type" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="group" label="Group" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="last_seen"
+                  label="Last seen"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <th scope="col" class="py-2 font-medium">History</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={row <- @rows} class="border-b border-base-300/50 last:border-0">
+                <td class="py-2 pr-3">
+                  <.status
+                    state={if row.online, do: :up, else: :down}
+                    label={if row.online, do: "online", else: "offline"}
+                  />
+                  <span :if={row.maintenance} class="ml-1 text-[10px] text-warning">maint</span>
+                </td>
+                <td class="py-2 pr-3">
+                  <.link navigate={~p"/instances/#{row.id}"} class="text-base-content hover:underline">
+                    {row.name}
+                  </.link>
+                </td>
+                <td class="py-2 pr-3 text-base-content/70">{row.device_type}</td>
+                <td class="py-2 pr-3 text-base-content/70">{row.group}</td>
+                <td class="py-2 pr-3 text-base-content/70">
+                  {OrbitWeb.CoreComponents.local_time_tag(row.last_success_at, "datetime-sec")}
+                </td>
+                <td class="py-2">
+                  <button
+                    phx-click="history_open"
+                    phx-value-iid={row.id}
+                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
+                  >
+                    Timeline
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <.check_history_dialog history={@history} />
       </section>
