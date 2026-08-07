@@ -28,6 +28,7 @@ defmodule OrbitWeb.LogEventsLive do
        search: "",
        sev_filter: "err",
        tag_filter: "all",
+       window: "all",
        sort_col: "sev",
        sort_dir: :asc,
        open_sample: nil
@@ -46,6 +47,13 @@ defmodule OrbitWeb.LogEventsLive do
   def handle_event("tag_filter", %{"tag" => tag}, socket) do
     tag = if socket.assigns.tag_filter == tag, do: "all", else: tag
     {:noreply, assign(socket, tag_filter: tag)}
+  end
+
+  # Availability-page parity (user request 2026-08-07): narrow to patterns
+  # last seen inside the window. Filters only — the store keeps just the
+  # latest push, there is no history to query.
+  def handle_event("window", %{"window" => w}, socket) when w in ~w(24h 7d 30d all) do
+    {:noreply, assign(socket, window: w)}
   end
 
   # Raw sample popover. Admin-only — the sample is un-masked raw log content
@@ -111,10 +119,10 @@ defmodule OrbitWeb.LogEventsLive do
     end
   end
 
-  defp visible(a) do
+  defp visible(rows, a) do
     q = String.downcase(a.search)
 
-    a.rows
+    rows
     |> Enum.filter(fn r ->
       q == "" or
         String.contains?(String.downcase(r.instance.name), q) or
@@ -194,16 +202,33 @@ defmodule OrbitWeb.LogEventsLive do
     end
   end
 
+  # The window narrows BEFORE the KPI tiles count: tiles that contradict
+  # the visible rows are exactly the trap the filter-notice work removed
+  # (UI/UX review U-Q1).
+  defp window_rows(rows, "all"), do: rows
+
+  defp window_rows(rows, window) do
+    secs = %{"24h" => 86_400, "7d" => 7 * 86_400, "30d" => 30 * 86_400}[window]
+    now = DateTime.utc_now()
+
+    Enum.filter(rows, fn r ->
+      ts = device_ts(r.event.last_ts) || r.event.updated_at
+      ts != nil and DateTime.diff(now, ts) <= secs
+    end)
+  end
+
   @impl true
   def render(assigns) do
+    windowed = window_rows(assigns.rows, assigns.window)
+
     assigns =
       assign(assigns,
-        visible_rows: visible(assigns),
-        crit: Enum.count(assigns.rows, &(&1.event.severity <= 2)),
-        err: Enum.count(assigns.rows, &(&1.event.severity == 3)),
-        warn: Enum.count(assigns.rows, &(&1.event.severity >= 4)),
-        tags:
-          assigns.rows |> Enum.flat_map(&(&1.instance.tags || [])) |> Enum.uniq() |> Enum.sort(),
+        windowed_rows: windowed,
+        visible_rows: visible(windowed, assigns),
+        crit: Enum.count(windowed, &(&1.event.severity <= 2)),
+        err: Enum.count(windowed, &(&1.event.severity == 3)),
+        warn: Enum.count(windowed, &(&1.event.severity >= 4)),
+        tags: windowed |> Enum.flat_map(&(&1.instance.tags || [])) |> Enum.uniq() |> Enum.sort(),
         last_ingest: last_ingest(assigns.rows),
         admin?: assigns.current_user.role == "admin"
       )
@@ -213,10 +238,30 @@ defmodule OrbitWeb.LogEventsLive do
       <.top_nav active={:logs} current_user={@current_user} />
 
       <section class="p-6">
-        <h1 class="flex items-center gap-2 mb-2 text-lg font-medium text-base-content">
-          <Icons.icon name={:logs} class="h-5 w-5 text-base-content/70" /> Syslog
-          <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
-        </h1>
+        <div class="mb-2 flex flex-wrap items-center gap-3">
+          <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
+            <Icons.icon name={:logs} class="h-5 w-5 text-base-content/70" /> Syslog
+            <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
+          </h1>
+          <%!-- Availability-page parity (user request 2026-08-07): narrow to
+               patterns last seen inside the window. --%>
+          <div class="ml-auto flex items-center gap-1">
+            <button
+              :for={key <- ~w(24h 7d 30d all)}
+              phx-click="window"
+              phx-value-window={key}
+              class={[
+                "rounded px-2 py-0.5 text-xs",
+                if(@window == key,
+                  do: "bg-base-300 text-base-content",
+                  else: "text-base-content/70 hover:bg-base-300/60"
+                )
+              ]}
+            >
+              {key}
+            </button>
+          </div>
+        </div>
 
         <.data_note>
           Warning-or-worse syslog lines from your agent-mode boxes, worst first — not a live
@@ -232,7 +277,7 @@ defmodule OrbitWeb.LogEventsLive do
         <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
-            value={length(@rows)}
+            value={length(@windowed_rows)}
             event="sev_filter"
             value_name="all"
             active={@sev_filter == "all"}
@@ -264,13 +309,21 @@ defmodule OrbitWeb.LogEventsLive do
         </div>
 
         <%!-- The page mounts pre-filtered to ERR; without this line the
-             Total tile contradicts the visible rows (UI/UX review U-Q1). --%>
+             Total tile contradicts the visible rows (UI/UX review U-Q1).
+             The window counts as a filter too. --%>
         <.filter_notice
-          :if={@sev_filter != "all"}
+          :if={@sev_filter != "all" or @window != "all"}
           shown={length(@visible_rows)}
           total={length(@rows)}
           noun="log patterns"
-          filter_label={String.upcase(@sev_filter)}
+          filter_label={
+            [
+              if(@sev_filter != "all", do: String.upcase(@sev_filter)),
+              if(@window != "all", do: "last #{@window}")
+            ]
+            |> Enum.reject(&is_nil/1)
+            |> Enum.join(" · ")
+          }
           event="sev_filter"
         />
 

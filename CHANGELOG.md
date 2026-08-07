@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Syslog got the shared period selector (24h / 7d / 30d / all): narrow
+  the page to patterns last seen inside the window. The KPI tiles count
+  inside the window too, and the filter notice names the active window —
+  tiles never contradict the visible rows.
 - Tables inside the instance detail page sort too: the Interfaces table
   (name, address, status, RX/s, TX/s, errors) got clickable headers, and
   the detail page carries a shared per-table sort so vendor tabs join in
