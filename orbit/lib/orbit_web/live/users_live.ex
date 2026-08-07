@@ -346,15 +346,15 @@ defmodule OrbitWeb.UsersLive do
                         >
                           Reset 2FA
                         </button>
-                        <button
+                        <.btn
                           type="button"
+                          variant={:danger}
                           phx-click="delete_user"
                           phx-value-id={u.id}
                           data-confirm={"Delete user #{u.username}?"}
-                          class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
                         >
                           Delete
-                        </button>
+                        </.btn>
                       </div>
                     </form>
                   </td>

@@ -289,12 +289,9 @@ defmodule OrbitWeb.AccessControlLive do
             save anyway (I know this blocks my current IP)
           </label>
 
-          <button
-            type="submit"
-            class="rounded bg-primary px-4 py-1.5 text-sm text-primary-content hover:bg-primary/80"
-          >
+          <.btn type="submit" variant={:primary} size={:md}>
             Save
-          </button>
+          </.btn>
         </form>
 
         <div :if={@resolved != []} class="mt-4 text-xs text-base-content/70">

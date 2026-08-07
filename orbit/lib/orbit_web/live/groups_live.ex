@@ -432,17 +432,17 @@ defmodule OrbitWeb.GroupsLive do
         </div>
       </div>
       <div class="mt-2 flex items-center justify-end gap-1">
-        <button
+        <.btn
           :if={@configured}
           type="button"
+          variant={:danger}
           phx-click="channel_remove"
           phx-value-group_id={@group_id}
           phx-value-channel={@channel}
           data-confirm={"Remove the #{@channel} override? Alerts fall back to the global channel."}
-          class="rounded border border-error/40 px-2 py-1 text-xs text-error hover:bg-error/15"
         >
           Remove
-        </button>
+        </.btn>
         <button
           type="submit"
           class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"

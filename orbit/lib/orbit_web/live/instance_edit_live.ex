@@ -524,12 +524,9 @@ defmodule OrbitWeb.InstanceEditLive do
           </div>
 
           <div class="flex items-center gap-3">
-            <button
-              type="submit"
-              class="rounded bg-primary px-4 py-1.5 text-sm text-primary-content hover:bg-primary/80"
-            >
+            <.btn type="submit" variant={:primary} size={:md}>
               Save
-            </button>
+            </.btn>
             <%!-- Second way out next to Save: the "back to detail" link in the
                  header is ~600px from where the eyes are at submit time
                  (UI/UX review U-Q3). --%>
