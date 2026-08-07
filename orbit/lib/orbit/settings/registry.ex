@@ -66,6 +66,14 @@ defmodule Orbit.Settings.Registry do
       max: 3650
     },
     %Def{
+      key: "alert_history_retention_days",
+      type: :int,
+      env: "DASH_ALERT_HISTORY_RETENTION_DAYS",
+      default: "90",
+      min: 7,
+      max: 3650
+    },
+    %Def{
       key: "metrics_5m_retention_days",
       type: :int,
       env: "DASH_METRICS_5M_RETENTION_DAYS",
@@ -307,6 +315,13 @@ defmodule Orbit.Settings.Registry do
       label: "Metrics retention",
       help:
         "Raw metrics are pruned after this many days. Must cover the 1h/6h chart ranges; longer ranges are served by the rollup tiers below, so this can stay short (7 days is plenty).",
+      restart: false
+    },
+    "alert_history_retention_days" => %{
+      group: "Retention",
+      label: "Alert history retention",
+      help:
+        "Resolved alert-lifecycle rows (first seen / acked / resolved trail on the Alerts page) kept this many days. Live alerts are never pruned.",
       restart: false
     },
     "metrics_5m_retention_days" => %{

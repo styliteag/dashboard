@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Alerts have a lifecycle now (docs/alert-lifecycle.md): every alert
+  shows SINCE WHEN it fires (a reconciler records first/last seen), can
+  be marked seen (Ack — dies with the alert, a returning alert is a new
+  un-acked incident) and quieted for a while (Snooze 1h/8h/24h/7d — a
+  severity increase un-snoozes immediately). The page defaults to the
+  Active bucket with Seen/Snoozed chips and an honest filter notice.
+  The Checkmk/Prometheus exports and the per-instance checks are
+  deliberately untouched: a snoozed CRIT still exports as CRIT. Both
+  actions are write-gated and audited; resolved history is pruned after
+  a configurable retention (default 90 days).
 - A display-density toggle (Comfy / Compact) in the account menu next to
   the theme switcher: Compact tightens table rows, page paddings and
   cards for operators who want more fleet on one screen. Cookie-backed

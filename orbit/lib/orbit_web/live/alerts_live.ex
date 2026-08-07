@@ -34,7 +34,16 @@ defmodule OrbitWeb.AlertsLive do
     # the check is Checkmk-exported.)
     {:ok,
      socket
-     |> assign(severity_filter: "all", tag_filter: "all", sort_col: "state", sort_dir: :asc)
+     |> assign(
+       severity_filter: "all",
+       tag_filter: "all",
+       # Lifecycle buckets (docs/alert-lifecycle.md DR-LC5): default shows
+       # what still needs eyes — with the filter notice, never silently.
+       lifecycle_filter: "active",
+       writable: socket.assigns.current_user.role in ~w(admin user),
+       sort_col: "state",
+       sort_dir: :asc
+     )
      |> load()}
   end
 
@@ -62,7 +71,7 @@ defmodule OrbitWeb.AlertsLive do
     {:noreply, assign(socket, severity_filter: b)}
   end
 
-  def handle_event("sort", %{"col" => col}, socket) when col in ~w(state instance check) do
+  def handle_event("sort", %{"col" => col}, socket) when col in ~w(state instance check age) do
     dir =
       if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
         do: :desc,
@@ -77,6 +86,60 @@ defmodule OrbitWeb.AlertsLive do
   end
 
   def handle_event("refresh_now", _params, socket), do: {:noreply, load(socket)}
+
+  def handle_event("lifecycle_filter", %{"bucket" => b}, socket)
+      when b in ~w(all active acked snoozed) do
+    b = if socket.assigns.lifecycle_filter == b, do: "all", else: b
+    {:noreply, assign(socket, lifecycle_filter: b)}
+  end
+
+  # Ack/snooze mutate lifecycle rows only (DR-LC3: the computed surfaces and
+  # exports never change). Write-gated here, not just in the hidden UI.
+  def handle_event("alert_ack", %{"iid" => raw_iid, "key" => key}, socket) do
+    with true <- socket.assigns.writable,
+         {iid, ""} <- Integer.parse(raw_iid),
+         inst when not is_nil(inst) <-
+           Orbit.Auth.Scope.get_instance(iid, socket.assigns.current_user) do
+      :ok = Orbit.Alerts.Lifecycle.ack(iid, key, socket.assigns.current_user.username)
+
+      Orbit.Audit.write(
+        action: "alert.ack",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: inst.id,
+        detail: %{"name" => inst.name, "kind" => key}
+      )
+
+      {:noreply, load(socket)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("alert_snooze", %{"iid" => raw_iid, "key" => key, "hours" => raw_h}, socket) do
+    with true <- socket.assigns.writable,
+         {iid, ""} <- Integer.parse(raw_iid),
+         {hours, ""} when hours in [1, 8, 24, 168] <- Integer.parse(to_string(raw_h)),
+         inst when not is_nil(inst) <-
+           Orbit.Auth.Scope.get_instance(iid, socket.assigns.current_user) do
+      until = DateTime.add(DateTime.utc_now(), hours * 3600)
+      :ok = Orbit.Alerts.Lifecycle.snooze(iid, key, until)
+
+      Orbit.Audit.write(
+        action: "alert.snooze",
+        result: "ok",
+        user_id: socket.assigns.current_user.id,
+        target_type: "instance",
+        target_id: inst.id,
+        detail: %{"name" => inst.name, "kind" => key, "hours" => hours}
+      )
+
+      {:noreply, load(socket)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
 
   def handle_event("row_gui_open", %{"id" => id}, socket) do
     {:noreply, gui_open_row(socket, id)}
@@ -113,13 +176,43 @@ defmodule OrbitWeb.AlertsLive do
         {-ServiceCheck.severity(c.state), i.name, c.key}
       end)
 
+    # Lifecycle join (docs/alert-lifecycle.md): first-seen/ack/snooze live in
+    # alert_states, written by the reconciler — the computed alerts above
+    # stay the truth, the join only decorates. A just-appeared alert may lag
+    # the reconciler by one 30s tick; it simply renders without an age.
+    states =
+      alerts
+      |> Enum.map(& &1.inst.id)
+      |> Enum.uniq()
+      |> Orbit.Alerts.Lifecycle.states_for()
+
+    alerts =
+      Enum.map(alerts, fn a ->
+        Map.put(a, :ls, states[{a.inst.id, to_string(a.check.key)}])
+      end)
+
     assign(socket, alerts: alerts)
   end
 
-  defp visible(a) do
+  # Lifecycle buckets: snoozed = live snooze; acked = seen and not snoozed;
+  # active = needs eyes (including reconciler-lag rows without a state yet).
+  defp lifecycle_bucket(a, now) do
+    cond do
+      a.ls && a.ls.snoozed_until && DateTime.compare(a.ls.snoozed_until, now) == :gt -> "snoozed"
+      a.ls && a.ls.acked_at -> "acked"
+      true -> "active"
+    end
+  end
+
+  defp lifecycle_rows(alerts, "all", _now), do: alerts
+
+  defp lifecycle_rows(alerts, bucket, now),
+    do: Enum.filter(alerts, &(lifecycle_bucket(&1, now) == bucket))
+
+  defp visible(rows, a) do
     q = String.downcase(a.search || "")
 
-    a.alerts
+    rows
     |> Enum.filter(fn al ->
       q == "" or
         String.contains?(String.downcase(al.inst.name), q) or
@@ -146,15 +239,29 @@ defmodule OrbitWeb.AlertsLive do
   defp sort_key("instance"), do: fn a -> {String.downcase(a.inst.name), a.check.key} end
   defp sort_key("check"), do: fn a -> {a.check.key, String.downcase(a.inst.name)} end
 
+  # Unix seconds (structural DateTime compare mis-orders across months);
+  # rows the reconciler has not seen yet sort as newest.
+  defp sort_key("age"),
+    do: fn a -> (a.ls && DateTime.to_unix(a.ls.first_seen_at)) || 9_999_999_999 end
+
   @impl true
   def render(assigns) do
+    now = DateTime.utc_now()
+    # The lifecycle bucket narrows BEFORE the KPI tiles count (the U-Q1
+    # rule: tiles must never contradict the visible rows).
+    lc_rows = lifecycle_rows(assigns.alerts, assigns.lifecycle_filter, now)
+
     assigns =
       assign(assigns,
-        rows: visible(assigns),
+        now: now,
+        lc_rows: lc_rows,
+        rows: visible(lc_rows, assigns),
         tags: assigns.alerts |> Enum.flat_map(& &1.tags) |> Enum.uniq() |> Enum.sort(),
-        crit: Enum.count(assigns.alerts, &(&1.check.state == 2)),
-        warn: Enum.count(assigns.alerts, &(&1.check.state == 1)),
-        unknown: Enum.count(assigns.alerts, &(&1.check.state == 3))
+        crit: Enum.count(lc_rows, &(&1.check.state == 2)),
+        warn: Enum.count(lc_rows, &(&1.check.state == 1)),
+        unknown: Enum.count(lc_rows, &(&1.check.state == 3)),
+        acked_count: Enum.count(assigns.alerts, &(lifecycle_bucket(&1, now) == "acked")),
+        snoozed_count: Enum.count(assigns.alerts, &(lifecycle_bucket(&1, now) == "snoozed"))
       )
 
     ~H"""
@@ -186,7 +293,7 @@ defmodule OrbitWeb.AlertsLive do
         <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <.kpi_tile
             label="Total"
-            value={length(@alerts)}
+            value={length(@lc_rows)}
             event="severity_filter"
             value_name="all"
             active={@severity_filter == "all"}
@@ -217,7 +324,34 @@ defmodule OrbitWeb.AlertsLive do
           />
         </div>
 
+        <%!-- Lifecycle default "active" is a pre-filter — say so (U-Q1). --%>
+        <.filter_notice
+          :if={@lifecycle_filter != "all"}
+          shown={length(@rows)}
+          total={length(@alerts)}
+          noun="alerts"
+          filter_label={@lifecycle_filter}
+          event="lifecycle_filter"
+        />
+
         <div class="mb-3 flex flex-wrap items-center gap-3">
+          <%!-- Lifecycle buckets (docs/alert-lifecycle.md DR-LC5). --%>
+          <div class="flex flex-wrap gap-2">
+            <button
+              :for={
+                {bucket, label} <- [
+                  {"active", "Active"},
+                  {"acked", "Seen (#{@acked_count})"},
+                  {"snoozed", "Snoozed (#{@snoozed_count})"}
+                ]
+              }
+              phx-click="lifecycle_filter"
+              phx-value-bucket={bucket}
+              class={chip(@lifecycle_filter == bucket)}
+            >
+              {label}
+            </button>
+          </div>
           <form phx-change="search" onsubmit="return false" class="max-w-md flex-1">
             <input
               type="text"
@@ -259,8 +393,10 @@ defmodule OrbitWeb.AlertsLive do
                   sort_dir={@sort_dir}
                 />
                 <.sort_th col="check" label="Check" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th col="age" label="Since" sort_col={@sort_col} sort_dir={@sort_dir} />
                 <th scope="col" class="py-2 pr-4 font-medium">Summary</th>
                 <th scope="col" class="py-2 pr-4 font-medium">Checkmk</th>
+                <th :if={@writable} scope="col" class="py-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -288,10 +424,63 @@ defmodule OrbitWeb.AlertsLive do
                     {a.check.key}
                   </a>
                 </td>
+                <td
+                  class="whitespace-nowrap py-2 pr-4 text-base-content/70"
+                  title={a.ls && ts_abs(a.ls.first_seen_at)}
+                >
+                  {if a.ls, do: ts_rel(a.ls.first_seen_at), else: "—"}
+                  <span
+                    :if={lifecycle_bucket(a, @now) == "acked"}
+                    class="ml-1 rounded bg-base-300 px-1.5 py-0.5 text-[10px]"
+                    title={"seen by #{a.ls.acked_by} · #{ts_abs(a.ls.acked_at)}"}
+                  >
+                    seen
+                  </span>
+                  <span
+                    :if={lifecycle_bucket(a, @now) == "snoozed"}
+                    class="ml-1 rounded bg-base-300 px-1.5 py-0.5 text-[10px]"
+                    title={"quiet until #{ts_abs(a.ls.snoozed_until)} — a severity increase unsnoozes"}
+                  >
+                    snoozed
+                  </span>
+                </td>
                 <td class="py-2 pr-4 text-base-content/80">{a.check.summary}</td>
                 <td class="py-2 pr-4 text-xs">
                   <span :if={a.exported} class="text-primary">exported</span>
                   <span :if={not a.exported} class="text-base-content/70">excluded</span>
+                </td>
+                <td :if={@writable} class="whitespace-nowrap py-2 text-right text-xs">
+                  <.btn
+                    :if={lifecycle_bucket(a, @now) == "active"}
+                    phx-click="alert_ack"
+                    phx-value-iid={a.inst.id}
+                    phx-value-key={a.check.key}
+                    title="Mark seen — stays listed, dies with the alert"
+                  >
+                    Ack
+                  </.btn>
+                  <details class="relative ml-1 inline-block" data-popover>
+                    <summary
+                      class="cursor-pointer list-none rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
+                      title="Quiet this alert for a while — exports stay untouched"
+                    >
+                      Snooze ▾
+                    </summary>
+                    <div class="absolute right-0 z-40 mt-1 w-24 rounded-[var(--radius-box)] border border-base-300 bg-base-200 py-1 shadow-xl">
+                      <button
+                        :for={
+                          {h, l} <- [{1, "1 hour"}, {8, "8 hours"}, {24, "24 hours"}, {168, "7 days"}]
+                        }
+                        phx-click="alert_snooze"
+                        phx-value-iid={a.inst.id}
+                        phx-value-key={a.check.key}
+                        phx-value-hours={h}
+                        class="block w-full px-2 py-1 text-left hover:bg-base-300"
+                      >
+                        {l}
+                      </button>
+                    </div>
+                  </details>
                 </td>
               </tr>
             </tbody>

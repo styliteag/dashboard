@@ -35,6 +35,11 @@ defmodule Orbit.Scheduler do
     # Terminal recordings are files, not rows, so no DB prune covered them —
     # with recording enabled the volume grew forever. No-op when off.
     {:shell_recording_prune, :timer.hours(24), &Orbit.Shell.Recorder.prune/0},
+    # Alert lifecycle reconciler (docs/alert-lifecycle.md DR-LC2): computed
+    # alerts get first/last-seen identity; vanished ones resolve. Sequential
+    # scheduler = the single writer the table's uniqueness relies on.
+    {:alert_reconcile, :timer.seconds(30), &Orbit.Alerts.Lifecycle.reconcile/0},
+    {:alert_states_prune, :timer.hours(24), &Orbit.Alerts.Lifecycle.prune/0},
     # Silent push agents flip offline + alert (poller _check_stale_agents port).
     {:agent_stale_sweep, :timer.seconds(60), &Orbit.Availability.sweep/0},
     # Out-of-band reachability (ICMP + HTTP) measured BY the dashboard. Runs on
