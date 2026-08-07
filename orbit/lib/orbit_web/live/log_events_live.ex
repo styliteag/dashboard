@@ -168,14 +168,41 @@ defmodule OrbitWeb.LogEventsLive do
   # heuristic needed. Prod feedback 2026-08-07: these fell through to the
   # raw string and the column showed three formats at once.
   @doc false
-  def device_ts(ts) when is_binary(ts) do
+  def device_ts(ts, now \\ nil)
+
+  def device_ts(ts, now) when is_binary(ts) do
+    now = now || DateTime.utc_now()
+
     case DateTime.from_iso8601(ts) do
-      {:ok, dt, _offset} -> DateTime.shift_zone!(dt, "Etc/UTC")
-      _ -> rfc3164_ts(ts)
+      # Offset-carrying stamps are exact; anything still in the future is
+      # box-clock drift — a "last seen" can never be later than now.
+      {:ok, dt, _offset} -> dt |> DateTime.shift_zone!("Etc/UTC") |> min_now(now)
+      _ -> ts |> rfc3164_ts() |> unskew(now)
     end
   end
 
-  def device_ts(_), do: nil
+  def device_ts(_, _now), do: nil
+
+  defp min_now(dt, now), do: if(DateTime.compare(dt, now) == :gt, do: now, else: dt)
+
+  # RFC3164 carries no zone, and boxes stamp LOCAL time — read as UTC a
+  # fresh CEST entry sat "in 40min" in the future (prod feedback
+  # 2026-08-07). A future "last seen" is impossible, so roll it back by
+  # the smallest whole number of hours that lands it in the past — that
+  # reconstructs the box's UTC offset for every full-hour zone (quarter-
+  # hour zones stay ≤30min off, and older entries are unaffected: the
+  # window caps at the 14h maximum real offset).
+  defp unskew(nil, _now), do: nil
+
+  defp unskew(dt, now) do
+    diff = DateTime.diff(dt, now)
+
+    if diff > 0 and diff <= 14 * 3600 do
+      DateTime.add(dt, -div(diff + 3599, 3600) * 3600)
+    else
+      dt
+    end
+  end
 
   defp rfc3164_ts(ts) do
     with [_, mon, d, h, mi, s] <-

@@ -29,5 +29,25 @@ defmodule OrbitWeb.LogEventsLiveTest do
       assert LogEventsLive.device_ts("last reboot") == nil
       assert LogEventsLive.device_ts(nil) == nil
     end
+
+    # RFC3164 has no zone and boxes stamp LOCAL time — read as UTC a fresh
+    # CEST entry showed "in 40min" (prod feedback 2026-08-07). A future
+    # last-seen is impossible: roll back whole hours (the reconstructed
+    # offset); offset-carrying ISO stamps only clamp to now on clock drift.
+    test "future RFC3164 stamps roll back whole hours to land in the past" do
+      now = ~U[2026-08-07 16:49:00Z]
+
+      # +40min ahead (CEST box, +2h zone, entry 1h20 old) → minus 1h
+      assert LogEventsLive.device_ts("Aug  7 17:29:00", now) == ~U[2026-08-07 16:29:00Z]
+      # +1h40 ahead → minus 2h
+      assert LogEventsLive.device_ts("Aug  7 18:29:00", now) == ~U[2026-08-07 16:29:00Z]
+      # already in the past: untouched
+      assert LogEventsLive.device_ts("Aug  7 15:00:00", now) == ~U[2026-08-07 15:00:00Z]
+    end
+
+    test "future ISO stamps clamp to now (clock drift, offset already exact)" do
+      now = ~U[2026-08-07 16:49:00Z]
+      assert LogEventsLive.device_ts("2026-08-07T18:51:00+02:00", now) == now
+    end
   end
 end

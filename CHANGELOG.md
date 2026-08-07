@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Syslog "Last seen" can no longer sit in the future: zone-less RFC3164
+  stamps are box-LOCAL time, so a fresh CEST entry read as UTC showed
+  "in 40min". Future stamps now roll back by the smallest whole number
+  of hours that lands them in the past (reconstructing the box's UTC
+  offset); ISO stamps with a real clock drift clamp to "now".
 - Chart axes, chart tooltips and availability-lane tooltips say "UTC":
   they are server-rendered strings the browser-side clock localiser
   cannot reach, so they sat a timezone offset away from every localised
