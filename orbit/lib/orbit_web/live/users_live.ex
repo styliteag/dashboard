@@ -167,12 +167,9 @@ defmodule OrbitWeb.UsersLive do
             <Icons.icon name={:users} class="h-5 w-5 text-base-content/70" /> Users
             <span class="ml-2 text-sm text-base-content/70">({length(@users)})</span>
           </h1>
-          <button
-            phx-click="toggle_create"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} phx-click="toggle_create">
             {if @show_create, do: "Cancel", else: "New user"}
-          </button>
+          </.btn>
         </div>
 
         <div
@@ -221,12 +218,9 @@ defmodule OrbitWeb.UsersLive do
             </label>
             <.group_checks groups={@groups} member_ids={MapSet.new()} />
           </div>
-          <button
-            type="submit"
-            class="mt-3 rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} class="mt-3" type="submit">
             Create user
-          </button>
+          </.btn>
         </form>
 
         <.empty_state :if={@users == []} title="No user accounts yet.">
@@ -331,21 +325,17 @@ defmodule OrbitWeb.UsersLive do
                         <.group_checks groups={@groups} member_ids={MapSet.new(u.groups, & &1.id)} />
                       </div>
                       <div class="flex items-center gap-2">
-                        <button
-                          type="submit"
-                          class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-                        >
+                        <.btn variant={:primary} type="submit">
                           Save
-                        </button>
-                        <button
+                        </.btn>
+                        <.btn
                           type="button"
                           phx-click="reset_2fa"
                           phx-value-id={u.id}
                           data-confirm={"Reset 2FA for #{u.username}? TOTP and passkeys are wiped; their sessions die."}
-                          class="rounded border border-warning/40 px-2 py-1 text-xs text-warning hover:bg-warning/10"
                         >
                           Reset 2FA
-                        </button>
+                        </.btn>
                         <.btn
                           type="button"
                           variant={:danger}

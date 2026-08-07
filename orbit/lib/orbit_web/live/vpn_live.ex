@@ -1138,19 +1138,18 @@ defmodule OrbitWeb.VpnLive do
         >
           <Icons.icon name={:audit} class="h-3.5 w-3.5" />
         </button>
-        <button
+        <.btn
           :if={@writable}
           phx-click="reconnect"
           phx-value-iid={@t.instance_id}
           phx-value-id={@t.id}
           phx-value-uid={@t.unique_id}
           disabled={MapSet.member?(@busy, "#{@t.instance_id}:#{@t.id}")}
-          class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {if MapSet.member?(@busy, "#{@t.instance_id}:#{@t.id}"),
             do: "…",
             else: "Reconnect"}
-        </button>
+        </.btn>
       </td>
     </tr>
     <tr
@@ -1191,7 +1190,7 @@ defmodule OrbitWeb.VpnLive do
           monitor {if mon.source != "", do: "#{mon.source} "}→ {mon.destination}
           <span :if={not mon.enabled}>(disabled)</span>
         </span>
-        <button
+        <.btn
           :if={@writable}
           phx-click="p2mon_open"
           phx-value-iid={@t.instance_id}
@@ -1200,10 +1199,9 @@ defmodule OrbitWeb.VpnLive do
           phx-value-lts={ch["local_ts"] || ""}
           phx-value-rts={ch["remote_ts"] || ""}
           phx-value-suggested={ch["suggested_source"] || ""}
-          class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
         >
           {if mon, do: "Edit ping", else: "Add ping"}
-        </button>
+        </.btn>
       </td>
     </tr>
     """

@@ -18,6 +18,8 @@ defmodule OrbitWeb.Components.CommentEditor do
 
   use Phoenix.Component
 
+  import OrbitWeb.CoreComponents, only: [btn: 1]
+
   alias Orbit.Auth.Scope
 
   attr :text, :string, default: nil, doc: "current comment, nil/\"\" = none"
@@ -67,23 +69,20 @@ defmodule OrbitWeb.Components.CommentEditor do
             class="w-full rounded border border-base-content/20 bg-base-300 px-2 py-1 text-xs text-base-content focus:border-primary focus:outline-none"
           >{@text}</textarea>
           <div class="mt-1 flex items-center justify-end gap-1">
-            <button
+            <.btn
               :if={present?(@text)}
+              variant={:danger}
               type="button"
               phx-click="comment_clear"
               phx-value-instance_id={@instance_id}
               phx-value-kind={@kind}
               phx-value-entity_key={@entity_key}
-              class="rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
             >
               Clear
-            </button>
-            <button
-              type="submit"
-              class="rounded bg-primary px-2 py-0.5 text-xs text-primary-content hover:bg-primary/80"
-            >
+            </.btn>
+            <.btn variant={:primary} type="submit">
               Save
-            </button>
+            </.btn>
           </div>
         </form>
       </div>

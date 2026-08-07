@@ -155,12 +155,9 @@ defmodule OrbitWeb.SelectionLive do
               <option value="exclude">exclude</option>
             </select>
           </label>
-          <button
-            type="submit"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} type="submit">
             Set rule
-          </button>
+          </.btn>
         </form>
 
         <div class="overflow-x-auto">

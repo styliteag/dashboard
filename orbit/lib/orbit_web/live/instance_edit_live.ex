@@ -398,14 +398,9 @@ defmodule OrbitWeb.InstanceEditLive do
                  next cycle to find out (UI/UX review U-M4; the Securepoint
                  SSH Test is the model). --%>
             <div :if={direct_api?(@instance)} class="mt-3 flex flex-wrap items-center gap-3 text-xs">
-              <button
-                type="button"
-                phx-click="api_test"
-                disabled={@api_testing}
-                class="rounded border border-info/40 px-2 py-1 text-info hover:bg-info/15 disabled:opacity-50"
-              >
+              <.btn type="button" phx-click="api_test" disabled={@api_testing}>
                 {if @api_testing, do: "Testing…", else: "Test connection"}
-              </button>
+              </.btn>
               <span class="text-base-content/70">tests the saved values — save changes first</span>
               <span :if={@api_result} class={pin_class(@api_result)}>{elem(@api_result, 1)}</span>
             </div>
@@ -500,22 +495,12 @@ defmodule OrbitWeb.InstanceEditLive do
               <span :if={not present?(@instance.ssh_host_key)} class="text-warning">
                 No host key pinned — SSH will refuse to connect until it is captured.
               </span>
-              <button
-                type="button"
-                phx-click="ssh_test"
-                disabled={@ssh_testing or @pinning}
-                class="rounded border border-info/40 px-2 py-1 text-info hover:bg-info/15 disabled:opacity-50"
-              >
+              <.btn type="button" phx-click="ssh_test" disabled={@ssh_testing or @pinning}>
                 {if @ssh_testing, do: "Testing…", else: "Test"}
-              </button>
-              <button
-                type="button"
-                phx-click="ssh_pin_host_key"
-                disabled={@pinning}
-                class="rounded border border-base-content/20 px-2 py-1 text-base-content/80 hover:bg-base-300 disabled:opacity-50"
-              >
+              </.btn>
+              <.btn type="button" phx-click="ssh_pin_host_key" disabled={@pinning}>
                 {if @pinning, do: "Connecting…", else: "Capture host key"}
-              </button>
+              </.btn>
               <span :if={@pin_result} class={pin_class(@pin_result)}>{elem(@pin_result, 1)}</span>
             </div>
             <p :if={@ssh_result} class={["mt-2 text-xs", pin_class(@ssh_result)]}>
@@ -536,14 +521,15 @@ defmodule OrbitWeb.InstanceEditLive do
             >
               Cancel
             </a>
-            <button
+            <.btn
+              variant={:danger}
+              size={:md}
               type="button"
               phx-click="delete"
               data-confirm={"Delete instance #{@instance.name}? The agent will be orphaned; the record is soft-deleted."}
-              class="rounded border border-error/40 px-3 py-1.5 text-sm text-error hover:bg-error/15"
             >
               Delete instance
-            </button>
+            </.btn>
           </div>
         </form>
       </section>

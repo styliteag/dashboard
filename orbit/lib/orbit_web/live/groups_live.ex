@@ -232,12 +232,9 @@ defmodule OrbitWeb.GroupsLive do
             required
             class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
           />
-          <button
-            type="submit"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} type="submit">
             Create group
-          </button>
+          </.btn>
         </form>
 
         <.empty_state :if={@groups == []} title="No groups yet.">
@@ -282,21 +279,18 @@ defmodule OrbitWeb.GroupsLive do
                     >
                       channels
                     </button>
-                    <button
-                      phx-click="rename_toggle"
-                      phx-value-group_id={g.id}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-                    >
+                    <.btn class="ml-1" phx-click="rename_toggle" phx-value-group_id={g.id}>
                       rename
-                    </button>
-                    <button
+                    </.btn>
+                    <.btn
+                      variant={:danger}
+                      class="ml-1"
                       phx-click="delete_group"
                       phx-value-group_id={g.id}
                       data-confirm={"Delete group #{g.name}?"}
-                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
                     >
                       delete
-                    </button>
+                    </.btn>
                   </td>
                 </tr>
                 <tr :if={@renaming == g.id} class="border-b border-base-300/50 bg-base-200/60">
@@ -309,12 +303,9 @@ defmodule OrbitWeb.GroupsLive do
                         required
                         class="flex-1 rounded border border-base-content/20 bg-base-100 p-1.5 text-sm text-base-content"
                       />
-                      <button
-                        type="submit"
-                        class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-                      >
+                      <.btn variant={:primary} type="submit">
                         Save
-                      </button>
+                      </.btn>
                     </form>
                   </td>
                 </tr>
@@ -443,12 +434,9 @@ defmodule OrbitWeb.GroupsLive do
         >
           Remove
         </.btn>
-        <button
-          type="submit"
-          class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-        >
+        <.btn variant={:primary} type="submit">
           Save
-        </button>
+        </.btn>
       </div>
     </form>
     """

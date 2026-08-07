@@ -314,13 +314,14 @@ defmodule OrbitWeb.Components.SelectionTree do
         <h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/70">
           {if @channel?, do: "Per instance", else: "Current export per instance"}
         </h4>
-        <button
+        <.btn
+          variant={:quiet}
+          class="flex items-center gap-1"
           phx-click="refresh_preview"
           phx-target={@myself}
-          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
         >
           <Icons.icon name={:refresh} class="h-3 w-3" /> Refresh
-        </button>
+        </.btn>
       </div>
 
       <div class="mt-2 space-y-2">

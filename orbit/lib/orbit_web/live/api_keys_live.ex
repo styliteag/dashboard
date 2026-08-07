@@ -119,12 +119,9 @@ defmodule OrbitWeb.ApiKeysLive do
             <Icons.icon name={:password} class="h-5 w-5 text-base-content/70" /> API keys
             <span class="ml-2 text-sm text-base-content/70">({length(@keys)})</span>
           </h1>
-          <button
-            phx-click="toggle_create"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} phx-click="toggle_create">
             {if @show_create, do: "Cancel", else: "New key"}
-          </button>
+          </.btn>
         </div>
 
         <p class="mb-4 max-w-3xl text-xs text-base-content/70">
@@ -207,12 +204,9 @@ defmodule OrbitWeb.ApiKeysLive do
               {g.name}
             </label>
           </div>
-          <button
-            type="submit"
-            class="mt-3 rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} class="mt-3" type="submit">
             Mint key
-          </button>
+          </.btn>
         </form>
 
         <.empty_state :if={@keys == []} title="No API keys yet.">
@@ -260,24 +254,25 @@ defmodule OrbitWeb.ApiKeysLive do
                   >
                     reveal
                   </.btn>
-                  <button
+                  <.btn
                     :if={is_nil(k.revoked_at)}
+                    class="ml-1"
                     phx-click="revoke"
                     phx-value-id={k.id}
                     data-confirm={"Revoke key #{k.name}? Scrapes using it stop working."}
-                    class="ml-1 rounded border border-warning/40 px-2 py-0.5 text-xs text-warning hover:bg-warning/10"
                   >
                     revoke
-                  </button>
-                  <button
+                  </.btn>
+                  <.btn
                     :if={k.revoked_at}
+                    variant={:danger}
+                    class="ml-1"
                     phx-click="purge"
                     phx-value-id={k.id}
                     data-confirm={"Purge key #{k.name} permanently?"}
-                    class="ml-1 rounded border border-error/40 px-2 py-0.5 text-xs text-error hover:bg-error/15"
                   >
                     purge
-                  </button>
+                  </.btn>
                 </td>
               </tr>
             </tbody>

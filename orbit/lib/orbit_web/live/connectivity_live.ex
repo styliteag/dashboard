@@ -624,24 +624,23 @@ defmodule OrbitWeb.ConnectivityLive do
                   <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
                   <td class="py-2 text-right whitespace-nowrap">
                     <%!-- History is a read: no write role required, unlike Edit. --%>
-                    <button
+                    <.btn
                       phx-click="monitor_history_open"
                       phx-value-iid={r.instance_id}
                       phx-value-id={r.monitor_id}
                       title="Recorded state transitions of this monitor"
-                      class="rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
                     >
                       History
-                    </button>
-                    <button
+                    </.btn>
+                    <.btn
                       :if={@writable}
+                      class="ml-1"
                       phx-click="conn_open"
                       phx-value-iid={r.instance_id}
                       phx-value-id={r.monitor_id}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300"
                     >
                       Edit
-                    </button>
+                    </.btn>
                   </td>
                 </tr>
                 <tr

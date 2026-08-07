@@ -217,13 +217,9 @@ defmodule OrbitWeb.AccessControlLive do
             <div :if={@viewer_geo} class="mt-1 text-xs text-base-content/70">
               you are connecting from: <span class="text-base-content/80">{@viewer_geo}</span>
             </div>
-            <button
-              phx-click="refresh_db"
-              disabled={@refresh_busy}
-              class="mt-2 rounded border border-base-content/20 px-2 py-0.5 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-50"
-            >
+            <.btn class="mt-2" phx-click="refresh_db" disabled={@refresh_busy}>
               {if @refresh_busy, do: "Downloading…", else: "Refresh now"}
-            </button>
+            </.btn>
           </div>
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
             <div class="text-xs text-base-content/70">CrowdSec blocklist</div>

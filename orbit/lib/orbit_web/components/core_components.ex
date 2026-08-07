@@ -595,13 +595,9 @@ defmodule OrbitWeb.CoreComponents do
           class="mt-3 w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-warning focus:outline-none"
         />
         <div class="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            phx-click={@on_cancel}
-            class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn type="button" phx-click={@on_cancel}>
             Cancel
-          </button>
+          </.btn>
           <button
             type="submit"
             disabled={@tier == :type_to_confirm and String.trim(@typed) != @must_type}
@@ -700,6 +696,13 @@ defmodule OrbitWeb.CoreComponents do
   """
   attr :variant, :atom, default: :secondary, values: [:primary, :secondary, :quiet, :danger]
   attr :size, :atom, default: :sm, values: [:sm, :md]
+
+  attr :class, :any,
+    default: nil,
+    doc:
+      "layout only (margin/flex/width) — never visual overrides; " <>
+        "the variant/size recipes are the button's identity (D-11)"
+
   attr :rest, :global, include: ~w(disabled type form name value phx-click phx-value-id)
   slot :inner_block, required: true
 
@@ -709,7 +712,8 @@ defmodule OrbitWeb.CoreComponents do
       class={[
         "rounded disabled:cursor-not-allowed disabled:opacity-40",
         btn_size(@size),
-        btn_variant(@variant)
+        btn_variant(@variant),
+        @class
       ]}
       {@rest}
     >

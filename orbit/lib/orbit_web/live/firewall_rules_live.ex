@@ -285,12 +285,9 @@ defmodule OrbitWeb.FirewallRulesLive do
               {i.label}
             </button>
           </nav>
-          <button
-            phx-click="new_rule"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} phx-click="new_rule">
             New rule
-          </button>
+          </.btn>
           <button
             phx-click="apply"
             data-confirm="Apply staged firewall changes on the box?"
@@ -479,19 +476,12 @@ defmodule OrbitWeb.FirewallRulesLive do
               /> Quick (first match)
             </label>
             <span class="ml-auto flex gap-2">
-              <button
-                type="button"
-                phx-click="cancel_editor"
-                class="rounded border border-base-content/20 px-3 py-1 text-base-content/80 hover:bg-base-300"
-              >
+              <.btn type="button" phx-click="cancel_editor">
                 Cancel
-              </button>
-              <button
-                type="submit"
-                class="rounded bg-primary px-3 py-1 text-primary-content hover:bg-primary/80"
-              >
+              </.btn>
+              <.btn variant={:primary} type="submit">
                 Save rule
-              </button>
+              </.btn>
             </span>
           </div>
         </form>
@@ -574,52 +564,46 @@ defmodule OrbitWeb.FirewallRulesLive do
                   </td>
                   <td class="py-1.5 pr-3 text-base-content/80">{r.description}</td>
                   <td class="py-1.5 text-right text-xs">
-                    <button
+                    <.btn
                       :if={r.editable and prev != nil and prev.editable}
                       phx-click="move_before"
                       phx-value-uuid={r.uuid}
                       phx-value-target={prev.uuid}
                       title="Move up"
-                      class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
                     >
                       ↑
-                    </button>
-                    <button
+                    </.btn>
+                    <.btn
                       :if={r.editable and next != nil and next.editable}
                       phx-click="move_before"
                       phx-value-uuid={next.uuid}
                       phx-value-target={r.uuid}
                       title="Move down"
-                      class="rounded border border-base-content/20 px-1.5 py-0.5 text-base-content/70 hover:bg-base-300"
                     >
                       ↓
-                    </button>
-                    <button
-                      :if={r.editable}
-                      phx-click="edit_rule"
-                      phx-value-uuid={r.uuid}
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                    >
+                    </.btn>
+                    <.btn :if={r.editable} class="ml-1" phx-click="edit_rule" phx-value-uuid={r.uuid}>
                       edit
-                    </button>
-                    <button
+                    </.btn>
+                    <.btn
                       :if={r.editable}
+                      class="ml-1"
                       phx-click="clone_rule"
                       phx-value-uuid={r.uuid}
                       title="Clone into a new rule"
-                      class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                     >
                       clone
-                    </button>
-                    <button
+                    </.btn>
+                    <.btn
                       :if={r.editable}
+                      variant={:danger}
+                      class="ml-1"
                       phx-click="delete"
                       phx-value-uuid={r.uuid}
                       data-confirm="Delete this rule? (apply to activate)"
-                      class="ml-1 rounded border border-error/40 px-2 py-0.5 text-error hover:bg-error/15"
                     >
                       delete
-                    </button>
+                    </.btn>
                     <span :if={not r.editable} class="text-xs text-base-content/70">legacy</span>
                   </td>
                 </tr>

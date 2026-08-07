@@ -409,13 +409,9 @@ defmodule OrbitWeb.AuditLive do
               </tbody>
             </table>
           </div>
-          <button
-            :if={length(@rows) >= @action_limit}
-            phx-click="action_more"
-            class="mt-3 rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn :if={length(@rows) >= @action_limit} class="mt-3" phx-click="action_more">
             Load more
-          </button>
+          </.btn>
         </div>
 
         <div :if={@tab == :access}>

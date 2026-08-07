@@ -17,6 +17,8 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
 
   use Phoenix.Component
 
+  import OrbitWeb.CoreComponents, only: [btn: 1]
+
   attr :editor, :map, default: nil, doc: "nil = closed"
   attr :busy, :boolean, default: false, doc: "a Test is running"
   attr :result, :any, default: nil, doc: "{:ok | :error, message} of the last Test"
@@ -92,40 +94,28 @@ defmodule OrbitWeb.Components.PingMonitorDialog do
 
           <div class="flex items-center justify-between pt-2">
             <div class="flex gap-2">
-              <button
-                type="button"
-                phx-click="p2mon_cancel"
-                class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
-              >
+              <.btn type="button" phx-click="p2mon_cancel">
                 Cancel
-              </button>
-              <button
+              </.btn>
+              <.btn
                 :if={@editor.monitor_id}
+                variant={:danger}
                 type="button"
                 phx-click="p2mon_delete"
                 phx-value-id={@editor.monitor_id}
                 phx-value-iid={@editor.instance_id}
                 data-confirm="Remove this Phase-2 ping monitor?"
-                class="rounded border border-error/40 px-3 py-1.5 text-xs text-error hover:bg-error/15"
               >
                 Delete
-              </button>
+              </.btn>
             </div>
             <div class="flex gap-2">
-              <button
-                type="button"
-                phx-click="p2mon_test"
-                disabled={@busy}
-                class="rounded border border-info/40 px-3 py-1.5 text-xs text-info hover:bg-info/15 disabled:opacity-50"
-              >
+              <.btn type="button" phx-click="p2mon_test" disabled={@busy}>
                 {if @busy, do: "Testing…", else: "Test"}
-              </button>
-              <button
-                type="submit"
-                class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-              >
+              </.btn>
+              <.btn variant={:primary} type="submit">
                 Save
-              </button>
+              </.btn>
             </div>
           </div>
         </form>

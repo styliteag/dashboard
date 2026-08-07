@@ -2185,71 +2185,59 @@ defmodule OrbitWeb.InstanceDetailLive do
           </dl>
 
           <div :if={@writable} class="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              phx-click="mint_enroll"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            <.btn phx-click="mint_enroll">
               Mint enroll code
-            </button>
-            <button
+            </.btn>
+            <.btn
               :if={@agent && @served_agent_version && @agent.agent_version != @served_agent_version}
+              variant={:primary}
               phx-click="agent_update"
               data-confirm={"Push agent #{@served_agent_version} to #{@instance.name}? The agent restarts (canary: one box at a time)."}
               disabled={@agent_busy}
-              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @agent_busy,
                 do: "Pushing…",
                 else: "Push agent update → #{@served_agent_version}"}
-            </button>
-            <button
+            </.btn>
+            <.btn
               phx-click="agent_refresh"
               title="Force a full re-collect now (logfiles/firmware/backup are normally throttled)"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Refresh now
-            </button>
-            <button
-              :if={@agent}
-              phx-click="agent_reconnect"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            </.btn>
+            <.btn :if={@agent} phx-click="agent_reconnect">
               Reconnect
-            </button>
+            </.btn>
             <%!-- Relay test only where a local firewall API exists: a
                  generic Linux node has none, so the button could only ever
                  fail there. `@agent` is the hub record (a struct), so it
                  needs an explicit nil check — `struct and x` raises
                  BadBooleanError while rendering. --%>
-            <button
+            <.btn
               :if={@agent != nil and not Orbit.Agent.Package.linux_line?(@instance.device_type)}
               phx-click="agent_test_api"
               title="Authenticated API call through the agent relay"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
             >
               Test local API
-            </button>
-            <button
-              phx-click="agent_show_token"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            </.btn>
+            <.btn phx-click="agent_show_token">
               {if @show_token, do: "Hide token", else: "Show token"}
-            </button>
-            <button
+            </.btn>
+            <.btn
               :if={@agent}
+              variant={:danger}
               phx-click="agent_uninstall"
               data-confirm={"Uninstall the agent from #{@instance.name}? The box falls back to direct transport."}
-              class="rounded border border-error/40 px-3 py-1 text-xs text-error hover:bg-error/15"
             >
               Uninstall agent
-            </button>
-            <button
+            </.btn>
+            <.btn
+              variant={:danger}
               phx-click="agent_disable"
               data-confirm={"Disable agent mode on #{@instance.name}? The token is revoked; a running agent can no longer connect."}
-              class="rounded border border-error/40 px-3 py-1 text-xs text-error hover:bg-error/15"
             >
               Disable agent mode
-            </button>
+            </.btn>
           </div>
 
           <div :if={@show_token and @instance.agent_token} class="mt-2 text-xs">
@@ -2328,12 +2316,9 @@ defmodule OrbitWeb.InstanceDetailLive do
             This box is polled directly. Switch to the push agent for live metrics,
             shell, capture and the GUI tunnel.
           </p>
-          <button
-            phx-click="agent_enable"
-            class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-          >
+          <.btn variant={:primary} phx-click="agent_enable">
             Enable agent mode
-          </button>
+          </.btn>
           <div
             :if={@agent_msg}
             class={[
@@ -2452,22 +2437,18 @@ defmodule OrbitWeb.InstanceDetailLive do
             :if={@writable and firmware_actionable?(@instance)}
             class="mt-3 flex flex-wrap items-center gap-2"
           >
-            <button
-              phx-click="fw_check"
-              disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-            >
+            <.btn phx-click="fw_check" disabled={not @connected or @fw_busy != nil or @upgrading}>
               {if @fw_busy == "check", do: "Checking…", else: "Check for updates"}
-            </button>
-            <button
+            </.btn>
+            <.btn
               :if={not @instance.firmware_locked}
+              variant={:primary}
               phx-click="fw_update"
               data-confirm={"Start the firmware update on #{@instance.name}? The box may reboot."}
               disabled={not @connected or @fw_busy != nil or @upgrading}
-              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {if @fw_busy == "update", do: "Starting…", else: "Start update"}
-            </button>
+            </.btn>
             <button
               :if={
                 not @instance.firmware_locked and
@@ -2510,13 +2491,9 @@ defmodule OrbitWeb.InstanceDetailLive do
                 class="mt-3 w-full rounded-lg border border-base-content/20 bg-base-300 px-3 py-2 text-sm focus:border-warning focus:outline-none"
               />
               <div class="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  phx-click="fw_upgrade_cancel"
-                  class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-                >
+                <.btn type="button" phx-click="fw_upgrade_cancel">
                   Cancel
-                </button>
+                </.btn>
                 <button
                   type="submit"
                   disabled={String.trim(@upgrade_confirm) != @instance.name}
@@ -2619,22 +2596,16 @@ defmodule OrbitWeb.InstanceDetailLive do
                     </td>
                     <td class="py-1.5 text-right text-xs whitespace-nowrap">
                       <%!-- History is a read: available without the write role. --%>
-                      <button
+                      <.btn
                         phx-click="monitor_history_open"
                         phx-value-id={m.id}
                         title="Recorded state transitions of this monitor"
-                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
                       >
                         History
-                      </button>
-                      <button
-                        :if={@writable}
-                        phx-click="conn_open"
-                        phx-value-id={m.id}
-                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300"
-                      >
+                      </.btn>
+                      <.btn :if={@writable} class="ml-1" phx-click="conn_open" phx-value-id={m.id}>
                         Edit
-                      </button>
+                      </.btn>
                     </td>
                   </tr>
                 <% end %>
@@ -2649,12 +2620,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           </p>
 
           <div :if={@writable} class="mt-3 flex items-center gap-2">
-            <button
-              phx-click="conn_open"
-              class="rounded border border-base-content/20 px-3 py-1 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            <.btn phx-click="conn_open">
               Add monitor
-            </button>
+            </.btn>
           </div>
 
           <.connectivity_monitor_dialog
@@ -2687,21 +2655,21 @@ defmodule OrbitWeb.InstanceDetailLive do
               </span>
             </h2>
             <div :if={Instance.monitors_runnable?(@instance)} class="flex items-center gap-1">
-              <button
+              <.btn
+                variant={:quiet}
                 phx-click="ipsec_recheck"
                 title="Re-check tunnel status now (no 5s wait)"
-                class="rounded-md px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Recheck
-              </button>
-              <button
+              </.btn>
+              <.btn
                 :if={@writable}
+                variant={:quiet}
                 phx-click="ipsec_restart"
                 data-confirm={"Restart the IPsec service on #{@instance.name}? ALL tunnels drop and re-establish."}
-                class="rounded-md px-2 py-1 text-xs text-base-content/70 hover:bg-base-300"
               >
                 Restart Service
-              </button>
+              </.btn>
             </div>
           </div>
 
@@ -2843,43 +2811,42 @@ defmodule OrbitWeb.InstanceDetailLive do
                       >
                         <Icons.icon name={:audit} class="h-3.5 w-3.5" />
                       </button>
-                      <button
+                      <.btn
                         phx-click="ipsec_diagnose"
                         phx-value-id={id}
                         disabled={diagnose_disabled?(@instance, @diagnosis_busy, @connected)}
-                        class="rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {if @diagnosis_busy == id, do: "…", else: "Diagnose"}
-                      </button>
-                      <button
+                      </.btn>
+                      <.btn
+                        class="ml-1"
                         phx-click="ipsec_reconnect"
                         phx-value-id={id}
                         phx-value-uid={t["unique_id"] || ""}
                         disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {if MapSet.member?(@ipsec_busy, id), do: "…", else: "Reconnect"}
-                      </button>
-                      <button
+                      </.btn>
+                      <.btn
                         :if={tunnel_up?(t["status"])}
+                        class="ml-1"
                         phx-click="ipsec_disconnect"
                         phx-value-id={id}
                         phx-value-uid={t["unique_id"] || ""}
                         disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Disconnect
-                      </button>
-                      <button
+                      </.btn>
+                      <.btn
                         :if={not tunnel_up?(t["status"])}
+                        class="ml-1"
                         phx-click="ipsec_connect"
                         phx-value-id={id}
                         phx-value-uid={t["unique_id"] || ""}
                         disabled={MapSet.member?(@ipsec_busy, id) or not @connected}
-                        class="ml-1 rounded border border-base-content/20 px-2 py-0.5 text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Connect
-                      </button>
+                      </.btn>
                     </td>
                   </tr>
                   <tr
@@ -3538,20 +3505,12 @@ defmodule OrbitWeb.InstanceDetailLive do
                 </option>
               </select>
             </label>
-            <button
-              type="submit"
-              class="rounded border border-base-content/20 px-3 py-1 text-base-content/80 hover:bg-base-300"
-            >
+            <.btn type="submit">
               Show diff
-            </button>
-            <button
-              :if={@cb_diff != nil}
-              type="button"
-              phx-click="cb_diff_clear"
-              class="rounded border border-base-content/20 px-3 py-1 text-base-content/70 hover:bg-base-300"
-            >
+            </.btn>
+            <.btn :if={@cb_diff != nil} type="button" phx-click="cb_diff_clear">
               Hide
-            </button>
+            </.btn>
           </form>
 
           <div :if={@cb_diff == {:no_changes}} class="mt-2 text-xs text-base-content/70">
@@ -3607,12 +3566,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               class="w-full rounded border border-base-content/20 bg-base-100 p-2 text-sm text-base-content"
               placeholder="operator note…"
             ></textarea>
-            <button
-              type="submit"
-              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-            >
+            <.btn variant={:primary} type="submit">
               Add note
-            </button>
+            </.btn>
           </form>
 
           <div :if={@comments == []} class="text-sm text-base-content/70">
@@ -3630,15 +3586,15 @@ defmodule OrbitWeb.InstanceDetailLive do
                   {c.kind}<span :if={c.entity_key != ""}>:{c.entity_key}</span> · {c.updated_by}
                 </div>
               </div>
-              <button
+              <.btn
                 :if={@writable}
+                class="shrink-0"
                 phx-click="comment_clear"
                 phx-value-kind={c.kind}
                 phx-value-entity_key={c.entity_key}
-                class="shrink-0 rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
               >
                 Clear
-              </button>
+              </.btn>
             </li>
           </ul>
         </div>

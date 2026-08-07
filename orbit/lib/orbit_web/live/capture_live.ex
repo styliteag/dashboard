@@ -197,20 +197,12 @@ defmodule OrbitWeb.CaptureLive do
                 class={input_cls()}
               />
             </label>
-            <button
-              type="submit"
-              class="rounded bg-primary px-3 py-1.5 text-xs text-primary-content hover:bg-primary/80"
-            >
+            <.btn variant={:primary} type="submit">
               {if @capturing, do: "Restart", else: "Start capture"}
-            </button>
-            <button
-              :if={@capturing}
-              type="button"
-              phx-click="stop"
-              class="rounded border border-base-content/20 px-3 py-1.5 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            </.btn>
+            <.btn :if={@capturing} type="button" phx-click="stop">
               Stop
-            </button>
+            </.btn>
           </form>
         </div>
 
