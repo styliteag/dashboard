@@ -883,17 +883,22 @@ defmodule OrbitWeb.VpnLive do
           :if={@fleet_graph and @rows != []}
           class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
+          <OrbitWeb.Components.TunnelHistoryDialog.lane_legend />
           <div :for={row <- fleet_lanes(@rows, @fleet_events, @fleet_window)} class="mb-1.5">
             <div class="flex items-center gap-2">
               <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/70">
                 {row.label}
               </span>
               <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
+                <%!-- Resolved history dimmed, full chroma only for the segment
+                     still running at "now" — availability-lane convention
+                     (D-15). --%>
                 <div
                   :for={seg <- row.segments}
                   class={[
                     "absolute h-full",
-                    OrbitWeb.Components.TunnelHistoryDialog.lane_color(seg.state)
+                    OrbitWeb.Components.TunnelHistoryDialog.lane_color(seg.state),
+                    if(seg.left + seg.width < 99.9, do: "opacity-60")
                   ]}
                   style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
                 >

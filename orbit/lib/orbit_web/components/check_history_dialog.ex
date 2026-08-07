@@ -105,9 +105,11 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
     """
   end
 
+  # Hatches on top of colour, like the availability lanes (A-B2) — same
+  # rationale as TunnelHistoryDialog.lane_color/1.
   defp lane_color(:up), do: "bg-primary"
-  defp lane_color(:partial), do: "bg-warning"
-  defp lane_color(:down), do: "bg-error"
+  defp lane_color(:partial), do: "bg-warning lane-hatch-partial"
+  defp lane_color(:down), do: "bg-error lane-hatch-down"
   defp lane_color(_), do: "bg-neutral"
 
   defp state_color(0), do: "text-primary"

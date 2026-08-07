@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The availability timeline's readability rules reached every lane
+  surface: the VPN and connectivity fleet graphs and the tunnel/monitor
+  history dialogs draw down and partial segments with the same diagonal
+  hatches (states survive greyscale and colour-blindness), resolved
+  history in the fleet graphs is dimmed so the outage still running
+  stands out, and both fleet graphs got the four-state legend.
 - Syslog got the shared period selector (24h / 7d / 30d / all): narrow
   the page to patterns last seen inside the window. The KPI tiles count
   inside the window too, and the filter notice names the active window —
