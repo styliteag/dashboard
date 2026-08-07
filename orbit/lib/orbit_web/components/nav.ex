@@ -37,6 +37,10 @@ defmodule OrbitWeb.Components.Nav do
   attr :active, :atom, default: nil, doc: "the current page key, e.g. :alerts"
   attr :current_user, :map, required: true
 
+  # Pages living behind the "Admin" dropdown — operate-the-dashboard surfaces,
+  # not operate-the-fleet ones (UI/UX review U-M2/E3). Order = menu order.
+  @admin_keys [:hub, :settings, :audit, :users, :groups, :access_control]
+
   def top_nav(assigns) do
     ~H"""
     <%!-- flex-wrap on the header itself plus min-w-0 on both groups: without
@@ -53,6 +57,10 @@ defmodule OrbitWeb.Components.Nav do
             {edition()}
           </span>
         </a>
+        <%!-- Fleet pages only; dashboard administration lives behind the
+             Admin dropdown. 13 flat items left no slot for new pages and
+             mixed "watch the fleet" with "configure the dashboard"
+             (UI/UX review U-M2, decision E3). --%>
         <nav class="flex flex-wrap gap-3 text-sm text-base-content/70">
           <.nav_link
             :if={instance_data?(@current_user)}
@@ -62,11 +70,11 @@ defmodule OrbitWeb.Components.Nav do
             label="Instances"
           />
           <.nav_link
-            :if={admin?(@current_user)}
+            :if={instance_data?(@current_user)}
             active={@active}
-            key={:hub}
-            href={~p"/hub"}
-            label="Hub"
+            key={:availability}
+            href={~p"/availability"}
+            label="Availability"
           />
           <.nav_link
             :if={instance_data?(@current_user)}
@@ -103,56 +111,93 @@ defmodule OrbitWeb.Components.Nav do
             href={~p"/firmware"}
             label="Firmware"
           />
-          <%!-- Logs needs BOTH gates: admin-only content (invariant 4), and
+          <%!-- Syslog needs BOTH gates: admin-only content (invariant 4), and
                 the list is per visible instance, so a group-less admin still
-                gets an empty page. --%>
+                gets an empty page. Fleet data, so it stays out of the Admin
+                menu despite the admin gate. --%>
           <.nav_link
             :if={admin?(@current_user) and instance_data?(@current_user)}
             active={@active}
             key={:logs}
             href={~p"/logs"}
-            label="Logs"
+            label="Syslog"
           />
-          <.nav_link
-            :if={admin?(@current_user)}
-            active={@active}
-            key={:settings}
-            href={~p"/settings"}
-            label="Settings"
-          />
-          <.nav_link
-            :if={admin?(@current_user) or superadmin?(@current_user)}
-            active={@active}
-            key={:audit}
-            href={~p"/audit"}
-            label="Audit"
-          />
-          <.nav_link
-            :if={superadmin?(@current_user)}
-            active={@active}
-            key={:users}
-            href={~p"/users"}
-            label="Users"
-          />
-          <.nav_link
-            :if={superadmin?(@current_user)}
-            active={@active}
-            key={:groups}
-            href={~p"/groups"}
-            label="Groups"
-          />
-          <.nav_link
-            :if={superadmin?(@current_user)}
-            active={@active}
-            key={:access_control}
-            href={~p"/access-control"}
-            label="Access"
-          />
+          <.admin_menu current_user={@current_user} active={@active} />
         </nav>
       </div>
       <.account_menu current_user={@current_user} active={@active} />
     </header>
     """
+  end
+
+  @doc """
+  "Admin ▾" dropdown: every operate-the-dashboard page (Hub transport
+  roster, Settings, Audit, rights management) behind one trigger, each item
+  keeping its own role gate. Rendered only when at least one item is
+  visible, so a plain operator never sees an empty menu. Same `<details
+  data-popover>` mechanics as the account menu (server-rendered, closes on
+  outside click via app.js).
+  """
+  attr :current_user, :map, required: true
+  attr :active, :atom, default: nil
+
+  def admin_menu(assigns) do
+    # admin_keys must travel via assigns: inside ~H, @name reads assigns,
+    # not module attributes.
+    assigns =
+      assign(assigns, items: admin_items(assigns.current_user), admin_keys: @admin_keys)
+
+    ~H"""
+    <details :if={@items != []} data-popover class="relative">
+      <summary
+        data-nav-admin
+        class={[
+          "flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1",
+          if(@active in @admin_keys,
+            do: "bg-base-300 font-medium text-primary",
+            else: "text-base-content/70 hover:bg-base-300/60 hover:text-base-content"
+          )
+        ]}
+      >
+        <.nav_icon name={:settings} /> Admin
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3 w-3">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+        </svg>
+      </summary>
+      <nav class="absolute left-0 top-9 z-50 w-44 overflow-hidden rounded-[var(--radius-box)] border border-base-300 bg-base-200 py-1 shadow-xl">
+        <a
+          :for={{key, href, label} <- @items}
+          href={href}
+          aria-current={if @active == key, do: "page"}
+          class={[
+            "flex items-center gap-2 px-3 py-1.5 text-sm",
+            if(@active == key,
+              do: "bg-base-300 font-medium text-primary",
+              else: "text-base-content/80 hover:bg-base-300 hover:text-base-content"
+            )
+          ]}
+        >
+          <.nav_icon name={key} class="h-4 w-4 opacity-70" />
+          {label}
+        </a>
+      </nav>
+    </details>
+    """
+  end
+
+  # {key, href, label} per visible admin page — role gates identical to the
+  # old flat nav (they are cosmetics; routes still enforce).
+  defp admin_items(user) do
+    [
+      {:hub, ~p"/hub", "Hub", admin?(user)},
+      {:settings, ~p"/settings", "Settings", admin?(user)},
+      {:audit, ~p"/audit", "Audit", admin?(user) or superadmin?(user)},
+      {:users, ~p"/users", "Users", superadmin?(user)},
+      {:groups, ~p"/groups", "Groups", superadmin?(user)},
+      {:access_control, ~p"/access-control", "Access", superadmin?(user)}
+    ]
+    |> Enum.filter(fn {_, _, _, visible?} -> visible? end)
+    |> Enum.map(fn {key, href, label, _} -> {key, href, label} end)
   end
 
   @doc """

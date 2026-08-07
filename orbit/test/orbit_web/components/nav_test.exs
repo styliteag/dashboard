@@ -19,7 +19,7 @@ defmodule OrbitWeb.Components.NavTest do
   # The instance-data pages: every one of them lists instances the caller may
   # see, so all of them are empty without group membership. /logs belongs to
   # the family too but carries an extra admin gate — see its own test.
-  @instance_paths ~w(/instances /alerts /connectivity /vpn /certificates /firmware)
+  @instance_paths ~w(/instances /availability /alerts /connectivity /vpn /certificates /firmware)
 
   defp user(attrs) do
     struct!(
@@ -67,15 +67,27 @@ defmodule OrbitWeb.Components.NavTest do
     refute html =~ ~s|href="/logs"|
   end
 
-  test "Logs needs admin AND groups — log lines are admin-only content" do
+  test "Syslog (/logs) needs admin AND groups — log lines are admin-only content" do
     groups = [%Group{id: 1, name: "A"}]
 
     assert nav(user(role: "admin", groups: groups)) =~ ~s|href="/logs"|
+    # renamed from "Logs" (UI/UX review E3): the page shows syslog events,
+    # and "Logs" read like the dashboard's own logs.
+    assert nav(user(role: "admin", groups: groups)) =~ "Syslog"
     # a plain member of the same group must not read the log lines
     refute nav(user(role: "user", groups: groups)) =~ ~s|href="/logs"|
     refute nav(user(role: "view_only", groups: groups)) =~ ~s|href="/logs"|
     # an admin without groups would only get an empty list
     refute nav(user(role: "admin", groups: [])) =~ ~s|href="/logs"|
+  end
+
+  # UI/UX review U-M2/E3: dashboard administration moved behind one "Admin"
+  # dropdown; fleet pages stay flat. The trigger renders only when at least
+  # one admin surface is visible to the account.
+  test "the Admin menu renders only when an admin surface is visible" do
+    refute nav(user(groups: [%Group{id: 1, name: "A"}])) =~ "data-nav-admin"
+    assert nav(user(role: "admin")) =~ "data-nav-admin"
+    assert nav(user(role: "view_only", is_superadmin: true)) =~ "data-nav-admin"
   end
 
   test "Hub is admin-only — a group-less user and a superadmin never see it" do

@@ -23,7 +23,13 @@ defmodule OrbitWeb.LogEventsLive do
     # warning-level noise dominates an unfiltered fleet list.
     {:ok,
      socket
-     |> assign(search: "", sev_filter: "err", tag_filter: "all", open_sample: nil)
+     |> assign(
+       page_title: "Syslog",
+       search: "",
+       sev_filter: "err",
+       tag_filter: "all",
+       open_sample: nil
+     )
      |> load()}
   end
 
@@ -129,7 +135,7 @@ defmodule OrbitWeb.LogEventsLive do
 
       <section class="p-6">
         <h1 class="flex items-center gap-2 mb-2 text-lg font-medium text-base-content">
-          <Icons.icon name={:logs} class="h-5 w-5 text-base-content/70" /> Log events
+          <Icons.icon name={:logs} class="h-5 w-5 text-base-content/70" /> Syslog
           <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
         </h1>
 

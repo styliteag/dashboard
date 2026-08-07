@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collided with the boxes' own uptime counters on the Overview tab, and
   the page states it shows dashboard-observed availability instead.
 
+### Changed
+
+- The top navigation is two groups instead of 13 flat links: the fleet
+  pages (Instances, Availability, Alerts, Connectivity, VPN, Certs,
+  Firmware, Syslog) stay in the bar, and dashboard administration (Hub,
+  Settings, Audit, Users, Groups, Access) moved behind one "Admin"
+  dropdown. The Availability timeline finally got its own slot instead of
+  hiding inside the instances page's view toggle.
+- The "Logs" page is called "Syslog" now — it shows the boxes' syslog
+  events, and "Logs" read like the dashboard's own logs.
+
 ### Fixed
 
 - Alerts and /availability are sortable: State/Instance/Check on Alerts,
