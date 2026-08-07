@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Syslog's "Last seen" column parses ISO-8601 device stamps too:
+  RFC5424 boxes (OPNsense syslog-ng, OpenVPN) log
+  "2026-08-07T18:29:13+02:00", which fell through to the raw string —
+  the column mixed three formats. ISO stamps carry their offset, so
+  they render as exact relative times (no year heuristic needed);
+  dates older than 30 days keep showing the plain date by design.
+
 ## [4.4.4] - 2026-08-07
 
 ### Fixed

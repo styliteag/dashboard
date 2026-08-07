@@ -163,7 +163,21 @@ defmodule OrbitWeb.LogEventsLive do
     "Dec" => 12
   }
 
-  defp device_ts(ts) when is_binary(ts) do
+  # ISO-8601 first (RFC5424 boxes — OPNsense syslog-ng/openvpn log
+  # "2026-08-07T18:29:13+02:00"): the offset makes it EXACT, no year
+  # heuristic needed. Prod feedback 2026-08-07: these fell through to the
+  # raw string and the column showed three formats at once.
+  @doc false
+  def device_ts(ts) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _offset} -> DateTime.shift_zone!(dt, "Etc/UTC")
+      _ -> rfc3164_ts(ts)
+    end
+  end
+
+  def device_ts(_), do: nil
+
+  defp rfc3164_ts(ts) do
     with [_, mon, d, h, mi, s] <-
            Regex.run(~r/^(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})/, ts),
          month when not is_nil(month) <- @months[mon],
@@ -186,8 +200,6 @@ defmodule OrbitWeb.LogEventsLive do
       _ -> nil
     end
   end
-
-  defp device_ts(_), do: nil
 
   # Newest ingest across the visible boxes — the age of everything on the page.
   defp last_ingest([]), do: nil
