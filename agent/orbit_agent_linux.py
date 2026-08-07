@@ -53,7 +53,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.12"
+__version__ = "4.2.13"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -1705,13 +1705,21 @@ async def _send_update_result(ws: WebSocket, request_id: str, success: bool, out
 # Uninstall (dashboard-triggered) — remove the agent's own footprint.
 #
 # The agent can't cleanly remove itself while running: the supervisor respawns it
-# on any exit. So we ack the command, then a DETACHED script (own session, see
-# start_new_session) does the teardown AFTER we're gone — killing the supervisor
-# FIRST so nothing respawns, then the agent, then files + rc.d + the OPNsense
-# orbit user. We deliberately do NOT exit here (an exit would just flap a respawn).
+# on any exit. So we ack the command, then a DETACHED script does the teardown
+# AFTER we're gone — stopping the unit first so nothing respawns, then killing
+# stragglers, then removing files + unit + config.
+#
+# Two systemd traps make "detached" harder than on FreeBSD (both hit live on
+# prox3, 2026-08-07: unit stopped but every file left behind):
+#   1. A plain child of the agent stays in the orbit-agent.service cgroup
+#      (start_new_session detaches the session, NOT the cgroup), so its own
+#      `systemctl disable --now` kills the script mid-run — nothing after that
+#      line ever executes. Escape via a systemd-run transient unit.
+#   2. The unit runs with PrivateTmp=yes: a /tmp script is invisible to that
+#      transient unit (different mount namespace). Write the script into
+#      install_dir instead — root-owned 0755 dir, so no /tmp symlink risk; the
+#      final rm -rf is safe because the running script keeps its inode.
 # =============================================================================
-
-# Remove the auto-provisioned `orbit` OPNsense user (reverse of provisioning).
 
 def _build_uninstall_script(install_dir: str) -> str:
     """Build the detached teardown script (linux/systemd). Order matters: the
@@ -1743,9 +1751,16 @@ async def _handle_uninstall(ws: WebSocket, request_id: str, params: dict) -> Non
     install_dir = os.path.dirname(_self_path())
 
     try:
-        sh_path = _write_root_script(_build_uninstall_script(install_dir), ".sh")
+        # See the section comment: script outside PrivateTmp, launched outside
+        # the service cgroup, or `systemctl disable --now` reaps it mid-run.
+        sh_path = os.path.join(install_dir, "orbit-uninstall.sh")
+        _write_private(Path(sh_path), _build_uninstall_script(install_dir))
+        if shutil.which("systemd-run"):
+            argv = ["systemd-run", "--collect", "/bin/sh", sh_path]
+        else:  # no systemd → no cgroup kill either; a detached child suffices
+            argv = ["/bin/sh", sh_path]
         subprocess.Popen(
-            ["/bin/sh", sh_path],
+            argv,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,  # detach so it survives the agent's death

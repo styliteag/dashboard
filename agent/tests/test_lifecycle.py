@@ -57,6 +57,46 @@ def test_uninstall_pfsense_removes_restapi_package() -> None:
     assert script.index("pkg-static delete") < script.index("rm -rf /usr/local/orbit-agent")
 
 
+# --- linux uninstall: escape the service cgroup + PrivateTmp -----------------
+
+
+async def test_linux_uninstall_escapes_cgroup_and_private_tmp(tmp_path, monkeypatch) -> None:
+    """Regression (prox3, 2026-08-07): the teardown script was a plain child of the
+    agent — still inside the orbit-agent.service cgroup — so its own `systemctl
+    disable --now` killed it mid-run and every file survived the uninstall. It must
+    run as a systemd-run transient unit, and the script must live OUTSIDE /tmp
+    (PrivateTmp=yes hides the agent's /tmp from other units)."""
+    import orbit_agent_linux as linux
+
+    monkeypatch.setattr(linux, "_self_path", lambda: str(tmp_path / "orbit_agent.py"))
+    monkeypatch.setattr(
+        linux.shutil, "which", lambda n: "/usr/bin/systemd-run" if n == "systemd-run" else None
+    )
+    calls: dict = {}
+    monkeypatch.setattr(
+        linux.subprocess, "Popen", lambda argv, **kw: calls.__setitem__("argv", argv)
+    )
+    monkeypatch.setattr(linux.os, "_exit", lambda code: calls.__setitem__("exit", code))
+
+    class _WS:
+        async def send(self, data: str) -> None:
+            calls["ack"] = json.loads(data)
+
+        async def close(self) -> None:
+            pass
+
+    await linux._handle_uninstall(_WS(), "r1", {})
+
+    assert calls["argv"][0] == "systemd-run"  # own cgroup — survives the unit stop
+    sh_path = calls["argv"][-1]
+    assert sh_path.startswith(str(tmp_path))  # outside PrivateTmp's /tmp
+    script = (tmp_path / "orbit-uninstall.sh").read_text()
+    assert "systemctl disable --now orbit-agent" in script
+    assert f"rm -rf {tmp_path}" in script
+    assert calls["ack"]["result"]["success"] is True
+    assert calls["exit"] == 0
+
+
 # --- enrollment URL derivation ----------------------------------------------
 
 

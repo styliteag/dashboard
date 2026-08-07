@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.4.3] - 2026-08-07
+### Fixed
+
+- Uninstalling a Linux agent from the dashboard stopped the service but
+  left every file behind (`/usr/local/orbit-agent`, the systemd unit,
+  the config): the teardown script ran inside the agent's own service
+  cgroup, so its `systemctl disable --now` killed the script before any
+  cleanup line executed. The script now runs as a systemd-run transient
+  unit outside the cgroup and is written outside the unit's private
+  /tmp (agent 4.2.13).
 
 ### Changed
 
