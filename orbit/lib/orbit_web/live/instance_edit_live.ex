@@ -11,6 +11,12 @@ defmodule OrbitWeb.InstanceEditLive do
   stored value, a non-empty one rotates (fernet-encrypted); the audit
   detail is allowlisted and records rotations by NAME only. Delete is a
   soft delete (slug freed for the GUI proxy).
+
+  Form state lives in a `@form` map (seeded from the instance, secrets
+  seeded empty), merged on every phx-change: without it any re-render —
+  an inline error, an SSH test result — reset unfocused inputs to their
+  server values, silently discarding edits. Inline validation shares
+  `OrbitWeb.InstanceForm` with the create form (UI/UX review U-M4).
   """
 
   use OrbitWeb, :live_view
@@ -21,6 +27,7 @@ defmodule OrbitWeb.InstanceEditLive do
   alias Orbit.Auth.Scope
   alias Orbit.Instances
   alias OrbitWeb.Components.TagPicker
+  alias OrbitWeb.InstanceForm
 
   @write_roles ~w(admin user)
 
@@ -37,16 +44,53 @@ defmodule OrbitWeb.InstanceEditLive do
          instance: inst,
          admin: user.role == "admin",
          error: nil,
+         form: form_from(inst),
+         touched: MapSet.new(),
+         errors: %{},
          pinning: false,
          pin_result: nil,
          ssh_testing: false,
-         ssh_result: nil
+         ssh_result: nil,
+         api_testing: false,
+         api_result: nil
        )
        |> TagPicker.init(inst.tags, Instances.known_tags(user))}
     else
       _ -> {:ok, push_navigate(socket, to: ~p"/instances")}
     end
   end
+
+  # Secrets (api_key, api_secret, ssh_key) seed EMPTY on purpose: rendering
+  # them would put decrypted material in the DOM; empty submit = keep stored
+  # (invariant 3). Everything else mirrors the record so typed edits survive
+  # re-renders.
+  defp form_from(inst) do
+    %{
+      "name" => inst.name,
+      "slug" => inst.slug,
+      "base_url" => inst.base_url,
+      "location" => inst.location,
+      "ping_url" => inst.ping_url,
+      "notes" => inst.notes,
+      "poll_interval_seconds" => num_str(inst.poll_interval_seconds),
+      "push_interval_seconds" => num_str(inst.push_interval_seconds),
+      "api_key" => "",
+      "api_secret" => "",
+      "ca_bundle" => inst.ca_bundle,
+      "ssl_verify" => to_string(inst.ssl_verify),
+      "gui_login_enabled" => to_string(inst.gui_login_enabled),
+      "shell_enabled" => to_string(inst.shell_enabled),
+      "maintenance" => to_string(inst.maintenance),
+      "firmware_locked" => to_string(inst.firmware_locked),
+      "ssh_enabled" => to_string(inst.ssh_enabled),
+      "ssh_port" => to_string(inst.ssh_port || 22),
+      "ssh_user" => inst.ssh_user || "root",
+      "ssh_key" => ""
+    }
+  end
+
+  defp num_str(nil), do: nil
+  defp num_str(n), do: to_string(n)
 
   # Trust-on-first-use host-key capture. This is the ONLY place that connects
   # unpinned (Orbit.Securepoint.SSH.probe_host_key/1); every other SSH path
@@ -92,9 +136,29 @@ defmodule OrbitWeb.InstanceEditLive do
     end
   end
 
+  # Generic connection test for direct-API boxes (UI/UX review U-M4; the
+  # Securepoint SSH Test button is the model). Probes the SAVED record —
+  # unsaved edits are deliberately not testable, the button says so.
+  # Read-only against the box (status endpoints only).
+  def handle_event("api_test", _params, socket) do
+    inst = socket.assigns.instance
+
+    if socket.assigns.api_testing or not direct_api?(inst) do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(api_testing: true, api_result: nil)
+       |> start_async(:api_test, fn -> probe_api(inst) end)}
+    end
+  end
+
   def handle_event("save", %{"instance" => params}, socket) do
     user = socket.assigns.current_user
     inst = socket.assigns.instance
+    # Submitted values refresh the form state (autofill can land values no
+    # change event saw), mirroring the create form.
+    socket = assign(socket, form: Map.merge(socket.assigns.form, params))
     params = Map.put(params, "tags", TagPicker.submitted_tags(socket))
 
     cond do
@@ -113,6 +177,16 @@ defmodule OrbitWeb.InstanceEditLive do
   # Tag picker state lives in TagPicker, shared with the create form.
   def handle_event("tag_" <> _ = event, params, socket) do
     {:noreply, TagPicker.on_event(event, params, socket)}
+  end
+
+  # Merge + inline-validate on every change so edits survive re-renders and
+  # mistakes surface at the field (UI/UX review U-M4).
+  def handle_event("form_change", %{"instance" => params} = payload, socket) do
+    form = Map.merge(socket.assigns.form, params)
+    touched = InstanceForm.touch(socket.assigns.touched, payload)
+
+    {:noreply,
+     assign(socket, form: form, touched: touched, errors: InstanceForm.errors(form, touched))}
   end
 
   def handle_event("delete", _params, socket) do
@@ -162,6 +236,32 @@ defmodule OrbitWeb.InstanceEditLive do
     end
   end
 
+  # Direct-API boxes the dashboard polls itself — Securepoint has its own
+  # SSH test above, push-only types have no API to test.
+  defp direct_api?(inst) do
+    inst.transport == "direct" and inst.device_type != "securepoint" and
+      not Instances.push_only_type?(inst.device_type)
+  end
+
+  # fetch_status is best-effort per section (a failing endpoint yields an
+  # empty section, never a raise) — so "no sections at all" IS the failure
+  # signal: nothing answered under those credentials at that URL.
+  defp probe_api(inst) do
+    case Orbit.Poller.OpnsenseClient.new(inst) do
+      {:ok, client} ->
+        status = Orbit.Poller.OpnsenseClient.fetch_status(client)
+
+        if map_size(status) > 0 do
+          {:ok, "API reachable — #{map_size(status)} status sections fetched"}
+        else
+          {:error, "no API response — check base URL, credentials and TLS settings"}
+        end
+
+      {:error, reason} ->
+        {:error, "cannot build the API client: #{inspect(reason)}"}
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -184,32 +284,39 @@ defmodule OrbitWeb.InstanceEditLive do
 
         <div
           :if={@error}
+          role="alert"
           class="mb-4 rounded border border-error/40 bg-error/10 p-2 text-sm text-error"
         >
           {@error}
         </div>
 
-        <form phx-submit="save" class="space-y-4">
+        <form phx-change="form_change" phx-submit="save" class="space-y-4">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">General</h2>
             <div class="grid gap-3 md:grid-cols-2">
-              <.field label="Name">
-                <input name="instance[name]" value={@instance.name} required class={input_cls()} />
+              <.field label="Name" required error={@errors["name"]}>
+                <input
+                  name="instance[name]"
+                  value={@form["name"]}
+                  required
+                  aria-required="true"
+                  class={input_cls()}
+                />
               </.field>
-              <.field label="Slug (GUI vhost label)">
-                <input name="instance[slug]" value={@instance.slug} class={input_cls()} />
+              <.field label="Slug (GUI vhost label)" error={@errors["slug"]}>
+                <input name="instance[slug]" value={@form["slug"]} class={input_cls()} />
               </.field>
-              <.field label="Base URL">
-                <input name="instance[base_url]" value={@instance.base_url} class={input_cls()} />
+              <.field label="Base URL" error={@errors["base_url"]}>
+                <input name="instance[base_url]" value={@form["base_url"]} class={input_cls()} />
               </.field>
               <.field label="Location">
-                <input name="instance[location]" value={@instance.location} class={input_cls()} />
+                <input name="instance[location]" value={@form["location"]} class={input_cls()} />
               </.field>
-              <.field label="Ping URL (availability probe)">
-                <input name="instance[ping_url]" value={@instance.ping_url} class={input_cls()} />
+              <.field label="Ping URL (availability probe)" error={@errors["ping_url"]}>
+                <input name="instance[ping_url]" value={@form["ping_url"]} class={input_cls()} />
               </.field>
               <.field label="Notes">
-                <input name="instance[notes]" value={@instance.notes} class={input_cls()} />
+                <input name="instance[notes]" value={@form["notes"]} class={input_cls()} />
               </.field>
               <%!-- The schema carried tags and the fleet page filters by
                    them, but no form ever wrote one — the filter chips could
@@ -229,18 +336,21 @@ defmodule OrbitWeb.InstanceEditLive do
               Intervals (blank = global default)
             </h2>
             <div class="grid gap-3 md:grid-cols-2">
-              <.field label="Poll interval (s)">
+              <.field label="Poll interval (s)" error={@errors["poll_interval_seconds"]}>
                 <input
                   name="instance[poll_interval_seconds]"
-                  value={@instance.poll_interval_seconds}
+                  value={@form["poll_interval_seconds"]}
                   inputmode="numeric"
                   class={input_cls()}
                 />
               </.field>
-              <.field label="Push interval (s) — live-applied to a connected agent">
+              <.field
+                label="Push interval (s) — live-applied to a connected agent"
+                error={@errors["push_interval_seconds"]}
+              >
                 <input
                   name="instance[push_interval_seconds]"
-                  value={@instance.push_interval_seconds}
+                  value={@form["push_interval_seconds"]}
                   inputmode="numeric"
                   class={input_cls()}
                 />
@@ -254,12 +364,17 @@ defmodule OrbitWeb.InstanceEditLive do
             </h2>
             <div class="grid gap-3 md:grid-cols-2">
               <.field label="API key">
-                <input name="instance[api_key]" value="" autocomplete="off" class={input_cls()} />
+                <input
+                  name="instance[api_key]"
+                  value={@form["api_key"]}
+                  autocomplete="off"
+                  class={input_cls()}
+                />
               </.field>
               <.field label="API secret">
                 <input
                   name="instance[api_secret]"
-                  value=""
+                  value={@form["api_secret"]}
                   type="password"
                   autocomplete="new-password"
                   class={input_cls()}
@@ -277,33 +392,52 @@ defmodule OrbitWeb.InstanceEditLive do
                 spellcheck="false"
                 placeholder="-----BEGIN CERTIFICATE-----"
                 class={[input_cls(), "font-mono text-xs"]}
-              >{@instance.ca_bundle}</textarea>
+              >{@form["ca_bundle"]}</textarea>
             </.field>
+            <%!-- Prove the SAVED record polls before anyone waits for the
+                 next cycle to find out (UI/UX review U-M4; the Securepoint
+                 SSH Test is the model). --%>
+            <div :if={direct_api?(@instance)} class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+              <button
+                type="button"
+                phx-click="api_test"
+                disabled={@api_testing}
+                class="rounded border border-info/40 px-2 py-1 text-info hover:bg-info/15 disabled:opacity-50"
+              >
+                {if @api_testing, do: "Testing…", else: "Test connection"}
+              </button>
+              <span class="text-base-content/70">tests the saved values — save changes first</span>
+              <span :if={@api_result} class={pin_class(@api_result)}>{elem(@api_result, 1)}</span>
+            </div>
           </div>
 
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4">
             <h2 class="mb-3 text-sm font-medium text-base-content/70">Flags</h2>
             <div class="grid gap-2 md:grid-cols-2">
-              <.flag name="instance[ssl_verify]" checked={@instance.ssl_verify} label="Verify TLS" />
+              <.flag
+                name="instance[ssl_verify]"
+                checked={@form["ssl_verify"] == "true"}
+                label="Verify TLS"
+              />
               <.flag
                 name="instance[gui_login_enabled]"
-                checked={@instance.gui_login_enabled}
+                checked={@form["gui_login_enabled"] == "true"}
                 label="Autologin GUI"
               />
               <.flag
                 :if={@admin}
                 name="instance[shell_enabled]"
-                checked={@instance.shell_enabled}
+                checked={@form["shell_enabled"] == "true"}
                 label="Terminal (root shell) — admin only"
               />
               <.flag
                 name="instance[maintenance]"
-                checked={@instance.maintenance}
+                checked={@form["maintenance"] == "true"}
                 label="Maintenance (checks capped)"
               />
               <.flag
                 name="instance[firmware_locked]"
-                checked={@instance.firmware_locked}
+                checked={@form["firmware_locked"] == "true"}
                 label="Lock firmware updates"
               />
             </div>
@@ -324,7 +458,7 @@ defmodule OrbitWeb.InstanceEditLive do
 
             <.flag
               name="instance[ssh_enabled]"
-              checked={@instance.ssh_enabled}
+              checked={@form["ssh_enabled"] == "true"}
               label="SSH enrichment (rich IPsec via swanctl — SPIs, cookies, byte counters)"
             />
 
@@ -333,7 +467,7 @@ defmodule OrbitWeb.InstanceEditLive do
                 SSH port
                 <input
                   name="instance[ssh_port]"
-                  value={@instance.ssh_port || 22}
+                  value={@form["ssh_port"]}
                   class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
                 />
               </label>
@@ -341,7 +475,7 @@ defmodule OrbitWeb.InstanceEditLive do
                 SSH user
                 <input
                   name="instance[ssh_user]"
-                  value={@instance.ssh_user || "root"}
+                  value={@form["ssh_user"]}
                   class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 text-sm text-base-content"
                 />
               </label>
@@ -353,7 +487,7 @@ defmodule OrbitWeb.InstanceEditLive do
                 rows="4"
                 placeholder={if @instance.ssh_key_enc, do: "unchanged", else: "just gen-ssh-key"}
                 class="mt-1 w-full rounded border border-base-content/20 bg-base-300 px-2 py-1.5 font-mono text-xs text-base-content"
-              ></textarea>
+              >{@form["ssh_key"]}</textarea>
             </label>
 
             <%!-- Host-key pinning is trust-on-first-use and FAIL-CLOSED: without a
@@ -441,6 +575,14 @@ defmodule OrbitWeb.InstanceEditLive do
 
   def handle_async(:ssh_test, {:exit, reason}, socket) do
     {:noreply, assign(socket, ssh_testing: false, ssh_result: {:error, inspect(reason)})}
+  end
+
+  def handle_async(:api_test, {:ok, result}, socket) do
+    {:noreply, assign(socket, api_testing: false, api_result: result)}
+  end
+
+  def handle_async(:api_test, {:exit, reason}, socket) do
+    {:noreply, assign(socket, api_testing: false, api_result: {:error, inspect(reason)})}
   end
 
   def handle_async(:pin_host_key, {:ok, {:ok, line}}, socket) do
