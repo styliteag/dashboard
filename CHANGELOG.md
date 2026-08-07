@@ -71,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tables inside the instance detail page sort too: the Interfaces table
+  (name, address, status, RX/s, TX/s, errors) got clickable headers, and
+  the detail page carries a shared per-table sort so vendor tabs join in
+  with their own tables. Untouched tables keep their meaningful default
+  order (the box's own interface order).
 - Syslog's "Last seen" reads the same for every box: the column showed
   each device's raw syslog stamp ("Jul 26 23:12:22" vs "Aug  6 20:07:54"
   — formats straight from the boxes), wrapping onto two lines. It now

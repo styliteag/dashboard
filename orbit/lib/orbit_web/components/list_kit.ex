@@ -170,6 +170,14 @@ defmodule OrbitWeb.Components.ListKit do
   attr :sort_col, :string, required: true
   attr :sort_dir, :atom, required: true
 
+  attr :event, :string,
+    default: "sort",
+    doc: "override for pages with several sortable tables (e.g. \"tsort\")"
+
+  attr :table, :string,
+    default: nil,
+    doc: "phx-value-table scope, for multi-table pages (instance detail)"
+
   def sort_th(assigns) do
     ~H"""
     <th
@@ -181,7 +189,12 @@ defmodule OrbitWeb.Components.ListKit do
       }
       class="px-3 py-2 font-medium"
     >
-      <button phx-click="sort" phx-value-col={@col} class="hover:text-base-content/80">
+      <button
+        phx-click={@event}
+        phx-value-col={@col}
+        phx-value-table={@table}
+        class="hover:text-base-content/80"
+      >
         {@label}
         <span :if={@sort_col == @col} aria-hidden="true">{if @sort_dir == :asc, do: "↑", else: "↓"}</span>
       </button>

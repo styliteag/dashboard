@@ -20,7 +20,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   import OrbitWeb.Components.TunnelHistoryDialog, only: [tunnel_history_dialog: 1]
 
   import OrbitWeb.Components.CommentEditor, only: [comment_editor: 1]
-  import OrbitWeb.Components.ListKit, only: [base_url_link: 1]
+  import OrbitWeb.Components.ListKit, only: [base_url_link: 1, sort_th: 1]
 
   alias OrbitWeb.Components.CommentEditor
 
@@ -106,6 +106,11 @@ defmodule OrbitWeb.InstanceDetailLive do
           upgrade_confirm: "",
           upgrade_confirm_open: false,
           ai_confirm: nil,
+          # Per-table sort state for this page's in-tab tables (interfaces,
+          # vendor tabs like Pro's ZFS): %{"table" => {col, dir}}. Display
+          # ordering only — never touches a query (U-N1 follow-up,
+          # user request 2026-08-07).
+          table_sort: %{},
           # Per-tab lazy loading (UI/UX review U-L1): nil = not loaded yet.
           # mount used to run EVERY tab's queries up front; now each loader
           # runs on the first visit of a tab that needs it (handle_params →
@@ -444,6 +449,29 @@ defmodule OrbitWeb.InstanceDetailLive do
 
       _ ->
         {:noreply, assign(socket, ai_confirm: nil)}
+    end
+  end
+
+  # One handler for every sortable in-tab table, vendor tabs included —
+  # the table name is display-scoped, so a vendor tab (Pro ZFS) works
+  # without upstream knowing it. Both values are bounded strings used only
+  # as map keys and sort selectors (no atoms, no queries); the size cap
+  # stops a hostile client growing the map.
+  def handle_event("tsort", %{"table" => table, "col" => col}, socket)
+      when is_binary(table) and is_binary(col) do
+    sorts = socket.assigns.table_sort
+
+    if table =~ ~r/^[a-z0-9_]{1,32}$/ and col =~ ~r/^[a-z0-9_]{1,32}$/ and
+         (map_size(sorts) < 16 or Map.has_key?(sorts, table)) do
+      dir =
+        case sorts[table] do
+          {^col, :asc} -> :desc
+          _ -> :asc
+        end
+
+      {:noreply, assign(socket, table_sort: Map.put(sorts, table, {col, dir}))}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -3025,7 +3053,11 @@ defmodule OrbitWeb.InstanceDetailLive do
                dozens on a hypervisor) hide by default; the toggle shows the
                full list. If NO interface has an address the filter would
                blank the table, so everything shows instead. --%>
-          <% shown = visible_interfaces(@interfaces, @if_show_all) %>
+          <% {if_col, if_dir} = @table_sort["interfaces"] || {nil, :asc} %>
+          <% shown =
+            @interfaces
+            |> visible_interfaces(@if_show_all)
+            |> sorted_interfaces(@table_sort["interfaces"]) %>
           <% hidden = length(@interfaces) - length(shown) %>
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-medium text-base-content/70">Interfaces</h2>
@@ -3039,12 +3071,24 @@ defmodule OrbitWeb.InstanceDetailLive do
             <table class="w-full min-w-[46rem] text-left text-sm">
               <thead class="text-base-content/70">
                 <tr class="border-b border-base-300">
-                  <th class="py-1 pr-4 font-medium">Name</th>
-                  <th class="py-1 pr-4 font-medium">Address</th>
-                  <th class="py-1 pr-4 font-medium">Status</th>
-                  <th class="py-1 pr-4 font-medium">RX/s</th>
-                  <th class="py-1 pr-4 font-medium">TX/s</th>
-                  <th class="py-1 font-medium">Errors in/out</th>
+                  <.sort_th
+                    :for={
+                      {c, l} <- [
+                        {"name", "Name"},
+                        {"address", "Address"},
+                        {"status", "Status"},
+                        {"rx", "RX/s"},
+                        {"tx", "TX/s"},
+                        {"err", "Errors in/out"}
+                      ]
+                    }
+                    col={c}
+                    label={l}
+                    event="tsort"
+                    table="interfaces"
+                    sort_col={if_col || ""}
+                    sort_dir={if_dir}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -3306,6 +3350,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               entry: @cache_entry,
               instance: @instance,
               chart_range: @chart_range,
+              # Vendor tables sort via the shared "tsort" event; the map is
+              # display-scoped, so a tab uses only the keys it declared.
+              table_sort: @table_sort,
               __changed__: nil
             }
           ])}
@@ -3754,6 +3801,21 @@ defmodule OrbitWeb.InstanceDetailLive do
     with_ip = Enum.filter(interfaces, &(to_string(&1["address"] || "") != ""))
     if with_ip == [], do: interfaces, else: with_ip
   end
+
+  # nil = untouched: keep the collector's order (the box's own interface
+  # order), same "default until a header is clicked" contract as the lists.
+  defp sorted_interfaces(list, nil), do: list
+  defp sorted_interfaces(list, {col, dir}), do: Enum.sort_by(list, iface_key(col), dir)
+
+  defp iface_key("address"), do: &to_string(&1["address"] || "")
+  defp iface_key("status"), do: &{&1["status"] != "up", &1["name"] || ""}
+  defp iface_key("rx"), do: &num_or_low(&1["rx_rate"])
+  defp iface_key("tx"), do: &num_or_low(&1["tx_rate"])
+  defp iface_key("err"), do: &(num_or_low(&1["in_errors"]) + num_or_low(&1["out_errors"]))
+  defp iface_key(_name), do: &(&1["name"] || "")
+
+  defp num_or_low(n) when is_number(n), do: n
+  defp num_or_low(_), do: -1
 
   defp bytes(v) when is_number(v) and v >= 1_073_741_824,
     do: "#{Float.round(v / 1_073_741_824, 1)} GB"
