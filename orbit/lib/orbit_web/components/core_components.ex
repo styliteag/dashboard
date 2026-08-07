@@ -819,6 +819,43 @@ defmodule OrbitWeb.CoreComponents do
   def iso_utc(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   def iso_utc(%NaiveDateTime{} = ndt), do: NaiveDateTime.to_iso8601(ndt) <> "Z"
 
+  @doc """
+  Relative timestamp ("14min ago"), the app-wide list convention: relative
+  body + absolute `title={ts_abs(dt)}` tooltip. Lifted from the instances
+  page (user feedback 2026-08-07: mixed absolute formats across lists).
+  English since 2026-07-20 (user decision) — the old fmtRelative German
+  ("vor 14s") was the React era's one sanctioned non-English surface and
+  read inconsistent inside the English UI. Beyond ~30 days the exact date
+  says more than "6mo": falls back to the localised date tag.
+  """
+  def ts_rel(nil), do: "—"
+
+  def ts_rel(%DateTime{} = dt) do
+    secs = DateTime.diff(DateTime.utc_now(), dt)
+    a = abs(secs)
+
+    stamp =
+      cond do
+        a < 5 -> nil
+        a < 60 -> "#{a}s"
+        a < 3_600 -> "#{div(a, 60)}min"
+        a < 86_400 -> "#{div(a, 3_600)}h"
+        a < 2_592_000 -> "#{div(a, 86_400)}d"
+        true -> nil
+      end
+
+    cond do
+      a < 5 -> "just now"
+      stamp == nil -> local_time_tag(dt, "date")
+      secs >= 0 -> "#{stamp} ago"
+      true -> "in #{stamp}"
+    end
+  end
+
+  @doc "Absolute UTC tooltip partner of `ts_rel/1`."
+  def ts_abs(nil), do: nil
+  def ts_abs(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+
   # Server-side UTC fallback (visible until app.js localises, and forever if JS
   # is off). Mirrors the strftime formats these sites used before.
   defp utc_fallback(at, "date"), do: Calendar.strftime(at, "%Y-%m-%d")

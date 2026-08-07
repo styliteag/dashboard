@@ -101,9 +101,15 @@ defmodule OrbitWeb.LogEventsLive do
   defp sort_key("count"), do: fn r -> r.event.count end
 
   # Unix seconds, not the DateTime struct: :asc/:desc compares structurally,
-  # which mis-orders DateTimes across month boundaries.
-  defp sort_key("last_seen"),
-    do: fn r -> DateTime.to_unix(r.event.updated_at || ~U[1970-01-01 00:00:00Z]) end
+  # which mis-orders DateTimes across month boundaries. Sorts what the
+  # column SHOWS (the parsed device stamp), ingest time as fallback.
+  defp sort_key("last_seen") do
+    fn r ->
+      DateTime.to_unix(
+        device_ts(r.event.last_ts) || r.event.updated_at || ~U[1970-01-01 00:00:00Z]
+      )
+    end
+  end
 
   defp visible(a) do
     q = String.downcase(a.search)
@@ -125,6 +131,55 @@ defmodule OrbitWeb.LogEventsLive do
     end)
     |> Enum.filter(&(a.tag_filter == "all" or a.tag_filter in (&1.instance.tags || [])))
   end
+
+  # Device syslog stamps are RFC3164 ("Aug  6 20:07:54") — no year, raw
+  # device formatting, visibly different between boxes (user feedback
+  # 2026-08-07: "datumsformat ist nicht immer gleich"). Parse into a
+  # DateTime for the shared relative display; the raw stamp stays in the
+  # tooltip because it is the device's own truth (device-local clock, so
+  # the relative value is an approximation on the timezone-offset scale).
+  # Year heuristic: current year, unless that lands in the future — then
+  # the stamp is from December of last year.
+  @months %{
+    "Jan" => 1,
+    "Feb" => 2,
+    "Mar" => 3,
+    "Apr" => 4,
+    "May" => 5,
+    "Jun" => 6,
+    "Jul" => 7,
+    "Aug" => 8,
+    "Sep" => 9,
+    "Oct" => 10,
+    "Nov" => 11,
+    "Dec" => 12
+  }
+
+  defp device_ts(ts) when is_binary(ts) do
+    with [_, mon, d, h, mi, s] <-
+           Regex.run(~r/^(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})/, ts),
+         month when not is_nil(month) <- @months[mon],
+         {:ok, naive} <-
+           NaiveDateTime.new(
+             DateTime.utc_now().year,
+             month,
+             String.to_integer(d),
+             String.to_integer(h),
+             String.to_integer(mi),
+             String.to_integer(s)
+           ) do
+      dt = DateTime.from_naive!(naive, "Etc/UTC")
+
+      # A stamp more than a day in the future cannot be this year.
+      if DateTime.diff(dt, DateTime.utc_now()) > 86_400,
+        do: %{dt | year: dt.year - 1},
+        else: dt
+    else
+      _ -> nil
+    end
+  end
+
+  defp device_ts(_), do: nil
 
   # Newest ingest across the visible boxes — the age of everything on the page.
   defp last_ingest([]), do: nil
@@ -168,8 +223,8 @@ defmodule OrbitWeb.LogEventsLive do
           viewer. Each hourly push <em>replaces</em>
           a box's events; identical lines are
           normalised and counted, so a row is a pattern, not one occurrence.
-          <span :if={@last_ingest}>
-            Newest ingest: {local_time_tag(@last_ingest, "datetime")} — an idle box keeps its
+          <span :if={@last_ingest} title={ts_abs(@last_ingest)}>
+            Newest ingest: {ts_rel(@last_ingest)} — an idle box keeps its
             last push.
           </span>
         </.data_note>
@@ -302,7 +357,15 @@ defmodule OrbitWeb.LogEventsLive do
                     </button>
                   </td>
                   <td class="py-2 pr-4 text-right text-base-content/80">{r.event.count}</td>
-                  <td class="py-2 pr-4 text-base-content/70">{r.event.last_ts}</td>
+                  <td
+                    class="whitespace-nowrap py-2 pr-4 text-base-content/70"
+                    title={"#{r.event.last_ts} (device clock)"}
+                  >
+                    {case device_ts(r.event.last_ts) do
+                      nil -> r.event.last_ts
+                      dt -> ts_rel(dt)
+                    end}
+                  </td>
                 </tr>
                 <%!-- Raw un-masked sample line for this pattern (admin only —
                      invariant 4). Full-width row, not a floating popover, so

@@ -1092,33 +1092,6 @@ defmodule OrbitWeb.InstancesLive do
     do:
       "rounded-full bg-base-300 px-3 py-1 text-xs text-base-content/70 hover:bg-neutral hover:text-neutral-content"
 
-  # Relative timestamp. English since 2026-07-20 (user decision) — the old
-  # fmtRelative German ("vor 14s") was the React era's one sanctioned
-  # non-English surface and read inconsistent inside the English UI.
-  defp ts_rel(nil), do: "—"
-
-  defp ts_rel(%DateTime{} = dt) do
-    secs = DateTime.diff(DateTime.utc_now(), dt)
-    a = abs(secs)
-
-    stamp =
-      cond do
-        a < 5 -> nil
-        a < 60 -> "#{a}s"
-        a < 3_600 -> "#{div(a, 60)}min"
-        a < 86_400 -> "#{div(a, 3_600)}h"
-        a < 2_592_000 -> "#{div(a, 86_400)}d"
-        true -> nil
-      end
-
-    cond do
-      a < 5 -> "just now"
-      stamp == nil -> local_time_tag(dt, "date")
-      secs >= 0 -> "#{stamp} ago"
-      true -> "in #{stamp}"
-    end
-  end
-
-  defp ts_abs(nil), do: nil
-  defp ts_abs(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+  # ts_rel/ts_abs moved to CoreComponents (shared list convention) —
+  # imported via html_helpers.
 end

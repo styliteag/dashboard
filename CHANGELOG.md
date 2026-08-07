@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Syslog's "Last seen" reads the same for every box: the column showed
+  each device's raw syslog stamp ("Jul 26 23:12:22" vs "Aug  6 20:07:54"
+  — formats straight from the boxes), wrapping onto two lines. It now
+  shows the app-wide relative time ("13h ago"); the raw device stamp
+  moves to the tooltip, and sorting follows what the column shows. The
+  "Newest ingest" line uses the same relative form.
 - "Analyze with AI" asks before anything leaves: both AI entry points
   (log analysis, IPsec diagnosis) now open a confirmation that names the
   external provider and shows the exact anonymized payload — public IPs,
