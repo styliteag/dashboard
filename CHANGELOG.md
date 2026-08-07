@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Alerts and /uptime are sortable: State/Instance/Check on Alerts,
+  State/Instance/Type/Group/Last seen on /uptime — click a header to
+  order, click again to flip. Worst-first stays the default everywhere;
+  Alerts previously had a hardcoded order and /uptime none at all.
 - Metric charts got a real y-axis and follow the design's colours: the
   scale maximum sits at the top right of the plot and 0 at the bottom
   (the old centered "0–100" string between two timestamps read as a third

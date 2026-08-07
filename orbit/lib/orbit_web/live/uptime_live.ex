@@ -19,6 +19,7 @@ defmodule OrbitWeb.UptimeLive do
   use OrbitWeb, :live_view
 
   import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
+  import OrbitWeb.Components.ListKit, only: [sort_th: 1]
 
   alias Orbit.Auth.Scope
   alias Orbit.Checks.History
@@ -34,7 +35,13 @@ defmodule OrbitWeb.UptimeLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Uptime", window: "7d", history: nil)
+     |> assign(
+       page_title: "Uptime",
+       window: "7d",
+       history: nil,
+       sort_col: "state",
+       sort_dir: :asc
+     )
      |> load()}
   end
 
@@ -47,6 +54,16 @@ defmodule OrbitWeb.UptimeLive do
   @impl true
   def handle_event("window", %{"window" => window}, socket) when window in ~w(24h 7d 30d) do
     {:noreply, socket |> assign(window: window) |> load()}
+  end
+
+  def handle_event("sort", %{"col" => col}, socket)
+      when col in ~w(state instance type group last_seen) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, socket |> assign(sort_col: col, sort_dir: dir) |> load()}
   end
 
   def handle_event("history_open", %{"iid" => raw_iid}, socket) do
@@ -92,9 +109,10 @@ defmodule OrbitWeb.UptimeLive do
           live_state: if(Instances.online?(inst), do: 0, else: 2)
         }
       end)
-      # Problems first, like the VPN page: an uptime page is opened because
-      # something is (or was) down.
-      |> Enum.sort_by(&{&1.online, String.downcase(&1.name)})
+      # Problems first stays the DEFAULT, like the VPN page: an uptime page
+      # is opened because something is (or was) down. A header click
+      # overrides it (UI/UX review U-N1).
+      |> Enum.sort_by(sort_key(socket.assigns.sort_col), socket.assigns.sort_dir)
 
     events = History.read_many(Enum.map(rows, & &1.id), @availability, start || now)
 
@@ -135,6 +153,16 @@ defmodule OrbitWeb.UptimeLive do
   end
 
   defp fmt_ts(dt), do: Calendar.strftime(dt, "%m-%d %H:%M")
+
+  defp sort_key("state"), do: fn r -> {r.online, String.downcase(r.name)} end
+  defp sort_key("instance"), do: fn r -> String.downcase(r.name) end
+  defp sort_key("type"), do: fn r -> {r.device_type, String.downcase(r.name)} end
+  defp sort_key("group"), do: fn r -> {r.group || "", String.downcase(r.name)} end
+
+  # Unix seconds, not the DateTime struct: :asc/:desc compares structurally,
+  # which mis-orders DateTimes across month boundaries.
+  defp sort_key("last_seen"),
+    do: fn r -> DateTime.to_unix(r.last_success_at || ~U[1970-01-01 00:00:00Z]) end
 
   defp lane_color(:up), do: "bg-primary"
   defp lane_color(:partial), do: "bg-warning lane-hatch-partial"
@@ -272,11 +300,21 @@ defmodule OrbitWeb.UptimeLive do
         <table :if={@rows != []} class="w-full text-left text-sm">
           <thead class="text-xs text-base-content/70">
             <tr class="border-b border-base-300">
-              <th scope="col" class="py-2 pr-3 font-medium">State</th>
-              <th scope="col" class="py-2 pr-3 font-medium">Instance</th>
-              <th scope="col" class="py-2 pr-3 font-medium">Type</th>
-              <th scope="col" class="py-2 pr-3 font-medium">Group</th>
-              <th scope="col" class="py-2 pr-3 font-medium">Last seen</th>
+              <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
+              <.sort_th
+                col="instance"
+                label="Instance"
+                sort_col={@sort_col}
+                sort_dir={@sort_dir}
+              />
+              <.sort_th col="type" label="Type" sort_col={@sort_col} sort_dir={@sort_dir} />
+              <.sort_th col="group" label="Group" sort_col={@sort_col} sort_dir={@sort_dir} />
+              <.sort_th
+                col="last_seen"
+                label="Last seen"
+                sort_col={@sort_col}
+                sort_dir={@sort_dir}
+              />
               <th scope="col" class="py-2 font-medium">History</th>
             </tr>
           </thead>

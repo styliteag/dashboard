@@ -32,7 +32,10 @@ defmodule OrbitWeb.AlertsLive do
 
     # Show every alert; narrow by instance tag. (Each row still shows whether
     # the check is Checkmk-exported.)
-    {:ok, socket |> assign(severity_filter: "all", tag_filter: "all") |> load()}
+    {:ok,
+     socket
+     |> assign(severity_filter: "all", tag_filter: "all", sort_col: "state", sort_dir: :asc)
+     |> load()}
   end
 
   @impl true
@@ -57,6 +60,15 @@ defmodule OrbitWeb.AlertsLive do
       when b in ~w(all crit warn unknown) do
     b = if socket.assigns.severity_filter == b, do: "all", else: b
     {:noreply, assign(socket, severity_filter: b)}
+  end
+
+  def handle_event("sort", %{"col" => col}, socket) when col in ~w(state instance check) do
+    dir =
+      if socket.assigns.sort_col == col and socket.assigns.sort_dir == :asc,
+        do: :desc,
+        else: :asc
+
+    {:noreply, assign(socket, sort_col: col, sort_dir: dir)}
   end
 
   def handle_event("tag_filter", %{"tag" => tag}, socket) do
@@ -123,7 +135,16 @@ defmodule OrbitWeb.AlertsLive do
       end
     end)
     |> Enum.filter(&(a.tag_filter == "all" or a.tag_filter in &1.tags))
+    |> Enum.sort_by(sort_key(a.sort_col), a.sort_dir)
   end
+
+  # Worst-first stays the DEFAULT ordering; a header click overrides it for
+  # the session (UI/UX review U-N1 — user request 2026-08-07).
+  defp sort_key("state"),
+    do: fn a -> {-ServiceCheck.severity(a.check.state), a.inst.name, a.check.key} end
+
+  defp sort_key("instance"), do: fn a -> {String.downcase(a.inst.name), a.check.key} end
+  defp sort_key("check"), do: fn a -> {a.check.key, String.downcase(a.inst.name)} end
 
   @impl true
   def render(assigns) do
@@ -233,11 +254,16 @@ defmodule OrbitWeb.AlertsLive do
           <table :if={@rows != []} class="w-full min-w-[46rem] text-left text-sm">
             <thead class="sticky top-0 z-10 bg-base-100 text-base-content/70">
               <tr class="border-b border-base-300">
-                <th class="py-2 pr-4 font-medium">State</th>
-                <th class="py-2 pr-4 font-medium">Instance</th>
-                <th class="py-2 pr-4 font-medium">Check</th>
-                <th class="py-2 pr-4 font-medium">Summary</th>
-                <th class="py-2 pr-4 font-medium">Checkmk</th>
+                <.sort_th col="state" label="State" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <.sort_th
+                  col="instance"
+                  label="Instance"
+                  sort_col={@sort_col}
+                  sort_dir={@sort_dir}
+                />
+                <.sort_th col="check" label="Check" sort_col={@sort_col} sort_dir={@sort_dir} />
+                <th scope="col" class="py-2 pr-4 font-medium">Summary</th>
+                <th scope="col" class="py-2 pr-4 font-medium">Checkmk</th>
               </tr>
             </thead>
             <tbody>
