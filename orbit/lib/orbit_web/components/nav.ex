@@ -326,6 +326,22 @@ defmodule OrbitWeb.Components.Nav do
           </button>
         </form>
       </div>
+      <%!-- Display density (E6, an open feature by user decision): one
+           data-density attribute on <html>, tightened by a central CSS
+           block — same cookie mechanics as design/mode. --%>
+      <div class="mt-1.5 grid grid-cols-2 gap-1">
+        <form :for={d <- OrbitWeb.Design.densities()} action="/design/density" method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <input type="hidden" name="density" value={d} />
+          <button
+            data-density-choice={d}
+            class="w-full rounded border border-base-content/15 px-2 py-1 hover:bg-base-300"
+            title={if d == "compact", do: "Tighter rows and paddings", else: "Default spacing"}
+          >
+            {OrbitWeb.Design.density_name(d)}
+          </button>
+        </form>
+      </div>
     </div>
     """
   end

@@ -12,6 +12,7 @@ defmodule OrbitWeb.DesignController do
   @max_age 60 * 60 * 24 * 365
   @design_cookie "orbit_design"
   @mode_cookie "orbit_mode"
+  @density_cookie "orbit_density"
 
   def update(conn, %{"design" => design}) do
     design = Design.validate(design)
@@ -29,6 +30,19 @@ defmodule OrbitWeb.DesignController do
       mode ->
         conn
         |> put_resp_cookie(@mode_cookie, mode, max_age: @max_age, same_site: "Lax")
+        |> bounce_back()
+    end
+  end
+
+  # Comfortable = default = cookie absence, mirroring update_mode's "Auto".
+  def update_density(conn, %{"density" => density}) do
+    case Design.validate_density(density) do
+      "comfortable" ->
+        conn |> delete_resp_cookie(@density_cookie) |> bounce_back()
+
+      density ->
+        conn
+        |> put_resp_cookie(@density_cookie, density, max_age: @max_age, same_site: "Lax")
         |> bounce_back()
     end
   end

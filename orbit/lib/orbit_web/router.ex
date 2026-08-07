@@ -45,6 +45,10 @@ defmodule OrbitWeb.Router do
     |> Plug.Conn.assign(:design, design)
     |> Plug.Conn.assign(:mode, mode)
     |> Plug.Conn.assign(:theme, OrbitWeb.Design.theme(design, mode))
+    |> Plug.Conn.assign(
+      :density,
+      OrbitWeb.Design.validate_density(conn.cookies["orbit_density"])
+    )
   end
 
   pipeline :api do
@@ -70,6 +74,7 @@ defmodule OrbitWeb.Router do
     # Theme choice works pre-login too (the login page is themed).
     post "/design", DesignController, :update
     post "/design/mode", DesignController, :update_mode
+    post "/design/density", DesignController, :update_density
   end
 
   scope "/", OrbitWeb do

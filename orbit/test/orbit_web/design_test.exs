@@ -35,6 +35,16 @@ defmodule OrbitWeb.DesignTest do
     assert Design.theme("soft", "dark") == "soft-dark"
   end
 
+  # E6 density (open feature by user decision 2026-08-07): "comfortable"
+  # is the fallback for anything unknown — an evil cookie can only ever
+  # yield one of the two known attribute values.
+  test "validate_density/1 accepts the two densities, else comfortable" do
+    assert Design.validate_density("compact") == "compact"
+    assert Design.validate_density("comfortable") == "comfortable"
+    assert Design.validate_density("dense") == "comfortable"
+    assert Design.validate_density(nil) == "comfortable"
+  end
+
   test "name/1 and mode_name/1 return display labels" do
     assert Design.name("orbit") == "Orbit"
     assert Design.name("bench") == "Bench"

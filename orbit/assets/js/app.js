@@ -538,6 +538,9 @@ const markThemeChoices = () => {
     mark(b, b.dataset.themeDesign === design))
   document.querySelectorAll("[data-theme-mode]").forEach(b =>
     mark(b, b.dataset.themeMode === mode))
+  const density = document.documentElement.getAttribute("data-density") || "comfortable"
+  document.querySelectorAll("[data-density-choice]").forEach(b =>
+    mark(b, b.dataset.densityChoice === density))
 }
 markThemeChoices()
 window.addEventListener("phx:page-loading-stop", markThemeChoices)

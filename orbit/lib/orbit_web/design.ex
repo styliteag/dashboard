@@ -30,6 +30,13 @@ defmodule OrbitWeb.Design do
   ]
 
   @designs Application.compile_env(:orbit, :designs, @default_designs)
+
+  # Display density (UI/UX review E6, user decision 2026-08-07: an OPEN
+  # feature, not pro). Cookie `orbit_density`; "comfortable" is the default
+  # and stored as cookie absence. Rendered as `data-density` on <html> —
+  # a central CSS block in app.css tightens tables/paddings, so pages need
+  # no per-site changes.
+  @densities ~w(comfortable compact)
   @ids Enum.map(@designs, & &1.id)
   @modes ~w(light dark)
   @default hd(@ids)
@@ -37,6 +44,13 @@ defmodule OrbitWeb.Design do
   def all, do: @ids
   def modes, do: @modes
   def default, do: @default
+  def densities, do: @densities
+
+  def validate_density(density) when density in @densities, do: density
+  def validate_density(_other), do: "comfortable"
+
+  def density_name("compact"), do: "Compact"
+  def density_name(_comfortable), do: "Comfy"
 
   def validate(design) when design in @ids, do: design
   def validate(_other), do: @default

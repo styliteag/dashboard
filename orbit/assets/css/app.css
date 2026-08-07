@@ -319,3 +319,25 @@ section:has(.fw-bulk-upgrade-btn:hover) tr.fw-will-upgrade {
     oklch(100% 0 0 / 0.45) 3px 5px
   );
 }
+
+/* Display density (UI/UX review E6; an OPEN feature by user decision
+   2026-08-07). One cookie-backed attribute on <html> (OrbitWeb.Design),
+   tightened centrally here — pages keep their utility classes, so
+   "comfortable" renders exactly as before and "compact" wins on
+   specificity (attribute + element/class beats a bare utility class).
+   Deliberately narrow: table rows, the p-6 page sections, p-4 cards and
+   the KPI tiles — not every margin, or compact turns cramped. */
+[data-density="compact"] td,
+[data-density="compact"] th {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+[data-density="compact"] .p-6 {
+  padding: 1rem;
+}
+[data-density="compact"] .p-4 {
+  padding: 0.75rem;
+}
+[data-density="compact"] .p-3 {
+  padding: 0.5rem;
+}
