@@ -37,6 +37,22 @@ defmodule OrbitWeb.Components.VizTest do
       refute html =~ "opacity-60"
     end
 
+    test "resolved UP segments never dim — only problem history does" do
+      # up|down|up: dimming the left up-stretch split the lane's green into
+      # two shades and read as a third state (prod feedback 2026-08-07).
+      html =
+        render_component(&Viz.timeline_lane/1,
+          segments: [
+            %{state: :up, left: 0, width: 45, label: nil},
+            %{state: :down, left: 45, width: 10, label: nil},
+            %{state: :up, left: 55, width: 45, label: nil}
+          ]
+        )
+
+      assert length(String.split(html, "opacity-60")) == 2
+      assert html =~ ~r/opacity-60[^>]*lane-hatch-down|lane-hatch-down[^>]*opacity-60/
+    end
+
     test "unknown states fall to the neutral no-data colour" do
       assert Viz.lane_color(:weird) == "bg-neutral"
       assert Viz.lane_color(:partial) =~ "lane-hatch-partial"

@@ -18,9 +18,12 @@ defmodule OrbitWeb.Components.Viz do
 
   @doc """
   One state lane: absolute segments over a shared window. Colour + hatch
-  (states survive greyscale, A-B2), resolved history dimmed so the
-  segment still running at "now" keeps full chroma (D-15), per-segment
-  `title` + sr-only text when a `:label` is present.
+  (states survive greyscale, A-B2), resolved PROBLEM history dimmed so
+  the outage still running at "now" keeps full chroma (D-15) — up
+  segments never dim: dimming them split a lane's green into two shades
+  around every past blip, which read as a third state (prod feedback
+  2026-08-07). Per-segment `title` + sr-only text when a `:label` is
+  present.
 
   Segments: `%{state: :up | :partial | :down | other, left: number,
   width: number, label: binary | nil}` (left/width in percent).
@@ -38,7 +41,7 @@ defmodule OrbitWeb.Components.Viz do
         class={[
           "absolute h-full",
           lane_color(seg.state),
-          @dim_resolved && seg.left + seg.width < 99.9 && "opacity-60"
+          @dim_resolved && seg.state != :up && seg.left + seg.width < 99.9 && "opacity-60"
         ]}
         style={"left: #{Float.round(seg.left / 1, 2)}%; width: #{Float.round(seg.width / 1, 2)}%"}
         title={seg[:label]}
