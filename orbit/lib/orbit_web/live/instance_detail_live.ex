@@ -104,13 +104,21 @@ defmodule OrbitWeb.InstanceDetailLive do
           history: nil,
           monitor_history: nil,
           upgrade_confirm: "",
-          upgrade_confirm_open: false
+          upgrade_confirm_open: false,
+          # Per-tab lazy loading (UI/UX review U-L1): nil = not loaded yet.
+          # mount used to run EVERY tab's queries up front; now each loader
+          # runs on the first visit of a tab that needs it (handle_params →
+          # ensure_tab_data) and the timers only refresh what is loaded.
+          chart_points: nil,
+          logfiles: nil,
+          log_events: nil,
+          config_backups: nil,
+          conn_monitors: nil,
+          ipsec_monitors: nil,
+          conn_error: nil
         )
         |> load_comments()
-        |> load_logs()
         |> load_metrics()
-        |> load_charts()
-        |> load_monitors()
 
       {:ok, socket}
     else
@@ -129,8 +137,28 @@ defmodule OrbitWeb.InstanceDetailLive do
           do: key
 
     tab = if params["tab"] in valid, do: params["tab"], else: "overview"
+
+    # Say WHY the page landed on Overview instead of silently swapping the
+    # content under the URL (UI/UX review U-M8) — a shared link to a tab the
+    # target box does not have looked like the link was fine. Rendered by the
+    # flash_group in render/1 — the LiveViews here use no app layout, so a
+    # flash without that explicit render site is invisible.
+    socket =
+      if params["tab"] not in [nil, tab] do
+        put_flash(
+          socket,
+          :error,
+          ~s(Tab "#{params["tab"]}" is not available on this box — showing Overview.)
+        )
+      else
+        socket
+      end
+
     # nil for a built-in tab; `{mod, fun}` when a vendor tab (§28) owns the body.
-    socket = assign(socket, tab: tab, vendor_tab: vendor_tab_component(tab))
+    socket =
+      socket
+      |> assign(tab: tab, vendor_tab: vendor_tab_component(tab))
+      |> ensure_tab_data(tab)
 
     # `?enroll=1` is how the create form says "this box was just made, it needs
     # a code" — an intent flag, never the code itself: a secret in a URL lands
@@ -157,7 +185,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_info(:charts_refresh, socket) do
     Process.send_after(self(), :charts_refresh, @charts_refresh_ms)
-    {:noreply, load_charts(socket)}
+
+    # Only refresh charts that were loaded (a map): nil/:loading means the
+    # overview was never opened — six bucketing queries for nothing.
+    case socket.assigns.chart_points do
+      %{} -> {:noreply, load_charts(socket)}
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_info(:fw_track, %{assigns: %{upgrading: true}} = socket) do
@@ -1118,6 +1152,14 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   @impl true
+  def handle_async(:load_charts, {:ok, points}, socket) do
+    {:noreply, assign(socket, chart_points: points)}
+  end
+
+  def handle_async(:load_charts, {:exit, _reason}, socket) do
+    {:noreply, assign(socket, chart_points: %{})}
+  end
+
   def handle_async(:conn_test, {:ok, result}, socket) do
     {:noreply, assign(socket, conn_test_busy: false, conn_test: result)}
   end
@@ -1444,23 +1486,58 @@ defmodule OrbitWeb.InstanceDetailLive do
     ]
   end
 
-  defp load_charts(socket) do
+  # Per-tab lazy loading (UI/UX review U-L1). Charts are the expensive read
+  # (six bucketing queries), so they go through start_async with a skeleton
+  # while in flight — Hub's dead-render skeleton as the app-wide pattern;
+  # logs/config-backups and the monitor lists are single cheap reads and
+  # load synchronously on first visit. `nil` sentinel = never loaded; the
+  # refresh timers and CRUD handlers keep loaded data fresh from there.
+  defp ensure_tab_data(socket, tab) do
+    socket
+    |> ensure_charts(tab)
+    |> ensure_logs(tab)
+    |> ensure_monitors(tab)
+  end
+
+  defp ensure_charts(%{assigns: %{chart_points: nil}} = socket, "overview") do
     id = socket.assigns.instance.id
     range = socket.assigns.chart_range
 
-    points =
-      Map.new(chart_series(), fn s -> {s.metric, Orbit.Metrics.read(id, s.metric, range)} end)
+    socket
+    |> assign(chart_points: :loading)
+    |> start_async(:load_charts, fn -> read_chart_points(id, range) end)
+  end
 
-    assign(socket, chart_points: points)
+  defp ensure_charts(socket, _tab), do: socket
+
+  defp ensure_logs(%{assigns: %{logfiles: nil}} = socket, tab) when tab in ~w(log config),
+    do: load_logs(socket)
+
+  defp ensure_logs(socket, _tab), do: socket
+
+  defp ensure_monitors(%{assigns: %{conn_monitors: nil}} = socket, tab)
+       when tab in ~w(connectivity security),
+       do: load_monitors(socket)
+
+  defp ensure_monitors(socket, _tab), do: socket
+
+  defp load_charts(socket) do
+    id = socket.assigns.instance.id
+    range = socket.assigns.chart_range
+    assign(socket, chart_points: read_chart_points(id, range))
+  end
+
+  defp read_chart_points(id, range) do
+    Map.new(chart_series(), fn s -> {s.metric, Orbit.Metrics.read(id, s.metric, range)} end)
   rescue
     # A missing/unreachable metrics table (throwaway test DB) renders the
     # empty state instead of crashing the whole detail view.
-    _ -> assign(socket, chart_points: %{})
+    _ -> %{}
   catch
     # "unreachable" includes a pool checkout, which exits rather than raising
     # — and this runs on a repeating timer, so one blip crashed the detail
     # view for every operator with it open, not just on load.
-    _kind, _reason -> assign(socket, chart_points: %{})
+    _kind, _reason -> %{}
   end
 
   defp load_monitors(socket) do
@@ -1725,6 +1802,9 @@ defmodule OrbitWeb.InstanceDetailLive do
     ~H"""
     <main id="main" class="min-h-screen bg-base-100 text-base-content">
       <.top_nav active={:instances} current_user={@current_user} />
+      <%!-- No app layout on these LiveViews — without this the invalid-tab
+           flash (U-M8) has nowhere to render. --%>
+      <Layouts.flash_group flash={@flash} />
 
       <section class="p-6">
         <%!-- Wraps: the five action buttons pushed the page ~190px wide on a
@@ -1960,7 +2040,17 @@ defmodule OrbitWeb.InstanceDetailLive do
               </button>
             </div>
           </div>
-          <div class="mt-4 grid gap-6 lg:grid-cols-2">
+          <%!-- Skeleton while the six bucketing queries run async on first
+               visit (UI/UX review U-L1) — the section keeps its height so
+               the page does not jump when the charts land. --%>
+          <div :if={not is_map(@chart_points)} class="mt-4 grid gap-6 lg:grid-cols-2">
+            <div
+              :for={_s <- chart_series()}
+              class="h-44 animate-pulse rounded-[var(--radius-box)] border border-base-300 bg-base-200"
+            >
+            </div>
+          </div>
+          <div :if={is_map(@chart_points)} class="mt-4 grid gap-6 lg:grid-cols-2">
             <.metric_chart
               :for={s <- chart_series()}
               label={s.label}

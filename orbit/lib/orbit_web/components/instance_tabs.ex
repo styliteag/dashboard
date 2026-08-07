@@ -29,14 +29,28 @@ defmodule OrbitWeb.Components.InstanceTabs do
   @vendor_tabs Application.compile_env(:orbit, :vendor_tabs, [])
 
   @doc """
-  Which tabs this box has: `{key, label, kind}` where kind is `:tab` (patched
-  within the detail LiveView) or `:link` (its own LiveView).
+  The tabs this box can USE right now: `{key, label, kind}` where kind is
+  `:tab` (patched within the detail LiveView) or `:link` (its own
+  LiveView). This is the routing truth — the detail page's valid-tab set.
+  """
+  def tabs_for(inst, entry \\ nil) do
+    for {key, label, kind, nil} <- all_tabs_for(inst, entry), do: {key, label, kind}
+  end
+
+  @doc """
+  Every tab of the box's DEVICE CLASS, fourth element = disabled reason
+  (nil = usable). Hidden vs disabled (UI/UX review U-M8): a tab the class
+  can never have (linux has no config.xml, only OPNsense has the rule
+  editor) does not exist; a tab gated on box STATE (agent not enrolled,
+  SSH not set up, no data pushed yet) renders disabled with the reason as
+  tooltip — the tab set stays predictable per device type instead of
+  silently varying 9-vs-11 between two boxes of the same type.
 
   Mirrors the react device-capability filter: Securepoint is pull-only (no
   agent tabs), the rule editor is OPNsense-specific, linux nodes have no
   config.xml and no VPN.
   """
-  def tabs_for(inst, entry \\ nil) do
+  def all_tabs_for(inst, entry \\ nil) do
     agent = Instance.agent_mode?(inst)
     # Line-based, not name-based: proxmox/truenas are Linux nodes too — no
     # config.xml, no VPN, Checkmk-dump tab instead.
@@ -45,38 +59,57 @@ defmodule OrbitWeb.Components.InstanceTabs do
     # Linux nodes push a raw Checkmk-agent dump; the tab shows it and what
     # Orbit exports to Checkmk for the box.
     ([
-       {"overview", "Overview", :tab},
-       unless(linux, do: {"config", "Config", :tab}),
-       {"checks", "Checks", :tab},
-       if(linux and agent, do: {"checkmk", "Checkmk", :tab})
+       {"overview", "Overview", :tab, nil},
+       unless(linux, do: {"config", "Config", :tab, nil}),
+       {"checks", "Checks", :tab, nil},
+       if(linux, do: {"checkmk", "Checkmk", :tab, agent_reason(agent)})
      ] ++
        vendor_tabs_for(inst, entry) ++
        [
-         {"network", "Network", :tab},
-         if(agent, do: {"capture", "Capture", :link}),
-         if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link}),
-         unless(linux, do: {"security", "VPN", :tab}),
-         if(Instance.monitors_runnable?(inst), do: {"connectivity", "Connectivity", :tab}),
-         {"log", "Log", :tab},
-         {"firmware", "Firmware", :tab},
-         unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab})
+         {"network", "Network", :tab, nil},
+         unless(inst.device_type == "securepoint",
+           do: {"capture", "Capture", :link, agent_reason(agent)}
+         ),
+         if(inst.device_type == "opnsense", do: {"firewall", "Firewall", :link, nil}),
+         unless(linux, do: {"security", "VPN", :tab, nil}),
+         {"connectivity", "Connectivity", :tab, monitors_reason(inst)},
+         {"log", "Log", :tab, nil},
+         {"firmware", "Firmware", :tab, nil},
+         unless(inst.device_type == "securepoint", do: {"agent", "Agent", :tab, nil})
        ])
     |> Enum.reject(&is_nil/1)
   end
 
-  # Vendor tabs matching this box's device type (and agent requirement). An
-  # optional `visible: {mod, fun}` predicate `fun(entry) -> bool` hides the tab
-  # when its data is absent (e.g. Pro's ZFS tab on a linux box without ZFS) —
-  # evaluated only when a cache `entry` is on hand (the detail page); with no
-  # entry (sub-pages) the tab shows, since we can't tell.
-  defp vendor_tabs_for(inst, entry) do
-    agent = Instance.agent_mode?(inst)
+  defp agent_reason(true), do: nil
+  defp agent_reason(false), do: "Needs a connected agent (push transport)"
 
-    for t <- @vendor_tabs,
-        inst.device_type in Map.get(t, :device_types, []),
-        not Map.get(t, :agent, false) or agent,
-        vendor_tab_visible?(t, entry),
-        do: {t.key, t.label, :tab}
+  defp monitors_reason(inst) do
+    if Instance.monitors_runnable?(inst),
+      do: nil,
+      else: "Needs an agent — or, on a Securepoint, SSH access with a pinned host key"
+  end
+
+  # Vendor tabs matching this box's device type (§28). The optional
+  # `visible: {mod, fun}` predicate `fun(entry) -> bool` (e.g. Pro's ZFS tab
+  # on a box without ZFS) now DISABLES instead of hiding — evaluated only
+  # when a cache `entry` is on hand (the detail page); with no entry
+  # (sub-pages) the tab counts as usable, since we can't tell.
+  defp vendor_tabs_for(inst, entry) do
+    for t <- @vendor_tabs, inst.device_type in Map.get(t, :device_types, []) do
+      reason =
+        cond do
+          Map.get(t, :agent, false) and not Instance.agent_mode?(inst) ->
+            agent_reason(false)
+
+          not vendor_tab_visible?(t, entry) ->
+            "No data for this on this box yet"
+
+          true ->
+            nil
+        end
+
+      {t.key, t.label, :tab, reason}
+    end
   end
 
   defp vendor_tab_visible?(t, entry) do
@@ -100,11 +133,22 @@ defmodule OrbitWeb.Components.InstanceTabs do
   def instance_tabs(assigns) do
     ~H"""
     <nav class="mb-6 flex flex-wrap gap-1 border-b border-base-300 pb-2">
-      <%= for {key, label, kind} <- tabs_for(@instance, @entry) do %>
+      <%= for {key, label, kind, reason} <- all_tabs_for(@instance, @entry) do %>
+        <%!-- Unavailable-on-this-box tabs render disabled with the reason as
+             tooltip instead of vanishing (UI/UX review U-M8). Disabled UI is
+             exempt from the text-contrast floor. --%>
+        <span
+          :if={reason}
+          aria-disabled="true"
+          title={reason}
+          class="cursor-not-allowed rounded-md px-3 py-1 text-sm text-base-content/40"
+        >
+          {label}
+        </span>
         <%!-- Patch keeps the detail LiveView (and its timers) mounted. From a
              sub-page there is nothing to patch into, so those navigate. --%>
         <.link
-          :if={kind == :tab and @patch?}
+          :if={is_nil(reason) and kind == :tab and @patch?}
           patch={tab_path(@instance, key)}
           aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
@@ -112,7 +156,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
           {label}
         </.link>
         <.link
-          :if={kind == :tab and not @patch?}
+          :if={is_nil(reason) and kind == :tab and not @patch?}
           navigate={tab_path(@instance, key)}
           aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
@@ -120,7 +164,7 @@ defmodule OrbitWeb.Components.InstanceTabs do
           {label}
         </.link>
         <.link
-          :if={kind == :link}
+          :if={is_nil(reason) and kind == :link}
           navigate={link_path(@instance, key)}
           aria-current={if @active == key, do: "page"}
           class={tab_class(@active == key)}
