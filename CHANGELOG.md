@@ -17,26 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A shared status indicator: statuses carry a distinct glyph shape per
   state (disc/triangle/cross/dash) on top of colour and the state word, so
   up/warn/down stay distinguishable for color-blind operators and in
-  greyscale. First adopters: the /uptime state column and the VPN tunnel
-  dot.
-- New `/uptime` page (linked from the instances page): every instance as
-  one availability lane over a shared 24h/7d/30d window — a fleet-wide
-  outage reads as a vertical stripe — plus online/offline counts and a
-  lean list. Clicking a row opens the recorded offline/online transitions,
-  drawn from the availability history orbit has been writing all along.
+  greyscale. First adopters: the /availability state column and the VPN
+  tunnel dot.
+- New `/availability` page (linked from the instances page): every
+  instance as one availability lane over a shared 24h/7d/30d window — a
+  fleet-wide outage reads as a vertical stripe — plus online/offline
+  counts and a lean list. Clicking a row opens the recorded
+  offline/online transitions, drawn from the availability history orbit
+  has been writing all along. Deliberately NOT called "Uptime": that name
+  collided with the boxes' own uptime counters on the Overview tab, and
+  the page states it shows dashboard-observed availability instead.
 
 ### Fixed
 
-- Alerts and /uptime are sortable: State/Instance/Check on Alerts,
-  State/Instance/Type/Group/Last seen on /uptime — click a header to
-  order, click again to flip. Worst-first stays the default everywhere;
-  Alerts previously had a hardcoded order and /uptime none at all.
+- Alerts and /availability are sortable: State/Instance/Check on Alerts,
+  State/Instance/Type/Group/Last seen on /availability — click a header
+  to order, click again to flip. Worst-first stays the default
+  everywhere; Alerts previously had a hardcoded order and /availability
+  none at all.
 - Metric charts got a real y-axis and follow the design's colours: the
   scale maximum sits at the top right of the plot and 0 at the bottom
   (the old centered "0–100" string between two timestamps read as a third
   timestamp), and the series line, area fill and WARN reference line take
   their colours from the active design instead of fixed hex values.
-- The /uptime timeline is readable without perfect colour vision and
+- The /availability timeline is readable without perfect colour vision and
   answers "when": down and partial segments carry diagonal hatches on top
   of their colour (adjacent lane colours are near-identical in luminance —
   greyscale showed nothing), a legend names the four states, every segment

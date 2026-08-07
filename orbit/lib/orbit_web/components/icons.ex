@@ -43,6 +43,10 @@ defmodule OrbitWeb.Components.Icons do
 
   defp paths(:hub), do: ~s(<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>)
 
+  # Gantt lanes — mirrors the availability page's per-instance timeline rows.
+  defp paths(:availability),
+    do: ~s(<path d="M8 6h10"/><path d="M6 12h9"/><path d="M11 18h7"/>)
+
   defp paths(:alerts),
     do:
       ~s(<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>)

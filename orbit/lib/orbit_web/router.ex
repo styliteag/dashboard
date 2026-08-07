@@ -98,9 +98,13 @@ defmodule OrbitWeb.Router do
       live "/certificates", CertificatesLive
       live "/firmware", FirmwareLive
       live "/vpn", VpnLive
-      live "/uptime", UptimeLive
+      live "/availability", AvailabilityLive
       live "/security", SecurityLive
     end
+
+    # /uptime was renamed (UI/UX review E2: the name collided with the boxes'
+    # own uptime counters) — keep old bookmarks working.
+    get "/uptime", PageController, :uptime
 
     live_session :admin, on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate] do
       live "/settings", SettingsLive

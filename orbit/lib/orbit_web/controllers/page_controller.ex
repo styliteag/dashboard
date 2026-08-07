@@ -16,6 +16,10 @@ defmodule OrbitWeb.PageController do
     redirect(conn, to: landing(conn.assigns.current_user))
   end
 
+  # /uptime -> /availability (UI/UX review E2 rename); route kept so old
+  # bookmarks and muscle memory survive.
+  def uptime(conn, _params), do: redirect(conn, to: ~p"/availability")
+
   defp landing(%User{} = user) do
     cond do
       User.admin?(user) -> ~p"/hub"

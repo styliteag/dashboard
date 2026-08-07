@@ -657,13 +657,13 @@ defmodule OrbitWeb.InstancesLive do
             >
               {v}
             </button>
-            <%!-- Third "view" of the same fleet — navigates to /uptime
+            <%!-- Third "view" of the same fleet — navigates to /availability
                  rather than toggling, so it is never the active segment. --%>
             <.link
-              navigate={~p"/uptime"}
+              navigate={~p"/availability"}
               class="rounded-md px-3 py-1.5 text-base-content/70 hover:text-base-content"
             >
-              Uptime
+              Availability
             </.link>
           </div>
           <div :if={@writable and MapSet.size(@selected) > 0} class="flex items-center gap-2">

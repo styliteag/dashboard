@@ -1,7 +1,10 @@
-defmodule OrbitWeb.UptimeLive do
+defmodule OrbitWeb.AvailabilityLive do
   @moduledoc """
-  /uptime — the fleet availability timeline: every visible instance as one
-  lane over a shared 24h/7d/30d window, plus a lean list underneath.
+  /availability — the fleet availability timeline: every visible instance as
+  one lane over a shared 24h/7d/30d window, plus a lean list underneath.
+  Formerly /uptime; renamed because "Uptime" collided with the boxes' own
+  uptime counters on the Overview tab (UI/UX review E2) — the old URL
+  redirects here.
 
   The instances page answers "what is the fleet doing NOW", the VPN fleet
   graph answers it for tunnels — this page answers "WHEN was each box up":
@@ -12,8 +15,7 @@ defmodule OrbitWeb.UptimeLive do
   the connectivity page uses, so both timelines mean the same thing.
 
   Clicking a row opens the shared check-history dialog with the recorded
-  transitions. Reached from the instances page (no own nav slot — the top
-  nav is full).
+  transitions.
   """
 
   use OrbitWeb, :live_view
@@ -36,7 +38,7 @@ defmodule OrbitWeb.UptimeLive do
     {:ok,
      socket
      |> assign(
-       page_title: "Uptime",
+       page_title: "Availability",
        window: "7d",
        history: nil,
        sort_col: "state",
@@ -184,15 +186,12 @@ defmodule OrbitWeb.UptimeLive do
 
     ~H"""
     <main id="main" class="min-h-screen bg-base-100 text-base-content">
-      <%!-- :uptime matches no nav item on purpose: this page has no nav slot
-           yet, and highlighting Instances here misreported where you are
-           (UI/UX review U-Q2). --%>
-      <.top_nav active={:uptime} current_user={@current_user} />
+      <.top_nav active={:availability} current_user={@current_user} />
 
       <section class="p-6">
         <div class="mb-4 flex flex-wrap items-center gap-3">
           <h1 class="flex items-center gap-2 text-lg font-medium text-base-content">
-            <Icons.icon name={:instances} class="h-5 w-5 text-base-content/70" /> Uptime
+            <Icons.icon name={:availability} class="h-5 w-5 text-base-content/70" /> Availability
             <span class="ml-2 text-sm text-base-content/70">({length(@rows)})</span>
           </h1>
           <a
@@ -218,6 +217,14 @@ defmodule OrbitWeb.UptimeLive do
             </button>
           </div>
         </div>
+
+        <%!-- One line separating what this page measures from the boxes' own
+             uptime counters — the old page name "Uptime" conflated the two
+             (UI/UX review U-Q2/E2). --%>
+        <p class="-mt-2 mb-4 text-xs text-base-content/70">
+          Availability as observed by this dashboard (agent pushes and polls).
+          A box's own uptime counter is on its Overview tab.
+        </p>
 
         <div class="mb-4 grid gap-3 sm:grid-cols-3">
           <div class="rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-3">
