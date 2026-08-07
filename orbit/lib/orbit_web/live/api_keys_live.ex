@@ -253,14 +253,13 @@ defmodule OrbitWeb.ApiKeysLive do
                   <span :if={is_nil(k.revoked_at)} class="text-primary">active</span>
                 </td>
                 <td class="py-2 text-right">
-                  <button
+                  <.btn
                     :if={is_nil(k.revoked_at) and k.revealable}
                     phx-click="reveal"
                     phx-value-id={k.id}
-                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     reveal
-                  </button>
+                  </.btn>
                   <button
                     :if={is_nil(k.revoked_at)}
                     phx-click="revoke"

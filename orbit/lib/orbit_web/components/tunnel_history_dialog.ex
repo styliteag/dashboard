@@ -15,6 +15,8 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
 
   use Phoenix.Component
 
+  import OrbitWeb.CoreComponents, only: [btn: 1]
+
   attr :history, :map, default: nil, doc: "nil = closed; see VpnLive.history_open/2"
 
   def tunnel_history_dialog(assigns) do
@@ -30,12 +32,9 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
             {if @history.mode == :graph, do: "Tunnel graph", else: "Tunnel history"} — {@history.label}
             <span class="ml-1 text-xs text-base-content/70">{@history.instance_name}</span>
           </h3>
-          <button
-            phx-click="history_close"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn phx-click="history_close">
             Close
-          </button>
+          </.btn>
         </div>
 
         <%!-- Window selector. Without it the graph spanned "oldest recorded

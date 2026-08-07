@@ -19,6 +19,8 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
 
   use Phoenix.Component
 
+  import OrbitWeb.CoreComponents, only: [btn: 1]
+
   alias Orbit.Checks.History
 
   attr :history, :map,
@@ -42,12 +44,9 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
             Monitor history — {@history.label}
             <span class="ml-1 text-xs text-base-content/70">{@history.instance_name}</span>
           </h3>
-          <button
-            phx-click="monitor_history_close"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn phx-click="monitor_history_close">
             Close
-          </button>
+          </.btn>
         </div>
 
         <% lane = History.lane(@history.events, @history.live_state, DateTime.utc_now()) %>

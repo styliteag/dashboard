@@ -95,7 +95,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (primary/secondary/quiet/danger, two sizes) sets the canon, and the most
   duplicated hand-rolled small-button recipes were aligned to it — the
   22px-tall py-0.5 variants now meet the 24px click-target floor, and
-  secondary buttons share one text tint.
+  secondary buttons share one text tint. The most common recipe (the small
+  secondary button — Refresh, Close, reveal, Timeline, the AI-analysis
+  submits, …) was then swept onto the component across 12 files, so those
+  17 buttons can no longer drift apart.
 - Secondary text is readable in the light designs: every muted tint below
   70% (form labels, tile captions, table headers, row subtexts, hints, the
   footer) moved to the 70% floor — 60% sat below WCAG AA on light

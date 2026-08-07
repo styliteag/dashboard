@@ -192,15 +192,14 @@ defmodule OrbitWeb.SelectionLive do
                   </span>
                 </td>
                 <td class="py-2 text-right">
-                  <button
+                  <.btn
                     phx-click="delete_rule"
                     phx-value-consumer={r.consumer}
                     phx-value-selector={r.selector}
                     phx-value-instance_id={r.instance_id}
-                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
                   >
                     remove
-                  </button>
+                  </.btn>
                 </td>
               </tr>
             </tbody>

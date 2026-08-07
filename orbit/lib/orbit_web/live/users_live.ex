@@ -287,13 +287,9 @@ defmodule OrbitWeb.UsersLive do
                   </td>
                   <td class="py-2 pr-4 text-base-content/70">{last_login_text(u)}</td>
                   <td class="py-2 text-right">
-                    <button
-                      phx-click="edit"
-                      phx-value-id={u.id}
-                      class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-                    >
+                    <.btn phx-click="edit" phx-value-id={u.id}>
                       {if @editing == u.id, do: "close", else: "edit"}
-                    </button>
+                    </.btn>
                   </td>
                 </tr>
                 <tr :if={@editing == u.id} class="border-b border-base-300/50 bg-base-200/60">

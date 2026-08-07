@@ -2477,13 +2477,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               ]}>
                 {if @upgrading, do: "Update running…", else: "Update finished — log kept for review"}
               </span>
-              <button
-                :if={not @upgrading and @upgrade_log != []}
-                phx-click="fw_log_dismiss"
-                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-              >
+              <.btn :if={not @upgrading and @upgrade_log != []} phx-click="fw_log_dismiss">
                 Dismiss
-              </button>
+              </.btn>
             </div>
             <pre
               :if={@upgrade_log != []}
@@ -2866,12 +2862,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               <h3 class="text-xs font-medium text-base-content/80">
                 Diagnosis — {@diagnosis.tunnel_id}
               </h3>
-              <button
-                phx-click="ipsec_diagnose_close"
-                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-              >
+              <.btn phx-click="ipsec_diagnose_close">
                 Close
-              </button>
+              </.btn>
             </div>
             <div :if={@diagnosis[:error]} class="text-xs text-error">{@diagnosis.error}</div>
             <details
@@ -2900,13 +2893,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               >
                 <option :for={p <- Orbit.LLM.Analyze.providers()} value={p.id}>{p.label}</option>
               </select>
-              <button
-                type="submit"
-                disabled={@diag_ai_busy}
-                class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-              >
+              <.btn type="submit" disabled={@diag_ai_busy}>
                 {if @diag_ai_busy, do: "Analyzing…", else: "Analyse with AI"}
-              </button>
+              </.btn>
               <span class="text-xs text-base-content/70">anonymized before it leaves the box</span>
             </form>
 
@@ -2994,15 +2983,11 @@ defmodule OrbitWeb.InstanceDetailLive do
           <% hidden = length(@interfaces) - length(shown) %>
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-medium text-base-content/70">Interfaces</h2>
-            <button
-              :if={@if_show_all or hidden > 0}
-              phx-click="iface_toggle_all"
-              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-            >
+            <.btn :if={@if_show_all or hidden > 0} phx-click="iface_toggle_all">
               {if @if_show_all,
                 do: "Only with IP",
                 else: "Show all (#{hidden} without IP)"}
-            </button>
+            </.btn>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[46rem] text-left text-sm">
@@ -3364,13 +3349,9 @@ defmodule OrbitWeb.InstanceDetailLive do
             >
               <option :for={p <- Orbit.LLM.Analyze.providers()} value={p.id}>{p.label}</option>
             </select>
-            <button
-              type="submit"
-              disabled={@ai_busy}
-              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:cursor-not-allowed disabled:opacity-40"
-            >
+            <.btn type="submit" disabled={@ai_busy}>
               {if @ai_busy, do: "Analyzing…", else: "Analyze with AI"}
-            </button>
+            </.btn>
             <span class="text-xs text-base-content/70">anonymized before it leaves the box</span>
           </form>
 

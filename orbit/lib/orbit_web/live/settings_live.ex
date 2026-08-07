@@ -384,15 +384,14 @@ defmodule OrbitWeb.SettingsLive do
         <%!-- AI tab: provider test buttons. --%>
         <div :if={@tab == "ai"} class="mt-4">
           <div class="flex flex-wrap gap-2">
-            <button
+            <.btn
               :for={p <- Orbit.LLM.Analyze.providers()}
               phx-click="llm_test"
               phx-value-provider={p.id}
               disabled={@llm_busy != nil}
-              class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300 disabled:opacity-50"
             >
               {if @llm_busy == p.id, do: "Testing…", else: "Test #{p.label}"}
-            </button>
+            </.btn>
           </div>
           <div
             :if={@llm_result}
@@ -508,16 +507,15 @@ defmodule OrbitWeb.SettingsLive do
           phx-value-val={to_string(@row.effective not in ["true", "1"])}
           class="h-4 w-4 cursor-pointer accent-primary"
         />
-        <button
+        <.btn
           :if={@row.overridden}
           type="button"
           phx-click="clear"
           phx-value-key={@row.key}
           title="Reset to the environment default"
-          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
         >
           ↺
-        </button>
+        </.btn>
       </div>
 
       <form
@@ -572,16 +570,15 @@ defmodule OrbitWeb.SettingsLive do
         >
           Save
         </button>
-        <button
+        <.btn
           :if={@row.overridden}
           type="button"
           phx-click="clear"
           phx-value-key={@row.key}
           title="Reset to the environment default"
-          class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
         >
           ↺
-        </button>
+        </.btn>
       </form>
     </div>
     """

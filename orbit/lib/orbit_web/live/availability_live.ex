@@ -346,13 +346,9 @@ defmodule OrbitWeb.AvailabilityLive do
                   {OrbitWeb.CoreComponents.local_time_tag(row.last_success_at, "datetime-sec")}
                 </td>
                 <td class="py-2">
-                  <button
-                    phx-click="history_open"
-                    phx-value-iid={row.id}
-                    class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-                  >
+                  <.btn phx-click="history_open" phx-value-iid={row.id}>
                     Timeline
-                  </button>
+                  </.btn>
                 </td>
               </tr>
             </tbody>

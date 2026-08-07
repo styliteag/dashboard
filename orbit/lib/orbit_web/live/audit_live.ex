@@ -327,12 +327,9 @@ defmodule OrbitWeb.AuditLive do
               {label}
             </button>
           </div>
-          <button
-            phx-click="refresh"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn phx-click="refresh">
             Refresh
-          </button>
+          </.btn>
         </div>
 
         <div

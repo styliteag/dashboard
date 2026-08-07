@@ -858,13 +858,9 @@ defmodule OrbitWeb.VpnLive do
           >
             {if @grouped, do: "Grouped", else: "Flat"}
           </button>
-          <button
-            :if={(@grouped and @has_pairs) or @has_expandable}
-            phx-click="groups_toggle_all"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn :if={(@grouped and @has_pairs) or @has_expandable} phx-click="groups_toggle_all">
             {if @any_collapsed, do: "▾ Expand all", else: "▸ Collapse all"}
-          </button>
+          </.btn>
           <div :if={@fleet_graph} class="flex items-center gap-1">
             <button
               :for={key <- ~w(24h 7d 30d)}

@@ -167,12 +167,9 @@ defmodule OrbitWeb.AlertsLive do
             <Icons.icon name={:alerts} class="h-5 w-5 text-base-content/70" /> Alerts
             <span class="ml-2 text-sm text-base-content/70">({length(@alerts)})</span>
           </h1>
-          <button
-            phx-click="refresh_now"
-            class="rounded border border-base-content/20 px-2 py-1 text-xs text-base-content/80 hover:bg-base-300"
-          >
+          <.btn phx-click="refresh_now">
             Refresh
-          </button>
+          </.btn>
         </div>
 
         <.data_note>
