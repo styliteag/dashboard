@@ -53,14 +53,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
         <div class="mt-4 space-y-2">
           <div class="flex items-center gap-2">
             <span class="w-16 text-right text-[10px] text-base-content/70">State</span>
-            <div class="relative h-7 flex-1 overflow-hidden rounded bg-base-300">
-              <div
-                :for={seg <- lane.segments}
-                class={["absolute h-full", lane_color(seg.state)]}
-                style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
-              >
-              </div>
-            </div>
+            <OrbitWeb.Components.Viz.timeline_lane segments={lane.segments} height="h-7" />
           </div>
           <div class="flex justify-between pl-[4.5rem] text-[10px] text-base-content/70">
             <span :if={@history.events != []}>{fmt_ts(lane.window_start)}</span>
@@ -105,12 +98,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
     """
   end
 
-  # Hatches on top of colour, like the availability lanes (A-B2) — same
-  # rationale as TunnelHistoryDialog.lane_color/1.
-  defp lane_color(:up), do: "bg-primary"
-  defp lane_color(:partial), do: "bg-warning lane-hatch-partial"
-  defp lane_color(:down), do: "bg-error lane-hatch-down"
-  defp lane_color(_), do: "bg-neutral"
+  # Lane rendering lives in the shared Viz vocabulary (DR-DV1).
 
   defp state_color(0), do: "text-primary"
   defp state_color(1), do: "text-warning"

@@ -528,27 +528,16 @@ defmodule OrbitWeb.ConnectivityLive do
           :if={@fleet_graph and @visible_rows != []}
           class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
-          <OrbitWeb.Components.TunnelHistoryDialog.lane_legend />
-          <div :for={row <- fleet_lanes(@visible_rows, @fleet_events, @fleet_window)} class="mb-1.5">
+          <OrbitWeb.Components.Viz.lane_legend />
+          <div
+            :for={row <- fleet_lanes(@visible_rows, @fleet_events, @fleet_window)}
+            class="mb-1.5"
+          >
             <div class="flex items-center gap-2">
               <span class="w-40 shrink-0 truncate text-right text-[10px] text-base-content/70">
                 {row.label}
               </span>
-              <div class="relative h-3 flex-1 overflow-hidden rounded bg-base-300">
-                <%!-- Resolved history dimmed, full chroma only for the segment
-                     still running at "now" — availability-lane convention
-                     (D-15). --%>
-                <div
-                  :for={seg <- row.segments}
-                  class={[
-                    "absolute h-full",
-                    OrbitWeb.Components.TunnelHistoryDialog.lane_color(seg.state),
-                    if(seg.left + seg.width < 99.9, do: "opacity-60")
-                  ]}
-                  style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
-                >
-                </div>
-              </div>
+              <OrbitWeb.Components.Viz.timeline_lane segments={row.segments} height="h-3" />
             </div>
           </div>
           <div class="mt-2 flex justify-between pl-[10.5rem] text-[10px] text-base-content/70">
@@ -620,7 +609,18 @@ defmodule OrbitWeb.ConnectivityLive do
                       entity_key={r.monitor_id}
                     />
                   </td>
-                  <td class="py-2 pr-4 text-right text-base-content/70">{rtt_text(r.rtt)}</td>
+                  <td class="whitespace-nowrap py-2 pr-4 text-right text-base-content/70">
+                    <%!-- Sparkline for expanded rows only — their points are
+                         already loaded for the chart below (DR-DV3: the
+                         component never loads, and a fleet page never reads
+                         metrics per row). --%>
+                    <OrbitWeb.Components.Viz.sparkline
+                      :if={(@chart_points[{r.instance_id, r.monitor_id}] || []) != []}
+                      points={@chart_points[{r.instance_id, r.monitor_id}]}
+                      label="RTT trend"
+                      class="mr-1 text-primary"
+                    /> {rtt_text(r.rtt)}
+                  </td>
                   <td class="py-2 pr-4 text-right text-base-content/70">{loss_text(r.loss)}</td>
                   <td class="py-2 text-right whitespace-nowrap">
                     <%!-- History is a read: no write role required, unlike Edit. --%>

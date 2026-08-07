@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The timelines all speak one language now: a shared lane component
+  renders the availability page, both fleet graphs and both history
+  dialogs (hatches, dimmed-resolved rule and the four-state legend come
+  from one place instead of five copies), and expanded connectivity
+  rows show an RTT sparkline next to the value from the points their
+  chart already loaded. Capacity bars gained a shared component whose
+  colour can only flip when the threshold is named right on it.
 - Page titles finally outrank body text: every page h1 moved from 18px
   medium — one step above table text — to the 20px semibold the login
   pages already used, and the instance-detail sub-tables (interfaces,

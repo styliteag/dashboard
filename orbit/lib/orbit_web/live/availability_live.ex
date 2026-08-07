@@ -22,6 +22,7 @@ defmodule OrbitWeb.AvailabilityLive do
 
   import OrbitWeb.Components.CheckHistoryDialog, only: [check_history_dialog: 1]
   import OrbitWeb.Components.ListKit, only: [sort_th: 1]
+  import OrbitWeb.Components.Viz, only: [timeline_lane: 1, lane_legend: 1]
 
   alias Orbit.Auth.Scope
   alias Orbit.Checks.History
@@ -166,15 +167,8 @@ defmodule OrbitWeb.AvailabilityLive do
   defp sort_key("last_seen"),
     do: fn r -> DateTime.to_unix(r.last_success_at || ~U[1970-01-01 00:00:00Z]) end
 
-  defp lane_color(:up), do: "bg-primary"
-  defp lane_color(:partial), do: "bg-warning lane-hatch-partial"
-  defp lane_color(:down), do: "bg-error lane-hatch-down"
-  defp lane_color(_), do: "bg-neutral"
-
-  # Resolved history at reduced weight; only the segment still running at
-  # "now" keeps full chroma, so the live outage outranks last week's
-  # (UI/UX review D-15).
-  defp lane_dim(seg), do: if(seg.left + seg.width < 99.9, do: "opacity-60")
+  # lane_color/lane_dim/legend live in the shared Viz vocabulary now
+  # (docs/dataviz-language.md DR-DV1).
 
   @impl true
   def render(assigns) do
@@ -247,24 +241,7 @@ defmodule OrbitWeb.AvailabilityLive do
           :if={@rows != []}
           class="mb-4 rounded-[var(--radius-box)] border border-base-300 bg-base-200 p-4"
         >
-          <%!-- Legend: the four lane states were never named on the page
-               (UI/UX review U-Q2); down/partial additionally carry a hatch
-               so the states survive greyscale (A-B2). --%>
-          <div class="mb-2 flex flex-wrap items-center gap-3 text-[10px] text-base-content/70">
-            <span><span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-primary"></span>up</span>
-            <span>
-              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-warning lane-hatch-partial"></span>
-              partial
-            </span>
-            <span>
-              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-error lane-hatch-down"></span>
-              down
-            </span>
-            <span>
-              <span class="mr-1 inline-block h-2.5 w-4 rounded-sm bg-neutral"></span>no data
-            </span>
-            <span class="ml-auto">resolved history is dimmed; full colour = still current</span>
-          </div>
+          <.lane_legend />
           <div :for={row <- @rows} class="mb-1.5">
             <div
               class="flex cursor-pointer items-center gap-2"
@@ -280,16 +257,7 @@ defmodule OrbitWeb.AvailabilityLive do
               <span class="w-44 truncate text-right text-[10px] text-base-content/70">
                 {row.name}
               </span>
-              <div class="relative h-3.5 flex-1 overflow-hidden rounded bg-base-300">
-                <div
-                  :for={seg <- @lanes[row.id] || []}
-                  class={["absolute h-full", lane_color(seg.state), lane_dim(seg)]}
-                  style={"left: #{seg.left}%; width: #{seg.width}%"}
-                  title={seg.label}
-                >
-                  <span class="sr-only">{seg.label}</span>
-                </div>
-              </div>
+              <.timeline_lane segments={@lanes[row.id] || []} />
             </div>
           </div>
           <%!-- Tick scale: with only the two end labels no outage could be

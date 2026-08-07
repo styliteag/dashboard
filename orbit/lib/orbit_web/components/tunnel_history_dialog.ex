@@ -84,17 +84,10 @@ defmodule OrbitWeb.Components.TunnelHistoryDialog do
             class="flex items-center gap-2"
           >
             <span class="w-16 text-right text-[10px] text-base-content/70">{label}</span>
-            <div class={[
-              "relative flex-1 overflow-hidden rounded bg-base-300",
-              if(@history.mode == :graph, do: "h-7", else: "h-3.5")
-            ]}>
-              <div
-                :for={seg <- segs}
-                class={["absolute h-full", lane_color(seg.state)]}
-                style={"left: #{Float.round(seg.left, 2)}%; width: #{Float.round(seg.width, 2)}%"}
-              >
-              </div>
-            </div>
+            <OrbitWeb.Components.Viz.timeline_lane
+              segments={segs}
+              height={if @history.mode == :graph, do: "h-7", else: "h-3.5"}
+            />
           </div>
           <%!-- Phase 2 in numbers. "partial" on the colour lane looks the
                same whether one of two child SAs dropped or one of eight, and
