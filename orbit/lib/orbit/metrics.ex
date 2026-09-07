@@ -348,9 +348,17 @@ defmodule Orbit.Metrics do
 
   defp metric_row?(_), do: false
 
+  # MariaDB asks the app to retry: 1213 deadlock, 1205 lock-wait timeout.
+  @lock_retry_codes [1205, 1213]
+  @lock_retries 3
+
   @doc """
   Persist one push as metric rows (INSERT IGNORE — replays of the same
   (instance, ts, metric) are dropped by the unique key, python parity).
+
+  Retries transient lock errors: concurrent multi-row inserts (and prune/
+  rollup) can deadlock under REPEATABLE READ; re-running the same INSERT
+  IGNORE is safe and avoids dropping a sample.
   """
   def write_push(instance_id, %DateTime{} = ts, data) do
     rows = rows_for_push(data)
@@ -360,7 +368,7 @@ defmodule Orbit.Metrics do
       placeholders = Enum.map_join(rows, ", ", fn _ -> "(?, ?, ?, ?)" end)
       params = Enum.flat_map(rows, fn {metric, value} -> [instance_id, naive, metric, value] end)
 
-      Orbit.Repo.query!(
+      insert_ignore_metrics(
         "INSERT IGNORE INTO metrics (instance_id, ts, metric, value) VALUES " <> placeholders,
         params
       )
@@ -368,6 +376,25 @@ defmodule Orbit.Metrics do
 
     length(rows)
   end
+
+  defp insert_ignore_metrics(sql, params, attempt \\ 1) do
+    Orbit.Repo.query!(sql, params)
+  rescue
+    e in MyXQL.Error ->
+      if attempt < @lock_retries and lock_retry?(e) do
+        Process.sleep(25 * attempt)
+        insert_ignore_metrics(sql, params, attempt + 1)
+      else
+        reraise e, __STACKTRACE__
+      end
+  end
+
+  defp lock_retry?(%MyXQL.Error{mysql: %{code: code}}), do: code in @lock_retry_codes
+  defp lock_retry?(_), do: false
+
+  # Exposed for the unit test that pins which MySQL codes we retry.
+  @doc false
+  def lock_retry_error?(error), do: lock_retry?(error)
 
   # `.strip("_")` python semantics; "/" collapses to "root".
   defp disk_label(mountpoint) do

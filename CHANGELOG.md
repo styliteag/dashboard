@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Direct-polled boxes (e.g. Securepoint) no longer flip offline on a MariaDB
+  metrics deadlock (1213). The poller wrote `INSERT IGNORE INTO metrics` and
+  the hub ingest wrote the same rows again in a racing Task — two multi-row
+  inserts on the same PK range deadlocked, and the exception was stamped as
+  a poll failure. Metrics now persist only via hub ingest; the writer also
+  retries transient lock errors (1213 / 1205).
+
 ## [4.4.6] - 2026-08-07
 
 ### Fixed
