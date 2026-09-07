@@ -38,8 +38,10 @@ defmodule Orbit.PollerTest do
     end)
 
     id = 900_001
-    # persist: false = fetch→cache only; the DB half (metrics rows, availability
-    # stamps) is proven live against the dev stack, house style.
+    # persist: false = fetch→cache only; availability stamps are proven live
+    # against the dev stack. Metric rows ride hub ingest (not a second write
+    # in the poller — that dual insert deadlocked MariaDB and false-offlined
+    # reachable boxes).
     assert {:ok, n} = Poller.poll_instance(direct_instance(id), persist: false)
     assert n >= 2
 

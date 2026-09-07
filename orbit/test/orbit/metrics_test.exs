@@ -253,4 +253,13 @@ defmodule Orbit.MetricsTest do
       assert Metrics.to_rate([%{ts: ~U[2026-07-18 10:00:00Z], value: 1.0}]) == []
     end
   end
+
+  describe "lock_retry_error?/1" do
+    test "retries MariaDB deadlock and lock-wait timeout only" do
+      assert Metrics.lock_retry_error?(%MyXQL.Error{message: "deadlock", mysql: %{code: 1213}})
+      assert Metrics.lock_retry_error?(%MyXQL.Error{message: "lock wait", mysql: %{code: 1205}})
+      refute Metrics.lock_retry_error?(%MyXQL.Error{message: "dup", mysql: %{code: 1062}})
+      refute Metrics.lock_retry_error?(:other)
+    end
+  end
 end

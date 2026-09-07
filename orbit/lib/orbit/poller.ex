@@ -31,13 +31,14 @@ defmodule Orbit.Poller do
 
   @doc """
   Poll one direct-transport instance: fetch its live status, ingest it into the
-  hub cache, persist the metric rows and stamp the availability columns.
+  hub cache, and stamp the availability columns. Metric rows ride the hub
+  ingest (`maybe_persist_metrics`) — do not write them here a second time.
   Returns `{:ok, section_count}` or `{:error, reason}`. Push instances are
   refused — they feed the cache via the agent, not a poll.
 
-  The DB half is python's `_poll_instance`: metrics rows, last_success/
-  last_error stamps, and the online↔offline edges (history row + alert), all
-  through Orbit.Availability so push and poll share the flip semantics.
+  The DB half is python's `_poll_instance`: last_success/last_error stamps and
+  the online↔offline edges (history row + alert), all through
+  Orbit.Availability so push and poll share the flip semantics.
   """
   @spec poll_instance(Instance.t()) :: {:ok, non_neg_integer()} | {:error, term()}
   def poll_instance(%Instance{} = inst), do: poll_instance(inst, persist: true)
@@ -45,7 +46,7 @@ defmodule Orbit.Poller do
   @doc """
   `persist: false` runs the fetch→cache half only, for callers that just want
   fresh sections (an interactive "poll now") without touching the availability
-  columns or writing a metrics point.
+  columns (hub ingest still persists metric history).
   """
   @spec poll_instance(Instance.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
   def poll_instance(%Instance{} = inst, opts) do
@@ -69,8 +70,10 @@ defmodule Orbit.Poller do
 
     case fetch(inst) do
       {:ok, status} ->
+        # Metrics persist once via hub ingest. A second write_push here raced
+        # the hub Task on the same PK range and deadlocked MariaDB (1213),
+        # which stamped a reachable box offline.
         Orbit.Hub.ingest_metrics(inst.id, status)
-        Orbit.Metrics.write_push(inst.id, now, status)
         Availability.stamp_poll_ok(inst.id, inst.name, now)
         Logger.debug("poll.ok instance=#{inst.name} sections=#{map_size(status)}")
         {:ok, map_size(status)}
