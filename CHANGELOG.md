@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.8] - 2026-09-14
+
 ### Fixed
 
 - Direct-polled boxes (e.g. Securepoint) no longer flip offline on a MariaDB
