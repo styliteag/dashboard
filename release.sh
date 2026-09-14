@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Release script for STYLiTE Orbit dashboard
-# Usage: ./release.sh [major|minor|patch]
+# Usage: ./release.sh [major|minor|patch|X.Y.Z]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -10,8 +10,9 @@ cd "$SCRIPT_DIR"
 # Default to patch if no argument provided
 BUMP_TYPE="${1:-patch}"
 
-if [[ ! "$BUMP_TYPE" =~ ^(major|minor|patch)$ ]]; then
-    echo "Error: Invalid bump type '$BUMP_TYPE'. Must be major, minor, or patch."
+if [[ ! "$BUMP_TYPE" =~ ^(major|minor|patch)$ &&
+    ! "$BUMP_TYPE" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Error: Invalid bump type '$BUMP_TYPE'. Must be major, minor, patch, or X.Y.Z."
     exit 1
 fi
 
@@ -20,6 +21,57 @@ if ! git diff-index --quiet HEAD --; then
     echo "Error: You have uncommitted changes. Please commit or stash them first."
     exit 1
 fi
+
+# Read current version
+if [[ ! -f VERSION ]]; then
+    echo "Error: VERSION file not found."
+    exit 1
+fi
+
+CURRENT_VERSION=$(cat VERSION | tr -d '\n\r ')
+if [[ ! "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Invalid version format in VERSION file: '$CURRENT_VERSION'"
+    exit 1
+fi
+
+# Parse version components
+IFS='.' read -r -a VERSION_PARTS <<< "$CURRENT_VERSION"
+MAJOR="${VERSION_PARTS[0]}"
+MINOR="${VERSION_PARTS[1]}"
+PATCH="${VERSION_PARTS[2]}"
+
+# Increment version
+case "$BUMP_TYPE" in
+    major)
+        MAJOR=$((MAJOR + 1))
+        MINOR=0
+        PATCH=0
+        ;;
+    minor)
+        MINOR=$((MINOR + 1))
+        PATCH=0
+        ;;
+    patch)
+        PATCH=$((PATCH + 1))
+        ;;
+    *)
+        IFS=. read -r MAJOR MINOR PATCH <<< "$BUMP_TYPE"
+        if (( MAJOR < VERSION_PARTS[0] ||
+              (MAJOR == VERSION_PARTS[0] && MINOR < VERSION_PARTS[1]) ||
+              (MAJOR == VERSION_PARTS[0] && MINOR == VERSION_PARTS[1] && PATCH <= VERSION_PARTS[2]) )); then
+            echo "Error: target $BUMP_TYPE must be newer than $CURRENT_VERSION."
+            exit 1
+        fi
+        ;;
+esac
+
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+TAG_NAME="${NEW_VERSION}"
+
+echo "Current version: $CURRENT_VERSION"
+echo "New version: $NEW_VERSION"
+echo "Bump type: $BUMP_TYPE"
+echo ""
 
 # Lint gate. There is no CI on pushes to main and the release workflow only runs
 # AFTER the tag is pushed, so a formatting slip or a compile warning would first
@@ -96,48 +148,6 @@ if [[ -n "$AGENT_PUBKEY" ]]; then
     echo "✓ Agent signed and verified"
     echo ""
 fi
-
-# Read current version
-if [[ ! -f VERSION ]]; then
-    echo "Error: VERSION file not found."
-    exit 1
-fi
-
-CURRENT_VERSION=$(cat VERSION | tr -d '\n\r ')
-if [[ ! "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: Invalid version format in VERSION file: '$CURRENT_VERSION'"
-    exit 1
-fi
-
-# Parse version components
-IFS='.' read -r -a VERSION_PARTS <<< "$CURRENT_VERSION"
-MAJOR="${VERSION_PARTS[0]}"
-MINOR="${VERSION_PARTS[1]}"
-PATCH="${VERSION_PARTS[2]}"
-
-# Increment version
-case "$BUMP_TYPE" in
-    major)
-        MAJOR=$((MAJOR + 1))
-        MINOR=0
-        PATCH=0
-        ;;
-    minor)
-        MINOR=$((MINOR + 1))
-        PATCH=0
-        ;;
-    patch)
-        PATCH=$((PATCH + 1))
-        ;;
-esac
-
-NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-TAG_NAME="${NEW_VERSION}"
-
-echo "Current version: $CURRENT_VERSION"
-echo "New version: $NEW_VERSION"
-echo "Bump type: $BUMP_TYPE"
-echo ""
 
 # Update CHANGELOG.md
 if [[ ! -f CHANGELOG.md ]]; then
