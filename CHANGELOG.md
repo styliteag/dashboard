@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Linux agent version is now 4.4.9, matching the dashboard release.
+
 ## [4.4.8] - 2026-09-14
 
 ### Fixed
