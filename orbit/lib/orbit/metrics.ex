@@ -363,16 +363,14 @@ defmodule Orbit.Metrics do
   def write_push(instance_id, %DateTime{} = ts, data) do
     rows = rows_for_push(data)
 
-    if rows != [] do
-      naive = ts |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
-      placeholders = Enum.map_join(rows, ", ", fn _ -> "(?, ?, ?, ?)" end)
-      params = Enum.flat_map(rows, fn {metric, value} -> [instance_id, naive, metric, value] end)
+    naive = ts |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+    placeholders = Enum.map_join(rows, ", ", fn _ -> "(?, ?, ?, ?)" end)
+    params = Enum.flat_map(rows, fn {metric, value} -> [instance_id, naive, metric, value] end)
 
-      insert_ignore_metrics(
-        "INSERT IGNORE INTO metrics (instance_id, ts, metric, value) VALUES " <> placeholders,
-        params
-      )
-    end
+    insert_ignore_metrics(
+      "INSERT IGNORE INTO metrics (instance_id, ts, metric, value) VALUES " <> placeholders,
+      params
+    )
 
     length(rows)
   end
