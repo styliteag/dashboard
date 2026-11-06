@@ -28,6 +28,7 @@ defmodule OrbitWeb.CaptureWSController do
     with {:ok, user} <- WSAuth.authenticate(conn, write: true),
          {id, ""} <- Integer.parse(raw_id),
          %Instance{} = _inst <- Scope.get_instance(id, user),
+         :ok <- capture_params(params),
          :ok <- agent_present(id) do
       Logger.info(
         "capture.open instance_id=#{id} user_id=#{user.id} interface=#{params["interface"]} filter=#{params["filter"]}"
@@ -75,6 +76,17 @@ defmodule OrbitWeb.CaptureWSController do
       source_ip: Orbit.Net.client_ip(conn),
       detail: detail
     )
+  end
+
+  # Interface/filter become tcpdump argv as root on the box: an option-like
+  # value is refused before any agent sees it (security hotfix: option
+  # injection; also protects boxes still on an older agent). 4403 like the
+  # other refusals of this route.
+  defp capture_params(params) do
+    case Orbit.Capture.Params.validate(params["interface"], params["filter"]) do
+      :ok -> :ok
+      {:error, _} -> {:error, 4403}
+    end
   end
 
   defp agent_present(instance_id) do

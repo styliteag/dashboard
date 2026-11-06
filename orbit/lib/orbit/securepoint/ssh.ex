@@ -304,9 +304,13 @@ defmodule Orbit.Securepoint.SSH do
 
   # Monitor sources/destinations are operator-entered. Refuse anything that is
   # not a plain host/IP token rather than interpolating it into a shell command.
-  defp shell_arg(v) do
+  # The first character must not be "-": `ping -f` (flood) and friends would
+  # otherwise be options (security hotfix: option injection). "--" is the
+  # refusal sentinel — ping then has no target and fails as misconfigured.
+  @doc false
+  def shell_arg(v) do
     v = String.trim(to_string(v))
-    if Regex.match?(~r/^[A-Za-z0-9._:\-]+$/, v), do: v, else: "--"
+    if Regex.match?(~r/^[A-Za-z0-9.:][A-Za-z0-9._:\-]*$/, v), do: v, else: "--"
   end
 
   @doc """

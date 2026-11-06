@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Capture filters, capture interfaces and ping targets can no longer smuggle
+  options into `tcpdump` / `ping` on the box.** The agent split the packet-
+  capture filter on spaces into separate arguments, so a "filter" such as
+  `-w /path -C 1 -z cmd` set tcpdump options as root on the firewall or Linux
+  node (write a file, run a post-rotate command) — on Linux always, on FreeBSD
+  whenever no agent exclusion filter was prepended. It needed only the write
+  role and scope, not the shell permission. Likewise a ping-monitor
+  destination or source like `-f` became a ping option (flood ping as root),
+  both via the agent and via Securepoint SSH. The agent now passes the filter
+  as one argument after `--`, accepts only plain interface names and IP
+  addresses / host names for ping (with `--` before the target), and the
+  dashboard refuses option-like values before anything is stored or sent —
+  which also protects boxes still on an older agent.
+
 ## [4.4.9] - 2026-09-14
 
 ### Changed

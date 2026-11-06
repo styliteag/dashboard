@@ -152,7 +152,12 @@
         if stream in self._captures:
             await self._send(stream, "close")
             return
-        iface = interface.strip() or "em0"
+        iface = _safe_iface_arg(interface.strip() or "em0")
+        if not iface:
+            log.warning("capture %s: refused interface %r", stream, interface)
+            await self._send(stream, "error", "invalid interface name")
+            await self._send(stream, "close")
+            return
         # Robust lookup: agent's daemon env may have minimal PATH (no /usr/sbin)
         # while interactive root shell does. Common locations on OPNsense/pfSense.
         search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
@@ -168,8 +173,7 @@
             final_filt = agent_excl
         else:
             final_filt = ""
-        if final_filt:
-            cmd += final_filt.split()
+        cmd += _tcpdump_filter_args(final_filt)
         log.info("capture %s: exec %s", stream, " ".join(cmd))
         try:
             env = os.environ.copy()

@@ -179,6 +179,39 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return r.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
+
+
+# Values that end up in the argv of a root-run tool (ping, tcpdump) come from
+# the dashboard. A leading "-" turns such a value into an OPTION (security
+# hotfix, test_option_injection.py: `-f` flood ping, tcpdump `-w … -z cmd`).
+# Only IP literals and plain names pass; callers also end options with "--".
+_PLAIN_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
+_IFACE_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
+
+
+def _safe_host_arg(value) -> str:
+    """``value`` if it is an IP literal or a plain host name, else ""."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        ipaddress.ip_address(text)
+        return text
+    except ValueError:
+        pass
+    return text if _PLAIN_ARG_RE.match(text) else ""
+
+
+def _safe_iface_arg(value) -> str:
+    """``value`` if it is a plain interface name (no leading "-"), else ""."""
+    text = str(value or "").strip()
+    return text if _IFACE_ARG_RE.match(text) else ""
+
+
+def _tcpdump_filter_args(filt: str) -> list:
+    """The BPF expression as ONE argument after "--" — never split into argv
+    tokens, where its words would be parsed as tcpdump options."""
+    return ["--", filt] if filt else []
 # <<< shared:run-helper
 
 
@@ -291,7 +324,9 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     outage. ``-S`` binds the source; an unowned source fails immediately with no
     loss summary, which we read as error.
     """
-    if not dest:
+    # Option injection guard (security hotfix): dest/source come from the
+    # dashboard; a value like "-f" would become a ping option, run as root.
+    if not dest or not _safe_host_arg(dest) or (source and not _safe_host_arg(source)):
         return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
     # Pace packets 0.3s apart (sub-second interval needs root, which the agent has)
     # so a healthy tunnel answers in well under a second instead of the default
@@ -307,7 +342,7 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-w", str(timeout)]
     if source:
         cmd += ["-I", source]
-    cmd.append(dest)
+    cmd += ["--", dest]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
     except (subprocess.TimeoutExpired, OSError):
@@ -1111,7 +1146,9 @@ def _cmd_packet_capture(params: dict) -> dict:
     Enforces time + byte limits in Python using non-blocking reads + select so the
     handler always returns promptly.
     """
-    iface = str(params.get("interface") or "").strip() or "em0"
+    iface = _safe_iface_arg(str(params.get("interface") or "").strip() or "em0")
+    if not iface:
+        return {"success": False, "output": "invalid interface name"}
     filt = str(params.get("filter") or "").strip()
     max_sec = max(1, min(int(params.get("max_seconds", 30) or 30), 600))
     max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
@@ -1127,8 +1164,7 @@ def _cmd_packet_capture(params: dict) -> dict:
         final_filt = agent_excl
     else:
         final_filt = ""
-    if final_filt:
-        cmd += final_filt.split()
+    cmd += _tcpdump_filter_args(final_filt)
 
     try:
         proc = subprocess.Popen(
@@ -2214,7 +2250,12 @@ class _TunnelManager:
         if stream in self._captures:
             await self._send(stream, "close")
             return
-        iface = interface.strip() or "em0"
+        iface = _safe_iface_arg(interface.strip() or "em0")
+        if not iface:
+            log.warning("capture %s: refused interface %r", stream, interface)
+            await self._send(stream, "error", "invalid interface name")
+            await self._send(stream, "close")
+            return
         # Robust lookup: agent's daemon env may have minimal PATH (no /usr/sbin)
         # while interactive root shell does. Common locations on OPNsense/pfSense.
         search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
@@ -2230,8 +2271,7 @@ class _TunnelManager:
             final_filt = agent_excl
         else:
             final_filt = ""
-        if final_filt:
-            cmd += final_filt.split()
+        cmd += _tcpdump_filter_args(final_filt)
         log.info("capture %s: exec %s", stream, " ".join(cmd))
         try:
             env = os.environ.copy()
