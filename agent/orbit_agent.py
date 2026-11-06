@@ -20,6 +20,7 @@ import glob
 import gzip
 import hashlib
 import heapq
+import hmac
 import http.client
 import ipaddress
 import json
@@ -745,6 +746,10 @@ def collect_interfaces() -> list[dict]:
                 parts = stripped.split()
                 if len(parts) >= 2:
                     current["address"] = parts[1]
+            elif stripped.startswith("ether ") and "mac" not in current:
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    current["mac"] = parts[1].lower()
     if current is not None:
         result.append(current)
     return result
@@ -2175,15 +2180,34 @@ def _console_password_protected() -> bool:
         return False
 
 
+# The raw kern.hostuuid never leaves the host: reported is
+# hex(HMAC-SHA256(key=raw id, msg=_IDENTITY_CONTEXT)) — the same derivation as
+# the Linux drop-in (60-identity.py), so equal hosts give equal values. Never
+# change the context: every cross-tool link breaks.
+_IDENTITY_CONTEXT = b"stylite-orbit-identity-v1"
+_ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+def _machine_id() -> str | None:
+    """Derived machine id from ``sysctl -n kern.hostuuid``, or None when the
+    value is missing, blank or the all-zero uuid."""
+    raw = _run(["sysctl", "-n", "kern.hostuuid"]).strip()
+    if not raw or raw == _ZERO_UUID:
+        return None
+    return hmac.new(raw.encode("utf-8"), _IDENTITY_CONTEXT, hashlib.sha256).hexdigest()
+
+
 def collect_system_info() -> dict:
     """Basic system identification."""
-    return {
+    info = {
         "hostname": platform.node(),
         "os": _run(["uname", "-r"]).strip(),
         "platform": detect_platform(),
         "agent_version": __version__,
         "console_password_protected": _console_password_protected(),
     }
+    machine_id = _machine_id()
+    return {**info, "machine_id": machine_id} if machine_id else info
 
 
 def collect_firewall_log(limit: int = 30) -> list[dict]:
