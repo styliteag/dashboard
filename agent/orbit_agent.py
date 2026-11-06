@@ -2197,6 +2197,39 @@ def _machine_id() -> str | None:
     return hmac.new(raw.encode("utf-8"), _IDENTITY_CONTEXT, hashlib.sha256).hexdigest()
 
 
+_SSH_HOST_KEY_GLOB = "/etc/ssh/ssh_host_*_key.pub"
+
+
+def _ssh_fingerprint(line: str) -> str | None:
+    """OpenSSH public key line -> "<type> SHA256:<unpadded b64>" (what
+    ``ssh-keygen -lf -E sha256`` prints), None when unusable."""
+    parts = line.split()
+    if len(parts) < 2:
+        return None
+    try:
+        blob = base64.b64decode(parts[1], validate=True)
+    except ValueError:
+        return None
+    if not blob:
+        return None
+    digest = base64.b64encode(hashlib.sha256(blob).digest()).decode("ascii").rstrip("=")
+    return f"{parts[0]} SHA256:{digest}"
+
+
+def _ssh_host_keys() -> list[str]:
+    """Sorted, deduped host key fingerprints; unreadable files are skipped."""
+    found: set[str] = set()
+    for path in glob.glob(_SSH_HOST_KEY_GLOB):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                fingerprint = _ssh_fingerprint(fh.readline())
+        except (OSError, UnicodeDecodeError):
+            continue
+        if fingerprint:
+            found.add(fingerprint)
+    return sorted(found)
+
+
 def collect_system_info() -> dict:
     """Basic system identification."""
     info = {
@@ -2207,7 +2240,12 @@ def collect_system_info() -> dict:
         "console_password_protected": _console_password_protected(),
     }
     machine_id = _machine_id()
-    return {**info, "machine_id": machine_id} if machine_id else info
+    host_keys = _ssh_host_keys()
+    return {
+        **info,
+        **({"machine_id": machine_id} if machine_id else {}),
+        **({"ssh_host_keys": host_keys} if host_keys else {}),
+    }
 
 
 def collect_firewall_log(limit: int = 30) -> list[dict]:
