@@ -134,7 +134,26 @@ defmodule Orbit.Monitors do
     cond do
       name == "" -> {:error, "name is required"}
       destination == "" -> {:error, "destination is required"}
-      true -> {:ok, name, destination}
+      true -> with :ok <- validate_targets(attrs, destination), do: {:ok, name, destination}
+    end
+  end
+
+  # Source and destination end up in `ping`'s argv on the box (agent, as root)
+  # or over SSH (Securepoint). A leading "-" would turn them into ping OPTIONS
+  # (security hotfix: option injection) — only IP literals and plain host
+  # names are stored or sent. Checked before any DB write or agent command.
+  defp validate_targets(attrs, destination) do
+    source = String.trim(to_string(attrs["source"] || ""))
+
+    cond do
+      not Orbit.Net.host_arg?(destination) ->
+        {:error, "destination must be an IP address or host name"}
+
+      source != "" and not Orbit.Net.host_arg?(source) ->
+        {:error, "source must be an IP address"}
+
+      true ->
+        :ok
     end
   end
 
@@ -188,6 +207,9 @@ defmodule Orbit.Monitors do
       destination == "" ->
         {:error, "destination is required"}
 
+      (bad = validate_targets(attrs, destination)) != :ok ->
+        bad
+
       true ->
         Orbit.Repo.query!(
           "INSERT INTO ipsec_ping_monitors " <>
@@ -221,25 +243,34 @@ defmodule Orbit.Monitors do
   def update_ipsec(instance_id, monitor_id, attrs) do
     destination = String.trim(attrs["destination"] || "")
 
-    if destination == "" do
-      {:error, "destination is required"}
-    else
-      Orbit.Repo.query!(
-        "UPDATE ipsec_ping_monitors SET source = ?, destination = ?, ping_count = ?, " <>
-          "enabled = ?, updated_at = NOW() WHERE id = ? AND instance_id = ?",
-        [
-          String.trim(attrs["source"] || ""),
-          destination,
-          ping_count(attrs),
-          attrs["enabled"] in ["true", "on", "1", true],
-          monitor_id,
-          instance_id
-        ]
-      )
+    cond do
+      destination == "" ->
+        {:error, "destination is required"}
 
-      push_to_agent(instance_id)
-      :ok
+      (bad = validate_targets(attrs, destination)) != :ok ->
+        bad
+
+      true ->
+        update_ipsec_row(instance_id, monitor_id, attrs, destination)
     end
+  end
+
+  defp update_ipsec_row(instance_id, monitor_id, attrs, destination) do
+    Orbit.Repo.query!(
+      "UPDATE ipsec_ping_monitors SET source = ?, destination = ?, ping_count = ?, " <>
+        "enabled = ?, updated_at = NOW() WHERE id = ? AND instance_id = ?",
+      [
+        String.trim(attrs["source"] || ""),
+        destination,
+        ping_count(attrs),
+        attrs["enabled"] in ["true", "on", "1", true],
+        monitor_id,
+        instance_id
+      ]
+    )
+
+    push_to_agent(instance_id)
+    :ok
   end
 
   def delete_ipsec(instance_id, monitor_id) do
@@ -363,7 +394,13 @@ defmodule Orbit.Monitors do
   a user-facing button and a bad source address is a normal answer, not a crash.
   """
   def ping_test(inst, source, destination, count) do
+    targets = %{"source" => to_string(source || "")}
+    destination = String.trim(to_string(destination || ""))
+
     cond do
+      (bad = validate_targets(targets, destination)) != :ok ->
+        bad
+
       Orbit.Instances.Instance.agent_mode?(inst) ->
         agent_ping_test(inst, source, destination, count)
 

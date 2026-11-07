@@ -51,6 +51,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Capture filters, capture interfaces and ping targets can no longer smuggle
+  options into `tcpdump` / `ping` on the box.** The agent split the packet-
+  capture filter on spaces into separate arguments, so a "filter" such as
+  `-w /path -C 1 -z cmd` set tcpdump options as root on the firewall or Linux
+  node (write a file, run a post-rotate command) — on Linux always, on FreeBSD
+  whenever no agent exclusion filter was prepended. It needed only the write
+  role and scope, not the shell permission. Likewise a ping-monitor
+  destination or source like `-f` became a ping option (flood ping as root),
+  both via the agent and via Securepoint SSH. The agent now passes the filter
+  as one argument after `--`, accepts only plain interface names and IP
+  addresses / host names for ping (with `--` before the target), and the
+  dashboard refuses option-like values before anything is stored or sent —
+  which also protects boxes still on an older agent.
 - **Web server, HTTP client and framework libraries patched against 29 published advisories** (OSV / EEF CNA; GitHub Dependabot does not list them for Hex packages): Bandit 1.12.0 → 1.14.1 (16 advisories, most of them HIGH: HTTP/1.1 request smuggling via chunk extensions, HTTP/2 and WebSocket memory/CPU exhaustion, client-chosen `conn.host`) with its transport layer (Thousand Island 1.6.0, HPAX 1.1.0); Mint 1.9.3 → 1.11.0 (6 advisories in the HTTP client behind `Req`: response smuggling, unbounded buffering, quadratic chunk parsing, HTTP/2 frame and header limits); ssl_verify_fun 1.1.9 (wildcard certificate matched across a label boundary); Phoenix LiveView 1.2.13 (open redirect in `validate_local_url!/2`); Phoenix.HTML 4.4.0 (attribute injection); Plug.Crypto 2.2.1 (secret key base in stack traces); Ecto 3.14.3 (unbounded query cache); Decimal 3.2.0 (unbounded allocation in `round/3`); test-only lazy_html 0.1.13. No dependency added and no version constraint changed; `mix hex.audit` and OSV report no known advisory for the locked versions. `THIRD-PARTY-NOTICES.md` and `sbom.cdx.json` carry the new versions (the SBOM's own version field, stale at 4.1.1, now follows `VERSION`).
 
 ## [4.4.9] - 2026-09-14

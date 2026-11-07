@@ -1439,7 +1439,9 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     outage. ``-S`` binds the source; an unowned source fails immediately with no
     loss summary, which we read as error.
     """
-    if not dest:
+    # Option injection guard (security hotfix): dest/source come from the
+    # dashboard; a value like "-f" would become a ping option, run as root.
+    if not dest or not _safe_host_arg(dest) or (source and not _safe_host_arg(source)):
         return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
     # Pace packets 0.3s apart (sub-second interval needs root, which the agent has)
     # so a healthy tunnel answers in well under a second instead of the default
@@ -1452,7 +1454,7 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
     if source:
         cmd += ["-S", source]
-    cmd.append(dest)
+    cmd += ["--", dest]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
     except (subprocess.TimeoutExpired, OSError):
@@ -4437,7 +4439,9 @@ def _cmd_packet_capture(params: dict) -> dict:
     Enforces time + byte limits in Python using non-blocking reads + select so the
     handler always returns promptly.
     """
-    iface = str(params.get("interface") or "").strip() or "em0"
+    iface = _safe_iface_arg(str(params.get("interface") or "").strip() or "em0")
+    if not iface:
+        return {"success": False, "output": "invalid interface name"}
     filt = str(params.get("filter") or "").strip()
     max_sec = max(1, min(int(params.get("max_seconds", 30) or 30), 600))
     max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
@@ -4453,8 +4457,7 @@ def _cmd_packet_capture(params: dict) -> dict:
         final_filt = agent_excl
     else:
         final_filt = ""
-    if final_filt:
-        cmd += final_filt.split()
+    cmd += _tcpdump_filter_args(final_filt)
 
     try:
         proc = subprocess.Popen(

@@ -50,6 +50,47 @@ defmodule OrbitWeb.CaptureLive do
 
   @impl true
   def handle_event("start", %{"cap" => params}, socket) do
+    # Refused here for a readable message; the WS controller enforces it too.
+    case Orbit.Capture.Params.validate(params["interface"], params["filter"]) do
+      :ok -> start_live(params, socket)
+      {:error, msg} -> {:noreply, assign(socket, snap_error: msg, capturing: false)}
+    end
+  end
+
+  def handle_event("stop", _params, socket) do
+    {:noreply, assign(socket, capturing: false)}
+  end
+
+  # Snapshot mode (PacketCaptureSection parity): bounded tcpdump via the
+  # agent, pcap stored server-side (1h TTL) for download + inline viewer.
+  def handle_event("snapshot", %{"cap" => params}, socket) do
+    case Orbit.Capture.Params.validate(params["interface"], params["filter"]) do
+      :ok -> start_snapshot(params, socket)
+      {:error, msg} -> {:noreply, assign(socket, snap_error: msg)}
+    end
+  end
+
+  def handle_event("snap_filter", %{"q" => q}, socket) do
+    {:noreply, assign(socket, snap_filter: q)}
+  end
+
+  @impl true
+  def handle_async(:snapshot, {:ok, outcome}, socket) do
+    case outcome do
+      {:ok, cid, meta, packets} ->
+        {:noreply,
+         assign(socket, snap_busy: false, snap_id: cid, snap_meta: meta, snap_packets: packets)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, snap_busy: false, snap_error: String.slice(msg, 0, 300))}
+    end
+  end
+
+  def handle_async(:snapshot, {:exit, _}, socket) do
+    {:noreply, assign(socket, snap_busy: false, snap_error: "capture crashed")}
+  end
+
+  defp start_live(params, socket) do
     {:noreply,
      assign(socket,
        capturing: true,
@@ -60,13 +101,7 @@ defmodule OrbitWeb.CaptureLive do
      )}
   end
 
-  def handle_event("stop", _params, socket) do
-    {:noreply, assign(socket, capturing: false)}
-  end
-
-  # Snapshot mode (PacketCaptureSection parity): bounded tcpdump via the
-  # agent, pcap stored server-side (1h TTL) for download + inline viewer.
-  def handle_event("snapshot", %{"cap" => params}, socket) do
+  defp start_snapshot(params, socket) do
     inst = socket.assigns.instance
     seconds = bounded_int(params["max_seconds"], 30, 1, 120)
 
@@ -110,26 +145,6 @@ defmodule OrbitWeb.CaptureLive do
          :error -> {:error, "bad pcap data"}
        end
      end)}
-  end
-
-  def handle_event("snap_filter", %{"q" => q}, socket) do
-    {:noreply, assign(socket, snap_filter: q)}
-  end
-
-  @impl true
-  def handle_async(:snapshot, {:ok, outcome}, socket) do
-    case outcome do
-      {:ok, cid, meta, packets} ->
-        {:noreply,
-         assign(socket, snap_busy: false, snap_id: cid, snap_meta: meta, snap_packets: packets)}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, snap_busy: false, snap_error: String.slice(msg, 0, 300))}
-    end
-  end
-
-  def handle_async(:snapshot, {:exit, _}, socket) do
-    {:noreply, assign(socket, snap_busy: false, snap_error: "capture crashed")}
   end
 
   defp bounded_int(raw, default, min, max) do

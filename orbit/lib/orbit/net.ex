@@ -84,6 +84,24 @@ defmodule Orbit.Net do
 
   def ip_address?(_), do: false
 
+  @plain_host ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/
+
+  @doc """
+  Safe as a host argument of a root-run tool (`ping` on the box or over SSH):
+  an IP literal or a plain host name. A leading `-` would make the value an
+  OPTION of that tool (`-f` flood ping) — security hotfix, see
+  test/orbit/option_injection_test.exs.
+  """
+  @spec host_arg?(term()) :: boolean()
+  def host_arg?(value) when is_binary(value) do
+    case value |> String.to_charlist() |> :inet.parse_strict_address() do
+      {:ok, _} -> true
+      _ -> Regex.match?(@plain_host, value)
+    end
+  end
+
+  def host_arg?(_), do: false
+
   @doc """
   First sensible ping target inside a traffic selector: the network's first
   host address (`"192.168.0.0/20"` → `"192.168.0.1"`), the address itself
