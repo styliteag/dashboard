@@ -65,6 +65,9 @@ def _orbit_lock_entries() -> list[tuple[str, str, str]]:
     # OTP apps in the release.
     for m in re.finditer(r'"([a-z0-9_]+)": \{:git, "([^"]+)", "([a-f0-9]{7,40})"', text):
         rows.append((m.group(1), m.group(3)[:12], "github:" + m.group(2)))
+    # Vendored assets (assets/vendor/daisyui*.js, daisyUI v5.6.18): no longer a
+    # Mix dep, still compiled into the shipped css.
+    rows.append(("daisyui", "374d63758f99", "github:https://github.com/saadeghi/daisyui.git"))
     return rows
 
 
