@@ -7,8 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Extension points for downstream builds, all empty in open (no behaviour
+  change without an entry; reference in `docs/extension-points.md`):
+  - `config :orbit, :extra_children` — extra supervised children, started
+    after the migrator and the bootstrap seed, before the endpoint.
+  - `config :orbit, :extra_forwards` — `{path, plug, opts}` forwarded at the
+    router's top level (compile-time); the plug owns auth.
+  - `config :orbit, :extra_superadmin_live` — `{path, live_module}` pages in
+    the superadmin live session (compile-time).
+  - `config :orbit, :apikeys_extra_links` — `{label, path, :all | :superadmin}`
+    links next to "New key" on the API keys page.
+  - `config :orbit, :session_validators` — modules whose
+    `valid_session?(user, session)` must all accept on every request,
+    LiveView mount and client-WebSocket upgrade.
+  - `config :orbit, :logout_redirects` — modules whose
+    `logout_redirect(conn)` may send the browser to an external URL after
+    logout instead of `/login`.
+  - `config :orbit, :notification_suppressors` — modules whose
+    `suppress?(instance_id, check_key)` can drop an alert before dispatch
+    (the event-stream line is still written).
+  - `config :orbit, :instance_badges` — `{module, fun}` badges in the
+    instance detail header.
+
 ### Changed
 
+- The client-WebSocket session check (`OrbitWeb.WSAuth`, shell and capture
+  upgrades) now uses the same session check as HTTP requests and LiveView
+  (`OrbitWeb.UserAuth.user_from_session/1`); the rules are unchanged.
 - **daisyUI is vendored** (`assets/vendor/daisyui.js`, `daisyui-theme.js`, v5.6.18) instead of a Mix git dependency, so `mix deps.get` never clones the daisyUI repository (a tag-pinned clone grew to ~12 GB per checkout).
 
 ### Security

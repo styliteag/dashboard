@@ -14,6 +14,7 @@ defmodule Orbit.Application do
       ] ++
         migrator_child() ++
         bootstrap_child() ++
+        extra_children() ++
         [
           {DNSCluster, query: Application.get_env(:orbit, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: Orbit.PubSub},
@@ -70,6 +71,12 @@ defmodule Orbit.Application do
       []
     end
   end
+
+  # Extension point: extra supervised children from `config :orbit,
+  # :extra_children` (downstream builds), started after the migrator and the
+  # seeds — their tables exist — and before the endpoint serves. Default none.
+  @doc false
+  def extra_children, do: Application.get_env(:orbit, :extra_children, [])
 
   defp maybe_scheduler(children) do
     if Application.get_env(:orbit, :start_scheduler, true) do

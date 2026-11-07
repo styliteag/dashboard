@@ -68,6 +68,17 @@ config :orbit, :geoip_req_plug, {Req.Test, Orbit.GeoIP.Updater}
 # async test modules and made fetch_status sections vanish mid-test.
 config :orbit, :opnsense_req_plug, {Req.Test, Orbit.Poller.OpnsenseClient}
 
+# Compile-time extension points (docs/extension-points.md): test stubs from
+# test/support/extension_hook_stubs.ex so the router hooks are exercised.
+# Runtime hooks are switched on per test instead (OrbitWeb.TestHooks.put_hook/2).
+config :orbit, :extra_forwards, [
+  {"/__test/extra-forward", OrbitWeb.TestHooks.ForwardPlug, [marker: :stub]}
+]
+
+config :orbit, :extra_superadmin_live, [
+  {"/__test/extra-superadmin", TestHooks.SuperadminLive}
+]
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

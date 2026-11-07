@@ -99,6 +99,15 @@ defmodule OrbitWeb.ApiKeysLive do
     )
   end
 
+  # Extension point: extra links next to "New key" from `config :orbit,
+  # :apikeys_extra_links` ({label, path, :all | :superadmin}) — a downstream
+  # build's own token screens.
+  defp extra_links(user) do
+    for {label, path, who} <- Application.get_env(:orbit, :apikeys_extra_links, []),
+        who == :all or (who == :superadmin and user.is_superadmin),
+        do: {label, path}
+  end
+
   defp error_text(:name_required), do: "name is required"
 
   defp error_text(:binding_required),
@@ -122,6 +131,13 @@ defmodule OrbitWeb.ApiKeysLive do
           <.btn variant={:primary} phx-click="toggle_create">
             {if @show_create, do: "Cancel", else: "New key"}
           </.btn>
+          <.link
+            :for={{label, path} <- extra_links(@current_user)}
+            navigate={path}
+            class="text-sm text-primary hover:underline"
+          >
+            {label}
+          </.link>
         </div>
 
         <p class="mb-4 max-w-3xl text-xs text-base-content/70">

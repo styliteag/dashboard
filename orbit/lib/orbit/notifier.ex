@@ -50,7 +50,21 @@ defmodule Orbit.Notifier do
         "check_key=#{check_key} level=#{level} message=#{inspect(message)}"
     )
 
-    dispatch(title, message, check_key, instance_id, respect_routes: true)
+    if suppressed?(instance_id, check_key) do
+      Logger.info("alert suppressed instance_id=#{instance_id} check_key=#{check_key}")
+      []
+    else
+      dispatch(title, message, check_key, instance_id, respect_routes: true)
+    end
+  end
+
+  # Extension point: `config :orbit, :notification_suppressors, [mod]` —
+  # each `mod.suppress?(instance_id, check_key)`; any true drops the alert
+  # (after the audit-stream line above). Default none.
+  defp suppressed?(instance_id, check_key) do
+    :orbit
+    |> Application.get_env(:notification_suppressors, [])
+    |> Enum.any?(& &1.suppress?(instance_id, check_key))
   end
 
   @doc """

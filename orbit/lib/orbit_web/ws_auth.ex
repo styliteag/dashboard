@@ -16,7 +16,6 @@ defmodule OrbitWeb.WSAuth do
 
   import Plug.Conn
 
-  alias Orbit.Accounts
   alias Orbit.Accounts.User
 
   @write_roles ~w(admin user)
@@ -72,16 +71,11 @@ defmodule OrbitWeb.WSAuth do
     [webauthn_host | extra] |> Enum.reject(&(&1 == "")) |> MapSet.new()
   end
 
+  # Same rules as REST and LiveView (user, password version, disabled, MFA,
+  # `:session_validators`), via the one shared check.
   defp check_session(conn) do
-    user_id = get_session(conn, :user_id)
-    pwv = get_session(conn, :password_version)
-    mfa = get_session(conn, :mfa_passed)
-
-    with true <- is_integer(user_id) and not is_nil(pwv) and mfa == true,
-         %User{} = user <- Accounts.get_user(user_id),
-         true <- user.password_version == pwv and not user.disabled do
-      {:ok, user}
-    else
+    case OrbitWeb.UserAuth.user_from_session(get_session(conn)) do
+      %User{} = user -> {:ok, user}
       _ -> {:error, 4401}
     end
   end
