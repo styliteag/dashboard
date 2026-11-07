@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linux agent: a re-install right after an uninstall survives.** The
+  dashboard-triggered uninstall runs a detached teardown script that waited
+  3 s and then killed every `orbit_agent.py` process and removed the unit and
+  `/usr/local/orbit-agent`, so a host re-added within those seconds lost its
+  freshly installed agent. The script now records the config checksum and the
+  old agent's pids before the wait, stops as soon as the config changed (a
+  re-install writes a new enroll code) and only ever kills the old pids.
+  No agent version bump; the fix ships with the next agent release.
+
 ### Changed
 
 - **daisyUI is vendored** (`assets/vendor/daisyui.js`, `daisyui-theme.js`, v5.6.18) instead of a Mix git dependency, so `mix deps.get` never clones the daisyUI repository (a tag-pinned clone grew to ~12 GB per checkout).

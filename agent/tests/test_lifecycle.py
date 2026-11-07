@@ -97,6 +97,72 @@ async def test_linux_uninstall_escapes_cgroup_and_private_tmp(tmp_path, monkeypa
     assert calls["exit"] == 0
 
 
+# --- linux uninstall must not wipe an immediate re-install -------------------
+
+
+def _run_linux_uninstall(tmp_path, monkeypatch, reinstall_during_sleep):
+    """Run the generated teardown script with stubbed systemctl/pgrep/kill/sleep.
+    A re-install (new config with a new enroll code) may land while it waits."""
+    import os
+    import subprocess
+
+    import orbit_agent_linux as linux
+
+    inst = tmp_path / "orbit-agent"
+    inst.mkdir()
+    (inst / "orbit_agent.py").write_text("agent")
+    conf = tmp_path / "orbit-agent.conf"
+    conf.write_text('{"enroll_code": "OLD"}')
+    monkeypatch.setattr(linux, "CONFIG_PATH", str(conf))
+    script = tmp_path / "orbit-uninstall.sh"
+    script.write_text(linux._build_uninstall_script(str(inst)))
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "calls.log"
+    reinstall = (
+        f"printf '%s' '{{\"enroll_code\": \"NEW\"}}' > {conf}\n" if reinstall_during_sleep else ""
+    )
+    stubs = {
+        "systemctl": f'echo "systemctl $*" >> {log}\n',
+        "pgrep": f'echo "pgrep $*" >> {log}\nexit 1\n',
+        "kill": f'echo "kill $*" >> {log}\n',
+        "sleep": f'echo "sleep $*" >> {log}\n{reinstall}',
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text("#!/bin/sh\n" + body)
+        (bin_dir / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    subprocess.run(["/bin/sh", str(script)], env=env, check=True, timeout=30)
+    return inst, conf, (log.read_text() if log.exists() else "")
+
+
+def test_linux_uninstall_removes_the_agent(tmp_path, monkeypatch) -> None:
+    inst, conf, calls = _run_linux_uninstall(tmp_path, monkeypatch, False)
+    assert "systemctl disable --now orbit-agent" in calls
+    assert not inst.exists()
+    assert not conf.exists()
+
+
+def test_linux_uninstall_spares_a_reinstall_made_meanwhile(tmp_path, monkeypatch) -> None:
+    """Regression (lab, 2026-11-07): a host re-added right after its decommission
+    got the new agent killed and deleted by the old agent's detached teardown."""
+    inst, conf, calls = _run_linux_uninstall(tmp_path, monkeypatch, True)
+    assert "disable" not in calls
+    assert "kill" not in calls
+    assert inst.exists()
+    assert "NEW" in conf.read_text()
+
+
+def test_linux_uninstall_kills_only_the_old_agents_processes() -> None:
+    import orbit_agent_linux as linux
+
+    script = linux._build_uninstall_script("/usr/local/orbit-agent")
+    # pids are taken before the wait; nothing started later is matched by name
+    assert script.index("pgrep") < script.index("sleep 3")
+    assert "pgrep" not in script[script.index("sleep 3") :]
+
+
 # --- enrollment URL derivation ----------------------------------------------
 
 
