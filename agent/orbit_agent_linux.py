@@ -31,6 +31,7 @@ import pty
 import pwd
 import random
 import re
+import shlex
 import signal
 import shutil
 import ssl
@@ -1723,26 +1724,38 @@ async def _send_update_result(ws: WebSocket, request_id: str, success: bool, out
 
 def _build_uninstall_script(install_dir: str) -> str:
     """Build the detached teardown script (linux/systemd). Order matters: the
-    supervisor dies first, else it respawns the agent mid-removal."""
+    supervisor dies first, else it respawns the agent mid-removal.
+
+    A host may be re-added (fresh install, new config with a new enroll code)
+    while this script still waits: it remembers the config's checksum and the
+    agent's pids BEFORE the wait, and stops touching anything as soon as the
+    config changed — only the old agent's own processes are ever killed."""
+    cfg = shlex.quote(CONFIG_PATH)
     return (
         "#!/bin/sh\n"
+        f'orig="$(cksum < {cfg} 2>/dev/null)"\n'
+        f"ours() {{ [ \"$(cksum < {cfg} 2>/dev/null)\" = \"$orig\" ]; }}\n"
+        '_pids="$(pgrep -f run-agent.sh 2>/dev/null) $(pgrep -f orbit_agent.py 2>/dev/null)"\n'
         "sleep 3\n"  # let the ack flush over the WS before we kill the agent
+        "ours || exit 0\n"  # re-installed meanwhile: leave the new agent alone
         # Stop + disable the unit first (systemd would otherwise respawn the
-        # supervisor), then SIGKILL any stragglers in a retry loop — a single
-        # pass can race a respawn.
+        # supervisor), then SIGKILL the old agent's stragglers in a retry loop.
         "systemctl disable --now orbit-agent >/dev/null 2>&1\n"
         "i=0\n"
         "while [ $i -lt 6 ]; do\n"
-        '  pids="$(pgrep -f run-agent.sh 2>/dev/null) $(pgrep -f orbit_agent.py 2>/dev/null)"\n'
-        "  [ -z \"$(echo $pids | tr -d ' ')\" ] && break\n"
-        '  for p in $pids; do kill -9 "$p" 2>/dev/null; done\n'
+        "  ours || exit 0\n"
+        "  alive=\n"
+        '  for p in $_pids; do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done\n'
+        '  [ -z "$alive" ] && break\n'
+        '  for p in $alive; do kill -9 "$p" 2>/dev/null; done\n'
         "  sleep 1\n"
         "  i=$((i + 1))\n"
         "done\n"
+        "ours || exit 0\n"
         "rm -f /etc/systemd/system/orbit-agent.service\n"
         "systemctl daemon-reload >/dev/null 2>&1\n"
-        f"rm -rf {install_dir}\n"
-        f"rm -f {CONFIG_PATH}\n"
+        f"rm -rf {shlex.quote(install_dir)}\n"
+        f"rm -f {cfg}\n"
     )
 
 
