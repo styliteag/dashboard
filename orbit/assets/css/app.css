@@ -15,7 +15,7 @@
 @plugin "../vendor/heroicons";
 
 /* daisyUI Tailwind Plugin. */
-@plugin "daisyui/packages/bundle/daisyui" {
+@plugin "../vendor/daisyui" {
   themes: false;
 }
 
@@ -29,7 +29,7 @@
    Semantic tokens are pinned to WCAG 2.2 AA (>= 4.5:1 on base-100/200,
    inside /15 badges, and against their -content pair) by
    test/orbit_web/design_contrast_test.exs — run it after any retune. */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "orbit-dark";
   default: true;
   prefersdark: true;
@@ -65,7 +65,7 @@
 }
 
 /* Orbit in daylight — cool paper, slate ink, deepened emerald */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "orbit-light";
   default: false;
   prefersdark: false;
@@ -101,7 +101,7 @@
 }
 
 /* Bench — ink on paper, stamp green, square corners */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "bench-light";
   default: false;
   prefersdark: false;
@@ -137,7 +137,7 @@
 }
 
 /* Bench after dark — terminal: phosphor green on near-black */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "bench-dark";
   default: false;
   prefersdark: false;
@@ -176,7 +176,7 @@
    "ok/action" green of every other design (see orbit-light) — `primary` is
    what the app paints OK badges, up-lanes and confirm buttons with, so a blue
    primary made "OK" read as "info" here. `info` remains blue. */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "soft-light";
   default: false;
   prefersdark: false;
@@ -212,7 +212,7 @@
 }
 
 /* Soft at night — warm dark, brighter green + coral, pill shapes */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
+@plugin "../vendor/daisyui-theme" {
   name: "soft-dark";
   default: false;
   prefersdark: false;

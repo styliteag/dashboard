@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   addresses / host names for ping (with `--` before the target), and the
   dashboard refuses option-like values before anything is stored or sent —
   which also protects boxes still on an older agent.
+### Changed
+
+- **daisyUI is vendored** (`assets/vendor/daisyui.js`, `daisyui-theme.js`, v5.6.18) instead of a Mix git dependency, so `mix deps.get` never clones the daisyUI repository (a tag-pinned clone grew to ~12 GB per checkout).
 
 ## [4.4.9] - 2026-09-14
 
