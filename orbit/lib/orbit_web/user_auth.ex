@@ -62,11 +62,25 @@ defmodule OrbitWeb.UserAuth do
   def log_out_user(conn) do
     # Close the registry row BEFORE the session is renewed away (DR-AL3).
     Orbit.Access.Store.close_session(get_session(conn, :sid), "logout")
+    # Read before the session is renewed away: it may need session data.
+    target = logout_redirect(conn)
 
     conn
     |> renew_session()
-    |> redirect(to: ~p"/login")
+    |> redirect_after_logout(target)
   end
+
+  # Extension point `config :orbit, :logout_redirects` (modules exporting
+  # `logout_redirect(conn) :: url | nil`): the first URL wins, else /login.
+  # PRO uses it for RP-initiated OIDC logout at the provider.
+  defp logout_redirect(conn) do
+    :orbit
+    |> Application.get_env(:logout_redirects, [])
+    |> Enum.find_value(& &1.logout_redirect(conn))
+  end
+
+  defp redirect_after_logout(conn, nil), do: redirect(conn, to: ~p"/login")
+  defp redirect_after_logout(conn, url), do: redirect(conn, external: url)
 
   @doc """
   Plug: count this request in the access accounting (DR-AL2) — runs after
@@ -126,7 +140,8 @@ defmodule OrbitWeb.UserAuth do
          true <- get_session(conn, :mfa_passed) == true,
          %Accounts.User{} = user <- Accounts.get_user(user_id),
          true <- get_session(conn, :password_version) == user.password_version,
-         false <- user.disabled do
+         false <- user.disabled,
+         true <- session_valid?(user, get_session(conn)) do
       assign(conn, :current_user, user)
     else
       _ -> assign(conn, :current_user, nil)
@@ -208,16 +223,31 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  @doc "The user a (string-keyed) session map authenticates right now, or nil."
+  def user_from_session(session), do: live_user_from_session(session)
+
   defp live_user_from_session(session) do
     with user_id when is_integer(user_id) <- session["user_id"],
          true <- session["mfa_passed"] == true,
          %User{} = user <- Accounts.get_user(user_id),
          true <- session["password_version"] == user.password_version,
-         false <- user.disabled do
+         false <- user.disabled,
+         true <- session_valid?(user, session) do
       user
     else
       _ -> nil
     end
+  end
+
+  # Extension point `config :orbit, :session_validators` (modules exporting
+  # `valid_session?(user, session)`, string-keyed session map): every one must
+  # accept, on each request and LiveView mount. PRO uses it for the absolute
+  # lifetime and back-channel revocation of OIDC sessions.
+  @doc false
+  def session_valid?(user, session) do
+    :orbit
+    |> Application.get_env(:session_validators, [])
+    |> Enum.all?(& &1.valid_session?(user, session))
   end
 
   @live_touch_ms 60_000

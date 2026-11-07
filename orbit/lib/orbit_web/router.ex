@@ -142,6 +142,13 @@ defmodule OrbitWeb.Router do
       live "/users", UsersLive
       live "/groups", GroupsLive
       live "/access-control", AccessControlLive
+
+      # Extension point: extra superadmin pages from `config :orbit,
+      # :extra_superadmin_live` ({path, module relative to OrbitWeb},
+      # compile-time) — a downstream build's own superadmin screens.
+      for {path, live_module} <- Application.compile_env(:orbit, :extra_superadmin_live, []) do
+        live path, live_module
+      end
     end
   end
 
@@ -253,6 +260,13 @@ defmodule OrbitWeb.Router do
 
     get "/export/checkmk", ExportController, :checkmk
     get "/export/prometheus", ExportController, :prometheus
+  end
+
+  # Extension point: extra forwards from `config :orbit, :extra_forwards`
+  # ({path, plug, opts}, compile-time) — a downstream build's own machine API.
+  # The forwarded plug owns auth entirely; no pipeline runs before it.
+  for {path, plug, opts} <- Application.compile_env(:orbit, :extra_forwards, []) do
+    forward path, plug, opts
   end
 
   # Enable LiveDashboard in development

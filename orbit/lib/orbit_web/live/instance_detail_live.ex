@@ -1666,6 +1666,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     assign(socket,
       connected: Hub.get(socket.assigns.instance.id) != nil,
+      instance_badges: instance_badges(socket.assigns.instance),
       cpu: get_in(status, ["cpu", "total_pct"]),
       memory: status["memory"],
       disks: status["disks"] || [],
@@ -1893,6 +1894,13 @@ defmodule OrbitWeb.InstanceDetailLive do
             title={agent_badge_hint(@instance, @connected)}
           >
             {agent_badge(@instance, @connected)}
+          </span>
+          <span
+            :for={badge <- assigns[:instance_badges] || []}
+            class="rounded bg-warning/20 px-2 py-0.5 text-xs text-warning"
+            title={badge.title}
+          >
+            {badge.label}
           </span>
           <a
             :if={@instance.shell_enabled}
@@ -3823,6 +3831,15 @@ defmodule OrbitWeb.InstanceDetailLive do
         _ -> []
       end
     end)
+  end
+
+  # Header badges (extension point): `config :orbit, :instance_badges` lists
+  # `{Module, :fun}`; each gets the instance and returns nil or
+  # `%{label: String.t(), title: String.t()}`. Empty upstream.
+  defp instance_badges(instance) do
+    :orbit
+    |> Application.get_env(:instance_badges, [])
+    |> Enum.flat_map(fn {mod, fun} -> List.wrap(apply(mod, fun, [instance])) end)
   end
 
   # Vendor/extension tabs (§28): same `config :orbit, :vendor_tabs` the tab bar
