@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **daisyUI is vendored** (`assets/vendor/daisyui.js`, `daisyui-theme.js`, v5.6.18) instead of a Mix git dependency, so `mix deps.get` never clones the daisyUI repository (a tag-pinned clone grew to ~12 GB per checkout).
 
+### Security
+
+- **Web server, HTTP client and framework libraries patched against 29 published advisories** (OSV / EEF CNA; GitHub Dependabot does not list them for Hex packages): Bandit 1.12.0 → 1.14.1 (16 advisories, most of them HIGH: HTTP/1.1 request smuggling via chunk extensions, HTTP/2 and WebSocket memory/CPU exhaustion, client-chosen `conn.host`) with its transport layer (Thousand Island 1.6.0, HPAX 1.1.0); Mint 1.9.3 → 1.11.0 (6 advisories in the HTTP client behind `Req`: response smuggling, unbounded buffering, quadratic chunk parsing, HTTP/2 frame and header limits); ssl_verify_fun 1.1.9 (wildcard certificate matched across a label boundary); Phoenix LiveView 1.2.13 (open redirect in `validate_local_url!/2`); Phoenix.HTML 4.4.0 (attribute injection); Plug.Crypto 2.2.1 (secret key base in stack traces); Ecto 3.14.3 (unbounded query cache); Decimal 3.2.0 (unbounded allocation in `round/3`); test-only lazy_html 0.1.13. No dependency added and no version constraint changed; `mix hex.audit` and OSV report no known advisory for the locked versions. `THIRD-PARTY-NOTICES.md` and `sbom.cdx.json` carry the new versions (the SBOM's own version field, stale at 4.1.1, now follows `VERSION`).
+
 ## [4.4.9] - 2026-09-14
 
 ### Changed
