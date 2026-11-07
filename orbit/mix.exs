@@ -69,15 +69,6 @@ defmodule Orbit.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:daisyui,
-       github: "saadeghi/daisyui",
-       # v5.6.18, pinned by commit: with `tag:` Mix fetches every tag (--tags) and
-       # the shallow clone grows to ~12 GB (Mix.SCM.Git tags_switch)
-       ref: "374d63758f997317e92e93e547569a5f9ad11250",
-       sparse: "packages/bundle",
-       app: false,
-       compile: false,
-       depth: 1},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:argon2_elixir, "~> 4.1"},
