@@ -116,4 +116,94 @@ defmodule Orbit.HubTest do
     assert agent.pongs == 1
     assert %DateTime{} = agent.last_push_at
   end
+
+  describe "evict/2 (binding revoked)" do
+    # Regression: the LiveView called Hub.unregister/1 after disable/uninstall
+    # — identity-checked against ITS pid, so it answered :stale and the agent
+    # socket stayed on the roster, kept pushing and kept receiving commands.
+    defp spawn_socket(hub, instance_id) do
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          :ok = Hub.register(hub, instance_id, %{})
+          send(parent, :registered)
+          forward_until_evicted(parent)
+        end)
+
+      assert_receive :registered
+      pid
+    end
+
+    # A fake agent socket: report every message, stop like the real one does
+    # on :hub_evicted.
+    defp forward_until_evicted(parent) do
+      receive do
+        :hub_evicted ->
+          send(parent, {:socket_got, :hub_evicted})
+
+        msg ->
+          send(parent, {:socket_got, msg})
+          forward_until_evicted(parent)
+      end
+    end
+
+    test "closes the socket even when called from another process", %{hub: hub} do
+      _socket = spawn_socket(hub, 7)
+      # The caller is NOT the socket — unregister would be :stale here.
+      assert Hub.unregister(hub, 7) == :stale
+      assert Hub.get(hub, 7) != nil
+
+      assert Hub.evict(hub, 7) == :ok
+
+      assert_receive {:socket_got, :hub_evicted}
+      assert Hub.get(hub, 7) == nil
+      assert Hub.list_connected(hub) == []
+    end
+
+    test "nothing routes to the evicted socket afterwards", %{hub: hub} do
+      _socket = spawn_socket(hub, 7)
+      :ok = Hub.evict(hub, 7)
+      assert_receive {:socket_got, :hub_evicted}
+
+      assert {:error, :not_connected} = Hub.send_command_on(hub, 7, "ping", %{}, 100)
+      assert {:error, :not_connected} = Hub.open_tunnel(hub, 7, %{})
+
+      # A push frame the socket still had queued must not resurrect it.
+      Hub.record_push(hub, 7)
+      assert Hub.get(hub, 7) == nil
+    end
+
+    test "open tunnel streams are closed toward their consumers", %{hub: hub} do
+      _socket = spawn_socket(hub, 7)
+      {:ok, stream} = Hub.open_tunnel(hub, 7, %{"kind" => "shell"})
+
+      :ok = Hub.evict(hub, 7)
+
+      assert_receive {:tunnel, ^stream, "close", _frame}
+    end
+
+    test "the evicted socket's own late unregister is a no-op", %{hub: hub} do
+      old =
+        spawn(fn ->
+          Hub.register(hub, 7, %{})
+
+          receive do
+            {:unregister_now, from} -> send(from, {:result, Hub.unregister(hub, 7)})
+          end
+        end)
+
+      Process.sleep(20)
+      :ok = Hub.evict(hub, 7)
+      send(old, {:unregister_now, self()})
+      assert_receive {:result, :stale}
+    end
+
+    test "absent instance: :not_connected, nothing else happens", %{hub: hub} do
+      :ok = register_self(hub, 8)
+      assert Hub.evict(hub, 7) == :not_connected
+      assert Hub.get(hub, 8).pid == self()
+      refute_receive :hub_evicted, 50
+    end
+  end
 end

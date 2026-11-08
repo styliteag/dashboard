@@ -88,22 +88,6 @@ defmodule Orbit.Instances do
   end
 
   @doc """
-  Switch an instance into agent (push) mode with a fresh bearer token
-  (management.py enable_agent). Returns {:ok, inst, token}.
-  """
-  def enable_agent(%Instance{} = inst) do
-    token = 48 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-
-    inst
-    |> Ecto.Changeset.change(transport: "push", agent_token: token)
-    |> Repo.update()
-    |> case do
-      {:ok, updated} -> {:ok, updated, token}
-      other -> other
-    end
-  end
-
-  @doc """
   Move an instance to another group (instances/routes.py move_group — a
   RIGHTS operation, not instance config; the groups page's superadmin
   assignment table is the only caller). Returns {:ok, inst} | {:error, _}.
@@ -111,13 +95,6 @@ defmodule Orbit.Instances do
   def move_group(%Instance{} = inst, group_id) when is_integer(group_id) do
     inst
     |> Ecto.Changeset.change(group_id: group_id)
-    |> Repo.update()
-  end
-
-  @doc "Drop agent mode: revoke the token, fall back to direct transport."
-  def disable_agent(%Instance{} = inst) do
-    inst
-    |> Ecto.Changeset.change(transport: "direct", agent_token: nil)
     |> Repo.update()
   end
 
@@ -373,7 +350,13 @@ defmodule Orbit.Instances do
     end
   end
 
-  @doc "Soft delete — the slug is freed for reuse (generated-column contract)."
+  @doc """
+  Soft delete — the slug is freed for reuse (generated-column contract).
+
+  Raw write: it does NOT close a connected agent socket. UI/API callers use
+  Orbit.AgentBinding.delete/2, which evicts it; call this directly only when
+  you must still talk to the agent first and close the socket yourself.
+  """
   def soft_delete(%Instance{} = inst) do
     inst
     |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now()})

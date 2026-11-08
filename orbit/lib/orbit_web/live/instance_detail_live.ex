@@ -601,7 +601,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Agent lifecycle (AgentSection parity; management.py port). All
   # write-gated; the slow relay calls run in start_async.
   def handle_event("agent_enable", _params, %{assigns: %{writable: true}} = socket) do
-    case Orbit.Instances.enable_agent(socket.assigns.instance) do
+    # Orbit.AgentBinding owns the binding transitions: enable on a bound
+    # instance rotates the token and evicts the old token's socket.
+    case Orbit.AgentBinding.enable(socket.assigns.instance) do
       {:ok, inst, _token} ->
         audit_agent(socket, "agent.enable", "ok")
         {:noreply, socket |> assign(instance: inst) |> load_metrics()}
@@ -612,9 +614,11 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("agent_disable", _params, %{assigns: %{writable: true}} = socket) do
-    case Orbit.Instances.disable_agent(socket.assigns.instance) do
+    # AgentBinding.disable evicts the live socket. Not Hub.unregister/1: it
+    # is pid-identity-checked against THIS LiveView, answered :stale and
+    # left the revoked agent connected (pushing, taking commands).
+    case Orbit.AgentBinding.disable(socket.assigns.instance) do
       {:ok, inst} ->
-        Hub.unregister(inst.id)
         audit_agent(socket, "agent.disable", "ok")
         {:noreply, socket |> assign(instance: inst, show_token: false) |> load_metrics()}
 
@@ -996,9 +1000,9 @@ defmodule OrbitWeb.InstanceDetailLive do
     if result["success"] do
       # Ack received — the box tears the agent down; drop agent mode so the
       # dashboard stops expecting pushes (enroll.py uninstall parity).
-      case Orbit.Instances.disable_agent(inst) do
+      # AgentBinding.disable also closes the socket (Hub.evict).
+      case Orbit.AgentBinding.disable(inst) do
         {:ok, updated} ->
-          Hub.unregister(inst.id)
           {:ok, {:instance, updated}, "agent uninstalling — instance back to direct transport"}
 
         _ ->

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Login: a password-only session of a user who already has a second factor
+  could open `/login/enroll`, which replaced the user's real TOTP secret
+  with a fresh one, and then sign in with a code from the new QR code — the
+  password alone was enough and the real factor was destroyed. The login
+  steps are now an explicit state machine (`Orbit.Auth.LoginFlow`): the
+  session records whether it is waiting for verification or for
+  enrollment, enrollment is only reachable in the enrollment state, and the
+  database is re-checked so a user who has a factor is never enrolled
+  again. Logins that are mid-way at upgrade time start over at the password
+  form. A locked IP can no longer keep guessing TOTP codes after the
+  password step (the code and enrollment steps now honour the login
+  lockout, as the passkey step already did).
+- Agents: disabling or uninstalling an agent, deleting its instance or
+  rotating its token left the live agent connection open — it kept
+  pushing (marking the box online and clearing maintenance) and kept
+  receiving commands and tunnels until it reconnected on its own. Every
+  such change now closes the connection at once (close code 4003), a
+  connection whose token was revoked before its hello is refused, and
+  frames sent before the hello are ignored.
+  Binding changes go through one module, `Orbit.AgentBinding`.
+
 ## [4.5.0] - 2026-11-07
 
 ### Added

@@ -6,8 +6,9 @@ defmodule OrbitWeb.UserAuth do
   - A full session carries `user_id`, `password_version` and `mfa_passed`.
     `password_version` is checked against the DB row on every request — a
     password change invalidates every existing session (US-1.2).
-  - The password step alone stores only `mfa_user_id`/`mfa_pw_version`
-    (pending-MFA state, no session privileges).
+  - The password step alone stores only `mfa_user_id`/`mfa_pw_version` plus
+    the pending kind `login_state` (pending_verify | pending_enroll — see
+    Orbit.Auth.LoginFlow); no session privileges.
   - Disabled accounts die on the next request, not just at login.
   - The bootstrap admin is the only password-only account (`mfa_passed` is
     set at login for it because `Accounts.login_step/3` returned `:done`).
@@ -20,6 +21,7 @@ defmodule OrbitWeb.UserAuth do
 
   alias Orbit.Accounts
   alias Orbit.Accounts.User
+  alias Orbit.Auth.LoginFlow
 
   @doc "Mint the fully-authenticated session (after the second factor passed)."
   def log_in_user(conn, user) do
@@ -36,20 +38,32 @@ defmodule OrbitWeb.UserAuth do
     |> put_session(:sid, sid)
   end
 
-  @doc "Store the pending-MFA state: password passed, second factor missing."
-  def put_pending_mfa(conn, user) do
+  @doc """
+  Store the pending-MFA state: password passed, second factor missing.
+  `state` is the LoginFlow pending state the password step chose — it decides
+  which second-factor actions this session may reach.
+  """
+  def put_pending_mfa(conn, user, state) when state in [:pending_verify, :pending_enroll] do
     conn
     |> renew_session()
     |> put_session(:mfa_user_id, user.id)
     |> put_session(:mfa_pw_version, user.password_version)
+    |> put_session(:login_state, LoginFlow.to_session(state))
   end
 
+  @doc "The LoginFlow state this session is in (pending kinds only; else :anonymous)."
+  def pending_login_state(conn), do: LoginFlow.from_session(get_session(conn, :login_state))
+
   @doc """
-  Load the pending-MFA user, or nil. The stored password_version must still
-  match — a password change between the steps voids the pending state.
+  Load the pending-MFA user for a second-factor action, or nil. The session's
+  pending state must allow `event` (LoginFlow) — a pending_verify session can
+  never reach the enroll events and vice versa. The stored password_version
+  must still match — a password change between the steps voids the pending
+  state.
   """
-  def pending_mfa_user(conn) do
-    with user_id when is_integer(user_id) <- get_session(conn, :mfa_user_id),
+  def pending_mfa_user(conn, event) do
+    with true <- LoginFlow.allowed?(pending_login_state(conn), event),
+         user_id when is_integer(user_id) <- get_session(conn, :mfa_user_id),
          %Accounts.User{} = user <- Accounts.get_user(user_id),
          true <- get_session(conn, :mfa_pw_version) == user.password_version,
          false <- user.disabled do

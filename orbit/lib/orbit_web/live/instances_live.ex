@@ -235,7 +235,8 @@ defmodule OrbitWeb.InstancesLive do
     with true <- socket.assigns.writable,
          {id, ""} <- Integer.parse(raw_id),
          %Instance{} = inst <- Orbit.Auth.Scope.get_instance(id, socket.assigns.current_user) do
-      {:ok, _} = Instances.soft_delete(inst)
+      # Evicts the agent socket too (its binding dies with the instance).
+      {:ok, _} = Orbit.AgentBinding.delete(inst)
 
       Audit.write(
         action: "instance.delete",

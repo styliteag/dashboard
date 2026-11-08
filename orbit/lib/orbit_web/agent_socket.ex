@@ -16,7 +16,12 @@ defmodule OrbitWeb.AgentSocket do
 
   alias Orbit.Hub
 
-  defstruct [:instance_id, :instance_name, :push_interval, :source_ip, hello_seen: false]
+  # `token` is the bearer credential this socket authenticated with — kept
+  # to re-check the binding on hello; never inspected into logs.
+  @derive {Inspect, except: [:token]}
+  defstruct [:instance_id, :instance_name, :push_interval, :source_ip, :token, hello_seen: false]
+
+  @revoked_close {4003, "agent binding revoked"}
 
   @impl true
   def init(%{auth_error: {code, message}}) do
@@ -35,7 +40,8 @@ defmodule OrbitWeb.AgentSocket do
        instance_id: instance.id,
        instance_name: instance.name,
        push_interval: push_interval,
-       source_ip: arg[:source_ip]
+       source_ip: arg[:source_ip],
+       token: instance.agent_token
      }}
   end
 
@@ -85,6 +91,56 @@ defmodule OrbitWeb.AgentSocket do
   def handle_in(_other, state), do: {:ok, state}
 
   defp dispatch(%{"type" => "hello"} = hello, state) do
+    # Cheap pre-check: a stale token must not even register — register
+    # replaces (and closes) the CURRENT socket of this instance.
+    if Orbit.AgentBinding.current?(state.instance_id, state.token) do
+      register_and_welcome(hello, state)
+    else
+      Logger.warning("agent.binding_revoked_before_hello instance_id=#{state.instance_id}")
+      {:stop, :normal, @revoked_close, state}
+    end
+  end
+
+  # Every agent line sends hello first. A socket that skips it is never on
+  # the hub roster, so Hub.evict/2 cannot reach it — it must not push,
+  # resolve commands or route tunnels on a binding nobody can revoke.
+  defp dispatch(_frame, %__MODULE__{hello_seen: false} = state) do
+    Hub.bump(:unknown_messages)
+    {:ok, state}
+  end
+
+  defp dispatch(%{"type" => "metrics", "data" => data}, state) when is_map(data) do
+    Hub.record_push(state.instance_id)
+    Hub.ingest_metrics(state.instance_id, data)
+    # Diff + alert check-state transitions off the socket path (own GenServer).
+    Orbit.Checks.Transitions.push_evaluated(state.instance_id)
+    stamp_last_seen(state.instance_id, data["ts"])
+    {:ok, state}
+  end
+
+  defp dispatch(%{"type" => "command_result"} = frame, state) do
+    Hub.resolve_command(frame["request_id"], frame["result"] || %{})
+    {:ok, state}
+  end
+
+  defp dispatch(%{"type" => "pong"}, state) do
+    Hub.record_pong(state.instance_id)
+    {:ok, state}
+  end
+
+  # Agent→hub tunnel frames (data/close/started/error) route by stream id to
+  # the consumer process the hub registered at open (§27.5).
+  defp dispatch(%{"type" => "tunnel", "stream" => _} = frame, state) do
+    Hub.deliver_tunnel(frame)
+    {:ok, state}
+  end
+
+  defp dispatch(_unknown, state) do
+    Hub.bump(:unknown_messages)
+    {:ok, state}
+  end
+
+  defp register_and_welcome(hello, state) do
     Hub.register(state.instance_id, %{
       agent_version: hello["agent_version"],
       platform: hello["platform"],
@@ -92,6 +148,21 @@ defmodule OrbitWeb.AgentSocket do
       source_ip: state.source_ip
     })
 
+    # Then re-check AFTER registering: a revocation that lands before this
+    # check is seen here; one that lands after it finds the
+    # socket on the roster and evicts it (Orbit.AgentBinding). Checking
+    # before registering would leave a window in which a revocation between
+    # the check and the register is missed and the socket lives on.
+    if Orbit.AgentBinding.current?(state.instance_id, state.token) do
+      welcome(hello, state)
+    else
+      Hub.unregister(state.instance_id)
+      Logger.warning("agent.binding_revoked_before_hello instance_id=#{state.instance_id}")
+      {:stop, :normal, @revoked_close, state}
+    end
+  end
+
+  defp welcome(hello, state) do
     Logger.info(
       "agent.connected instance_id=#{state.instance_id} version=#{hello["agent_version"]} platform=#{hello["platform"]}"
     )
@@ -131,37 +202,6 @@ defmodule OrbitWeb.AgentSocket do
     {:push, {:text, Jason.encode!(welcome)}, %{state | hello_seen: true}}
   end
 
-  defp dispatch(%{"type" => "metrics", "data" => data}, state) when is_map(data) do
-    Hub.record_push(state.instance_id)
-    Hub.ingest_metrics(state.instance_id, data)
-    # Diff + alert check-state transitions off the socket path (own GenServer).
-    Orbit.Checks.Transitions.push_evaluated(state.instance_id)
-    stamp_last_seen(state.instance_id, data["ts"])
-    {:ok, state}
-  end
-
-  defp dispatch(%{"type" => "command_result"} = frame, state) do
-    Hub.resolve_command(frame["request_id"], frame["result"] || %{})
-    {:ok, state}
-  end
-
-  defp dispatch(%{"type" => "pong"}, state) do
-    Hub.record_pong(state.instance_id)
-    {:ok, state}
-  end
-
-  # Agent→hub tunnel frames (data/close/started/error) route by stream id to
-  # the consumer process the hub registered at open (§27.5).
-  defp dispatch(%{"type" => "tunnel", "stream" => _} = frame, state) do
-    Hub.deliver_tunnel(frame)
-    {:ok, state}
-  end
-
-  defp dispatch(_unknown, state) do
-    Hub.bump(:unknown_messages)
-    {:ok, state}
-  end
-
   @impl true
   def handle_info({:push_frame, frame}, state) do
     {:push, {:text, Jason.encode!(frame)}, state}
@@ -171,6 +211,14 @@ defmodule OrbitWeb.AgentSocket do
     # A newer connection for this instance registered — close this one
     # (python hub closes the old ws in register; 1000 = normal).
     {:stop, :normal, {1000, "replaced"}, state}
+  end
+
+  def handle_info(:hub_evicted, state) do
+    # The binding this socket authenticated with was revoked (agent
+    # disabled/uninstalled, instance deleted, token rotated) — Hub.evict
+    # already dropped the roster entry. 4003 = the agent's "invalid token".
+    Logger.info("agent.evicted instance_id=#{state.instance_id}")
+    {:stop, :normal, @revoked_close, state}
   end
 
   def handle_info(_other, state), do: {:ok, state}

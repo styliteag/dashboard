@@ -194,7 +194,8 @@ defmodule OrbitWeb.InstanceEditLive do
     inst = socket.assigns.instance
 
     if user.role in @write_roles do
-      {:ok, _} = Instances.soft_delete(inst)
+      # Evicts the agent socket too (its binding dies with the instance).
+      {:ok, _} = Orbit.AgentBinding.delete(inst)
 
       Audit.write(
         action: "instance.delete",

@@ -13,7 +13,10 @@ defmodule Orbit.Hub do
 
   Duplicate connects are last-writer-wins: registering an instance closes
   the previous socket. Unregister is identity-aware (pid must match) so a
-  dying old connection never evicts its replacement (hub.py:275 parity).
+  dying old connection never evicts its replacement (hub.py:275 parity) —
+  which makes it useless to anyone but the socket itself. A binding
+  revocation (disable, uninstall, delete, token rotation) uses `evict/2`,
+  normally via Orbit.AgentBinding.
   """
 
   use GenServer
@@ -53,6 +56,21 @@ defmodule Orbit.Hub do
   @doc "Identity-aware unregister: only removes the entry if it still points at pid."
   def unregister(server \\ __MODULE__, instance_id) do
     GenServer.call(server, {:unregister, instance_id, self()})
+  end
+
+  @doc """
+  Close an instance's agent socket regardless of the caller's identity: the
+  binding it authenticated with is gone (agent disabled/uninstalled,
+  instance deleted, token rotated). Auth runs only at the WS upgrade, so
+  without this the old socket kept pushing and receiving commands.
+
+  Drops the roster entry at once (nothing routes to it afterwards), closes
+  its tunnel streams toward their consumers and tells the socket to close
+  (`:hub_evicted` → close 4003). Returns `:ok` or `:not_connected`.
+  """
+  @spec evict(GenServer.server(), integer()) :: :ok | :not_connected
+  def evict(server \\ __MODULE__, instance_id) do
+    GenServer.call(server, {:evict, instance_id})
   end
 
   @doc """
@@ -359,6 +377,22 @@ defmodule Orbit.Hub do
 
       _ ->
         {:reply, :stale, state}
+    end
+  end
+
+  def handle_call({:evict, instance_id}, _from, state) do
+    case state.agents[instance_id] do
+      %Agent{pid: pid, monitor: ref} ->
+        if ref, do: Process.demonitor(ref, [:flush])
+        send(pid, :hub_evicted)
+        broadcast_roster_change()
+        state = drop_agent_streams(state, pid)
+
+        {:reply, :ok,
+         %{bump_counter(state, :disconnects) | agents: Map.delete(state.agents, instance_id)}}
+
+      nil ->
+        {:reply, :not_connected, state}
     end
   end
 

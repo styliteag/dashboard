@@ -4,9 +4,12 @@ defmodule OrbitWeb.SessionController do
   cookies can only be written from a plain request/response cycle).
 
   Mirrors the python /auth/login two-step contract: password → challenge
-  (`:done` bootstrap-only | `:verify` → TOTP page | `:enroll` → blocked until
-  enrollment ships), TOTP → session. Rate limiting and constant-time
-  verification live in Orbit.Accounts / Orbit.Auth.
+  (`:done` bootstrap-only | `:verify` → TOTP/passkey page | `:enroll` →
+  TOTP enrollment page), second factor → session. The steps are the
+  Orbit.Auth.LoginFlow state machine: every second-factor action names its
+  LoginFlow event and only gets a user when the session's pending state
+  allows it. Rate limiting and constant-time verification live in
+  Orbit.Accounts / Orbit.Auth.
   """
 
   use OrbitWeb, :controller
@@ -37,14 +40,14 @@ defmodule OrbitWeb.SessionController do
         # Any enrolled second factor → the /login/totp page, which offers the
         # code form and/or the passkey button per the user's actual factors.
         conn
-        |> UserAuth.put_pending_mfa(user)
+        |> UserAuth.put_pending_mfa(user, :pending_verify)
         |> redirect(to: ~p"/login/totp")
 
       {:ok, {:enroll, user}} ->
         # Mandatory 2FA, no factor yet: password passed → pending state,
         # enrollment page mints the secret (mfa_routes.setup_totp parity).
         conn
-        |> UserAuth.put_pending_mfa(user)
+        |> UserAuth.put_pending_mfa(user, :pending_enroll)
         |> redirect(to: ~p"/login/enroll")
 
       {:error, :rate_limited} ->
@@ -61,9 +64,9 @@ defmodule OrbitWeb.SessionController do
   end
 
   def totp_form(conn, _params) do
-    case UserAuth.pending_mfa_user(conn) do
+    case UserAuth.pending_mfa_user(conn, :show_challenge) do
       nil ->
-        redirect_to_login(conn)
+        redirect_to_pending_step(conn, :show_challenge)
 
       user ->
         factors = Accounts.factor_state(user)
@@ -78,33 +81,50 @@ defmodule OrbitWeb.SessionController do
   end
 
   def totp_verify(conn, %{"code" => code}) do
-    case UserAuth.pending_mfa_user(conn) do
+    case UserAuth.pending_mfa_user(conn, :factor_verified) do
       nil ->
-        redirect_to_login(conn)
+        redirect_to_pending_step(conn, :factor_verified)
 
       user ->
-        if Accounts.verify_totp(user, code) do
-          LoginLimiter.record_success(client_ip(conn))
-          audit_login(conn, "ok", user.id)
-
-          conn
-          |> UserAuth.log_in_user(user)
-          |> redirect(to: ~p"/")
-        else
-          # Failed second factor counts toward the same per-IP limiter as a
-          # failed password (python parity: brute-forcing codes locks the IP).
-          LoginLimiter.record_failure(client_ip(conn))
-          audit_login(conn, "error", user.id, %{"reason" => "bad_totp"})
-          factors = Accounts.factor_state(user)
-
-          render(conn, :totp,
-            error: "Invalid code.",
-            totp: factors.totp,
-            webauthn: factors.webauthn,
-            page_title: "Two-factor"
-          )
-        end
+        totp_attempt(conn, user, code)
     end
+  end
+
+  # The limiter gates the code step too (passkey_verify already did): without
+  # it a locked IP kept guessing codes on a password-passed session.
+  defp totp_attempt(conn, user, code) do
+    cond do
+      LoginLimiter.locked?(client_ip(conn)) ->
+        conn
+        |> put_status(429)
+        |> render_totp(user, "Too many failed attempts; try again later.")
+
+      Accounts.verify_totp(user, code) ->
+        LoginLimiter.record_success(client_ip(conn))
+        audit_login(conn, "ok", user.id)
+
+        conn
+        |> UserAuth.log_in_user(user)
+        |> redirect(to: ~p"/")
+
+      true ->
+        # Failed second factor counts toward the same per-IP limiter as a
+        # failed password (python parity: brute-forcing codes locks the IP).
+        LoginLimiter.record_failure(client_ip(conn))
+        audit_login(conn, "error", user.id, %{"reason" => "bad_totp"})
+        render_totp(conn, user, "Invalid code.")
+    end
+  end
+
+  defp render_totp(conn, user, error) do
+    factors = Accounts.factor_state(user)
+
+    render(conn, :totp,
+      error: error,
+      totp: factors.totp,
+      webauthn: factors.webauthn,
+      page_title: "Two-factor"
+    )
   end
 
   # -- Passkey login (webauthn_auth_options / _verify port) ------------------
@@ -115,7 +135,7 @@ defmodule OrbitWeb.SessionController do
   @wa_challenge :wa_login_challenge
 
   def passkey_options(conn, _params) do
-    case UserAuth.pending_mfa_user(conn) do
+    case UserAuth.pending_mfa_user(conn, :show_challenge) do
       nil ->
         conn |> put_status(401) |> json(%{error: "no pending login"})
 
@@ -132,7 +152,7 @@ defmodule OrbitWeb.SessionController do
   end
 
   def passkey_verify(conn, %{"credential" => credential}) do
-    user = UserAuth.pending_mfa_user(conn)
+    user = UserAuth.pending_mfa_user(conn, :factor_verified)
     challenge = get_session(conn, @wa_challenge)
     ip = client_ip(conn)
 
@@ -171,55 +191,106 @@ defmodule OrbitWeb.SessionController do
   # TOTP enrollment during login (mandatory 2FA, mfa_routes.py port). Each
   # GET mints a fresh pending secret (enabled stays false until confirmed) —
   # re-loading the page invalidates the previous QR, never a live factor.
+  #
+  # Two gates, both required (MFA enroll bypass regression): the session must
+  # be in LoginFlow :pending_enroll (a :pending_verify session — password
+  # only, user HAS a factor — never gets here), and the DB must still say the
+  # user has no factor (Accounts.enrollable?/1, re-checked inside
+  # begin/confirm_totp_enrollment) — else the real secret would be replaced.
   def enroll_form(conn, _params) do
-    case UserAuth.pending_mfa_user(conn) do
-      nil ->
-        redirect_to_login(conn)
-
-      user ->
-        {secret, uri} = Orbit.Accounts.begin_totp_enrollment(user)
-
-        render(conn, :enroll,
-          secret: secret,
-          uri: uri,
-          qr: totp_qr(uri),
-          error: nil,
-          page_title: "Set up 2FA"
-        )
+    with %Orbit.Accounts.User{} = user <- UserAuth.pending_mfa_user(conn, :begin_enroll),
+         {:ok, {secret, uri}} <- Orbit.Accounts.begin_totp_enrollment(user) do
+      render(conn, :enroll,
+        secret: secret,
+        uri: uri,
+        qr: totp_qr(uri),
+        error: nil,
+        page_title: "Set up 2FA"
+      )
+    else
+      nil -> refuse_enroll(conn, :begin_enroll)
+      {:error, :factor_enrolled} -> refuse_enrolled_user(conn)
     end
   end
 
   def enroll_verify(conn, %{"code" => code}) do
-    case UserAuth.pending_mfa_user(conn) do
+    case UserAuth.pending_mfa_user(conn, :factor_enrolled) do
       nil ->
-        redirect_to_login(conn)
+        refuse_enroll(conn, :factor_enrolled)
 
       user ->
-        case Orbit.Accounts.confirm_totp_enrollment(user, code) do
-          {:ok, enrolled} ->
-            LoginLimiter.record_success(client_ip(conn))
-            audit_login(conn, "ok", enrolled.id, %{"reason" => "totp_enrolled"})
-
-            conn
-            |> UserAuth.log_in_user(enrolled)
-            |> redirect(to: ~p"/")
-
-          {:error, _} ->
-            # Failed confirm counts toward the same per-IP limiter as a bad
-            # password (python parity: brute-forcing codes locks the IP).
-            LoginLimiter.record_failure(client_ip(conn))
-            audit_login(conn, "error", user.id, %{"reason" => "invalid_code"})
-            {secret, uri} = current_pending_secret(user)
-
-            render(conn, :enroll,
-              secret: secret,
-              uri: uri,
-              qr: totp_qr(uri),
-              error: "Invalid code — try again.",
-              page_title: "Set up 2FA"
-            )
+        if LoginLimiter.locked?(client_ip(conn)) do
+          # The password form, not the enroll page: re-rendering that would
+          # decrypt a secret this request has not re-checked as pending.
+          conn
+          |> put_status(429)
+          |> render(:new,
+            error: "Too many failed attempts; try again later.",
+            page_title: "Sign in"
+          )
+        else
+          enroll_attempt(conn, user, code)
         end
     end
+  end
+
+  defp enroll_attempt(conn, user, code) do
+    case Orbit.Accounts.confirm_totp_enrollment(user, code) do
+      {:ok, enrolled} ->
+        LoginLimiter.record_success(client_ip(conn))
+        audit_login(conn, "ok", enrolled.id, %{"reason" => "totp_enrolled"})
+
+        conn
+        |> UserAuth.log_in_user(enrolled)
+        |> redirect(to: ~p"/")
+
+      {:error, :factor_enrolled} ->
+        # Never re-render here: current_pending_secret/1 would decrypt
+        # and show the user's REAL secret.
+        refuse_enrolled_user(conn)
+
+      {:error, :no_enrollment} ->
+        # POST before the GET minted a secret: start the page over.
+        redirect(conn, to: ~p"/login/enroll")
+
+      {:error, :invalid_code} ->
+        # Failed confirm counts toward the same per-IP limiter as a bad
+        # password (python parity: brute-forcing codes locks the IP).
+        LoginLimiter.record_failure(client_ip(conn))
+        audit_login(conn, "error", user.id, %{"reason" => "invalid_code"})
+        render_enroll(conn, user, "Invalid code — try again.")
+    end
+  end
+
+  # Only reached for a pending_enroll user still without a factor — the
+  # secret shown is the pending one this session minted, never a live factor.
+  defp render_enroll(conn, user, error) do
+    {secret, uri} = current_pending_secret(user)
+
+    render(conn, :enroll,
+      secret: secret,
+      uri: uri,
+      qr: totp_qr(uri),
+      error: error,
+      page_title: "Set up 2FA"
+    )
+  end
+
+  # Wrong pending kind (or none): back to the step this session may take.
+  defp refuse_enroll(conn, event) do
+    Logger.warning("auth.enroll_refused state=#{UserAuth.pending_login_state(conn)}")
+    redirect_to_pending_step(conn, event)
+  end
+
+  # Right kind, but the user has a factor by now: the enroll flow is over
+  # for this session — start the login again (it will route to verify).
+  defp refuse_enrolled_user(conn) do
+    Logger.warning("auth.enroll_refused reason=factor_enrolled")
+
+    conn
+    |> configure_session(renew: true)
+    |> clear_session()
+    |> redirect(to: ~p"/login")
   end
 
   # The provisioning URI as a scannable PNG, inline. PNG rather than SVG on
@@ -309,7 +380,21 @@ defmodule OrbitWeb.SessionController do
     )
   end
 
-  defp redirect_to_login(conn), do: conn |> redirect(to: ~p"/login")
+  # A refused second-factor request. Wrong pending kind → the step this
+  # session's LoginFlow state allows (pending_verify → challenge page,
+  # pending_enroll → enrollment page). Right kind but no user (password
+  # changed, account disabled, user gone) → the password form; sending it
+  # back to its own step would redirect in a loop.
+  defp redirect_to_pending_step(conn, event) do
+    state = UserAuth.pending_login_state(conn)
+
+    cond do
+      Orbit.Auth.LoginFlow.allowed?(state, event) -> redirect(conn, to: ~p"/login")
+      state == :pending_verify -> redirect(conn, to: ~p"/login/totp")
+      state == :pending_enroll -> redirect(conn, to: ~p"/login/enroll")
+      true -> redirect(conn, to: ~p"/login")
+    end
+  end
 
   # Proxy-aware client IP (honours DASH_TRUSTED_PROXY_HOPS). MUST match what the
   # limiter/audit use everywhere else: behind nginx conn.remote_ip is the proxy

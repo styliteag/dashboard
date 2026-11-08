@@ -11,10 +11,8 @@ defmodule OrbitWeb.AgentWSController do
 
   use OrbitWeb, :controller
 
-  import Ecto.Query
-
+  alias Orbit.AgentBinding
   alias Orbit.Instances.Instance
-  alias Orbit.Repo
 
   def connect(conn, _params) do
     upgrade_arg =
@@ -23,7 +21,7 @@ defmodule OrbitWeb.AgentWSController do
           %{auth_error: {4001, "missing token"}}
 
         token ->
-          case instance_for_token(token) do
+          case AgentBinding.instance_for_token(token) do
             %Instance{} = instance ->
               # The address the fleet reaches us from — shown as "Connects
               # from" next to the box's own public IP. Via Orbit.Net, never
@@ -47,14 +45,5 @@ defmodule OrbitWeb.AgentWSController do
       ["Bearer " <> token | _] when token != "" -> token
       _ -> nil
     end
-  end
-
-  # Token → live push-mode instance (ws.py:101-109 parity).
-  defp instance_for_token(token) do
-    Repo.one(
-      from(i in Instance,
-        where: i.agent_token == ^token and i.transport == "push" and is_nil(i.deleted_at)
-      )
-    )
   end
 end
