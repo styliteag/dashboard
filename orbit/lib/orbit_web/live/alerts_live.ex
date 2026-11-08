@@ -194,15 +194,10 @@ defmodule OrbitWeb.AlertsLive do
     assign(socket, alerts: alerts)
   end
 
-  # Lifecycle buckets: snoozed = live snooze; acked = seen and not snoozed;
-  # active = needs eyes (including reconciler-lag rows without a state yet).
-  defp lifecycle_bucket(a, now) do
-    cond do
-      a.ls && a.ls.snoozed_until && DateTime.compare(a.ls.snoozed_until, now) == :gt -> "snoozed"
-      a.ls && a.ls.acked_at -> "acked"
-      true -> "active"
-    end
-  end
+  # Lifecycle buckets live in Orbit.Alerts.Lifecycle.bucket/2; the filter
+  # chips and phx-values speak strings.
+  defp lifecycle_bucket(a, now),
+    do: a.ls |> Orbit.Alerts.Lifecycle.bucket(now) |> Atom.to_string()
 
   defp lifecycle_rows(alerts, "all", _now), do: alerts
 

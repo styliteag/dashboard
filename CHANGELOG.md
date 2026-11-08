@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Alerts: a snoozed alert going UNKNOWN→CRIT (or UNKNOWN→WARN) now breaks
+  the snooze, and WARN/CRIT→UNKNOWN no longer does. The reconciler compared
+  raw Checkmk state ints (UNKNOWN=3) instead of the severity rank
+  CRIT > WARN > UNKNOWN.
+
 ## [4.5.0] - 2026-11-07
 
 ### Added
