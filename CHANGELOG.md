@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.1] - 2026-11-08
+
 ### Fixed
 
 - With the GeoIP kill switch on (`DASH_GEOIP_DISABLE`), the GeoIP database loader no
