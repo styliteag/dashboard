@@ -15,16 +15,19 @@ defmodule Orbit.Probe.HTTP do
   def get(url, opts \\ []) do
     timeout = Keyword.get(opts, :http_timeout, 4_000)
 
-    req =
-      Req.new(
-        url: url,
-        method: :get,
-        receive_timeout: timeout,
-        connect_options: [timeout: timeout, transport_opts: [verify: :verify_none]],
-        retry: false,
-        redirect: false,
-        decode_body: false
-      )
+    base = [
+      url: url,
+      method: :get,
+      receive_timeout: timeout,
+      connect_options: [timeout: timeout, transport_opts: [verify: :verify_none]],
+      retry: false,
+      redirect: false,
+      decode_body: false,
+      into: &discard_body/2
+    ]
+
+    # Test seam: a Req plug replaces the network.
+    req = Req.new(if plug = opts[:req_plug], do: Keyword.put(base, :plug, plug), else: base)
 
     case Req.request(req) do
       {:ok, %Req.Response{status: status}} ->
@@ -36,6 +39,13 @@ defmodule Orbit.Probe.HTTP do
   rescue
     e -> %{http_up: false, http_status: nil, error: Exception.message(e)}
   end
+
+  @doc """
+  Body sink: the status is all the probe needs, so the first body chunk
+  ends the response — a box answering with a huge (or endless) body is never
+  buffered.
+  """
+  def discard_body({:data, _data}, acc), do: {:halt, acc}
 
   defp describe(%{reason: reason}), do: to_string(inspect(reason))
   defp describe(reason) when is_atom(reason), do: to_string(reason)

@@ -52,4 +52,16 @@ defmodule OrbitWeb.Plugs.GeoIPKeyExemptTest do
     assert with_key("/api/ext/v1x").halted
     assert with_key("/instances").halted
   end
+
+  # "/" or "" as a prefix would exempt every path; a bare string instead of
+  # a list must not crash the plug.
+  test ":geoip_key_auth_prefixes ignores entries that are not real path prefixes" do
+    OrbitWeb.TestHooks.put_hook(:geoip_key_auth_prefixes, ["/", "", "api", nil, 42, ~c"/x"])
+    assert with_key("/instances").halted
+    assert with_key("/api/instances/1/comments").halted
+
+    OrbitWeb.TestHooks.put_hook(:geoip_key_auth_prefixes, "/api/ext/v1")
+    refute with_key("/api/ext/v1/hosts").halted
+    assert with_key("/instances").halted
+  end
 end

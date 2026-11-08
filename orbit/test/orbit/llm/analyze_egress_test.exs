@@ -43,6 +43,27 @@ defmodule Orbit.LLM.AnalyzeEgressTest do
     refute msg =~ "SECRET-REFLECTION"
   end
 
+  test "an oversized provider answer is refused, a normal one still parses" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{"choices" => [], "pad" => String.duplicate("a", 10_000_000)})
+    end)
+
+    opts = [
+      settings: settings(%{"llm_openai_api_key" => "k"}),
+      req_plug: {Req.Test, __MODULE__},
+      ssrf_check: fn _ -> nil end
+    ]
+
+    assert {:error, msg} = Analyze.analyze_logs("openai", "x", opts)
+    assert msg =~ "too large"
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => " ok "}}]})
+    end)
+
+    assert {:ok, %{findings: "ok"}} = Analyze.analyze_logs("openai", "x", opts)
+  end
+
   test "a redirect is not followed" do
     test_pid = self()
 

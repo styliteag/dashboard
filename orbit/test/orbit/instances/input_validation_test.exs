@@ -175,6 +175,28 @@ defmodule Orbit.Instances.InputValidationTest do
                Instances.update_instance(inst, %{"poll_interval_seconds" => ""})
     end
 
+    test "integer values get the same range checks as strings", %{inst: inst} do
+      for bad <- [0, 65_536, -22],
+          do:
+            assert(
+              {:error, :bad_ssh_port} = Instances.update_instance(inst, %{"ssh_port" => bad})
+            )
+
+      for bad <- [1, 86_401, -60],
+          do:
+            assert(
+              {:error, :bad_interval} =
+                Instances.update_instance(inst, %{"poll_interval_seconds" => bad})
+            )
+
+      assert {:ok, %{ssh_port: 2222}} = Instances.update_instance(inst, %{"ssh_port" => 2222})
+    end
+
+    test "integers in text fields are refused, not crashed on", %{inst: inst} do
+      for key <- ["base_url", "ping_url", "ca_bundle", "name"],
+          do: assert({:error, :bad_params} = Instances.update_instance(inst, %{key => 1}), key)
+    end
+
     test "non-string field values are refused, not crashed on", %{inst: inst} do
       assert {:error, :bad_params} = Instances.update_instance(inst, %{"location" => %{"a" => 1}})
       assert {:error, :bad_params} = Instances.update_instance(inst, %{"name" => ["x"]})

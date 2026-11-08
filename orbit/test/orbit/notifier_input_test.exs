@@ -58,6 +58,53 @@ defmodule Orbit.NotifierInputTest do
     end
   end
 
+  test "an smtp relay on a blocked address is refused before the smtp sender" do
+    for host <- ["127.0.0.1", "169.254.169.254", "0.0.0.0"] do
+      cfg = %{
+        "notify_email_smtp_host" => host,
+        "notify_email_from" => "orbit@example.com",
+        "notify_email_to" => "ops@example.com"
+      }
+
+      results = Notifier.send_test(settings: settings(cfg), smtp: fn _, _ -> flunk("sent") end)
+      assert %{status: "failed", detail: detail} = Enum.find(results, &(&1.channel == "email"))
+      assert detail =~ "blocked address", host
+    end
+  end
+
+  # gen_smtp looks up MX records by default: a relay name whose A record
+  # passes the address policy could point its MX at 127.0.0.1 or metadata.
+  test "the smtp relay is used as given, never via MX lookups" do
+    opts =
+      Notifier.smtp_options(%{
+        host: "smtp.example.com",
+        port: 587,
+        security: "starttls",
+        username: ""
+      })
+
+    assert opts[:relay] == "smtp.example.com"
+    assert opts[:no_mx_lookups] == true
+  end
+
+  test "a raw smtp connect error is logged, not handed to the UI" do
+    cfg = %{
+      "notify_email_smtp_host" => "10.0.0.25",
+      "notify_email_from" => "orbit@example.com",
+      "notify_email_to" => "ops@example.com"
+    }
+
+    results =
+      Notifier.send_test(
+        settings: settings(cfg),
+        smtp: fn _, _ -> {:error, {:permanent_failure, ~c"10.0.0.25", "535 secret banner"}} end
+      )
+
+    assert %{status: "failed", detail: detail} = Enum.find(results, &(&1.channel == "email"))
+    refute detail =~ "secret"
+    refute detail =~ "535"
+  end
+
   test "an smtp host that is no host name or IP is refused at send time" do
     cfg = %{
       "notify_email_smtp_host" => "smtp.example.com -oX",

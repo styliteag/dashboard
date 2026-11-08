@@ -53,6 +53,13 @@ BAD_PATHS = [
     "api/x\x00",
     "https://evil.example/api/x",
     "api/x#frag",
+    # Non-ASCII: fullwidth dot/slash and Unicode spaces some HTTP stacks
+    # normalise, plus a raw U+0085 (NEL) line break.
+    "api/\uff0e\uff0e/ui",
+    "api/x\uff0fy",
+    "api/x\u00a0y",
+    "api/x\u0085y",
+    "api/caf\u00e9",
 ]
 
 

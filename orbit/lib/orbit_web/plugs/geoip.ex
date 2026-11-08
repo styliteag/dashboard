@@ -74,10 +74,16 @@ defmodule OrbitWeb.Plugs.GeoIP do
 
   defp key_auth_path?(path) do
     path in @key_auth_paths or
-      Enum.any?(
-        Application.get_env(:orbit, :geoip_key_auth_prefixes, []),
-        &(path == &1 or String.starts_with?(path, &1 <> "/"))
-      )
+      Enum.any?(key_auth_prefixes(), &(path == &1 or String.starts_with?(path, &1 <> "/")))
+  end
+
+  # Only real path prefixes count: "/" or "" would exempt every path, and a
+  # misconfigured entry must not crash the plug.
+  defp key_auth_prefixes do
+    :orbit
+    |> Application.get_env(:geoip_key_auth_prefixes, [])
+    |> List.wrap()
+    |> Enum.filter(&(is_binary(&1) and byte_size(&1) > 1 and String.starts_with?(&1, "/")))
   end
 
   defp enforce(conn) do

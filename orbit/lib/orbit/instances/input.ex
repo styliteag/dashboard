@@ -32,6 +32,8 @@ defmodule Orbit.Instances.Input do
   }
 
   @interval_range 5..86_400
+  # Text fields that may also arrive as integers (a LiveView event).
+  @int_keys ~w(ssh_port poll_interval_seconds push_interval_seconds)
 
   @type error ::
           :bad_params
@@ -131,6 +133,8 @@ defmodule Orbit.Instances.Input do
     end
   end
 
+  defp int_in?(v, range) when is_integer(v), do: v in range
+
   defp int_in?(v, range) do
     case Integer.parse(String.trim(v)) do
       {n, ""} -> n in range
@@ -139,10 +143,12 @@ defmodule Orbit.Instances.Input do
   end
 
   # Blank = "not set / keep" everywhere in this form, so only a non-blank
-  # value is checked.
+  # value is checked. Integers are range-checked too; check_types/1 lets
+  # them through only for the numeric fields.
   defp check(params, key, ok?, reason) do
     case Map.get(params, key) do
       v when is_binary(v) -> if String.trim(v) == "" or ok?.(v), do: :ok, else: {:error, reason}
+      v when is_integer(v) -> if ok?.(v), do: :ok, else: {:error, reason}
       _ -> :ok
     end
   end
@@ -154,7 +160,10 @@ defmodule Orbit.Instances.Input do
   defp type_ok?({"tags", v}) when is_list(v),
     do: length(v) <= 100 and Enum.all?(v, &(is_binary(&1) and byte_size(&1) <= 255))
 
-  defp type_ok?({_key, v}) when is_nil(v) or is_boolean(v) or is_integer(v), do: true
+  defp type_ok?({key, v}) when is_integer(v),
+    do: key in @int_keys or not is_map_key(@max_bytes, key)
+
+  defp type_ok?({_key, v}) when is_nil(v) or is_boolean(v), do: true
 
   defp type_ok?({key, v}) when is_binary(v) do
     String.valid?(v) and byte_size(v) <= Map.get(@max_bytes, key, 4096)

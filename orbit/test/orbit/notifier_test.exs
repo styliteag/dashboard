@@ -47,7 +47,8 @@ defmodule Orbit.NotifierTest do
         smtp: fn cfg, mail ->
           send(test_pid, {:smtp, cfg, mail})
           :ok
-        end
+        end,
+        smtp_host_check: fn _host -> nil end
       )
 
     assert %{channel: "email", status: "sent"} = Enum.find(results, &(&1.channel == "email"))

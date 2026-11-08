@@ -2986,10 +2986,12 @@ _RELAY_PATH_BAD_ESCAPES = re.compile(r"%(2e|2f|5c|[01][0-9a-f]|7f)", re.I)
 def _relay_safe_path(raw: object) -> str | None:
     """`api/...` path of a relay request (one optional leading "/"), or None.
 
-    Refused: anything outside api/, "." / ".." segments, empty segments ("//"),
-    backslashes, control characters, fragments and percent-encoded dots,
-    slashes or control characters — the path must not leave the local API."""
-    if not isinstance(raw, str):
+    Refused: anything outside api/, non-ASCII (fullwidth dots/slashes and
+    Unicode spaces some stacks normalise), "." / ".." segments, empty segments
+    ("//"), backslashes, control characters, fragments and percent-encoded
+    dots, slashes or control characters — the path must not leave the local
+    API."""
+    if not isinstance(raw, str) or not raw.isascii():
         return None
     path = raw[1:] if raw.startswith("/") else raw
     if not path.startswith("api/"):

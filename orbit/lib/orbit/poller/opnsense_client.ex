@@ -384,6 +384,10 @@ defmodule Orbit.Poller.OpnsenseClient do
 
   defp get(%__MODULE__{} = c, path), do: request(c, :get, path, nil)
 
+  # API answers are small JSON documents; the largest (firewall rule search,
+  # 500 rows) stays well under this.
+  @max_body 16 * 1024 * 1024
+
   # One request path for every call. The basic-auth credentials ride every
   # request, so redirects are never followed (a 3xx is a failure, not a hop
   # to wherever the box points), and the body is collected with a cap
@@ -398,7 +402,7 @@ defmodule Orbit.Poller.OpnsenseClient do
         receive_timeout: @recv_timeout,
         retry: false,
         redirect: false,
-        into: &capped_body/2,
+        into: Orbit.Net.capped_body(@max_body),
         decode_body: false
       ]
       |> then(&if(json, do: Keyword.put(&1, :json, json), else: &1))
@@ -412,18 +416,6 @@ defmodule Orbit.Poller.OpnsenseClient do
     end
   rescue
     _ -> nil
-  end
-
-  # API answers are small JSON documents; the largest (firewall rule search,
-  # 500 rows) stays well under this.
-  @max_body 16 * 1024 * 1024
-
-  defp capped_body({:data, data}, {req, resp}) do
-    body = if is_binary(resp.body), do: resp.body <> data, else: data
-
-    if byte_size(body) > @max_body,
-      do: {:halt, {req, %{resp | body: :too_large}}},
-      else: {:cont, {req, %{resp | body: body}}}
   end
 
   # In :test a Req plug stub replaces the network (config :orbit,

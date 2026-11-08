@@ -46,7 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     sha256 and inflated with a size cap.
   - API keys: a group-scoped admin lists, revokes and purges only keys bound
     within his groups.
-  - Packet capture filters refuse any `-option` token, not only a leading one.
+  - Packet capture filters refuse any `-option` token, not only a leading
+    one, and must be printable ASCII without quotes or backslashes (older
+    agents split on separators such as `\x1c` or U+00A0 that the server-side
+    token check did not see).
   - IPsec connect/disconnect/diagnose: tunnel and SA ids are format-checked;
     Diagnose is write-gated server-side like its button.
   - Agent sockets can only answer their own commands and feed their own
@@ -55,17 +58,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     version/platform/checksum strings are format-checked.
   - The GUI-proxy cookie is bound to the user and his password version
     (password change, disable or lost group access end GUI access at once);
-    its lifetime is 2 h (was 8 h). Proxied methods are allow-listed; the
-    handoff path and replayed firewall cookies are sanitised.
+    its lifetime is 2 h (was 8 h). Handoff and cookie tokens are not
+    interchangeable (a cookie can no longer renew itself), and a read-only
+    user gets no GUI access. Proxied methods are allow-listed; the handoff
+    path and replayed firewall cookies are sanitised.
   - Shell and capture WebSockets require a browser Origin (missing or `null`
     is refused); shell resize dimensions are bounded.
   - Passwords are 8-256 characters for self-service change, admin reset and
     user creation; usernames have no whitespace/control characters.
-  - Outbound calls: webhooks and a custom LLM base URL use one address policy
-    (incl. `::ffff:127.0.0.1`, `::127.0.0.1`, NAT64 forms) and never follow
-    redirects; LLM error bodies are no longer echoed; SMTP host and from/to
-    are checked (no header injection). The direct-poll OPNsense client no
-    longer follows redirects and caps response bodies.
+  - Outbound calls: webhooks, a custom LLM base URL and the SMTP relay use
+    one address policy (incl. `::ffff:127.0.0.1`, `::127.0.0.1`, SIIT,
+    NAT64 and 6to4 forms); webhook and LLM requests connect to the address
+    that was checked (no DNS rebinding) and never follow redirects; LLM error
+    bodies and raw SMTP errors are no longer echoed; the SMTP relay is used
+    as configured (no MX lookups) and from/to are checked (no header
+    injection). The direct-poll OPNsense and Securepoint clients no longer
+    follow redirects and cap response bodies, as do LLM answers; the HTTP
+    probe and webhooks read no response body.
   - Selection rules: global rules are superadmin-only; per-instance rule
     deletes are scope-checked.
   - Bulk actions run exactly on the boxes the confirmation dialog listed.
@@ -75,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ignored instead of crashing the page.
   - API responses carry the secure browser headers (nosniff).
 - Firewall agent 4.2.16: the local API relay (`http.relay`) forwards only
-  `api/...` paths (no `..`, `//`, backslashes, control characters or
+  ASCII `api/...` paths (no `..`, `//`, backslashes, control characters or
   encoded dots/slashes), only GET/POST/PUT/DELETE, and only the
   Accept/Content-Type request headers — nothing can override the injected
   API credentials.

@@ -46,10 +46,11 @@ defmodule OrbitWeb.CaptureWSController do
         "interface" => to_string(params["interface"] || "")
       })
 
+      # Forward exactly what Params.validate/2 checked (trimmed).
       %{
         instance_id: id,
-        interface: params["interface"] || "",
-        filter: params["filter"] || ""
+        interface: String.trim(params["interface"] || ""),
+        filter: String.trim(params["filter"] || "")
       }
     else
       {:error, code} ->

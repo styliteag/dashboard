@@ -58,9 +58,10 @@ defmodule OrbitWeb.GuiProxy do
   defp handoff(conn, id) do
     token = conn.query_params["t"] || ""
 
-    # Bound handoff (Orbit.GUI.authorized?/2): the cookie inherits the user
-    # binding, so a password change / disable / scope change ends it.
-    if Orbit.GUI.authorized?(token, id) do
+    # Bound handoff (Orbit.GUI.authorized?/3): the cookie inherits the user
+    # binding, so a password change / disable / scope change ends it. Only a
+    # handoff token is accepted here — a replayed cookie must not renew itself.
+    if Orbit.GUI.authorized?(token, id, :handoff) do
       conn
       |> put_resp_cookie(@cookie, Orbit.GUI.cookie_token(id, Orbit.GUI.token_user(token)),
         http_only: true,
@@ -132,7 +133,7 @@ defmodule OrbitWeb.GuiProxy do
       method_atom(conn.method) == nil ->
         conn |> send_resp(405, "method not allowed") |> halt()
 
-      Orbit.GUI.authorized?(token, id) ->
+      Orbit.GUI.authorized?(token, id, :cookie) ->
         proxy(conn, id)
 
       true ->

@@ -35,7 +35,7 @@ defmodule Orbit.GUI do
   """
   def open_flow(%Instance{} = inst, path, user) do
     Orbit.GUI.TunnelManager.ensure(inst.id)
-    token = Auth.sign_bound(inst.id, user.id, pv(user), 60)
+    token = handoff_token(inst.id, user)
     maybe_stash_login(inst, token)
     handoff_url(inst, token, path)
   end
@@ -78,21 +78,31 @@ defmodule Orbit.GUI do
   # plain dashboard logout (the session registry is bookkeeping only).
   @cookie_ttl 2 * 3600
 
+  # Same gate as the GUI open button and POST /api/.../gui/open.
+  @write_roles ~w(admin user)
+
+  @doc "A 60 s handoff token for `instance_id` (`/__orbit/auth?t=`), bound to `user`."
+  def handoff_token(instance_id, user),
+    do: Auth.sign_bound(instance_id, user.id, pv(user), :handoff, 60)
+
   @doc "A fresh `orbit_gui` cookie value for `instance_id`, bound to `user`."
   def cookie_token(instance_id, user),
-    do: Auth.sign_bound(instance_id, user.id, pv(user), @cookie_ttl)
+    do: Auth.sign_bound(instance_id, user.id, pv(user), :cookie, @cookie_ttl)
 
   @doc """
-  True when `token` is a bound GUI token for `instance_id` whose user still
-  exists, is enabled, has the same password_version, and can still see the
-  instance (Scope). Checked on the handoff and on every proxied request.
+  True when `token` is a bound GUI token of `purpose` (`:handoff` or
+  `:cookie`) for `instance_id` whose user still exists, is enabled, has the
+  same password_version, still holds a write role (opening the GUI is
+  write-gated) and can still see the instance (Scope). Checked on the
+  handoff and on every proxied request.
   """
-  def authorized?(token, instance_id) do
-    with {:ok, %{instance_id: ^instance_id, user_id: uid, password_version: v}} <-
+  def authorized?(token, instance_id, purpose) do
+    with {:ok, %{instance_id: ^instance_id, user_id: uid, password_version: v, purpose: ^purpose}} <-
            Auth.verify_bound(token),
          %Orbit.Accounts.User{disabled: disabled} = user when disabled != true <-
            Orbit.Accounts.get_user(uid),
          true <- pv(user) == v,
+         true <- user.role in @write_roles,
          %Instance{} <- Orbit.Auth.Scope.get_instance(instance_id, user) do
       true
     else

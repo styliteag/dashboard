@@ -37,31 +37,43 @@ defmodule Orbit.GUI.Auth do
     "#{b64(payload)}.#{b64(sig)}"
   end
 
+  # Purpose tag in a bound token: the 60 s handoff and the 2 h cookie are
+  # not interchangeable (a cookie replayed as a handoff would mint a fresh
+  # cookie, renewing GUI access forever).
+  @purposes %{handoff: "h", cookie: "c"}
+  @purpose_tags Map.new(@purposes, fn {k, v} -> {v, k} end)
+
   @doc """
-  Sign a token bound to the user who opened the GUI and his
-  password_version: `instance:exp:user:password_version`. The proxy re-checks
-  the user on every request (`Orbit.GUI.authorized?/2`), so a password
-  change, a disabled account or a lost membership ends access at once.
+  Sign a token bound to the user who opened the GUI, his password_version
+  and its purpose (`:handoff` or `:cookie`):
+  `instance:exp:user:password_version:purpose`. The proxy re-checks the user
+  on every request (`Orbit.GUI.authorized?/3`), so a password change, a
+  disabled account or a lost membership ends access at once.
   """
-  def sign_bound(instance_id, user_id, password_version, ttl_seconds, now \\ nil) do
+  def sign_bound(instance_id, user_id, password_version, purpose, ttl_seconds, now \\ nil)
+      when is_map_key(@purposes, purpose) do
     now = now || System.os_time(:second)
-    payload = "#{instance_id}:#{now + ttl_seconds}:#{user_id}:#{password_version}"
+
+    payload =
+      "#{instance_id}:#{now + ttl_seconds}:#{user_id}:#{password_version}:#{@purposes[purpose]}"
+
     sig = :crypto.mac(:hmac, :sha256, secret(), payload)
     "#{b64(payload)}.#{b64(sig)}"
   end
 
   @doc """
-  `{:ok, %{instance_id, user_id, password_version}}` for an authentic,
-  unexpired BOUND token, else `:error` (an unbound token included).
+  `{:ok, %{instance_id, user_id, password_version, purpose}}` for an
+  authentic, unexpired BOUND token, else `:error` (an unbound token included).
   """
   def verify_bound(token, now \\ nil) do
     with {:ok, payload} <- authentic_payload(token),
-         [instance_s, exp_s, user_s, pv_s] <- String.split(payload, ":"),
+         [instance_s, exp_s, user_s, pv_s, tag] <- String.split(payload, ":"),
+         {:ok, purpose} <- Map.fetch(@purpose_tags, tag),
          {instance_id, ""} <- Integer.parse(instance_s),
          {user_id, ""} <- Integer.parse(user_s),
          {pv, ""} <- Integer.parse(pv_s),
          true <- unexpired?(exp_s, now) do
-      {:ok, %{instance_id: instance_id, user_id: user_id, password_version: pv}}
+      {:ok, %{instance_id: instance_id, user_id: user_id, password_version: pv, purpose: purpose}}
     else
       _ -> :error
     end

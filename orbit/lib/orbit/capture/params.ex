@@ -12,10 +12,17 @@ defmodule Orbit.Capture.Params do
   anything (a bare `-`, BPF's minus, is no option), so boxes still running
   an older agent are protected as well. An interface name never starts with
   `-` either.
+
+  The token check splits like Elixir, older agents split like Python's
+  `str.split()`, which also breaks on `\\x1c`-`\\x1f`, U+00A0, U+202F and
+  other Unicode spaces. So the filter must first be printable ASCII
+  (space to `~`) without quotes or backslashes: then both splits agree and no
+  hidden separator can smuggle an option past the token check.
   """
 
   @iface ~r/^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$/
   @max_filter 1024
+  @printable_ascii ~r/\A[\x20-\x7e]*\z/
 
   @doc "`:ok` or `{:error, message}`; blank interface = the agent's default."
   @spec validate(term(), term()) :: :ok | {:error, String.t()}
@@ -27,12 +34,16 @@ defmodule Orbit.Capture.Params do
     cond do
       iface != "" and not Regex.match?(@iface, iface) -> {:error, "invalid interface name"}
       byte_size(filt) > @max_filter -> {:error, "capture filter too long"}
+      not plain_ascii?(filt) -> {:error, "invalid characters in capture filter"}
       option_token?(filt) -> {:error, "a capture filter must not contain '-' options"}
       true -> :ok
     end
   end
 
   def validate(_interface, _filter), do: {:error, "invalid capture parameters"}
+
+  defp plain_ascii?(filt),
+    do: Regex.match?(@printable_ascii, filt) and not String.contains?(filt, ["\"", "'", "\\"])
 
   defp option_token?(filt),
     do: filt |> String.split() |> Enum.any?(&String.match?(&1, ~r/\A-./))

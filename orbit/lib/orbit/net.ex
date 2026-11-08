@@ -189,4 +189,19 @@ defmodule Orbit.Net do
   defp public_tuple?({a, _, _, _, _, _, _, _}) when a >= 0xFF00, do: false
   defp public_tuple?({_, _, _, _, _, _, _, _}), do: true
   defp public_tuple?(_), do: false
+
+  @doc """
+  A Req `:into` collector that buffers the body up to `max_bytes`; beyond
+  that it stops reading and leaves `body: :too_large` on the response.
+  """
+  @spec capped_body(pos_integer()) :: (term(), {Req.Request.t(), Req.Response.t()} -> term())
+  def capped_body(max_bytes) do
+    fn {:data, data}, {req, resp} ->
+      body = if is_binary(resp.body), do: resp.body <> data, else: data
+
+      if byte_size(body) > max_bytes,
+        do: {:halt, {req, %{resp | body: :too_large}}},
+        else: {:cont, {req, %{resp | body: body}}}
+    end
+  end
 end
