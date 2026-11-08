@@ -80,6 +80,7 @@ defmodule Orbit.Groups.Channels do
     with [] <- unknown,
          {:ok, config} <- build_config(fields, incoming, existing),
          :ok <- check_port(channel, config),
+         :ok <- check_email(channel, config),
          :ok <- check_ssrf(channel, config, opts) do
       {:ok, config}
     else
@@ -114,6 +115,23 @@ defmodule Orbit.Groups.Channels do
   end
 
   defp check_port(_channel, _config), do: :ok
+
+  # Header fields: CR/LF would start a new header (Bcc: injection); the
+  # relay must be a plain host name or IP literal.
+  defp check_email("email", config) do
+    cond do
+      not Orbit.Net.host_arg?(config["smtp_host"] || "") ->
+        {:error, "invalid smtp_host"}
+
+      Enum.any?(~w(from to), &String.match?(config[&1] || "", ~r/[\r\n\x00]/)) ->
+        {:error, "invalid from/to"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp check_email(_channel, _config), do: :ok
 
   defp check_ssrf("mattermost", %{"url" => url}, opts) do
     ssrf_check = Keyword.get(opts, :ssrf_check, &Orbit.Notifier.ssrf_block_reason/1)

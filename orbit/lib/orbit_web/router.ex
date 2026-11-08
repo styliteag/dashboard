@@ -191,6 +191,8 @@ defmodule OrbitWeb.Router do
   # orbit_ api-key auth joins this pipeline in a later slice.
   pipeline :session_api do
     plug :accepts, ["json"]
+    # nosniff & co.: these routes serve raw text (logfiles, backups, CSV).
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :track_access
@@ -213,6 +215,8 @@ defmodule OrbitWeb.Router do
   # Write-gated api mutations (require_write parity).
   pipeline :write_api do
     plug :accepts, ["json"]
+    # nosniff & co.: these routes serve raw text (logfiles, backups, CSV).
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :track_access
@@ -247,6 +251,7 @@ defmodule OrbitWeb.Router do
   # Machine exports: read_principal (session OR orbit_ read-only api key).
   # No :accepts plug — prometheus serves text/plain to */* scrapers.
   pipeline :read_api do
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :read_principal

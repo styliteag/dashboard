@@ -19,9 +19,13 @@ defmodule OrbitWeb.CaptureWSController do
   alias Orbit.Instances.Instance
   alias OrbitWeb.WSAuth
 
+  # Browser → capture frames are control messages only.
+  @doc false
+  def ws_options, do: [timeout: 60_000, max_frame_size: 64 * 1024]
+
   def connect(conn, %{"instance_id" => raw_id} = params) do
     arg = authorize(conn, raw_id, params)
-    conn |> WebSockAdapter.upgrade(OrbitWeb.CaptureSocket, arg, timeout: 60_000) |> halt()
+    conn |> WebSockAdapter.upgrade(OrbitWeb.CaptureSocket, arg, ws_options()) |> halt()
   end
 
   defp authorize(conn, raw_id, params) do

@@ -75,7 +75,14 @@ defmodule Orbit.LLM.Analyze do
 
         base = presence(settings.("llm_#{p.id}_base_url")) || p.base_url
         {url, headers, body} = build_chat_request(p, base, key, model, anonymized)
-        post(p, url, headers, body, model, opts)
+        # The request carries the API key: an operator-set base URL gets the
+        # same egress guard as the notifier webhooks (Orbit.Net.Egress).
+        ssrf_check = Keyword.get(opts, :ssrf_check, &Orbit.Net.Egress.ssrf_block_reason/1)
+
+        case ssrf_check.(url) do
+          nil -> post(p, url, headers, body, model, opts)
+          reason -> {:error, "Base URL rejected: #{reason}"}
+        end
       end
     else
       nil -> {:error, "unknown provider"}
@@ -138,7 +145,9 @@ defmodule Orbit.LLM.Analyze do
       headers: headers,
       json: body,
       receive_timeout: @timeout_ms,
-      retry: false
+      retry: false,
+      # The guard vetted this host; a 3xx must not carry the key elsewhere.
+      redirect: false
     ]
 
     req_opts =
@@ -151,8 +160,14 @@ defmodule Orbit.LLM.Analyze do
       {:ok, %{status: 200, body: data}} when is_map(data) ->
         {:ok, %{provider: p.id, model: model, findings: parse_chat_response(p.style, data)}}
 
+      # The body is the far side's text — logged capped, never echoed to the UI.
       {:ok, %{status: status, body: body}} ->
-        {:error, "HTTP #{status}: #{String.slice(inspect(body), 0, 300)}"}
+        Logger.warning(
+          "llm.analyze_failed provider=#{p.id} status=#{status} " <>
+            "body=#{String.slice(inspect(body), 0, 300)}"
+        )
+
+        {:error, "HTTP #{status} from the provider"}
 
       {:error, error} ->
         Logger.warning("llm.analyze_failed provider=#{p.id} error=#{Exception.message(error)}")

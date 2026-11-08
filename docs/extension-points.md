@@ -37,6 +37,7 @@ needs a recompile); "runtime" keys with `Application.get_env` on each use.
 | `:extra_forwards` | compile-time | `{path, plug, opts}` | `forward path, plug, opts` at the router's top level. No pipeline runs first: the plug owns auth completely (a machine API, an external login flow). |
 | `:extra_superadmin_live` | compile-time | `{path, live_module}` (module relative to `OrbitWeb`) | Extra LiveView pages inside the `:superadmin` live session (superadmin gate, GeoGate). |
 | `:session_validators` | runtime | modules with `valid_session?(user, session) :: boolean` (string-keyed session map) | Every validator must accept, on each HTTP request (`fetch_current_user`), LiveView mount and client-WebSocket upgrade (`OrbitWeb.WSAuth`), on top of the built-in checks (user exists and enabled, password version, MFA). A rejected session behaves as logged out. `OrbitWeb.UserAuth.user_from_session/1` is the one shared check. |
+| `:geoip_key_auth_prefixes` | runtime | path prefixes (strings) | Extra paths (the prefix itself or anything below `prefix/`) where an `Authorization: Bearer orbit_…` header exempts the request from the GeoIP gate, on top of the built-in `/api/export/checkmk` and `/api/export/prometheus`. Only for forwards whose auth is the bearer key alone (a wrong key must be a 401, never a session fallback). |
 | `:logout_redirects` | runtime | modules with `logout_redirect(conn) :: url \| nil` | Asked in order before the session is dropped (so they can read it); the first URL wins and is used as an external redirect. All `nil`: `/login`. |
 
 ## Web: pages

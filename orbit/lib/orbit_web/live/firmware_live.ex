@@ -94,15 +94,20 @@ defmodule OrbitWeb.FirmwareLive do
   end
 
   def handle_event("toggle_select", %{"id" => raw_id}, socket) do
-    {id, ""} = Integer.parse(raw_id)
-    selected = socket.assigns.selected
+    case OrbitWeb.ParamId.parse(raw_id) do
+      nil ->
+        {:noreply, socket}
 
-    selected =
-      if MapSet.member?(selected, id),
-        do: MapSet.delete(selected, id),
-        else: MapSet.put(selected, id)
+      id ->
+        selected = socket.assigns.selected
 
-    {:noreply, assign(socket, selected: selected)}
+        selected =
+          if MapSet.member?(selected, id),
+            do: MapSet.delete(selected, id),
+            else: MapSet.put(selected, id)
+
+        {:noreply, assign(socket, selected: selected)}
+    end
   end
 
   def handle_event("select_all", _params, socket) do
@@ -126,11 +131,14 @@ defmodule OrbitWeb.FirmwareLive do
   def handle_event("bulk_ask", %{"action" => action}, socket)
       when action in ~w(firmware_update firmware_upgrade) do
     names = bulk_target_names(socket.assigns, action)
+    # Frozen with the dialog: bulk_run never acts on a box not named here.
+    ids = bulk_targets(visible(socket.assigns), socket.assigns.selected, action)
 
     if not socket.assigns.writable or socket.assigns.bulk_busy or names == [] do
       {:noreply, socket}
     else
-      {:noreply, assign(socket, confirm: %{action: action, names: names}, confirm_typed: "")}
+      {:noreply,
+       assign(socket, confirm: %{action: action, names: names, ids: ids}, confirm_typed: "")}
     end
   end
 
@@ -146,7 +154,7 @@ defmodule OrbitWeb.FirmwareLive do
     confirm = socket.assigns.confirm
 
     targets =
-      confirm && bulk_targets(visible(socket.assigns), socket.assigns.selected, confirm.action)
+      confirm && frozen_targets(confirm, visible(socket.assigns), socket.assigns.selected)
 
     cond do
       is_nil(confirm) or not socket.assigns.writable or socket.assigns.bulk_busy or
@@ -273,6 +281,15 @@ defmodule OrbitWeb.FirmwareLive do
     |> Enum.filter(eligible)
     |> Enum.filter(&MapSet.member?(selected, &1.id))
     |> Enum.map(& &1.id)
+  end
+
+  @doc """
+  The run set: the ids frozen at bulk_ask, minus any that stopped being
+  eligible since (stale rows are dropped, never replaced by new ones).
+  """
+  def frozen_targets(%{ids: ids, action: action}, rows, selected) do
+    current = MapSet.new(bulk_targets(rows, selected, action))
+    Enum.filter(ids, &MapSet.member?(current, &1))
   end
 
   defp visible(a) do

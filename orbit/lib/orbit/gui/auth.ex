@@ -37,21 +37,44 @@ defmodule Orbit.GUI.Auth do
     "#{b64(payload)}.#{b64(sig)}"
   end
 
+  @doc """
+  Sign a token bound to the user who opened the GUI and his
+  password_version: `instance:exp:user:password_version`. The proxy re-checks
+  the user on every request (`Orbit.GUI.authorized?/2`), so a password
+  change, a disabled account or a lost membership ends access at once.
+  """
+  def sign_bound(instance_id, user_id, password_version, ttl_seconds, now \\ nil) do
+    now = now || System.os_time(:second)
+    payload = "#{instance_id}:#{now + ttl_seconds}:#{user_id}:#{password_version}"
+    sig = :crypto.mac(:hmac, :sha256, secret(), payload)
+    "#{b64(payload)}.#{b64(sig)}"
+  end
+
+  @doc """
+  `{:ok, %{instance_id, user_id, password_version}}` for an authentic,
+  unexpired BOUND token, else `:error` (an unbound token included).
+  """
+  def verify_bound(token, now \\ nil) do
+    with {:ok, payload} <- authentic_payload(token),
+         [instance_s, exp_s, user_s, pv_s] <- String.split(payload, ":"),
+         {instance_id, ""} <- Integer.parse(instance_s),
+         {user_id, ""} <- Integer.parse(user_s),
+         {pv, ""} <- Integer.parse(pv_s),
+         true <- unexpired?(exp_s, now) do
+      {:ok, %{instance_id: instance_id, user_id: user_id, password_version: pv}}
+    else
+      _ -> :error
+    end
+  end
+
   @doc "instance_id if the token is well-formed, authentic and unexpired, else nil."
   def verify(token, now \\ nil)
 
   def verify(token, now) when is_binary(token) do
-    now = now || System.os_time(:second)
-
-    with [payload_b64, sig_b64] <- String.split(token, ".", parts: 2),
-         {:ok, payload} <- unb64(payload_b64),
-         {:ok, sig} <- unb64(sig_b64),
-         expected = :crypto.mac(:hmac, :sha256, secret(), payload),
-         true <- constant_time_equal?(sig, expected),
+    with {:ok, payload} <- authentic_payload(token),
          [instance_s, exp_s] <- String.split(payload, ":"),
          {instance_id, ""} <- Integer.parse(instance_s),
-         {exp, ""} <- Integer.parse(exp_s),
-         true <- exp >= now do
+         true <- unexpired?(exp_s, now) do
       instance_id
     else
       _ -> nil
@@ -59,6 +82,27 @@ defmodule Orbit.GUI.Auth do
   end
 
   def verify(_non_binary, _now), do: nil
+
+  defp authentic_payload(token) when is_binary(token) do
+    with [payload_b64, sig_b64] <- String.split(token, ".", parts: 2),
+         {:ok, payload} <- unb64(payload_b64),
+         {:ok, sig} <- unb64(sig_b64),
+         expected = :crypto.mac(:hmac, :sha256, secret(), payload),
+         true <- constant_time_equal?(sig, expected) do
+      {:ok, payload}
+    else
+      _ -> :error
+    end
+  end
+
+  defp authentic_payload(_), do: :error
+
+  defp unexpired?(exp_s, now) do
+    case Integer.parse(exp_s) do
+      {exp, ""} -> exp >= (now || System.os_time(:second))
+      _ -> false
+    end
+  end
 
   # hash_equals raises on unequal sizes; python's compare_digest just returns
   # False. Guard the size so a short/garbage sig is a clean reject.

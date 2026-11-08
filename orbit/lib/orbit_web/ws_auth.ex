@@ -38,19 +38,22 @@ defmodule OrbitWeb.WSAuth do
 
   defp check_origin(conn) do
     case get_req_header(conn, "origin") do
-      [] -> :ok
       [origin | _] -> if origin_allowed?(origin), do: :ok, else: {:error, 4403}
+      [] -> {:error, 4403}
     end
   end
 
-  # Reject a cross-site WS handshake (hub.py _ws_origin_ok). No Origin
-  # (non-browser) passes; localhost/127.0.0.1 always pass (dev).
+  # Reject a cross-site WS handshake (hub.py _ws_origin_ok). These sockets
+  # (root shell, packet capture) are only opened by the dashboard page, so a
+  # browser Origin is required: no header, the opaque "null" origin
+  # (sandboxed iframe, file:, data:) and host-less values are refused.
+  # localhost/127.0.0.1 always pass (dev).
   defp origin_allowed?(origin) do
     host = origin |> URI.parse() |> Map.get(:host) |> to_string() |> String.downcase()
 
     cond do
+      host == "" -> false
       host in ~w(localhost 127.0.0.1 ::1) -> true
-      host == "" -> true
       true -> host in allowed_origin_hosts()
     end
   end

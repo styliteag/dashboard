@@ -143,6 +143,7 @@ defmodule OrbitWeb.InstanceCreateLive do
   defp error_text(:group_required), do: "pick a group (you are in more than one)"
   defp error_text(:unknown_group), do: "unknown group"
   defp error_text(:not_a_member), do: "not a member of the target group"
+  defp error_text(reason), do: InstanceForm.input_error_text(reason) || "could not create"
 
   @impl true
   def render(assigns) do

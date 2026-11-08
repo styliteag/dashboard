@@ -35,8 +35,23 @@ defmodule Orbit.ApiKeys do
 
   def hash_key(token), do: :crypto.hash(:sha256, token) |> Base.encode16(case: :lower)
 
-  @doc "All keys with their bindings, newest first."
-  def list do
+  @doc """
+  Keys the user may manage, newest first: a superadmin sees every key; an
+  admin only keys bound WITHIN his groups (same rule as reveal — global and
+  other tenants' keys are not his to see or touch).
+  """
+  def list(%User{is_superadmin: true}), do: list_all()
+
+  def list(%User{} = user) do
+    mine = User.group_id_set(user)
+
+    Enum.filter(list_all(), fn k ->
+      binding = MapSet.new(k.groups, & &1.id)
+      MapSet.size(binding) > 0 and MapSet.subset?(binding, mine)
+    end)
+  end
+
+  defp list_all do
     keys =
       Repo.query!(
         "SELECT k.id, k.name, k.prefix, k.purpose, k.revealable, k.created_at, " <>
@@ -133,18 +148,32 @@ defmodule Orbit.ApiKeys do
     end
   end
 
-  @doc "Soft revoke: stamp + drop the recoverable copy (never revealable again)."
-  def revoke(key_id) do
-    Repo.query!(
-      "UPDATE api_keys SET revoked_at = COALESCE(revoked_at, ?), key_enc = NULL WHERE id = ?",
-      [naive_now(), key_id]
-    )
+  @doc """
+  Soft revoke: stamp + drop the recoverable copy (never revealable again).
+  Out-of-scope keys (see `list/1`) answer `{:error, :not_found}`.
+  """
+  def revoke(key_id, %User{} = user) do
+    if may_manage?(user, key_id) do
+      Repo.query!(
+        "UPDATE api_keys SET revoked_at = COALESCE(revoked_at, ?), key_enc = NULL WHERE id = ?",
+        [naive_now(), key_id]
+      )
 
-    :ok
+      :ok
+    else
+      {:error, :not_found}
+    end
   end
 
-  @doc "Hard delete — only a revoked key (active keys must be revoked first)."
-  def purge(key_id) do
+  @doc """
+  Hard delete — only a revoked key (active keys must be revoked first).
+  Out-of-scope keys answer `{:error, :not_found}`.
+  """
+  def purge(key_id, %User{} = user) do
+    if may_manage?(user, key_id), do: do_purge(key_id), else: {:error, :not_found}
+  end
+
+  defp do_purge(key_id) do
     case Repo.query!("SELECT revoked_at FROM api_keys WHERE id = ?", [key_id]).rows do
       [[nil]] ->
         {:error, :not_revoked}
@@ -169,7 +198,7 @@ defmodule Orbit.ApiKeys do
          ).rows do
       [[key_enc, nil, revealable]]
       when key_enc != nil and (revealable == 1 or revealable == true) ->
-        if may_reveal?(user, key_id), do: Orbit.Crypto.decrypt!(key_enc)
+        if may_manage?(user, key_id), do: Orbit.Crypto.decrypt!(key_enc)
 
       _ ->
         nil
@@ -177,10 +206,11 @@ defmodule Orbit.ApiKeys do
   end
 
   # Superadmin: any key. Admin: only keys whose binding is non-empty AND
-  # a subset of his groups (a global key would bypass his scoping).
-  defp may_reveal?(%User{is_superadmin: true}, _key_id), do: true
+  # a subset of his groups (a global key would bypass his scoping). One rule
+  # for list, reveal, revoke and purge.
+  defp may_manage?(%User{is_superadmin: true}, _key_id), do: true
 
-  defp may_reveal?(user, key_id) do
+  defp may_manage?(user, key_id) do
     binding =
       Repo.query!("SELECT group_id FROM apikey_groups WHERE apikey_id = ?", [key_id]).rows
       |> List.flatten()

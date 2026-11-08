@@ -78,9 +78,17 @@ defmodule OrbitWeb.ExportController do
 
   defp csv_line(fields), do: Enum.map_join(fields, ",", &csv_escape/1)
 
-  # RFC-4180 escaping: quote when the field carries a comma/quote/newline.
-  defp csv_escape(field) do
-    text = to_string(field)
+  defp neutralise_formula(<<c, _::binary>> = text) when c in ~c"=+-@\t\r", do: "'" <> text
+  defp neutralise_formula(text), do: text
+
+  @doc """
+  One CSV cell: formula neutralisation (a leading `=`, `+`, `-`, `@`, TAB or
+  CR gets a `'` prefix so spreadsheets show text, not a formula — names,
+  locations and agent error messages are not trusted), then RFC-4180
+  quoting when the field carries a comma/quote/newline.
+  """
+  def csv_escape(field) do
+    text = field |> to_string() |> neutralise_formula()
 
     if String.contains?(text, [",", "\"", "\n", "\r"]) do
       "\"" <> String.replace(text, "\"", "\"\"") <> "\""

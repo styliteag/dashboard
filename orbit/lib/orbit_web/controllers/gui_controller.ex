@@ -26,7 +26,7 @@ defmodule OrbitWeb.GuiController do
     with {id, ""} <- Integer.parse(raw_id),
          %Instance{} = inst <- Scope.get_instance(id, user),
          :ok <- GUI.openable(inst) do
-      url = GUI.open_flow(inst, params["path"])
+      url = GUI.open_flow(inst, params["path"], user)
 
       Orbit.Audit.write(
         action: "agent.gui_open",

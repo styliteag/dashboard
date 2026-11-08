@@ -9,6 +9,29 @@ defmodule Orbit.Auth.Password do
   backend in password_test.exs.
   """
 
+  @min_length 8
+  @max_length 256
+
+  @doc """
+  The one rule for a NEW password (self-service change, admin reset, user
+  creation): a valid UTF-8 string of 8..256 characters. The upper bound keeps
+  Argon2 from hashing arbitrarily large blobs.
+  """
+  @spec validate_new(term()) ::
+          :ok | {:error, :password_too_short | :password_too_long | :password_invalid}
+  def validate_new(password) when is_binary(password) do
+    cond do
+      not String.valid?(password) -> {:error, :password_invalid}
+      String.length(password) < @min_length -> {:error, :password_too_short}
+      String.length(password) > @max_length -> {:error, :password_too_long}
+      true -> :ok
+    end
+  end
+
+  def validate_new(_), do: {:error, :password_invalid}
+
+  def max_length, do: @max_length
+
   @spec hash(String.t()) :: String.t()
   def hash(password) when is_binary(password), do: Argon2.hash_pwd_salt(password)
 

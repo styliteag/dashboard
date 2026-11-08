@@ -29,6 +29,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection whose token was revoked before its hello is refused, and
   frames sent before the hello are ignored.
   Binding changes go through one module, `Orbit.AgentBinding`.
+- Input validation sweep (server side; the UI hints were advisory only):
+  - Ping tests accept only a count of 1-20; the VPN page's Phase-2 "Test"
+    applies the same source/destination checks as the monitor editor.
+    Phase-2 monitor keys (tunnel, child, selectors) are length/charset checked.
+  - Instances: base URL must be http(s) with a host, ping URL an http(s) URL
+    or host[:port], CA bundle a PEM certificate, SSH port 1-65535, intervals
+    5-86400 s. Pointing the base URL at a different host, port or scheme now
+    drops the stored API key/secret unless they are re-entered in the same save.
+  - Firewall rules: rule ids and the interface filter are refused unless they
+    are plain tokens; rule values are bounded strings.
+  - GeoIP: the `orbit_` bearer exemption applies only to the key-only export
+    endpoints (plus prefixes a downstream build lists in the new, empty by
+    default `config :orbit, :geoip_key_auth_prefixes`), not to any request
+    carrying the header. GeoLite2 downloads are checked against MaxMind's
+    sha256 and inflated with a size cap.
+  - API keys: a group-scoped admin lists, revokes and purges only keys bound
+    within his groups.
+  - Packet capture filters refuse any `-option` token, not only a leading one.
+  - IPsec connect/disconnect/diagnose: tunnel and SA ids are format-checked;
+    Diagnose is write-gated server-side like its button.
+  - Agent sockets can only answer their own commands and feed their own
+    tunnel streams; WebSocket frames are size-capped; vendor `x_*` sections,
+    logfile snapshots and metric series per push are capped; a push
+    timestamp far in the future is replaced by the server clock; hello
+    version/platform/checksum strings are format-checked.
+  - The GUI-proxy cookie is bound to the user and his password version
+    (password change, disable or lost group access end GUI access at once);
+    its lifetime is 2 h (was 8 h). Proxied methods are allow-listed; the
+    handoff path and replayed firewall cookies are sanitised.
+  - Shell and capture WebSockets require a browser Origin (missing or `null`
+    is refused); shell resize dimensions are bounded.
+  - Passwords are 8-256 characters for self-service change, admin reset and
+    user creation; usernames have no whitespace/control characters.
+  - Outbound calls: webhooks and a custom LLM base URL use one address policy
+    (incl. `::ffff:127.0.0.1`, `::127.0.0.1`, NAT64 forms) and never follow
+    redirects; LLM error bodies are no longer echoed; SMTP host and from/to
+    are checked (no header injection). The direct-poll OPNsense client no
+    longer follows redirects and caps response bodies.
+  - Selection rules: global rules are superadmin-only; per-instance rule
+    deletes are scope-checked.
+  - Bulk actions run exactly on the boxes the confirmation dialog listed.
+  - CSV export neutralises formula cells; comment text is bounded; config
+    backup and Checkmk payloads inflate with a streaming size cap.
+  - Malformed ids and filter values in LiveView events and query params are
+    ignored instead of crashing the page.
+  - API responses carry the secure browser headers (nosniff).
+- Firewall agent 4.2.16: the local API relay (`http.relay`) forwards only
+  `api/...` paths (no `..`, `//`, backslashes, control characters or
+  encoded dots/slashes), only GET/POST/PUT/DELETE, and only the
+  Accept/Content-Type request headers — nothing can override the injected
+  API credentials.
 
 ## [4.5.0] - 2026-11-07
 

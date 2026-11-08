@@ -196,15 +196,14 @@ defmodule Orbit.Hub.Checkmk do
     end
   end
 
-  # A zip bomb would otherwise be decompressed in full before we look at it.
+  # Streaming cap: a zip bomb stops inflating past @max_decompressed instead
+  # of being decompressed in full before we look at it.
   defp gunzip(gz) do
-    text = :zlib.gunzip(gz)
-
-    if byte_size(text) > @max_decompressed,
-      do: {:error, "decompressed payload too large"},
-      else: {:ok, text}
-  rescue
-    _ -> {:error, "bad gzip"}
+    case Orbit.Gzip.gunzip_bounded(gz, @max_decompressed) do
+      {:ok, text} -> {:ok, text}
+      {:error, :too_large} -> {:error, "decompressed payload too large"}
+      {:error, :bad_gzip} -> {:error, "bad gzip"}
+    end
   end
 
   @doc """

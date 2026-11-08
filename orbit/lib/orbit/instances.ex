@@ -112,7 +112,8 @@ defmodule Orbit.Instances do
   A changed push interval is live-applied to a connected agent.
   """
   def update_instance(%Instance{} = inst, params) do
-    with {:ok, changes} <- build_changes(inst, params) do
+    with :ok <- Orbit.Instances.Input.validate(params),
+         {:ok, changes} <- build_changes(inst, params) do
       inst
       |> Ecto.Changeset.change(changes)
       |> Repo.update()
@@ -216,9 +217,12 @@ defmodule Orbit.Instances do
       if params["transport"] in ["push", "direct"], do: params["transport"], else: "push"
 
     device_type = if params["device_type"] in @device_types, do: params["device_type"], else: nil
-    name = String.trim(params["name"] || "")
+    name = String.trim(to_string(params["name"] || ""))
 
     cond do
+      (bad = Orbit.Instances.Input.validate(params)) != :ok ->
+        bad
+
       name == "" ->
         {:error, :name_required}
 
@@ -398,8 +402,25 @@ defmodule Orbit.Instances do
 
     base
     |> merge_intervals(params)
+    |> drop_secrets_on_new_origin(inst, params)
     |> merge_secrets(params)
     |> merge_slug(inst, params)
+  end
+
+  # A base_url pointing at another origin (scheme, host or port) must not
+  # inherit the stored API credentials — the next poll or "Test connection"
+  # would hand them to that host. Whatever is not re-entered in the same save
+  # is replaced by the agent-mode placeholder (the columns are NOT NULL).
+  # Re-entered values are applied afterwards by merge_secrets/2.
+  defp drop_secrets_on_new_origin(changes, inst, params) do
+    if Map.has_key?(params, "base_url") and
+         Orbit.Instances.Input.new_origin?(params["base_url"], inst.base_url) do
+      changes
+      |> Map.put(:api_key_enc, Orbit.Crypto.encrypt("agent-mode-no-key"))
+      |> Map.put(:api_secret_enc, Orbit.Crypto.encrypt("agent-mode-no-secret"))
+    else
+      changes
+    end
   end
 
   @bool_fields ~w(ssl_verify gui_login_enabled shell_enabled ssh_enabled

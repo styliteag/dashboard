@@ -234,6 +234,13 @@ defmodule OrbitWeb.InstanceEditLive do
 
       {:error, %Ecto.Changeset{}} ->
         {:noreply, assign(socket, error: "could not save — check the field values")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket,
+           error:
+             InstanceForm.input_error_text(reason) || "could not save — check the field values"
+         )}
     end
   end
 

@@ -286,10 +286,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   # Readable diagnostic bundle for one tunnel (ipsec.diagnose relay) — raw
   # text per section, deliberately not over-parsed (python parity).
+  # Write-gated like its button (the Diagnose cell renders only for writable
+  # sessions): it starts an agent command or an SSH session on the box.
   def handle_event("ipsec_diagnose", %{"id" => id}, socket) do
     inst = socket.assigns.instance
 
-    if socket.assigns.diagnosis_busy do
+    if socket.assigns.diagnosis_busy || not socket.assigns.writable ||
+         not Orbit.Ipsec.Ids.tunnel_id?(id) do
       {:noreply, socket}
     else
       {:noreply,
@@ -496,14 +499,19 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("ipsec_" <> kind, %{"id" => id} = params, socket)
       when kind in ["connect", "disconnect", "reconnect"] do
+    uid = params["uid"] || ""
+
     cond do
       not socket.assigns.writable or MapSet.member?(socket.assigns.ipsec_busy, id) ->
         {:noreply, socket}
 
+      # Both ids become swanctl argv on the box — strict format (Ipsec.Ids).
+      not Orbit.Ipsec.Ids.tunnel_id?(id) or not Orbit.Ipsec.Ids.unique_id?(uid) ->
+        {:noreply, assign(socket, ipsec_msg: {:error, "invalid tunnel id"})}
+
       true ->
         inst = socket.assigns.instance
         user = socket.assigns.current_user
-        uid = params["uid"] || ""
 
         {:noreply,
          socket
@@ -744,7 +752,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("conn_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
-    {id, ""} = Integer.parse(raw)
+    id = OrbitWeb.ParamId.parse(raw) || 0
     :ok = Orbit.Monitors.delete_connectivity(socket.assigns.instance.id, id)
     audit_agent(socket, "connectivity.monitor.delete", "ok")
     {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load_monitors()}
@@ -856,7 +864,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("p2mon_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
-    {id, ""} = Integer.parse(raw)
+    # A non-numeric id deletes nothing (id 0 never exists), audited as asked.
+    id = OrbitWeb.ParamId.parse(raw) || 0
     :ok = Orbit.Monitors.delete_ipsec(socket.assigns.instance.id, id)
     audit_agent(socket, "ipsec.ping_monitor.delete", "ok")
     {:noreply, socket |> assign(ping_editor: nil, ping_test: nil) |> load_monitors()}
@@ -894,7 +903,7 @@ defmodule OrbitWeb.InstanceDetailLive do
     inst = socket.assigns.instance
 
     if socket.assigns.writable and Orbit.GUI.openable(inst) == :ok do
-      url = Orbit.GUI.open_flow(inst, nil)
+      url = Orbit.GUI.open_flow(inst, nil, socket.assigns.current_user)
 
       Audit.write(
         action: "agent.gui_open",

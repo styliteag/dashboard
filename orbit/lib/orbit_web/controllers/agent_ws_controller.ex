@@ -14,6 +14,12 @@ defmodule OrbitWeb.AgentWSController do
   alias Orbit.AgentBinding
   alias Orbit.Instances.Instance
 
+  # Agent frames carry pushes incl. logfiles and config backups; the cap
+  # bounds what one socket can make the server buffer (Bandit's default is
+  # unlimited).
+  @doc false
+  def ws_options, do: [timeout: 120_000, max_frame_size: 64 * 1024 * 1024]
+
   def connect(conn, _params) do
     upgrade_arg =
       case bearer_token(conn) do
@@ -36,7 +42,7 @@ defmodule OrbitWeb.AgentWSController do
       end
 
     conn
-    |> WebSockAdapter.upgrade(OrbitWeb.AgentSocket, upgrade_arg, timeout: 120_000)
+    |> WebSockAdapter.upgrade(OrbitWeb.AgentSocket, upgrade_arg, ws_options())
     |> halt()
   end
 

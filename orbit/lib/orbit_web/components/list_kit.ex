@@ -342,7 +342,7 @@ defmodule OrbitWeb.Components.ListKit do
          :ok <- Orbit.GUI.openable(inst) do
       # open_flow clamps the deep-link path via GUI.safe_next (open-redirect
       # guard); a nil/blank path lands on the GUI root.
-      url = Orbit.GUI.open_flow(inst, presence(path))
+      url = Orbit.GUI.open_flow(inst, presence(path), user)
 
       Orbit.Audit.write(
         action: "agent.gui_open",

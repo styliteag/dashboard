@@ -32,6 +32,8 @@ defmodule Orbit.Hub.Cache do
   # `x_zfs`, and it lands here + in the status_snapshot with no core change.
   # Core sections are never named `x_*`, so the namespace can't collide.
   @extra_section_prefix "x_"
+  @max_extra_sections 16
+  @max_extra_bytes 1_000_000
   # Always-overwrite portions of the push that make up the live status view.
   # `config` = the box's last config revision (collect_config) — pushed on
   # every cycle like the other status sections, shown on the detail page.
@@ -201,16 +203,36 @@ defmodule Orbit.Hub.Cache do
 
   # Store every `x_*` section verbatim, truthy-guarded (an empty push must not
   # wipe a known-good vendor section — same rule as the truthy sections).
+  # Bounded: at most @max_extra_sections distinct keys per instance (known
+  # keys keep updating, new ones past the cap are dropped) and at most
+  # @max_extra_bytes per value — the entry is kept in memory and persisted.
   defp apply_extra_sections(entry, data) do
-    Enum.reduce(data, entry, fn
-      {<<@extra_section_prefix, _::binary>> = key, value}, acc
-      when value not in [nil, [], %{}, ""] ->
-        Map.put(acc, key, value)
+    data
+    |> Enum.filter(fn {k, _} ->
+      is_binary(k) and String.starts_with?(k, @extra_section_prefix)
+    end)
+    |> Enum.sort()
+    |> Enum.reduce(entry, fn
+      {key, value}, acc when value not in [nil, [], %{}, ""] ->
+        if extra_fits?(acc, key, value), do: Map.put(acc, key, value), else: acc
 
       _pair, acc ->
         acc
     end)
   end
+
+  defp extra_fits?(entry, key, value) do
+    known? = Map.has_key?(entry, key)
+
+    (known? or extra_count(entry) < @max_extra_sections) and
+      :erlang.external_size(value) <= @max_extra_bytes
+  end
+
+  defp extra_count(entry),
+    do:
+      Enum.count(entry, fn {k, _} ->
+        is_binary(k) and String.starts_with?(k, @extra_section_prefix)
+      end)
 
   defp apply_presence_guards(entry, data) do
     Enum.reduce(@presence_sections, entry, fn section, acc ->

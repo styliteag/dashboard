@@ -13,6 +13,9 @@ defmodule OrbitWeb.ExtensionHooksAuthTest do
   alias OrbitWeb.TestHooks.{LogoutRedirect, SessionValidator}
   alias OrbitWeb.{UserAuth, WSAuth}
 
+  # The shell/capture WS requires a browser Origin (missing/null is 4403).
+  defp ws_origin(conn), do: Plug.Conn.put_req_header(conn, "origin", "http://localhost")
+
   setup do
     %{user: user!("admin", false)}
   end
@@ -24,7 +27,7 @@ defmodule OrbitWeb.ExtensionHooksAuthTest do
 
       assert get(conn, ~p"/password").status == 200
       assert {:ok, _view, _html} = live(conn, ~p"/apikeys")
-      assert {:ok, %{id: id}} = WSAuth.authenticate(conn)
+      assert {:ok, %{id: id}} = WSAuth.authenticate(ws_origin(conn))
       assert id == user.id
     end
 
@@ -37,7 +40,7 @@ defmodule OrbitWeb.ExtensionHooksAuthTest do
 
       assert redirected_to(get(revoked, ~p"/password")) == ~p"/login"
       assert {:error, {:redirect, %{to: "/login"}}} = live(revoked, ~p"/apikeys")
-      assert {:error, 4401} = WSAuth.authenticate(revoked)
+      assert {:error, 4401} = WSAuth.authenticate(ws_origin(revoked))
     end
 
     test "an accepting validator keeps the session", %{conn: conn, user: user} do
@@ -46,7 +49,7 @@ defmodule OrbitWeb.ExtensionHooksAuthTest do
 
       assert get(conn, ~p"/password").status == 200
       assert {:ok, _view, _html} = live(conn, ~p"/apikeys")
-      assert {:ok, _user} = WSAuth.authenticate(conn)
+      assert {:ok, _user} = WSAuth.authenticate(ws_origin(conn))
     end
 
     test "user_from_session/1 applies the built-in checks", %{user: user} do

@@ -12,9 +12,10 @@ defmodule OrbitWeb.WSAuthTest do
   defp with_origin(conn, origin), do: put_req_header(conn, "origin", origin)
 
   describe "origin check (hub.py _ws_origin_ok parity)" do
-    test "no origin header passes (non-browser client)", %{conn: conn} do
-      # No session → 4401, but origin passed (we didn't get 4403).
-      assert {:error, 4401} = WSAuth.authenticate(conn)
+    test "no origin header is refused (only the dashboard page opens these)", %{conn: conn} do
+      # Was: passes as a "non-browser client". Shell/capture are browser-only;
+      # missing/null Origin is now 4403 (ws_origin_required_test.exs).
+      assert {:error, 4403} = WSAuth.authenticate(conn)
     end
 
     test "localhost origin always passes (dev)", %{conn: conn} do

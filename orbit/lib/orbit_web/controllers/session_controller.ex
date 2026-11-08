@@ -324,7 +324,8 @@ defmodule OrbitWeb.SessionController do
     render(conn, :password, error: nil, page_title: "Change password")
   end
 
-  def password_change(conn, %{"old_password" => old, "new_password" => new} = params) do
+  def password_change(conn, %{"old_password" => old, "new_password" => new} = params)
+      when is_binary(old) and is_binary(new) do
     user = conn.assigns.current_user
 
     cond do
@@ -332,11 +333,10 @@ defmodule OrbitWeb.SessionController do
         audit_password(conn, user, "error", %{"reason" => "bad_old_password"})
         conn |> put_status(400) |> render(:password, error: "Old password is incorrect.")
 
-      String.length(new) < 8 ->
-        render(conn, :password,
-          error: "New password needs at least 8 characters.",
-          page_title: "Change password"
-        )
+      (bad = Orbit.Auth.Password.validate_new(new)) != :ok ->
+        conn
+        |> put_status(400)
+        |> render(:password, error: new_password_error(bad), page_title: "Change password")
 
       new != params["confirm_password"] ->
         render(conn, :password, error: "Passwords do not match.", page_title: "Change password")
@@ -359,6 +359,21 @@ defmodule OrbitWeb.SessionController do
         |> redirect(to: ~p"/")
     end
   end
+
+  # Wrongly typed form values (a crafted POST) are a plain 400.
+  def password_change(conn, _params) do
+    conn
+    |> put_status(400)
+    |> render(:password, error: "Invalid form values.", page_title: "Change password")
+  end
+
+  defp new_password_error({:error, :password_too_short}),
+    do: "New password needs at least 8 characters."
+
+  defp new_password_error({:error, :password_too_long}),
+    do: "New password may have at most #{Orbit.Auth.Password.max_length()} characters."
+
+  defp new_password_error(_), do: "New password is not valid text."
 
   defp audit_password(conn, user, result, detail) do
     Orbit.Audit.write(

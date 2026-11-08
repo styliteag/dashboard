@@ -90,7 +90,15 @@ defmodule OrbitWeb.AgentSocket do
   # Agent never sends binary; ignore (agent ignores inbound binary likewise).
   def handle_in(_other, state), do: {:ok, state}
 
-  defp dispatch(%{"type" => "hello"} = hello, state) do
+  defp dispatch(%{"type" => "hello"} = raw_hello, state) do
+    # Self-reported strings end up in the roster UI, logs and comparisons:
+    # format-checked, anything else reads as "unknown" (nil).
+    hello = %{
+      "agent_version" => hello_field(:version, raw_hello["agent_version"]),
+      "platform" => hello_field(:platform, raw_hello["platform"]),
+      "checkmk_sha256" => hello_field(:sha256, raw_hello["checkmk_sha256"])
+    }
+
     # Cheap pre-check: a stale token must not even register — register
     # replaces (and closes) the CURRENT socket of this instance.
     if Orbit.AgentBinding.current?(state.instance_id, state.token) do
@@ -119,7 +127,7 @@ defmodule OrbitWeb.AgentSocket do
   end
 
   defp dispatch(%{"type" => "command_result"} = frame, state) do
-    Hub.resolve_command(frame["request_id"], frame["result"] || %{})
+    Hub.resolve_command_from(state.instance_id, frame["request_id"], frame["result"] || %{})
     {:ok, state}
   end
 
@@ -131,7 +139,7 @@ defmodule OrbitWeb.AgentSocket do
   # Agent→hub tunnel frames (data/close/started/error) route by stream id to
   # the consumer process the hub registered at open (§27.5).
   defp dispatch(%{"type" => "tunnel", "stream" => _} = frame, state) do
-    Hub.deliver_tunnel(frame)
+    Hub.deliver_tunnel_from(state.instance_id, frame)
     {:ok, state}
   end
 
@@ -236,8 +244,38 @@ defmodule OrbitWeb.AgentSocket do
   # Orbit.Availability also detects the offline→online edge here and fires
   # the recovered alert. Never raises; failures must never kill the socket.
   defp stamp_last_seen(instance_id, ts) do
-    now = parse_ts(ts) || DateTime.utc_now()
-    Orbit.Availability.stamp_push(instance_id, now)
+    Orbit.Availability.stamp_push(instance_id, push_time(ts, DateTime.utc_now()))
+  end
+
+  @doc "A hello frame field if it has the expected shape, else nil."
+  def hello_field(:version, v) when is_binary(v),
+    do: if(Regex.match?(~r/\A[0-9A-Za-z.+_-]{1,32}\z/, v), do: v)
+
+  def hello_field(:platform, v) when is_binary(v),
+    do: if(Regex.match?(~r/\A[a-z0-9_-]{1,32}\z/, v), do: v)
+
+  def hello_field(:sha256, v) when is_binary(v),
+    do: if(Regex.match?(~r/\A[0-9a-f]{64}\z/, v), do: v)
+
+  def hello_field(_field, _v), do: nil
+
+  # Tolerated clock skew before a future push ts is distrusted.
+  @max_future_skew_s 60
+
+  @doc """
+  The time a push is stamped with: the agent's `ts`, unless it is missing,
+  unparseable, or more than #{@max_future_skew_s}s ahead of `server_now` — a
+  future stamp would keep a silent box "online" until that time passes.
+  """
+  @spec push_time(term(), DateTime.t()) :: DateTime.t()
+  def push_time(ts, server_now) do
+    case parse_ts(ts) do
+      nil ->
+        server_now
+
+      dt ->
+        if DateTime.diff(dt, server_now) > @max_future_skew_s, do: server_now, else: dt
+    end
   end
 
   defp parse_ts(ts) when is_binary(ts) do

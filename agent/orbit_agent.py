@@ -56,7 +56,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.15"
+__version__ = "4.2.16"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3013,6 +3013,51 @@ _RELAY_DROP_HEADERS = frozenset({
     "authorization", "cookie",
 })
 
+# Request side: only what the dashboard actually sends is forwarded. Methods
+# the relay callers use (firewall rules, API probe) — nothing else reaches the
+# local API with the injected root-equivalent credentials.
+_RELAY_METHODS = frozenset({"GET", "POST", "PUT", "DELETE"})
+# Content negotiation only: never a header that could stand in for or override
+# the injected Authorization (Cookie, X-API-Key, Proxy-Authorization, ...).
+_RELAY_FORWARD_HEADERS = frozenset({"accept", "content-type"})
+# Control characters (incl. CR/LF/TAB), space, backslash and a fragment marker.
+_RELAY_PATH_BAD_CHARS = re.compile(r"[\x00-\x20\x7f\\#]")
+# Encoded dot, slash, backslash and control characters.
+_RELAY_PATH_BAD_ESCAPES = re.compile(r"%(2e|2f|5c|[01][0-9a-f]|7f)", re.I)
+
+
+def _relay_safe_path(raw: object) -> str | None:
+    """`api/...` path of a relay request (one optional leading "/"), or None.
+
+    Refused: anything outside api/, "." / ".." segments, empty segments ("//"),
+    backslashes, control characters, fragments and percent-encoded dots,
+    slashes or control characters — the path must not leave the local API."""
+    if not isinstance(raw, str):
+        return None
+    path = raw[1:] if raw.startswith("/") else raw
+    if not path.startswith("api/"):
+        return None
+    if _RELAY_PATH_BAD_CHARS.search(path) or _RELAY_PATH_BAD_ESCAPES.search(path):
+        return None
+    route = path.split("?", 1)[0]
+    if "//" in route or any(seg in (".", "..") for seg in route.split("/")):
+        return None
+    return path
+
+
+def _relay_forward_headers(raw: object) -> dict:
+    """Allow-listed request headers with clean values (no CR/LF/NUL)."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v
+        for k, v in raw.items()
+        if isinstance(k, str)
+        and isinstance(v, str)
+        and k.lower() in _RELAY_FORWARD_HEADERS
+        and not re.search(r"[\r\n\x00]", v)
+    }
+
 # OPNsense's own User model mints the key (and the crypt-SHA512 secret) — we never
 # hash anything ourselves. Idempotent: reuses the `orbit` user, and DROPS every
 # existing key before adding exactly one, so a lost agent cache (which re-triggers
@@ -3495,18 +3540,18 @@ def _relay_http(params: dict, cfg: Config | None) -> dict:
     key, secret = creds
 
     method = str(params.get("method", "GET")).upper()
-    path = str(params.get("path", "")).lstrip("/")
+    path = _relay_safe_path(params.get("path", ""))
+    if method not in _RELAY_METHODS:
+        return {"success": False, "status": 0, "output": "relay request refused: method"}
+    if path is None:
+        return {"success": False, "status": 0, "output": "relay request refused: path"}
     url = f"{cfg.local_api_url.rstrip('/')}/{path}"
     try:
         body = base64.b64decode(params.get("body") or "", validate=True)
     except (ValueError, TypeError):
         body = b""
 
-    headers = {
-        k: v
-        for k, v in (params.get("headers") or {}).items()
-        if k.lower() not in _RELAY_DROP_HEADERS
-    }
+    headers = _relay_forward_headers(params.get("headers"))
     cred = base64.b64encode(f"{key}:{secret}".encode()).decode()
     headers["Authorization"] = f"Basic {cred}"
     if body:

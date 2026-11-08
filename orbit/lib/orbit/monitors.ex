@@ -142,7 +142,9 @@ defmodule Orbit.Monitors do
   # or over SSH (Securepoint). A leading "-" would turn them into ping OPTIONS
   # (security hotfix: option injection) — only IP literals and plain host
   # names are stored or sent. Checked before any DB write or agent command.
-  defp validate_targets(attrs, destination) do
+  # Public: the VPN page's Test button sends straight to the agent.
+  @spec validate_targets(map(), String.t()) :: :ok | {:error, String.t()}
+  def validate_targets(attrs, destination) do
     source = String.trim(to_string(attrs["source"] || ""))
 
     cond do
@@ -157,14 +159,48 @@ defmodule Orbit.Monitors do
     end
   end
 
-  defp ping_count(attrs) do
-    case Integer.parse(to_string(attrs["ping_count"] || "3")) do
+  defp ping_count(attrs), do: clamp_ping_count(attrs["ping_count"])
+
+  @doc """
+  A ping count as an integer 1..20; anything else (out of range, garbage,
+  a shell payload from a crafted form event) is the default 3. The count ends
+  up in `ping -c` on the box — over SSH as part of a shell string.
+  """
+  @spec clamp_ping_count(term()) :: 1..20
+  def clamp_ping_count(n) when is_integer(n) and n in 1..20, do: n
+
+  def clamp_ping_count(v) when is_binary(v) do
+    case Integer.parse(String.trim(v)) do
       {n, ""} when n in 1..20 -> n
       _ -> 3
     end
   end
 
+  def clamp_ping_count(_), do: 3
+
   # ---- ipsec phase-2 monitors -----------------------------------------------
+
+  # The Phase-2 keys come from DOM attributes of the monitor dialog: strings
+  # only, no control characters, within their column width.
+  @p2_keys [
+    {"tunnel_id", 128, "tunnel id"},
+    {"child_name", 128, "child name"},
+    {"local_ts", 255, "local traffic selector"},
+    {"remote_ts", 255, "remote traffic selector"}
+  ]
+
+  defp validate_p2_keys(attrs) do
+    Enum.find_value(@p2_keys, :ok, fn {key, max, label} ->
+      case Map.get(attrs, key) do
+        nil -> nil
+        v when is_binary(v) -> if p2_key_ok?(v, max), do: nil, else: {:error, "invalid #{label}"}
+        _ -> {:error, "invalid #{label}"}
+      end
+    end)
+  end
+
+  defp p2_key_ok?(v, max),
+    do: String.valid?(v) and String.length(v) <= max and not String.match?(v, ~r/[\x00-\x1f\x7f]/)
 
   def list_ipsec(instance_id) do
     Orbit.Repo.query!(
@@ -198,9 +234,12 @@ defmodule Orbit.Monitors do
   the python 409). {:ok | {:error, msg}}; pushes the set on success.
   """
   def create_ipsec(instance_id, attrs) do
-    destination = String.trim(attrs["destination"] || "")
+    destination = String.trim(to_string(attrs["destination"] || ""))
 
     cond do
+      (bad = validate_p2_keys(attrs)) != :ok ->
+        bad
+
       String.trim(attrs["child_name"] || "") == "" ->
         {:error, "child name is required"}
 
@@ -394,6 +433,7 @@ defmodule Orbit.Monitors do
   a user-facing button and a bad source address is a normal answer, not a crash.
   """
   def ping_test(inst, source, destination, count) do
+    count = clamp_ping_count(count)
     targets = %{"source" => to_string(source || "")}
     destination = String.trim(to_string(destination || ""))
 

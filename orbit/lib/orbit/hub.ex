@@ -160,9 +160,21 @@ defmodule Orbit.Hub do
     end
   end
 
-  @doc "Resolve a pending command future (called by the socket on command_result)."
+  @doc """
+  Resolve a pending command future without an origin check — in-process
+  callers and tests. The agent socket uses `resolve_command_from/4`.
+  """
   def resolve_command(server \\ __MODULE__, request_id, result) do
-    GenServer.cast(server, {:resolve, request_id, result})
+    GenServer.cast(server, {:resolve, :any, request_id, result})
+  end
+
+  @doc """
+  Resolve a pending command future on behalf of the agent socket of
+  `instance_id`: a result for a request dispatched to ANOTHER instance is
+  dropped (an agent must not answer someone else's command).
+  """
+  def resolve_command_from(server \\ __MODULE__, instance_id, request_id, result) do
+    GenServer.cast(server, {:resolve, instance_id, request_id, result})
   end
 
   @doc """
@@ -207,9 +219,17 @@ defmodule Orbit.Hub do
     GenServer.cast(server, {:close_tunnel, stream})
   end
 
-  @doc "Route an inbound tunnel frame from the agent socket to its consumer."
+  @doc "Route an inbound tunnel frame to its consumer (no origin check; tests)."
   def deliver_tunnel(server \\ __MODULE__, frame) do
-    GenServer.cast(server, {:deliver_tunnel, frame})
+    GenServer.cast(server, {:deliver_tunnel, :any, frame})
+  end
+
+  @doc """
+  Route a tunnel frame from the agent socket of `instance_id`: only streams
+  opened for that instance accept it.
+  """
+  def deliver_tunnel_from(server \\ __MODULE__, instance_id, frame) do
+    GenServer.cast(server, {:deliver_tunnel, instance_id, frame})
   end
 
   @roster_topic "hub:roster"
@@ -415,7 +435,7 @@ defmodule Orbit.Hub do
         }
 
         send(pid, {:push_frame, frame})
-        {:reply, :ok, put_in(state.pending[request_id], caller)}
+        {:reply, :ok, put_in(state.pending[request_id], {caller, instance_id})}
 
       nil ->
         {:reply, {:error, :not_connected}, state}
@@ -457,15 +477,23 @@ defmodule Orbit.Hub do
   end
 
   @impl true
-  def handle_cast({:resolve, request_id, result}, state) do
-    case Map.pop(state.pending, request_id) do
-      {nil, _} ->
-        # Late result after timeout — python hub logs and drops likewise.
-        {:noreply, state}
-
-      {caller, pending} ->
+  def handle_cast({:resolve, from, request_id, result}, state) do
+    case Map.get(state.pending, request_id) do
+      # Bound to the instance the command went to; a frame from any other
+      # agent socket is dropped and the request stays pending.
+      {caller, instance_id} when from in [:any, instance_id] ->
         send(caller, {:command_result, request_id, result})
-        {:noreply, %{bump_counter(state, :command_results) | pending: pending}}
+
+        {:noreply,
+         %{
+           bump_counter(state, :command_results)
+           | pending: Map.delete(state.pending, request_id)
+         }}
+
+      # Late result after timeout (python hub logs and drops likewise), or a
+      # result from the wrong socket.
+      _ ->
+        {:noreply, state}
     end
   end
 
@@ -560,11 +588,12 @@ defmodule Orbit.Hub do
     {:noreply, drop_stream(state, stream, tell_agent: true)}
   end
 
-  def handle_cast({:deliver_tunnel, %{"stream" => stream} = frame}, state) do
+  def handle_cast({:deliver_tunnel, from, %{"stream" => stream} = frame}, state) do
     state = bump_counter(state, :tunnel_frames)
 
     case state.streams[stream] do
-      %{consumer: consumer} ->
+      # Only the instance the stream was opened for may feed it.
+      %{consumer: consumer, instance_id: instance_id} when from in [:any, instance_id] ->
         op = frame["op"]
         send(consumer, {:tunnel, stream, op, frame})
         # An agent-side close ends the stream; drop routing without re-telling
@@ -575,12 +604,13 @@ defmodule Orbit.Hub do
           {:noreply, state}
         end
 
-      nil ->
+      # Unknown stream, or a frame from another instance's socket.
+      _ ->
         {:noreply, state}
     end
   end
 
-  def handle_cast({:deliver_tunnel, _frame}, state), do: {:noreply, state}
+  def handle_cast({:deliver_tunnel, _from, _frame}, state), do: {:noreply, state}
 
   def handle_cast({:send_config, instance_id, fields}, state) do
     case state.agents[instance_id] do

@@ -258,14 +258,26 @@ defmodule Orbit.Notifier do
   defp send_channel("email", settings, title, message, opts) do
     host = to_string(settings.("notify_email_smtp_host") || "")
     from = to_string(settings.("notify_email_from") || "")
-    recipients = parse_recipients(to_string(settings.("notify_email_to") || ""))
+    to_raw = to_string(settings.("notify_email_to") || "")
+    recipients = parse_recipients(to_raw)
 
-    if host == "" or from == "" or recipients == [] do
-      %{channel: "email", status: "skipped", detail: ""}
-    else
-      send_email(settings, host, from, recipients, title, message, opts)
+    cond do
+      host == "" or from == "" or recipients == [] ->
+        %{channel: "email", status: "skipped", detail: ""}
+
+      not Orbit.Net.host_arg?(String.trim(host)) ->
+        %{channel: "email", status: "failed", detail: "invalid smtp host"}
+
+      header_unsafe?(from) or header_unsafe?(to_raw) ->
+        %{channel: "email", status: "failed", detail: "invalid from/to address"}
+
+      true ->
+        send_email(settings, String.trim(host), from, recipients, title, message, opts)
     end
   end
+
+  # CR/LF in a header value starts a new header (Bcc: injection).
+  defp header_unsafe?(value), do: String.match?(value, ~r/[\r\n\x00]/)
 
   defp parse_recipients(raw) do
     raw |> String.split(~r/[,\s]+/, trim: true) |> Enum.reject(&(&1 == ""))
@@ -287,7 +299,7 @@ defmodule Orbit.Notifier do
 
     mail =
       "From: #{from}\r\nTo: #{Enum.join(recipients, ", ")}\r\n" <>
-        "Subject: #{title}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n#{message}"
+        "Subject: #{String.replace(title, ~r/[\r\n]+/, " ")}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n#{message}"
 
     case sender.(config, mail) do
       :ok ->
@@ -336,7 +348,9 @@ defmodule Orbit.Notifier do
   end
 
   defp post(channel, url, body, opts) do
-    base = [url: url, json: body, receive_timeout: 10_000, retry: false]
+    # No redirects: the SSRF guard vetted THIS host; a 3xx must not bounce
+    # the request (and the payload) to one it never saw.
+    base = [url: url, json: body, receive_timeout: 10_000, retry: false, redirect: false]
 
     req_opts =
       case Keyword.get(opts, :req_plug, Application.get_env(:orbit, :notify_req_plug)) do
@@ -345,7 +359,7 @@ defmodule Orbit.Notifier do
       end
 
     case Req.post(req_opts) do
-      {:ok, %{status: status}} when status < 400 ->
+      {:ok, %{status: status}} when status in 200..299 ->
         Logger.info("notify.#{channel}.sent status=#{status}")
         %{channel: channel, status: "sent", detail: ""}
 
@@ -363,53 +377,10 @@ defmodule Orbit.Notifier do
 
   @doc """
   Reject a webhook URL whose host resolves to a dangerous-but-never-
-  legitimate address. Returns a reason string or nil.
+  legitimate address (`Orbit.Net.Egress` policy). Returns a reason string
+  or nil.
   """
-  def ssrf_block_reason(url) do
-    uri = URI.parse(url)
-
-    cond do
-      uri.scheme not in ["http", "https"] or uri.host in [nil, ""] ->
-        "URL must be http(s) with a host"
-
-      true ->
-        case resolve_addrs(uri.host) do
-          {:error, _} -> "host does not resolve"
-          {:ok, addrs} -> Enum.find_value(addrs, &blocked_addr_reason/1)
-        end
-    end
-  end
-
-  defp resolve_addrs(host) do
-    chars = String.to_charlist(host)
-
-    case :inet.parse_strict_address(chars) do
-      {:ok, addr} ->
-        {:ok, [addr]}
-
-      {:error, _} ->
-        v4 = :inet_res.lookup(chars, :in, :a, timeout: 5_000)
-        v6 = :inet_res.lookup(chars, :in, :aaaa, timeout: 5_000)
-        if v4 == [] and v6 == [], do: {:error, :nxdomain}, else: {:ok, v4 ++ v6}
-    end
-  end
-
-  # Loopback, link-local (incl. cloud metadata 169.254/16), reserved (240/4),
-  # multicast, unspecified. RFC1918 stays allowed on purpose (moduledoc).
-  defp blocked_addr_reason({127, _, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({169, 254, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({0, _, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({n, _, _, _} = a) when n >= 224, do: blocked(a)
-  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 0} = a), do: blocked(a)
-  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 1} = a), do: blocked(a)
-
-  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFE80 and w <= 0xFEBF,
-    do: blocked(a)
-
-  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFF00, do: blocked(a)
-  defp blocked_addr_reason(_), do: nil
-
-  defp blocked(addr), do: "blocked address #{addr |> :inet.ntoa() |> to_string()}"
+  defdelegate ssrf_block_reason(url), to: Orbit.Net.Egress
 
   # -- helpers ---------------------------------------------------------------
 

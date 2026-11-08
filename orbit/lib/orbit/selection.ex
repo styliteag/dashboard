@@ -111,6 +111,16 @@ defmodule Orbit.Selection do
     category(selector) in categories_for(consumer)
   end
 
+  @doc """
+  May `user` set or clear a rule for `instance_id`? A GLOBAL rule (nil) steers
+  notifications for every tenant: superadmin only. A per-instance rule needs
+  the instance in the user's scope (invariant 1).
+  """
+  def may_write_rule?(user, nil), do: user.is_superadmin == true
+
+  def may_write_rule?(user, instance_id),
+    do: Orbit.Auth.Scope.get_instance(instance_id, user) != nil
+
   @doc "Upsert one rule (identity: consumer+selector+instance, NULL-aware)."
   def set_rule(consumer, selector, mode, instance_id) do
     delete_rule(consumer, selector, instance_id)

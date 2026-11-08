@@ -119,35 +119,74 @@ defmodule Orbit.Firewall do
 
     # "__any" = every interface (no filter); "__floating" = the floating tab
     # (interface=""); a real interface filters to it (routes.py search_rules parity).
-    params =
-      case interface do
-        nil -> "?show_all=1"
-        "__any" -> "?show_all=1"
-        "__floating" -> "?interface=&show_all=1"
-        iface -> "?interface=#{URI.encode(iface)}&show_all=1"
-      end
-
     body = %{"current" => 1, "rowCount" => 500, "sort" => %{}, "searchPhrase" => search}
 
-    case relay(inst, "POST", "/api/firewall/filter/search_rule#{params}", body, opts) do
-      {:ok, data} ->
-        rows = for row <- data["rows"] || [], is_map(row), do: normalize_rule(row)
-        {:ok, %{rows: rows, total: to_int(data["total"], length(rows))}}
-
-      {:error, msg} ->
-        {:error, msg}
+    with :ok <- check_interface(interface),
+         params = interface_query(interface),
+         {:ok, data} <-
+           relay(inst, "POST", "/api/firewall/filter/search_rule#{params}", body, opts) do
+      rows = for row <- data["rows"] || [], is_map(row), do: normalize_rule(row)
+      {:ok, %{rows: rows, total: to_int(data["total"], length(rows))}}
     end
   end
+
+  defp interface_query(nil), do: "?show_all=1"
+  defp interface_query("__any"), do: "?show_all=1"
+  defp interface_query("__floating"), do: "?interface=&show_all=1"
+  defp interface_query(iface), do: "?interface=#{URI.encode_www_form(iface)}&show_all=1"
+
+  # Rule ids and interface names come from DOM attributes and end up in the
+  # OPNsense API path/query (relayed by the agent as root). Only plain tokens:
+  # no "/", ".", "?", "#", "%" — nothing that can leave the intended endpoint.
+  # OPNsense uuids match; the charset (not the strict 8-4-4-4-12 shape) keeps
+  # synthetic ids working.
+  @id_re ~r/\A[0-9A-Za-z-]{1,64}\z/
+  @iface_re ~r/\A[0-9A-Za-z_.-]{1,64}\z/
+
+  @doc false
+  def valid_id?(id), do: is_binary(id) and Regex.match?(@id_re, id)
+
+  defp check_id(id), do: if(valid_id?(id), do: :ok, else: {:error, "invalid rule id"})
+
+  defp check_interface(iface) when iface in [nil, "__any", "__floating"], do: :ok
+
+  defp check_interface(iface) do
+    if is_binary(iface) and Regex.match?(@iface_re, iface),
+      do: :ok,
+      else: {:error, "invalid interface"}
+  end
+
+  # Rule editor values: strings of bounded length, no control characters.
+  defp check_fields(fields) when is_map(fields) do
+    ok =
+      Enum.all?(fields, fn {_k, v} ->
+        is_binary(v) and String.valid?(v) and byte_size(v) <= 1024 and
+          not String.match?(v, ~r/[\x00-\x1f\x7f]/)
+      end)
+
+    if ok, do: :ok, else: {:error, "invalid rule field value"}
+  end
+
+  defp check_fields(_), do: {:error, "invalid rule field value"}
 
   @doc "Enable/disable a rule (toggle). action → firewall.rule.toggle."
   def toggle_rule(inst, uuid, enabled?, opts \\ []) do
     suffix = if enabled?, do: "/1", else: "/0"
-    write(inst, "/api/firewall/filter/toggle_rule/#{uuid}#{suffix}", "firewall.rule.toggle", opts)
+
+    with :ok <- check_id(uuid),
+         do:
+           write(
+             inst,
+             "/api/firewall/filter/toggle_rule/#{uuid}#{suffix}",
+             "firewall.rule.toggle",
+             opts
+           )
   end
 
   @doc "Delete a rule. action → firewall.rule.delete."
   def delete_rule(inst, uuid, opts \\ []) do
-    write(inst, "/api/firewall/filter/del_rule/#{uuid}", "firewall.rule.delete", opts)
+    with :ok <- check_id(uuid),
+         do: write(inst, "/api/firewall/filter/del_rule/#{uuid}", "firewall.rule.delete", opts)
   end
 
   @doc "Apply staged changes. action → firewall.rule.apply."
@@ -157,6 +196,12 @@ defmodule Orbit.Firewall do
 
   @doc "Move a rule directly before another (reorder). action → firewall.rule.move."
   def move_rule(inst, selected_uuid, target_uuid, opts \\ []) do
+    with :ok <- check_id(selected_uuid),
+         :ok <- check_id(target_uuid),
+         do: do_move_rule(inst, selected_uuid, target_uuid, opts)
+  end
+
+  defp do_move_rule(inst, selected_uuid, target_uuid, opts) do
     write(
       inst,
       "/api/firewall/filter/move_rule_before/#{selected_uuid}/#{target_uuid}",
@@ -167,20 +212,23 @@ defmodule Orbit.Firewall do
 
   @doc "Get one rule's full field set (for the editor)."
   def get_rule(inst, uuid, opts \\ []) do
-    case relay(inst, "GET", "/api/firewall/filter/get_rule/#{uuid}", nil, opts) do
-      {:ok, data} -> {:ok, data["rule"] || %{}}
-      err -> err
+    with :ok <- check_id(uuid),
+         {:ok, data} <- relay(inst, "GET", "/api/firewall/filter/get_rule/#{uuid}", nil, opts) do
+      {:ok, data["rule"] || %{}}
     end
   end
 
   @doc "Create/update a rule from a field map (add when uuid nil)."
   def save_rule(inst, uuid, fields, opts \\ []) do
-    {path, action} =
-      if uuid,
-        do: {"/api/firewall/filter/set_rule/#{uuid}", "firewall.rule.set"},
-        else: {"/api/firewall/filter/add_rule", "firewall.rule.add"}
+    with :ok <- if(is_nil(uuid), do: :ok, else: check_id(uuid)),
+         :ok <- check_fields(fields) do
+      {path, action} =
+        if uuid,
+          do: {"/api/firewall/filter/set_rule/#{uuid}", "firewall.rule.set"},
+          else: {"/api/firewall/filter/add_rule", "firewall.rule.add"}
 
-    write(inst, path, action, Keyword.put(opts, :body, %{"rule" => fields}))
+      write(inst, path, action, Keyword.put(opts, :body, %{"rule" => fields}))
+    end
   end
 
   # -- transport ------------------------------------------------------------
