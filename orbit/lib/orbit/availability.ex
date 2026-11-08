@@ -81,16 +81,6 @@ defmodule Orbit.Availability do
   defp fresh?(ts, cutoff), do: DateTime.compare(ts, cutoff) != :lt
 
   @doc """
-  Timestamp to stamp a push with: the agent's own `ts`, clamped to the
-  server clock — an agent clock running ahead must not push
-  `agent_last_seen` into the future (that would hide its silence from the
-  stale sweep for as long as the skew). No `ts` → server now.
-  """
-  @spec push_time(DateTime.t() | nil, DateTime.t()) :: DateTime.t()
-  def push_time(nil, now), do: now
-  def push_time(%DateTime{} = agent_ts, now), do: Enum.min([agent_ts, now], DateTime)
-
-  @doc """
   instances.is_online port: last success present and newer than last
   error. Takes NaiveDateTime (raw SQL rows) or DateTime (schema structs).
   """
@@ -147,7 +137,9 @@ defmodule Orbit.Availability do
 
   @doc """
   Stamp a push and fire the recovered alert on the offline→online edge.
-  Failures log and never raise — the socket must survive any DB hiccup.
+  `now` is the server clock — the caller never passes the agent's own `ts`
+  (a skewed agent clock would move `agent_last_seen`). Failures log and never
+  raise — the socket must survive any DB hiccup.
   """
   def stamp_push(instance_id, now) do
     naive = now |> DateTime.truncate(:second) |> DateTime.to_naive()

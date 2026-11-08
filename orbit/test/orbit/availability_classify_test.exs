@@ -3,7 +3,6 @@ defmodule Orbit.AvailabilityClassifyTest do
   `Availability.classify/3` — the one availability state machine the fleet
   list tiles, row badges and (pro) host summaries read. Push boxes follow the
   live WS connection; polled boxes the 5-minute success/error window.
-  `push_time/2` — a push is stamped at the agent's clock, never in the future.
   """
   use ExUnit.Case, async: true
 
@@ -53,19 +52,5 @@ defmodule Orbit.AvailabilityClassifyTest do
     assert Availability.online?(ago(10), ago(20))
     refute Availability.online?(ago(20), ago(10))
     refute Availability.online?(ago(10), ago(10))
-  end
-
-  describe "push_time/2" do
-    for {name, agent_ts, expected} <- [
-          {"agent clock in sync", ~U[2026-07-18 12:00:00Z], ~U[2026-07-18 12:00:00Z]},
-          {"agent clock behind", ~U[2026-07-18 11:59:30Z], ~U[2026-07-18 11:59:30Z]},
-          {"agent clock ahead is clamped", ~U[2026-07-19 12:00:00Z], ~U[2026-07-18 12:00:00Z]},
-          {"no agent ts", nil, ~U[2026-07-18 12:00:00Z]}
-        ] do
-      test name do
-        assert Availability.push_time(unquote(Macro.escape(agent_ts)), @now) ==
-                 unquote(Macro.escape(expected))
-      end
-    end
   end
 end

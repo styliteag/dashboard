@@ -23,9 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maintenance past one push interval, and a polled box never cleared it, so
   a forgotten flag capped its CRITs at WARN forever. Setting the flag by hand
   in the edit form is unchanged.
-- Agents: a push is no longer stamped with a future `agent_last_seen` when
-  the agent's clock runs ahead; the agent timestamp is clamped to the server
-  clock, so the stale sweep sees a silent agent on time.
+- Agents: a push is stamped with the server clock only; the agent's own
+  timestamp no longer touches `agent_last_seen` / `last_success_at`. A clock
+  running ahead hid a silent agent from the stale sweep for the skew, and a
+  clock running behind made a live agent look silent.
 
 ## [4.5.0] - 2026-11-07
 
