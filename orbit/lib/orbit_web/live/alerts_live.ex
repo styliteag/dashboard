@@ -397,8 +397,11 @@ defmodule OrbitWeb.AlertsLive do
             <tbody>
               <tr :for={a <- @rows} class="border-b border-base-300/50">
                 <td class="py-2 pr-4">
-                  <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(a.check.state)]}>
-                    {state_label(a.check.state)}
+                  <span class={[
+                    "rounded px-2 py-0.5 text-xs font-medium",
+                    ServiceCheck.badge_class(a.check.state)
+                  ]}>
+                    {ServiceCheck.label(a.check.state)}
                   </span>
                 </td>
                 <td class="py-2 pr-4">
@@ -485,14 +488,4 @@ defmodule OrbitWeb.AlertsLive do
     </main>
     """
   end
-
-  defp state_label(1), do: "WARN"
-  defp state_label(2), do: "CRIT"
-  defp state_label(3), do: "UNKNOWN"
-  defp state_label(_), do: "OK"
-
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-base-300 text-base-content/70"
-  defp state_class(_), do: "bg-primary/20 text-primary"
 end

@@ -226,11 +226,6 @@ defmodule OrbitWeb.Components.SelectionTree do
   defp category_label(key), do: Map.get(@category_labels, key, key)
   defp by_note(by), do: Map.get(@by_note, by, by)
 
-  defp state_badge(0), do: {"OK", "bg-primary/20 text-primary"}
-  defp state_badge(1), do: {"WARN", "bg-warning/20 text-warning"}
-  defp state_badge(2), do: {"CRIT", "bg-error/20 text-error"}
-  defp state_badge(_), do: {"UNKNOWN", "bg-base-300 text-base-content/70"}
-
   defp device_label("opnsense"), do: "OPNsense"
   defp device_label("pfsense"), do: "pfSense"
   defp device_label("securepoint"), do: "Securepoint"
@@ -373,9 +368,9 @@ defmodule OrbitWeb.Components.SelectionTree do
               />
               <span class={[
                 "rounded px-1.5 py-0.5",
-                elem(state_badge(c.state), 1)
+                ServiceCheck.badge_class(c.state)
               ]}>
-                {elem(state_badge(c.state), 0)}
+                {ServiceCheck.label(c.state)}
               </span>
               <span class="font-mono text-base-content/80">{c.key}</span>
               <span class="truncate text-base-content/70">{c.summary}</span>
