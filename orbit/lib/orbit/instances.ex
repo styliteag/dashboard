@@ -44,47 +44,23 @@ defmodule Orbit.Instances do
   end
 
   @doc """
-  Online when the last success is more recent than the last error — the one
-  place the transition is decided (mirror of metrics/store.is_online).
+  Online when the last success is more recent than the last error — the
+  last-outcome verdict (mirror of metrics/store.is_online), decided in
+  `Orbit.Availability.online?/2`.
   """
   @spec online?(Instance.t()) :: boolean()
-  def online?(%Instance{last_success_at: nil}), do: false
-
-  def online?(%Instance{last_success_at: succ, last_error_at: nil}) when not is_nil(succ),
-    do: true
-
   def online?(%Instance{last_success_at: succ, last_error_at: err}),
-    do: DateTime.compare(succ, err) == :gt
+    do: Orbit.Availability.online?(succ, err)
 
   @doc """
   Three-way status bucket for the list KPI tiles and row badges
-  (statusBucket parity, InstancesPage.tsx): agent-mode boxes bucket by the
-  live WS connection; polled boxes by the 5-minute success/error window.
-  Tiles are counted from the same function the badges render from, so the
-  two can never drift.
+  (statusBucket parity, InstancesPage.tsx) — the string form of
+  `Orbit.Availability.classify/3`. Tiles are counted from the same function
+  the badges render from, so the two can never drift.
   """
   @spec status_bucket(Instance.t(), boolean(), DateTime.t()) :: String.t()
   def status_bucket(%Instance{} = inst, agent_connected, now \\ DateTime.utc_now()) do
-    if Instance.agent_mode?(inst) do
-      if agent_connected, do: "online", else: "offline"
-    else
-      cutoff = DateTime.add(now, -300)
-      succ = inst.last_success_at
-      err = inst.last_error_at
-
-      cond do
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and
-            (err == nil or DateTime.compare(succ, err) == :gt) ->
-          "online"
-
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and err != nil and
-          DateTime.compare(err, cutoff) != :lt and DateTime.compare(err, succ) != :lt ->
-          "degraded"
-
-        true ->
-          "offline"
-      end
-    end
+    inst |> Orbit.Availability.classify(agent_connected, now) |> Atom.to_string()
   end
 
   @doc """

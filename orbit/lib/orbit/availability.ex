@@ -22,6 +22,8 @@ defmodule Orbit.Availability do
 
   require Logger
 
+  alias Orbit.Instances.Instance
+
   @availability "availability"
   @ok 0
   @crit 2
@@ -29,9 +31,67 @@ defmodule Orbit.Availability do
 
   @started_key {__MODULE__, :started_at}
 
+  # Polled boxes: a success older than this no longer counts as reachable.
+  @poll_window_seconds 300
+
   # -- pure helpers (unit-tested, python-parity) -----------------------------
 
-  @doc "instances.is_online port: last success present and newer than last error."
+  @typedoc "Availability state of one instance — see `classify/3`."
+  @type state :: :online | :degraded | :offline
+
+  @doc """
+  The availability state machine, pure: the fleet list's KPI tiles and row
+  badges (`Orbit.Instances.status_bucket/3`) and pro host summaries read it.
+
+  - push (agent) boxes: the live WS connection decides — `:online` while
+    connected, `:offline` otherwise; timestamps are ignored (a connected
+    agent that stopped pushing stays `:online` — staleness is the separate
+    `Orbit.Checks.Staleness` verdict).
+  - polled boxes (direct/relay), over a #{@poll_window_seconds}s window:
+    `:online` = fresh success newer than any error; `:degraded` = fresh
+    success AND a fresh error at-or-after it; `:offline` = no fresh success
+    (never polled included).
+
+  Not to be confused with `online?/2`, the last-outcome edge detector the
+  flip sites use to fire offline/recovered alerts.
+  """
+  @spec classify(Instance.t(), boolean(), DateTime.t()) :: state()
+  def classify(%Instance{} = inst, connected?, now) do
+    cond do
+      Instance.agent_mode?(inst) and connected? -> :online
+      Instance.agent_mode?(inst) -> :offline
+      true -> classify_polled(inst.last_success_at, inst.last_error_at, now)
+    end
+  end
+
+  defp classify_polled(succ, err, now) do
+    cutoff = DateTime.add(now, -@poll_window_seconds)
+
+    cond do
+      not fresh?(succ, cutoff) -> :offline
+      err == nil or DateTime.compare(succ, err) == :gt -> :online
+      # err >= succ >= cutoff, so the error is fresh too.
+      true -> :degraded
+    end
+  end
+
+  defp fresh?(nil, _cutoff), do: false
+  defp fresh?(ts, cutoff), do: DateTime.compare(ts, cutoff) != :lt
+
+  @doc """
+  Timestamp to stamp a push with: the agent's own `ts`, clamped to the
+  server clock — an agent clock running ahead must not push
+  `agent_last_seen` into the future (that would hide its silence from the
+  stale sweep for as long as the skew). No `ts` → server now.
+  """
+  @spec push_time(DateTime.t() | nil, DateTime.t()) :: DateTime.t()
+  def push_time(nil, now), do: now
+  def push_time(%DateTime{} = agent_ts, now), do: Enum.min([agent_ts, now], DateTime)
+
+  @doc """
+  instances.is_online port: last success present and newer than last
+  error. Takes NaiveDateTime (raw SQL rows) or DateTime (schema structs).
+  """
   def online?(last_success_at, last_error_at) do
     last_success_at != nil and
       (last_error_at == nil or NaiveDateTime.compare(last_success_at, last_error_at) == :gt)

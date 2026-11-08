@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alerts page and the instance detail page (it showed OK) and in the check
   history table (it showed "—"), matching the Checkmk export, which already
   coerced invalid states to UNKNOWN.
+- Agents: a push is no longer stamped with a future `agent_last_seen` when
+  the agent's clock runs ahead; the agent timestamp is clamped to the server
+  clock, so the stale sweep sees a silent agent on time.
 
 ## [4.5.0] - 2026-11-07
 

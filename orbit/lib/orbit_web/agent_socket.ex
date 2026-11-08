@@ -187,9 +187,10 @@ defmodule OrbitWeb.AgentSocket do
   # agent_last_seen + last_success_at stamping per push (hub.py:706-717) —
   # Orbit.Availability also detects the offline→online edge here and fires
   # the recovered alert. Never raises; failures must never kill the socket.
+  # The agent's ts is clamped to the server clock (Availability.push_time/2).
   defp stamp_last_seen(instance_id, ts) do
-    now = parse_ts(ts) || DateTime.utc_now()
-    Orbit.Availability.stamp_push(instance_id, now)
+    at = Orbit.Availability.push_time(parse_ts(ts), DateTime.utc_now())
+    Orbit.Availability.stamp_push(instance_id, at)
   end
 
   defp parse_ts(ts) when is_binary(ts) do
