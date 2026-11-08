@@ -16,6 +16,7 @@ defmodule Orbit.Alerts.Lifecycle do
   import Ecto.Query
 
   alias Orbit.Alerts.State
+  alias Orbit.Checks.ServiceCheck
   alias Orbit.Repo
 
   require Logger
@@ -50,7 +51,8 @@ defmodule Orbit.Alerts.Lifecycle do
   - unseen computed alert → `:insert` (first_seen = now)
   - still-present alert → `:touch` (last_seen + severity); a severity
     INCREASE past a live snooze also clears the snooze (DR-LC4 — a
-    worsening alert must not stay quiet)
+    worsening alert must not stay quiet). Increase = `ServiceCheck.severity/1`
+    rank (CRIT > WARN > UNKNOWN), never the raw state int
   - row whose alert vanished → `:resolve` (ack dies with it: the next
     occurrence is a new, un-acked incident)
   """
@@ -62,17 +64,41 @@ defmodule Orbit.Alerts.Lifecycle do
 
     touches =
       for {key, sev} <- computed, state = by_key[key], state != nil do
-        unsnooze? =
-          sev > state.severity and state.snoozed_until != nil and
-            DateTime.compare(state.snoozed_until, now) == :gt
-
-        {state, sev, unsnooze?}
+        {state, sev, worsened?(state.severity, sev) and snoozed?(state, now)}
       end
 
     resolves = for {key, state} <- by_key, not Map.has_key?(computed, key), do: state
 
     %{insert: inserts, touch: touches, resolve: resolves}
   end
+
+  @typedoc "Alerts-page lifecycle bucket (docs/alert-lifecycle.md DR-LC5)."
+  @type bucket :: :active | :acked | :snoozed
+
+  @doc """
+  Lifecycle bucket of one alert's state row: `:snoozed` = live snooze,
+  `:acked` = seen and not snoozed, `:active` = needs eyes — including a
+  `nil` row (the reconciler lags a just-appeared alert by one tick).
+  """
+  @spec bucket(State.t() | nil, DateTime.t()) :: bucket()
+  def bucket(nil, _now), do: :active
+
+  def bucket(%State{} = state, now) do
+    cond do
+      snoozed?(state, now) -> :snoozed
+      state.acked_at != nil -> :acked
+      true -> :active
+    end
+  end
+
+  # "Worse" is the ServiceCheck.severity/1 rank, NOT the raw Checkmk int:
+  # UNKNOWN (3) ranks below WARN (1), so UNKNOWN→CRIT is a worsening and
+  # CRIT→UNKNOWN is not.
+  defp worsened?(old_state, new_state),
+    do: ServiceCheck.severity(new_state) > ServiceCheck.severity(old_state)
+
+  defp snoozed?(%State{snoozed_until: nil}, _now), do: false
+  defp snoozed?(%State{snoozed_until: until}, now), do: DateTime.compare(until, now) == :gt
 
   defp unresolved do
     from(s in State, where: is_nil(s.resolved_at)) |> Repo.all()

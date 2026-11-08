@@ -176,12 +176,4 @@ defmodule Orbit.Checks.History do
   def state_of(2), do: :down
   def state_of(3), do: :unknown
   def state_of(_), do: nil
-
-  @doc "Human label for a recorded state, for the transition table."
-  @spec state_label(integer() | nil) :: String.t()
-  def state_label(0), do: "OK"
-  def state_label(1), do: "WARN"
-  def state_label(2), do: "CRIT"
-  def state_label(3), do: "UNKNOWN"
-  def state_label(_), do: "—"
 end

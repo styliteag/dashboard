@@ -25,6 +25,7 @@ defmodule OrbitWeb.FirmwareLive do
 
   alias Orbit.Bulk
   alias Orbit.Checks.Evaluate
+  alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
   alias Orbit.Instances
   alias Orbit.Instances.Instance
@@ -522,7 +523,7 @@ defmodule OrbitWeb.FirmwareLive do
                   />
                 </td>
                 <td class="px-3 py-2">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
+                  <span class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(r.state)]}>
                     {state_label(r.state)}
                   </span>
                   <span
@@ -619,13 +620,7 @@ defmodule OrbitWeb.FirmwareLive do
     do:
       "Every box below downloads the next major release, installs it and REBOOTS; not undoable from here. Type #{n} to confirm."
 
-  defp state_label(0), do: "OK"
+  # Page-specific word for WARN; everything else is the shared label.
   defp state_label(1), do: "UPDATE"
-  defp state_label(2), do: "CRIT"
-  defp state_label(_), do: "UNKNOWN"
-
-  defp state_class(0), do: "bg-primary/20 text-primary"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(_), do: "bg-base-300 text-base-content/70"
+  defp state_label(state), do: ServiceCheck.label(state)
 end

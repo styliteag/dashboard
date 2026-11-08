@@ -51,8 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Diagnose is write-gated server-side like its button.
   - Agent sockets can only answer their own commands and feed their own
     tunnel streams; WebSocket frames are size-capped; vendor `x_*` sections,
-    logfile snapshots and metric series per push are capped; a push
-    timestamp far in the future is replaced by the server clock; hello
+    logfile snapshots and metric series per push are capped; hello
     version/platform/checksum strings are format-checked.
   - The GUI-proxy cookie is bound to the user and his password version
     (password change, disable or lost group access end GUI access at once);
@@ -80,6 +79,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encoded dots/slashes), only GET/POST/PUT/DELETE, and only the
   Accept/Content-Type request headers — nothing can override the injected
   API credentials.
+
+### Fixed
+
+- Alerts: a snoozed alert going UNKNOWN→CRIT (or UNKNOWN→WARN) now breaks
+  the snooze, and WARN/CRIT→UNKNOWN no longer does. The reconciler compared
+  raw Checkmk state ints (UNKNOWN=3) instead of the severity rank
+  CRIT > WARN > UNKNOWN.
+- Check state badges: a missing or invalid state now reads UNKNOWN on the
+  Alerts page and the instance detail page (it showed OK) and in the check
+  history table (it showed "—"), matching the Checkmk export, which already
+  coerced invalid states to UNKNOWN.
+- Maintenance: the flag now clears only when a box comes back from offline
+  (the offline→online edge), on agent push and direct poll alike. Before, any
+  agent push cleared it, so a healthy agent box could not be held in
+  maintenance past one push interval, and a polled box never cleared it, so
+  a forgotten flag capped its CRITs at WARN forever. Setting the flag by hand
+  in the edit form is unchanged.
+- Agents: a push is stamped with the server clock only; the agent's own
+  timestamp no longer touches `agent_last_seen` / `last_success_at`. A clock
+  running ahead hid a silent agent from the stale sweep for the skew, and a
+  clock running behind made a live agent look silent.
 
 ## [4.5.0] - 2026-11-07
 

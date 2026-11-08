@@ -305,7 +305,7 @@ defmodule OrbitWeb.CertificatesLive do
             <tbody>
               <tr :for={r <- @visible_rows} class="border-b border-base-300/50 last:border-0">
                 <td class="px-3 py-2">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
+                  <span class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(r.state)]}>
                     {state_label(r.state)}
                   </span>
                 </td>
@@ -391,13 +391,7 @@ defmodule OrbitWeb.CertificatesLive do
   defp runway_color(1), do: "bg-warning"
   defp runway_color(_), do: "bg-primary"
 
-  defp state_label(0), do: "OK"
+  # Page-specific word for WARN; everything else is the shared label.
   defp state_label(1), do: "EXPIRING"
-  defp state_label(2), do: "CRIT"
-  defp state_label(_), do: "UNKNOWN"
-
-  defp state_class(0), do: "bg-primary/20 text-primary"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(_), do: "bg-base-300 text-base-content/70"
+  defp state_label(state), do: ServiceCheck.label(state)
 end

@@ -122,7 +122,7 @@ defmodule OrbitWeb.AgentSocket do
     Hub.ingest_metrics(state.instance_id, data)
     # Diff + alert check-state transitions off the socket path (own GenServer).
     Orbit.Checks.Transitions.push_evaluated(state.instance_id)
-    stamp_last_seen(state.instance_id, data["ts"])
+    stamp_last_seen(state.instance_id)
     {:ok, state}
   end
 
@@ -243,8 +243,11 @@ defmodule OrbitWeb.AgentSocket do
   # agent_last_seen + last_success_at stamping per push (hub.py:706-717) —
   # Orbit.Availability also detects the offline→online edge here and fires
   # the recovered alert. Never raises; failures must never kill the socket.
-  defp stamp_last_seen(instance_id, ts) do
-    Orbit.Availability.stamp_push(instance_id, push_time(ts, DateTime.utc_now()))
+  # Server clock only: the agent's `ts` is ignored for these stamps. An agent
+  # clock running ahead would hide its silence from the stale sweep for the
+  # skew; one running behind would make a live agent look silent.
+  defp stamp_last_seen(instance_id) do
+    Orbit.Availability.stamp_push(instance_id, DateTime.utc_now())
   end
 
   @doc "A hello frame field if it has the expected shape, else nil."
@@ -258,32 +261,4 @@ defmodule OrbitWeb.AgentSocket do
     do: if(Regex.match?(~r/\A[0-9a-f]{64}\z/, v), do: v)
 
   def hello_field(_field, _v), do: nil
-
-  # Tolerated clock skew before a future push ts is distrusted.
-  @max_future_skew_s 60
-
-  @doc """
-  The time a push is stamped with: the agent's `ts`, unless it is missing,
-  unparseable, or more than #{@max_future_skew_s}s ahead of `server_now` — a
-  future stamp would keep a silent box "online" until that time passes.
-  """
-  @spec push_time(term(), DateTime.t()) :: DateTime.t()
-  def push_time(ts, server_now) do
-    case parse_ts(ts) do
-      nil ->
-        server_now
-
-      dt ->
-        if DateTime.diff(dt, server_now) > @max_future_skew_s, do: server_now, else: dt
-    end
-  end
-
-  defp parse_ts(ts) when is_binary(ts) do
-    case DateTime.from_iso8601(ts) do
-      {:ok, dt, _} -> dt
-      _ -> nil
-    end
-  end
-
-  defp parse_ts(_), do: nil
 end

@@ -34,11 +34,12 @@ defmodule Orbit.Checks.Staleness do
     end
   end
 
-  @doc "Seconds of silence tolerated: max(floor, 4 × effective push interval)."
+  @doc """
+  Seconds of silence tolerated: max(floor, 4 × effective push interval) —
+  the same rule the offline sweep uses (`Orbit.Availability.stale_threshold/3`).
+  """
   @spec stale_threshold(integer() | nil, integer(), integer()) :: integer()
-  def stale_threshold(push_interval, default, floor) do
-    max(floor, @default_missed_pushes * effective_interval(push_interval, default))
-  end
+  defdelegate stale_threshold(push_interval, default, floor), to: Orbit.Availability
 
   @doc """
   The point after which an instance's cached sections stopped being evidence,
@@ -83,9 +84,4 @@ defmodule Orbit.Checks.Staleness do
       _ -> nil
     end
   end
-
-  defp effective_interval(override, _default) when is_integer(override) and override > 0,
-    do: override
-
-  defp effective_interval(_override, default), do: default
 end

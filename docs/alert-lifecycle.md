@@ -33,7 +33,9 @@ einer flatternden Box sieht aus wie 40 neue Probleme (U-M3).
   Resolve (ein WIEDER auftauchender Alert ist wieder un-acked — neuer
   Vorfall). *Snooze* = "bis <Zeitpunkt> aus der Default-Ansicht"
   (1h / 8h / 24h / 7d); ein Severity-ANSTIEG (WARN→CRIT) bricht den
-  Snooze. Beides schreibt Audit (`alert.ack`, `alert.snooze`) mit
+  Snooze. Anstieg = Rang aus `ServiceCheck.severity/1`
+  (CRIT > WARN > UNKNOWN), nicht der rohe State-Int: UNKNOWN→CRIT bricht,
+  WARN/CRIT→UNKNOWN nicht. Beides schreibt Audit (`alert.ack`, `alert.snooze`) mit
   check_key im allowlisted Detail.
 - **DR-LC5 — UI.** Age-Spalte ("seit 4h", ts_rel + Tooltip absolut,
   sortierbar — Default bleibt worst-first); Ack je Zeile + "Ack visible"

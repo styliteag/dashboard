@@ -2074,8 +2074,11 @@ defmodule OrbitWeb.InstanceDetailLive do
               <tbody>
                 <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
                   <td class="w-16 py-2 pr-4 align-top">
-                    <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
-                      {state_label(c.state)}
+                    <span class={[
+                      "rounded px-2 py-0.5 text-xs font-medium",
+                      ServiceCheck.badge_class(c.state)
+                    ]}>
+                      {ServiceCheck.label(c.state)}
                     </span>
                   </td>
                   <td class="whitespace-nowrap py-2 pr-4 align-top text-base-content/70">
@@ -2373,9 +2376,9 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
             <span
               :if={@fw_verdict}
-              class={["rounded px-1.5 py-0.5 text-xs", state_class(@fw_verdict.state)]}
+              class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(@fw_verdict.state)]}
             >
-              {state_label(@fw_verdict.state)}
+              {ServiceCheck.label(@fw_verdict.state)}
             </span>
           </h2>
 
@@ -3279,8 +3282,8 @@ defmodule OrbitWeb.InstanceDetailLive do
                     {cb_ts(ts)}
                   </td>
                   <td class="py-1.5 pr-3 align-top">
-                    <span class={["rounded px-1.5 py-0.5 text-xs", state_class(new)]}>
-                      {state_label(old)} → {state_label(new)}
+                    <span class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(new)]}>
+                      {ServiceCheck.label(old)} → {ServiceCheck.label(new)}
                     </span>
                   </td>
                   <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
@@ -3304,8 +3307,8 @@ defmodule OrbitWeb.InstanceDetailLive do
               class="overflow-x-auto rounded bg-base-300/40 p-3 font-mono text-xs"
             >
               <div :for={c <- @checks} class="flex items-baseline gap-2 whitespace-nowrap py-0.5">
-                <span class={["rounded px-1 text-[10px] font-bold", state_class(c.state)]}>
-                  {c.state} {state_label(c.state)}
+                <span class={["rounded px-1 text-[10px] font-bold", ServiceCheck.badge_class(c.state)]}>
+                  {c.state} {ServiceCheck.label(c.state)}
                 </span>
                 <span class="text-base-content/70">{c.key}</span>
                 <span class="text-base-content/80">{c.summary}</span>
@@ -4025,11 +4028,6 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp fmt_bytes(_), do: "0 B"
 
-  defp state_label(1), do: "WARN"
-  defp state_label(2), do: "CRIT"
-  defp state_label(3), do: "UNKNOWN"
-  defp state_label(_), do: "OK"
-
   # Split a raw Checkmk dump into segments for colouring: section headers
   # (`<<<name>>>`) vs the data between them. One regex split, ~one span per
   # section header, so the DOM stays small even on a large dump. Only called
@@ -4040,11 +4038,6 @@ defmodule OrbitWeb.InstanceDetailLive do
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(fn part -> %{header: String.starts_with?(part, "<<<"), text: part} end)
   end
-
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-base-300 text-base-content/70"
-  defp state_class(_), do: "bg-primary/20 text-primary"
 
   defp cb_ts(dt), do: local_time_tag(dt, "datetime")
 

@@ -578,8 +578,11 @@ defmodule OrbitWeb.ConnectivityLive do
                     >
                       {if MapSet.member?(@expanded, row_key(r)), do: "▾", else: "▸"}
                     </button>
-                    <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.check.state)]}>
-                      {state_label(r.check.state)}
+                    <span class={[
+                      "rounded px-1.5 py-0.5 text-xs",
+                      ServiceCheck.badge_class(r.check.state)
+                    ]}>
+                      {ServiceCheck.label(r.check.state)}
                     </span>
                   </td>
                   <td class="py-2 pr-4">
@@ -708,16 +711,6 @@ defmodule OrbitWeb.ConnectivityLive do
 
   defp loss_text(nil), do: "—"
   defp loss_text(v) when is_number(v), do: "#{Float.round(v / 1, 0)}%"
-
-  defp state_label(0), do: "OK"
-  defp state_label(1), do: "WARN"
-  defp state_label(2), do: "CRIT"
-  defp state_label(_), do: "UNKNOWN"
-
-  defp state_class(0), do: "bg-primary/20 text-primary"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(_), do: "bg-base-300 text-base-content/70"
 
   # Chart line colour follows the state badge palette (emerald/amber/red).
   defp chart_color(0), do: "#10b981"

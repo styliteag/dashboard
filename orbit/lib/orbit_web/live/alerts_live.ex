@@ -194,15 +194,10 @@ defmodule OrbitWeb.AlertsLive do
     assign(socket, alerts: alerts)
   end
 
-  # Lifecycle buckets: snoozed = live snooze; acked = seen and not snoozed;
-  # active = needs eyes (including reconciler-lag rows without a state yet).
-  defp lifecycle_bucket(a, now) do
-    cond do
-      a.ls && a.ls.snoozed_until && DateTime.compare(a.ls.snoozed_until, now) == :gt -> "snoozed"
-      a.ls && a.ls.acked_at -> "acked"
-      true -> "active"
-    end
-  end
+  # Lifecycle buckets live in Orbit.Alerts.Lifecycle.bucket/2; the filter
+  # chips and phx-values speak strings.
+  defp lifecycle_bucket(a, now),
+    do: a.ls |> Orbit.Alerts.Lifecycle.bucket(now) |> Atom.to_string()
 
   defp lifecycle_rows(alerts, "all", _now), do: alerts
 
@@ -402,8 +397,11 @@ defmodule OrbitWeb.AlertsLive do
             <tbody>
               <tr :for={a <- @rows} class="border-b border-base-300/50">
                 <td class="py-2 pr-4">
-                  <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(a.check.state)]}>
-                    {state_label(a.check.state)}
+                  <span class={[
+                    "rounded px-2 py-0.5 text-xs font-medium",
+                    ServiceCheck.badge_class(a.check.state)
+                  ]}>
+                    {ServiceCheck.label(a.check.state)}
                   </span>
                 </td>
                 <td class="py-2 pr-4">
@@ -490,14 +488,4 @@ defmodule OrbitWeb.AlertsLive do
     </main>
     """
   end
-
-  defp state_label(1), do: "WARN"
-  defp state_label(2), do: "CRIT"
-  defp state_label(3), do: "UNKNOWN"
-  defp state_label(_), do: "OK"
-
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-base-300 text-base-content/70"
-  defp state_class(_), do: "bg-primary/20 text-primary"
 end
