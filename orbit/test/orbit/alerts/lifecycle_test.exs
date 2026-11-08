@@ -76,8 +76,11 @@ defmodule Orbit.Alerts.LifecycleTest do
   end
 
   describe "bucket/2" do
+    test "no lifecycle row yet (reconciler lag) is active" do
+      assert Lifecycle.bucket(nil, @now) == :active
+    end
+
     for {name, attrs, expected} <- [
-          {"no lifecycle row yet (reconciler lag)", nil, :active},
           {"fresh row", %{}, :active},
           {"acked", %{acked_at: ~U[2026-08-07 11:00:00Z]}, :acked},
           {"live snooze", %{snoozed_until: ~U[2026-08-07 13:00:00Z]}, :snoozed},
@@ -90,8 +93,7 @@ defmodule Orbit.Alerts.LifecycleTest do
            %{acked_at: ~U[2026-08-07 11:00:00Z], snoozed_until: ~U[2026-08-07 11:30:00Z]}, :acked}
         ] do
       test name do
-        attrs = unquote(Macro.escape(attrs))
-        ls = if attrs, do: state(attrs)
+        ls = state(unquote(Macro.escape(attrs)))
         assert Lifecycle.bucket(ls, @now) == unquote(expected)
       end
     end
