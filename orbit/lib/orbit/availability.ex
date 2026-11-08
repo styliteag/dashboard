@@ -6,8 +6,10 @@ defmodule Orbit.Availability do
   operation whichever stack flips first wins and the other stays silent
   (is_online + guarded update make the transition idempotent across them).
 
-  - `stamp_push/2` — per metrics push: stamp agent_last_seen/last_success,
-    detect offline→online and fire the recovered alert + history row.
+  - `stamp_push/2` / `stamp_poll_ok/3` — per metrics push / successful
+    poll: stamp last_success, detect offline→online, fire the recovered
+    alert + history row and clear a maintenance flag on that edge
+    (`maintenance_on_success/2`).
   - `sweep/0` — scheduler job: flip silent agents offline. The silence
     threshold scales with the instance's push interval (~4 missed pushes),
     floored at agent_stale_seconds; the process-start floor keeps a
@@ -97,6 +99,32 @@ defmodule Orbit.Availability do
       (last_error_at == nil or NaiveDateTime.compare(last_success_at, last_error_at) == :gt)
   end
 
+  @typedoc "Last recorded transport outcome of one instance — see `outcome/2`."
+  @type outcome :: :never | :online | :offline
+
+  @doc """
+  Last-outcome state from the two stamp columns: `:never` (no attempt yet),
+  `:online` (`online?/2`), else `:offline` — which includes a push box the
+  stale sweep flipped (it stamps `last_error_at`). The stamp paths read it
+  BEFORE writing a success: `:offline` there is the offline→online edge.
+  """
+  @spec outcome(NaiveDateTime.t() | DateTime.t() | nil, NaiveDateTime.t() | DateTime.t() | nil) ::
+          outcome()
+  def outcome(nil, nil), do: :never
+  def outcome(success, error), do: if(online?(success, error), do: :online, else: :offline)
+
+  @doc """
+  Maintenance transition on a successful push or poll, pure. The flag clears
+  only on the offline→online edge: the planned-down window is over once a
+  box that was offline reports in again. A box that stayed online keeps its
+  flag (an operator can hold a healthy box in maintenance as long as they
+  like), and so does a box's very first contact (`:never`) — onboarding is
+  not a recovery. The flag is set only by hand (instance edit form).
+  """
+  @spec maintenance_on_success(outcome(), boolean()) :: :clear | :keep
+  def maintenance_on_success(:offline, true), do: :clear
+  def maintenance_on_success(_prev, _maintenance?), do: :keep
+
   @doc "Silence tolerated before offline: max(floor, ~4 missed effective pushes)."
   def stale_threshold(push_interval, default_push, base_stale_seconds) do
     effective =
@@ -130,46 +158,30 @@ defmodule Orbit.Availability do
         [instance_id]
       )
 
-    was_offline =
+    {prev, maintenance} =
       case rows do
-        [[_name, success, error, _maint]] ->
-          not online?(success, error) and (success || error) != nil
-
-        _ ->
-          false
+        [[_name, success, error, maint]] -> {outcome(success, error), maint in [1, true]}
+        _ -> {:never, false}
       end
 
-    # Maintenance auto-clears the moment the box reports in again (python
-    # hub.py parity): a healthy heartbeat means the planned-down window is
-    # over. Without this the flag stayed set forever — and a box in
-    # maintenance has all its CRITs capped at WARN, so a forgotten flag
-    # silently muted a live firewall.
-    was_maintenance = match?([[_, _, _, m]] when m in [1, true], rows)
+    was_offline = prev == :offline
 
     Orbit.Repo.query!(
       "UPDATE instances SET agent_last_seen = ?, last_success_at = ?, " <>
-        "last_error_at = NULL, last_error_message = NULL, maintenance = 0 WHERE id = ?",
+        "last_error_at = NULL, last_error_message = NULL WHERE id = ?",
       [naive, naive, instance_id]
     )
 
-    if was_maintenance do
+    # Maintenance clears on the offline→online edge only, on both transports
+    # (stamp_poll_ok/3 too). Clearing on EVERY push (the old python hub.py
+    # parity) meant a healthy agent box could not stay in maintenance past
+    # one push interval, while polled boxes never cleared at all — and a box
+    # in maintenance has all its CRITs capped at WARN, so a forgotten flag
+    # silently muted a live firewall. The edge serves both: a planned-down
+    # box returning ends its window, a box held in maintenance stays there.
+    if maintenance_on_success(prev, maintenance) == :clear do
       [[name, _, _, _]] = rows
-
-      Orbit.Audit.write(
-        action: "instance.maintenance_cleared",
-        result: "ok",
-        target_type: "instance",
-        target_id: instance_id,
-        detail: %{"reason" => "agent_reported_in"}
-      )
-
-      Orbit.Notifier.dispatch_async(
-        "#{name} maintenance ended",
-        "#{name} reported in again — maintenance flag cleared.",
-        instance_id,
-        "info",
-        @availability
-      )
+      clear_maintenance(instance_id, name, "agent_reported_in")
     end
 
     if was_offline do
@@ -212,13 +224,24 @@ defmodule Orbit.Availability do
   """
   def stamp_poll_ok(instance_id, name, %DateTime{} = now) do
     naive = now |> DateTime.truncate(:second) |> DateTime.to_naive()
-    was_offline = offline_before?(instance_id)
+
+    {prev, maintenance} =
+      case outcome_row(instance_id) do
+        [success, error, maint] -> {outcome(success, error), maint in [1, true]}
+        _ -> {:never, false}
+      end
+
+    was_offline = prev == :offline
 
     Orbit.Repo.query!(
       "UPDATE instances SET last_success_at = ?, last_error_at = NULL, " <>
         "last_error_message = NULL WHERE id = ?",
       [naive, instance_id]
     )
+
+    if maintenance_on_success(prev, maintenance) == :clear do
+      clear_maintenance(instance_id, name, "poll_succeeded")
+    end
 
     if was_offline do
       record_event(instance_id, naive, true, "#{name} recovered")
@@ -274,18 +297,9 @@ defmodule Orbit.Availability do
       :ok
   end
 
-  # Offline right now AND attempted before — a never-polled box must not fire a
-  # "recovered" alert on its very first successful poll.
-  defp offline_before?(instance_id) do
-    case outcome_row(instance_id) do
-      [success, error] -> not online?(success, error) and (success || error) != nil
-      _ -> false
-    end
-  end
-
   defp online_before?(instance_id) do
     case outcome_row(instance_id) do
-      [success, error] -> online?(success, error)
+      [success, error, _maint] -> online?(success, error)
       _ -> false
     end
   end
@@ -293,7 +307,7 @@ defmodule Orbit.Availability do
   defp outcome_row(instance_id) do
     %{rows: rows} =
       Orbit.Repo.query!(
-        "SELECT last_success_at, last_error_at FROM instances WHERE id = ?",
+        "SELECT last_success_at, last_error_at, maintenance FROM instances WHERE id = ?",
         [instance_id]
       )
 
@@ -356,6 +370,37 @@ defmodule Orbit.Availability do
 
     if n > 0, do: record_event(id, now, false, "agent silent for >#{threshold}s")
     n > 0
+  end
+
+  # The offline→online edge of a box in maintenance (`maintenance_on_success/2`
+  # said :clear). Guarded on the flag still being set, so a concurrent manual
+  # clear does not produce a second audit row and notification.
+  defp clear_maintenance(instance_id, name, reason) do
+    %{num_rows: n} =
+      Orbit.Repo.query!(
+        "UPDATE instances SET maintenance = 0 WHERE id = ? AND maintenance <> 0",
+        [instance_id]
+      )
+
+    if n > 0 do
+      Orbit.Audit.write(
+        action: "instance.maintenance_cleared",
+        result: "ok",
+        target_type: "instance",
+        target_id: instance_id,
+        detail: %{"reason" => reason}
+      )
+
+      Orbit.Notifier.dispatch_async(
+        "#{name} maintenance ended",
+        "#{name} is back online — maintenance flag cleared.",
+        instance_id,
+        "info",
+        @availability
+      )
+    end
+
+    :ok
   end
 
   defp record_event(instance_id, naive_ts, online, summary) do

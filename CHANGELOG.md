@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alerts page and the instance detail page (it showed OK) and in the check
   history table (it showed "—"), matching the Checkmk export, which already
   coerced invalid states to UNKNOWN.
+- Maintenance: the flag now clears only when a box comes back from offline
+  (the offline→online edge), on agent push and direct poll alike. Before, any
+  agent push cleared it, so a healthy agent box could not be held in
+  maintenance past one push interval, and a polled box never cleared it, so
+  a forgotten flag capped its CRITs at WARN forever. Setting the flag by hand
+  in the edit form is unchanged.
 - Agents: a push is no longer stamped with a future `agent_last_seen` when
   the agent's clock runs ahead; the agent timestamp is clamped to the server
   clock, so the stale sweep sees a silent agent on time.
