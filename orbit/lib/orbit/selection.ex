@@ -85,6 +85,23 @@ defmodule Orbit.Selection do
     is_on(consumer, check_key, instance_id, :persistent_term.get(@rules_key, []))
   end
 
+  @doc """
+  `{consumer, selector}` pairs a rule pins to `instance_id` (pure, over
+  resolve/4 tuples) — the detail page marks these as instance overrides.
+  """
+  def instance_overrides(instance_id, rules) when is_integer(instance_id) do
+    for {consumer, ^instance_id, selector, _mode} <- rules,
+        into: MapSet.new(),
+        do: {consumer, selector}
+  end
+
+  @doc """
+  instance_overrides/2 over the cached rules — the snapshot is_on_live/3
+  reads, so a page polling every few seconds never touches the DB.
+  """
+  def instance_overrides_live(instance_id),
+    do: instance_overrides(instance_id, :persistent_term.get(@rules_key, []))
+
   @doc "Synchronous re-load (tests / after writes)."
   def reload(server \\ __MODULE__), do: GenServer.call(server, :reload)
 

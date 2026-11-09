@@ -1728,7 +1728,10 @@ defmodule OrbitWeb.InstanceDetailLive do
       # several sections (e.g. Pro's ZFS tab: open's status.zfs + x_zfs). Open
       # ships no vendor tabs, so nothing reads it here.
       cache_entry: entry,
-      check_rules: instance_rules(socket.assigns.instance.id)
+      # {consumer, selector} pairs pinned to THIS instance — the ChecksSection
+      # toggles show override vs global-inherited state. Read from the rules
+      # cache (same snapshot as the ON/OFF state), not the DB on every refresh.
+      check_rules: Orbit.Selection.instance_overrides_live(socket.assigns.instance.id)
     )
   end
 
@@ -1745,20 +1748,6 @@ defmodule OrbitWeb.InstanceDetailLive do
       source_ip: agent && Map.get(agent, :source_ip),
       connected: not is_nil(agent)
     )
-  end
-
-  # {consumer, selector} pairs that have a rule pinned to THIS instance —
-  # the ChecksSection toggles show override vs global-inherited state.
-  defp instance_rules(instance_id) do
-    Orbit.Selection.list_rules()
-    |> Enum.filter(&(&1.instance_id == instance_id))
-    |> MapSet.new(&{&1.consumer, &1.selector})
-  rescue
-    _ -> MapSet.new()
-  catch
-    # A pool checkout exits rather than raising; same fallback, or a stressed
-    # database takes the whole page down instead of one panel.
-    _kind, _reason -> MapSet.new()
   end
 
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports

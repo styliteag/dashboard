@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The instance detail page reads its recent check transitions through the
   `(instance_id, ts)` index. It used to sort by id, so MariaDB walked the check
   events of every box (or sorted all of this box's) on each 5-second refresh.
+- The instance detail page takes the export toggles' instance overrides from
+  the selection rules cache. It used to read every selection rule from the
+  database on each 5-second refresh.
 
 ## [4.9.1] - 2026-11-08
 

@@ -10,6 +10,21 @@ defmodule Orbit.SelectionTest do
     refute Selection.is_on("telegram", "gateway:WAN", 1, [])
   end
 
+  test "instance_overrides/2: {consumer, selector} pinned to one instance" do
+    rules = [
+      {"checkmk", 7, "cpu", "exclude"},
+      {"telegram", 7, "gateway:WAN", "include"},
+      {"checkmk", 8, "disk", "include"},
+      {"checkmk", nil, "memory", "include"}
+    ]
+
+    assert Selection.instance_overrides(7, rules) ==
+             MapSet.new([{"checkmk", "cpu"}, {"telegram", "gateway:WAN"}])
+
+    assert Selection.instance_overrides(9, rules) == MapSet.new()
+    assert Selection.instance_overrides(7, []) == MapSet.new()
+  end
+
   test "global category include turns a family on" do
     rules = [{"telegram", nil, "gateway", "include"}]
     assert Selection.is_on("telegram", "gateway:WAN", 1, rules)
