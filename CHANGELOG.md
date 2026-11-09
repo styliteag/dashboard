@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The firewall agent reports each interface's MAC address, a machine id derived
+  from the box's host UUID (an HMAC, the raw UUID never leaves the box), and the
+  SSH host key fingerprints. Takes effect with the next agent version.
+
 ### Fixed
 
 - The instance detail page reads its recent check transitions through the
