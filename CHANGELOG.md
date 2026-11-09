@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The instance detail page reads its recent check transitions through the
+  `(instance_id, ts)` index. It used to sort by id, so MariaDB walked the check
+  events of every box (or sorted all of this box's) on each 5-second refresh.
+
 ## [4.9.1] - 2026-11-08
 
 ### Fixed

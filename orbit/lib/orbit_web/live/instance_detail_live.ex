@@ -1719,7 +1719,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       certificates: entry["certificates"] || [],
       pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
-      check_history: check_history(socket.assigns.instance.id),
+      # recent check transitions (CheckHistorySection parity)
+      check_history: Orbit.Checks.History.recent(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance),
       # Raw Checkmk-agent dump retained by the hub (linux nodes) — the Checkmk tab.
       checkmk_output: entry["checkmk_output"],
@@ -1758,22 +1759,6 @@ defmodule OrbitWeb.InstanceDetailLive do
     # A pool checkout exits rather than raising; same fallback, or a stressed
     # database takes the whole page down instead of one panel.
     _kind, _reason -> MapSet.new()
-  end
-
-  # Recent check transitions (CheckHistorySection parity) — shared table,
-  # written by both stacks' ingest.
-  defp check_history(instance_id) do
-    Orbit.Repo.query!(
-      "SELECT ts, check_key, old_state, new_state, summary FROM check_events " <>
-        "WHERE instance_id = ? ORDER BY id DESC LIMIT 20",
-      [instance_id]
-    ).rows
-  rescue
-    _ -> []
-  catch
-    # A pool checkout exits rather than raising; same fallback, or a stressed
-    # database takes the whole page down instead of one panel.
-    _kind, _reason -> []
   end
 
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports
