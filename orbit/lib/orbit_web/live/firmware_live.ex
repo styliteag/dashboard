@@ -25,6 +25,7 @@ defmodule OrbitWeb.FirmwareLive do
 
   alias Orbit.Bulk
   alias Orbit.Checks.Evaluate
+  alias Orbit.Checks.ServiceCheck
   alias Orbit.Hub
   alias Orbit.Instances
   alias Orbit.Instances.Instance
@@ -94,15 +95,20 @@ defmodule OrbitWeb.FirmwareLive do
   end
 
   def handle_event("toggle_select", %{"id" => raw_id}, socket) do
-    {id, ""} = Integer.parse(raw_id)
-    selected = socket.assigns.selected
+    case OrbitWeb.ParamId.parse(raw_id) do
+      nil ->
+        {:noreply, socket}
 
-    selected =
-      if MapSet.member?(selected, id),
-        do: MapSet.delete(selected, id),
-        else: MapSet.put(selected, id)
+      id ->
+        selected = socket.assigns.selected
 
-    {:noreply, assign(socket, selected: selected)}
+        selected =
+          if MapSet.member?(selected, id),
+            do: MapSet.delete(selected, id),
+            else: MapSet.put(selected, id)
+
+        {:noreply, assign(socket, selected: selected)}
+    end
   end
 
   def handle_event("select_all", _params, socket) do
@@ -126,11 +132,14 @@ defmodule OrbitWeb.FirmwareLive do
   def handle_event("bulk_ask", %{"action" => action}, socket)
       when action in ~w(firmware_update firmware_upgrade) do
     names = bulk_target_names(socket.assigns, action)
+    # Frozen with the dialog: bulk_run never acts on a box not named here.
+    ids = bulk_targets(visible(socket.assigns), socket.assigns.selected, action)
 
     if not socket.assigns.writable or socket.assigns.bulk_busy or names == [] do
       {:noreply, socket}
     else
-      {:noreply, assign(socket, confirm: %{action: action, names: names}, confirm_typed: "")}
+      {:noreply,
+       assign(socket, confirm: %{action: action, names: names, ids: ids}, confirm_typed: "")}
     end
   end
 
@@ -146,7 +155,7 @@ defmodule OrbitWeb.FirmwareLive do
     confirm = socket.assigns.confirm
 
     targets =
-      confirm && bulk_targets(visible(socket.assigns), socket.assigns.selected, confirm.action)
+      confirm && frozen_targets(confirm, visible(socket.assigns), socket.assigns.selected)
 
     cond do
       is_nil(confirm) or not socket.assigns.writable or socket.assigns.bulk_busy or
@@ -273,6 +282,15 @@ defmodule OrbitWeb.FirmwareLive do
     |> Enum.filter(eligible)
     |> Enum.filter(&MapSet.member?(selected, &1.id))
     |> Enum.map(& &1.id)
+  end
+
+  @doc """
+  The run set: the ids frozen at bulk_ask, minus any that stopped being
+  eligible since (stale rows are dropped, never replaced by new ones).
+  """
+  def frozen_targets(%{ids: ids, action: action}, rows, selected) do
+    current = MapSet.new(bulk_targets(rows, selected, action))
+    Enum.filter(ids, &MapSet.member?(current, &1))
   end
 
   defp visible(a) do
@@ -505,7 +523,7 @@ defmodule OrbitWeb.FirmwareLive do
                   />
                 </td>
                 <td class="px-3 py-2">
-                  <span class={["rounded px-1.5 py-0.5 text-xs", state_class(r.state)]}>
+                  <span class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(r.state)]}>
                     {state_label(r.state)}
                   </span>
                   <span
@@ -602,13 +620,7 @@ defmodule OrbitWeb.FirmwareLive do
     do:
       "Every box below downloads the next major release, installs it and REBOOTS; not undoable from here. Type #{n} to confirm."
 
-  defp state_label(0), do: "OK"
+  # Page-specific word for WARN; everything else is the shared label.
   defp state_label(1), do: "UPDATE"
-  defp state_label(2), do: "CRIT"
-  defp state_label(_), do: "UNKNOWN"
-
-  defp state_class(0), do: "bg-primary/20 text-primary"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(_), do: "bg-base-300 text-base-content/70"
+  defp state_label(state), do: ServiceCheck.label(state)
 end

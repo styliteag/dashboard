@@ -61,7 +61,7 @@ defmodule OrbitWeb.LogEventsLive do
   # though the button is never rendered for them.
   def handle_event("toggle_sample", %{"id" => id}, socket) do
     if socket.assigns.current_user.role == "admin" do
-      id = String.to_integer(id)
+      id = OrbitWeb.ParamId.parse(id)
       open = if socket.assigns.open_sample == id, do: nil, else: id
       {:noreply, assign(socket, open_sample: open)}
     else

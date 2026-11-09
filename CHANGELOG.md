@@ -7,9 +7,184 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The instance detail page reads its recent check transitions through the
+  `(instance_id, ts)` index. It used to sort by id, so MariaDB walked the check
+  events of every box (or sorted all of this box's) on each 5-second refresh.
+
+## [4.9.1] - 2026-11-08
+
+### Fixed
+
+- With the GeoIP kill switch on (`DASH_GEOIP_DISABLE`), the GeoIP database loader no
+  longer starts, so a missing GeoLite2 file no longer logs a load error every 30 s.
+
+## [4.9.0] - 2026-11-08
+
+### Security
+
+- Login: a password-only session of a user who already has a second factor
+  could open `/login/enroll`, which replaced the user's real TOTP secret
+  with a fresh one, and then sign in with a code from the new QR code — the
+  password alone was enough and the real factor was destroyed. The login
+  steps are now an explicit state machine (`Orbit.Auth.LoginFlow`): the
+  session records whether it is waiting for verification or for
+  enrollment, enrollment is only reachable in the enrollment state, and the
+  database is re-checked so a user who has a factor is never enrolled
+  again. Logins that are mid-way at upgrade time start over at the password
+  form. A locked IP can no longer keep guessing TOTP codes after the
+  password step (the code and enrollment steps now honour the login
+  lockout, as the passkey step already did).
+- Agents: disabling or uninstalling an agent, deleting its instance or
+  rotating its token left the live agent connection open — it kept
+  pushing (marking the box online and clearing maintenance) and kept
+  receiving commands and tunnels until it reconnected on its own. Every
+  such change now closes the connection at once (close code 4003), a
+  connection whose token was revoked before its hello is refused, and
+  frames sent before the hello are ignored.
+  Binding changes go through one module, `Orbit.AgentBinding`.
+- Input validation sweep (server side; the UI hints were advisory only):
+  - Ping tests accept only a count of 1-20; the VPN page's Phase-2 "Test"
+    applies the same source/destination checks as the monitor editor.
+    Phase-2 monitor keys (tunnel, child, selectors) are length/charset checked.
+  - Instances: base URL must be http(s) with a host, ping URL an http(s) URL
+    or host[:port], CA bundle a PEM certificate, SSH port 1-65535, intervals
+    5-86400 s. Pointing the base URL at a different host, port or scheme now
+    drops the stored API key/secret unless they are re-entered in the same save.
+  - Firewall rules: rule ids and the interface filter are refused unless they
+    are plain tokens; rule values are bounded strings.
+  - GeoIP: the `orbit_` bearer exemption applies only to the key-only export
+    endpoints (plus prefixes a downstream build lists in the new, empty by
+    default `config :orbit, :geoip_key_auth_prefixes`), not to any request
+    carrying the header. GeoLite2 downloads are checked against MaxMind's
+    sha256 and inflated with a size cap.
+  - API keys: a group-scoped admin lists, revokes and purges only keys bound
+    within his groups.
+  - Packet capture filters refuse any `-option` token, not only a leading
+    one, and must be printable ASCII without quotes or backslashes (older
+    agents split on separators such as `\x1c` or U+00A0 that the server-side
+    token check did not see).
+  - IPsec connect/disconnect/diagnose: tunnel and SA ids are format-checked;
+    Diagnose is write-gated server-side like its button.
+  - Agent sockets can only answer their own commands and feed their own
+    tunnel streams; WebSocket frames are size-capped; vendor `x_*` sections,
+    logfile snapshots and metric series per push are capped; hello
+    version/platform/checksum strings are format-checked.
+  - The GUI-proxy cookie is bound to the user and his password version
+    (password change, disable or lost group access end GUI access at once);
+    its lifetime is 2 h (was 8 h). Handoff and cookie tokens are not
+    interchangeable (a cookie can no longer renew itself), and a read-only
+    user gets no GUI access. Proxied methods are allow-listed; the handoff
+    path and replayed firewall cookies are sanitised.
+  - Shell and capture WebSockets require a browser Origin (missing or `null`
+    is refused); shell resize dimensions are bounded.
+  - Passwords are 8-256 characters for self-service change, admin reset and
+    user creation; usernames have no whitespace/control characters.
+  - Outbound calls: webhooks, a custom LLM base URL and the SMTP relay use
+    one address policy (incl. `::ffff:127.0.0.1`, `::127.0.0.1`, SIIT,
+    NAT64 and 6to4 forms); webhook and LLM requests connect to the address
+    that was checked (no DNS rebinding) and never follow redirects; LLM error
+    bodies and raw SMTP errors are no longer echoed; the SMTP relay is used
+    as configured (no MX lookups) and from/to are checked (no header
+    injection). The direct-poll OPNsense and Securepoint clients no longer
+    follow redirects and cap response bodies, as do LLM answers; the HTTP
+    probe and webhooks read no response body.
+  - Selection rules: global rules are superadmin-only; per-instance rule
+    deletes are scope-checked.
+  - Bulk actions run exactly on the boxes the confirmation dialog listed.
+  - CSV export neutralises formula cells; comment text is bounded; config
+    backup and Checkmk payloads inflate with a streaming size cap.
+  - Malformed ids and filter values in LiveView events and query params are
+    ignored instead of crashing the page.
+  - API responses carry the secure browser headers (nosniff).
+- Firewall agent 4.2.16: the local API relay (`http.relay`) forwards only
+  ASCII `api/...` paths (no `..`, `//`, backslashes, control characters or
+  encoded dots/slashes), only GET/POST/PUT/DELETE, and only the
+  Accept/Content-Type request headers — nothing can override the injected
+  API credentials.
+
+### Fixed
+
+- Alerts: a snoozed alert going UNKNOWN→CRIT (or UNKNOWN→WARN) now breaks
+  the snooze, and WARN/CRIT→UNKNOWN no longer does. The reconciler compared
+  raw Checkmk state ints (UNKNOWN=3) instead of the severity rank
+  CRIT > WARN > UNKNOWN.
+- Check state badges: a missing or invalid state now reads UNKNOWN on the
+  Alerts page and the instance detail page (it showed OK) and in the check
+  history table (it showed "—"), matching the Checkmk export, which already
+  coerced invalid states to UNKNOWN.
+- Maintenance: the flag now clears only when a box comes back from offline
+  (the offline→online edge), on agent push and direct poll alike. Before, any
+  agent push cleared it, so a healthy agent box could not be held in
+  maintenance past one push interval, and a polled box never cleared it, so
+  a forgotten flag capped its CRITs at WARN forever. Setting the flag by hand
+  in the edit form is unchanged.
+- Agents: a push is stamped with the server clock only; the agent's own
+  timestamp no longer touches `agent_last_seen` / `last_success_at`. A clock
+  running ahead hid a silent agent from the stale sweep for the skew, and a
+  clock running behind made a live agent look silent.
+
+## [4.5.0] - 2026-11-07
+
+### Added
+
+- Extension points for downstream builds, all empty in open (no behaviour
+  change without an entry; reference in `docs/extension-points.md`):
+  - `config :orbit, :extra_children` — extra supervised children, started
+    after the migrator and the bootstrap seed, before the endpoint.
+  - `config :orbit, :extra_forwards` — `{path, plug, opts}` forwarded at the
+    router's top level (compile-time); the plug owns auth.
+  - `config :orbit, :extra_superadmin_live` — `{path, live_module}` pages in
+    the superadmin live session (compile-time).
+  - `config :orbit, :apikeys_extra_links` — `{label, path, :all | :superadmin}`
+    links next to "New key" on the API keys page.
+  - `config :orbit, :session_validators` — modules whose
+    `valid_session?(user, session)` must all accept on every request,
+    LiveView mount and client-WebSocket upgrade.
+  - `config :orbit, :logout_redirects` — modules whose
+    `logout_redirect(conn)` may send the browser to an external URL after
+    logout instead of `/login`.
+  - `config :orbit, :notification_suppressors` — modules whose
+    `suppress?(instance_id, check_key)` can drop an alert before dispatch
+    (the event-stream line is still written).
+  - `config :orbit, :instance_badges` — `{module, fun}` badges in the
+    instance detail header.
+
 ### Changed
 
+- The client-WebSocket session check (`OrbitWeb.WSAuth`, shell and capture
+  upgrades) now uses the same session check as HTTP requests and LiveView
+  (`OrbitWeb.UserAuth.user_from_session/1`); the rules are unchanged.
 - **daisyUI is vendored** (`assets/vendor/daisyui.js`, `daisyui-theme.js`, v5.6.18) instead of a Mix git dependency, so `mix deps.get` never clones the daisyUI repository (a tag-pinned clone grew to ~12 GB per checkout).
+
+### Fixed
+
+- **Linux agent: a re-install right after an uninstall survives.** The
+  dashboard-triggered uninstall runs a detached teardown script that waited
+  3 s and then killed every `orbit_agent.py` process and removed the unit and
+  `/usr/local/orbit-agent`, so a host re-added within those seconds lost its
+  freshly installed agent. The script now records the config checksum and the
+  old agent's pids before the wait, stops as soon as the config changed (a
+  re-install writes a new enroll code) and only ever kills the old pids.
+  No agent version bump; the fix ships with the next agent release.
+
+### Security
+
+- **Capture filters, capture interfaces and ping targets can no longer smuggle
+  options into `tcpdump` / `ping` on the box.** The agent split the packet-
+  capture filter on spaces into separate arguments, so a "filter" such as
+  `-w /path -C 1 -z cmd` set tcpdump options as root on the firewall or Linux
+  node (write a file, run a post-rotate command) — on Linux always, on FreeBSD
+  whenever no agent exclusion filter was prepended. It needed only the write
+  role and scope, not the shell permission. Likewise a ping-monitor
+  destination or source like `-f` became a ping option (flood ping as root),
+  both via the agent and via Securepoint SSH. The agent now passes the filter
+  as one argument after `--`, accepts only plain interface names and IP
+  addresses / host names for ping (with `--` before the target), and the
+  dashboard refuses option-like values before anything is stored or sent —
+  which also protects boxes still on an older agent.
+- **Web server, HTTP client and framework libraries patched against 29 published advisories** (OSV / EEF CNA; GitHub Dependabot does not list them for Hex packages): Bandit 1.12.0 → 1.14.1 (16 advisories, most of them HIGH: HTTP/1.1 request smuggling via chunk extensions, HTTP/2 and WebSocket memory/CPU exhaustion, client-chosen `conn.host`) with its transport layer (Thousand Island 1.6.0, HPAX 1.1.0); Mint 1.9.3 → 1.11.0 (6 advisories in the HTTP client behind `Req`: response smuggling, unbounded buffering, quadratic chunk parsing, HTTP/2 frame and header limits); ssl_verify_fun 1.1.9 (wildcard certificate matched across a label boundary); Phoenix LiveView 1.2.13 (open redirect in `validate_local_url!/2`); Phoenix.HTML 4.4.0 (attribute injection); Plug.Crypto 2.2.1 (secret key base in stack traces); Ecto 3.14.3 (unbounded query cache); Decimal 3.2.0 (unbounded allocation in `round/3`); test-only lazy_html 0.1.13. No dependency added and no version constraint changed; `mix hex.audit` and OSV report no known advisory for the locked versions. `THIRD-PARTY-NOTICES.md` and `sbom.cdx.json` carry the new versions (the SBOM's own version field, stale at 4.1.1, now follows `VERSION`).
 
 ## [4.4.9] - 2026-09-14
 

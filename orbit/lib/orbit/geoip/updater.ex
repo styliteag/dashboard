@@ -19,6 +19,9 @@ defmodule Orbit.GeoIP.Updater do
   @download_url "https://download.maxmind.com/geoip/databases/GeoLite2-City/download"
   # GeoLite2-City is ~35 MB; 100 MB = clearly broken.
   @max_tarball 100 * 1024 * 1024
+  # Inflated tar cap (the City mmdb is ~70 MB uncompressed): a gzip bomb stops
+  # here instead of being expanded in memory in full.
+  @max_inflated 300 * 1024 * 1024
 
   # Skip the pull when the installed mmdb is younger than this. The scheduler
   # fires this job once ~30 s after every boot and then weekly, so without a
@@ -50,6 +53,7 @@ defmodule Orbit.GeoIP.Updater do
 
       true ->
         with {:ok, tarball} <- download(account, key),
+             :ok <- verify_sha256(tarball, account, key),
              {:ok, mmdb} <- extract_mmdb(tarball),
              :ok <- install(mmdb, Application.get_env(:orbit, :geoip_db_path, "")) do
           finish(true, "installed #{byte_size(mmdb)} bytes")
@@ -74,11 +78,29 @@ defmodule Orbit.GeoIP.Updater do
     end
   end
 
-  defp download(account, key) do
+  # MaxMind publishes `<sha256>  <file>` next to every tarball (same endpoint,
+  # suffix tar.gz.sha256). A mismatch or an unparseable answer installs
+  # nothing — the current database stays (a corrupt/truncated or substituted
+  # download never replaces it).
+  defp verify_sha256(tarball, account, key) do
+    with {:ok, body} <- fetch(account, key, "tar.gz.sha256"),
+         [hex | _] <- String.split(to_string(body)),
+         true <- Regex.match?(~r/\A[0-9a-fA-F]{64}\z/, hex) do
+      actual = :crypto.hash(:sha256, tarball) |> Base.encode16(case: :lower)
+      if actual == String.downcase(hex), do: :ok, else: {:error, "sha256 mismatch"}
+    else
+      {:error, detail} -> {:error, "sha256 #{detail}"}
+      _ -> {:error, "sha256 checksum unreadable"}
+    end
+  end
+
+  defp download(account, key), do: fetch(account, key, "tar.gz")
+
+  defp fetch(account, key, suffix) do
     opts =
       [
         url: @download_url,
-        params: [suffix: "tar.gz"],
+        params: [suffix: suffix],
         auth: {:basic, "#{account}:#{key}"},
         receive_timeout: 120_000,
         retry: false
@@ -100,20 +122,31 @@ defmodule Orbit.GeoIP.Updater do
 
   @doc """
   The one `*.mmdb` member of the tarball, extracted in memory (archive
-  paths never touch the disk, so member-name traversal is irrelevant).
+  paths never touch the disk, so member-name traversal is irrelevant). The
+  gzip layer is inflated with a cap (`Orbit.Gzip`), so a bomb fails here.
   """
-  def extract_mmdb(tarball) do
-    case :erl_tar.extract({:binary, tarball}, [:memory, :compressed]) do
-      {:ok, members} ->
-        members
-        |> Enum.find(fn {name, _bin} -> String.ends_with?(to_string(name), ".mmdb") end)
-        |> case do
-          {_name, bin} -> {:ok, bin}
-          nil -> {:error, "no .mmdb member in tarball"}
-        end
+  def extract_mmdb(tarball, max_inflated \\ @max_inflated) do
+    with {:ok, tar} <- inflate(tarball, max_inflated),
+         {:ok, members} <- :erl_tar.extract({:binary, tar}, [:memory]) do
+      find_mmdb(members)
+    else
+      {:error, reason} -> {:error, "tar extract failed: #{inspect(reason)}"}
+    end
+  end
 
-      {:error, reason} ->
-        {:error, "tar extract failed: #{inspect(reason)}"}
+  defp inflate(tarball, max) do
+    case Orbit.Gzip.gunzip_bounded(tarball, max) do
+      {:ok, tar} -> {:ok, tar}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp find_mmdb(members) do
+    members
+    |> Enum.find(fn {name, _bin} -> String.ends_with?(to_string(name), ".mmdb") end)
+    |> case do
+      {_name, bin} -> {:ok, bin}
+      nil -> {:error, "no .mmdb member in tarball"}
     end
   end
 

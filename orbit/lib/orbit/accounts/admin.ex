@@ -33,7 +33,7 @@ defmodule Orbit.Accounts.Admin do
   # -- create ----------------------------------------------------------------
 
   def create_user(params) do
-    username = String.trim(params["username"] || "")
+    username = if is_binary(params["username"]), do: String.trim(params["username"]), else: nil
     password = params["password"] || ""
     role = if params["role"] in @roles, do: params["role"], else: "user"
     is_superadmin = params["is_superadmin"] in [true, "true", "on"]
@@ -42,8 +42,11 @@ defmodule Orbit.Accounts.Admin do
       username == "" ->
         {:error, :username_required}
 
-      String.length(password) < 8 ->
-        {:error, :password_too_short}
+      not valid_username?(username) ->
+        {:error, :username_invalid}
+
+      (bad = Password.validate_new(password)) != :ok ->
+        bad
 
       true ->
         with {:ok, group_ids} <- validate_group_ids(params["group_ids"] || []) do
@@ -51,6 +54,11 @@ defmodule Orbit.Accounts.Admin do
         end
     end
   end
+
+  # 1..64 characters (the column), no whitespace or control characters —
+  # usernames end up in audit rows, logs and the login form.
+  defp valid_username?(name),
+    do: is_binary(name) and String.valid?(name) and Regex.match?(~r/\A[^\s\p{C}]{1,64}\z/u, name)
 
   defp insert_user(username, password, role, is_superadmin, group_ids) do
     %User{}
@@ -105,10 +113,17 @@ defmodule Orbit.Accounts.Admin do
       set_superadmin == false and target.is_superadmin and superadmin_count() <= 1 ->
         {:error, :last_superadmin}
 
+      # An admin reset follows the same rule as a self-service change.
+      (bad = reset_password_check(params["new_password"])) != :ok ->
+        bad
+
       true ->
         apply_update(target, params, role, set_superadmin)
     end
   end
+
+  defp reset_password_check(pw) when pw in [nil, ""], do: :ok
+  defp reset_password_check(pw), do: Password.validate_new(pw)
 
   defp apply_update(target, params, role, set_superadmin) do
     with {:ok, group_ids} <- maybe_group_ids(params) do

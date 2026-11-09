@@ -26,15 +26,17 @@ defmodule OrbitWeb.CommentController do
   def set(conn, %{"instance_id" => raw_id} = params) do
     user = conn.assigns.current_user
     kind = params["kind"]
-    entity_key = to_string(params["entity_key"] || "")
-    text = params["comment"] |> to_string() |> String.trim()
+    entity_key = params["entity_key"] || ""
+    text = params["comment"] || ""
 
     with {id, ""} <- Integer.parse(raw_id),
          true <- Comments.valid_kind?(kind),
+         {:input, true} <- {:input, Comments.valid_input?(entity_key, text)},
          inst when not is_nil(inst) <- Scope.get_instance(id, user) do
-      apply_change(conn, inst.id, kind, entity_key, text, user)
+      apply_change(conn, inst.id, kind, entity_key, String.trim(text), user)
     else
       false -> conn |> put_status(422) |> json(%{detail: "unknown comment kind"})
+      {:input, false} -> conn |> put_status(422) |> json(%{detail: "invalid comment"})
       _ -> not_found(conn)
     end
   end
@@ -54,6 +56,9 @@ defmodule OrbitWeb.CommentController do
       {:ok, _} ->
         audit(conn, "comment.set", iid, kind, entity_key, text, user)
         json(conn, %{ok: true})
+
+      {:error, :invalid} ->
+        conn |> put_status(422) |> json(%{detail: "invalid comment"})
 
       {:error, _} ->
         conn |> put_status(409) |> json(%{detail: "comment was changed concurrently, retry"})
@@ -86,5 +91,6 @@ defmodule OrbitWeb.CommentController do
   end
 
   defp not_found(conn), do: conn |> put_status(404) |> json(%{detail: "not found"})
-  defp client_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()
+  # Real client behind the reverse proxy (Orbit.Net), never the raw peer.
+  defp client_ip(conn), do: Orbit.Net.client_ip(conn)
 end

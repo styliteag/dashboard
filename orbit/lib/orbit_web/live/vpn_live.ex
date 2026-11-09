@@ -298,12 +298,15 @@ defmodule OrbitWeb.VpnLive do
     with true <- socket.assigns.writable,
          false <- socket.assigns.ping_test_busy,
          %{} <- editor,
+         source = String.trim(to_string(editor.source)),
+         destination = String.trim(to_string(editor.destination)),
+         :ok <- Orbit.Monitors.validate_targets(%{"source" => source}, destination),
          inst when not is_nil(inst) <-
            Scope.get_instance(editor.instance_id, socket.assigns.current_user) do
       payload = %{
-        "source" => String.trim(to_string(editor.source)),
-        "destination" => String.trim(to_string(editor.destination)),
-        "ping_count" => to_string(editor.ping_count)
+        "source" => source,
+        "destination" => destination,
+        "ping_count" => to_string(Orbit.Monitors.clamp_ping_count(editor.ping_count))
       }
 
       {:noreply,
@@ -314,6 +317,7 @@ defmodule OrbitWeb.VpnLive do
          if is_map(result), do: result, else: %{"success" => false, "output" => "no agent"}
        end)}
     else
+      {:error, msg} -> {:noreply, assign(socket, ping_test: {:error, msg})}
       _ -> {:noreply, socket}
     end
   end
@@ -396,6 +400,7 @@ defmodule OrbitWeb.VpnLive do
     key = "#{iid}:#{id}"
 
     with true <- socket.assigns.writable and not MapSet.member?(socket.assigns.busy, key),
+         true <- Orbit.Ipsec.Ids.tunnel_id?(id) and Orbit.Ipsec.Ids.unique_id?(uid),
          {nid, ""} <- Integer.parse(iid),
          inst when not is_nil(inst) <- Scope.get_instance(nid, socket.assigns.current_user) do
       user = socket.assigns.current_user

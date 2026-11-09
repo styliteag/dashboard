@@ -78,10 +78,15 @@ defmodule Orbit.GeoIP.Crowdsec do
   given table — testable). Only type=ban decisions count; junk values drop.
   """
   def apply_decisions(table \\ @table, new, deleted) do
+    # Foreign input: non-list deltas, non-map entries and non-string values
+    # are skipped — a crash here would kill the table-owning GenServer.
     for {decisions, removing} <- [{deleted, true}, {new, false}],
+        is_list(decisions),
         d <- decisions,
+        is_map(d),
         (d["type"] || "ban") == "ban",
-        norm = normalize(to_string(d["value"] || "")),
+        is_binary(d["value"]),
+        norm = normalize(d["value"]),
         norm != nil do
       case {norm, removing} do
         {{:ip, canonical}, true} -> :ets.delete(table, {:ip, canonical})
@@ -142,7 +147,7 @@ defmodule Orbit.GeoIP.Crowdsec do
 
     case Req.get(req_opts) do
       {:ok, %{status: 200, body: body}} when is_map(body) ->
-        apply_decisions(body["new"] || [], body["deleted"] || [])
+        apply_decisions(List.wrap(body["new"]), List.wrap(body["deleted"]))
         %{state | startup_done: true} |> finish(true, "#{banned_count()} active bans")
 
       {:ok, %{status: status}} ->

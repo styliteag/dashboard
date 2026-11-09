@@ -91,8 +91,13 @@ defmodule OrbitWeb.GroupsLive do
   end
 
   def handle_event("rename_toggle", %{"group_id" => raw}, socket) do
-    id = String.to_integer(raw)
-    {:noreply, assign(socket, renaming: if(socket.assigns.renaming == id, do: nil, else: id))}
+    case OrbitWeb.ParamId.parse(raw) do
+      nil ->
+        {:noreply, socket}
+
+      id ->
+        {:noreply, assign(socket, renaming: if(socket.assigns.renaming == id, do: nil, else: id))}
+    end
   end
 
   def handle_event("rename_group", %{"group_id" => raw, "group" => %{"name" => name}}, socket) do
@@ -125,7 +130,7 @@ defmodule OrbitWeb.GroupsLive do
   # panel per group; save/remove per channel. Secrets render as the mask
   # and the mask round-trips as "keep stored".
   def handle_event("channels_toggle", %{"group_id" => raw}, socket) do
-    id = String.to_integer(raw)
+    id = OrbitWeb.ParamId.parse(raw)
 
     if socket.assigns.channels_for == id do
       {:noreply, assign(socket, channels_for: nil, channel_error: nil)}
@@ -183,7 +188,10 @@ defmodule OrbitWeb.GroupsLive do
   end
 
   defp get_group(raw_id) do
-    Orbit.Repo.get(Accounts.Group, String.to_integer(raw_id))
+    case OrbitWeb.ParamId.parse(raw_id) do
+      nil -> nil
+      id -> Orbit.Repo.get(Accounts.Group, id)
+    end
   end
 
   defp audit(socket, action, target_id, detail) do

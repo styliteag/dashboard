@@ -16,11 +16,15 @@ defmodule OrbitWeb.ShellWSController do
   alias Orbit.Instances.Instance
   alias OrbitWeb.WSAuth
 
+  # Browser → shell frames are keystrokes, pastes and resizes.
+  @doc false
+  def ws_options, do: [timeout: 8 * 60 * 60 * 1000, max_frame_size: 1024 * 1024]
+
   def connect(conn, %{"instance_id" => raw_id}) do
     arg = authorize(conn, raw_id)
 
     conn
-    |> WebSockAdapter.upgrade(OrbitWeb.ShellSocket, arg, timeout: 8 * 60 * 60 * 1000)
+    |> WebSockAdapter.upgrade(OrbitWeb.ShellSocket, arg, ws_options())
     |> halt()
   end
 

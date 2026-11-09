@@ -23,6 +23,23 @@ defmodule Orbit.GeoIP.UpdaterTest do
     File.read!(path)
   end
 
+  # The updater also fetches MaxMind's `<sha256>  <file>` (suffix
+  # tar.gz.sha256) and installs only on a match.
+  defp stub_tarball(tar) do
+    sha = :crypto.hash(:sha256, tar) |> Base.encode16(case: :lower)
+
+    Req.Test.stub(Orbit.GeoIP.Updater, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+
+      if conn.query_params["suffix"] == "tar.gz.sha256",
+        do: Plug.Conn.send_resp(conn, 200, "#{sha}  GeoLite2-City.tar.gz\n"),
+        else:
+          conn
+          |> Plug.Conn.put_resp_content_type("application/gzip")
+          |> Plug.Conn.send_resp(200, tar)
+    end)
+  end
+
   defp put_creds(account, key) do
     Application.put_env(:orbit, :maxmind_account_id, account)
     Application.put_env(:orbit, :maxmind_license_key, key)
@@ -46,11 +63,7 @@ defmodule Orbit.GeoIP.UpdaterTest do
 
     tar = tarball([{"GeoLite2-City_20260718/GeoLite2-City.mmdb", "MMDBDATA"}], tmp_dir)
 
-    Req.Test.stub(Orbit.GeoIP.Updater, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/gzip")
-      |> Plug.Conn.send_resp(200, tar)
-    end)
+    stub_tarball(tar)
 
     assert %{ok: true, detail: "installed 8 bytes"} = Updater.refresh()
     assert File.read!(target) == "MMDBDATA"
@@ -87,9 +100,7 @@ defmodule Orbit.GeoIP.UpdaterTest do
 
     tar = tarball([{"GeoLite2-City_20260718/GeoLite2-City.mmdb", "NEWMMDB"}], tmp_dir)
 
-    Req.Test.stub(Orbit.GeoIP.Updater, fn conn ->
-      Plug.Conn.send_resp(conn, 200, tar)
-    end)
+    stub_tarball(tar)
 
     assert %{ok: true, detail: "installed 7 bytes"} = Updater.refresh()
     assert File.read!(target) == "NEWMMDB"

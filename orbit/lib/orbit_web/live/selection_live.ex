@@ -23,10 +23,19 @@ defmodule OrbitWeb.SelectionLive do
     {:ok, socket |> assign(error: nil) |> reload()}
   end
 
+  # Per-instance rules of instances outside the user's scope are not listed
+  # (their instance names are other tenants' data).
   defp reload(socket) do
+    instances = Orbit.Instances.list_visible(socket.assigns.current_user)
+    visible = MapSet.new(instances, & &1.id)
+
     assign(socket,
-      rules: Selection.list_rules(),
-      instances: Orbit.Instances.list_visible(socket.assigns.current_user)
+      rules:
+        Enum.filter(
+          Selection.list_rules(),
+          &(&1.instance_id == nil or MapSet.member?(visible, &1.instance_id))
+        ),
+      instances: instances
     )
   end
 
@@ -48,6 +57,9 @@ defmodule OrbitWeb.SelectionLive do
       not Selection.valid_selector?(consumer, selector) ->
         {:noreply, assign(socket, error: "selector must be a known category or family:key")}
 
+      instance_id == nil and not Selection.may_write_rule?(socket.assigns.current_user, nil) ->
+        {:noreply, assign(socket, error: "global rules are superadmin-only")}
+
       instance_id != nil and
           Scope.get_instance(instance_id, socket.assigns.current_user) == nil ->
         {:noreply, assign(socket, error: "unknown instance")}
@@ -65,11 +77,26 @@ defmodule OrbitWeb.SelectionLive do
     end
   end
 
+  # Same gate as add_rule: global = superadmin, per-instance = in scope.
   def handle_event("delete_rule", %{"consumer" => c, "selector" => s} = p, socket) do
     instance_id = parse_instance(p["instance_id"])
-    Selection.delete_rule(c, s, instance_id)
-    audit(socket, "selection.rule.clear", %{"name" => c, "kind" => s})
-    {:noreply, socket |> assign(error: nil) |> reload()}
+
+    cond do
+      not (is_binary(c) and is_binary(s)) ->
+        {:noreply, assign(socket, error: "invalid rule")}
+
+      not Selection.may_write_rule?(socket.assigns.current_user, instance_id) ->
+        {:noreply,
+         assign(socket,
+           error:
+             if(instance_id, do: "unknown instance", else: "global rules are superadmin-only")
+         )}
+
+      true ->
+        Selection.delete_rule(c, s, instance_id)
+        audit(socket, "selection.rule.clear", %{"name" => c, "kind" => s})
+        {:noreply, socket |> assign(error: nil) |> reload()}
+    end
   end
 
   defp parse_instance(raw) do

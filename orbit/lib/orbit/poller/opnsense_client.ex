@@ -143,42 +143,13 @@ defmodule Orbit.Poller.OpnsenseClient do
   end
 
   def api_json(%__MODULE__{} = c, "POST", path, body) do
-    opts =
-      [
-        auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
-        json: body || %{},
-        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
-        receive_timeout: @recv_timeout,
-        retry: false
-      ]
-      |> maybe_test_plug()
-
-    case Req.post(c.base_url <> path, opts) do
-      {:ok, %{status: 200, body: b}} when is_map(b) or is_list(b) -> {:ok, b}
-      _ -> {:error, :api_error}
+    case request(c, :post, path, body || %{}) do
+      nil -> {:error, :api_error}
+      data -> {:ok, data}
     end
-  rescue
-    _ -> {:error, :api_error}
   end
 
-  defp post(%__MODULE__{} = c, path) do
-    opts =
-      [
-        auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
-        json: %{},
-        connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
-        receive_timeout: @recv_timeout,
-        retry: false
-      ]
-      |> maybe_test_plug()
-
-    case Req.post(c.base_url <> path, opts) do
-      {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) -> body
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
+  defp post(%__MODULE__{} = c, path), do: request(c, :post, path, %{})
 
   @doc "Raw cpu section from systemResources (cpu.used → total_pct)."
   def cpu_from_resources(%{"cpu" => %{"used" => used}}) when not is_nil(used) do
@@ -411,18 +382,36 @@ defmodule Orbit.Poller.OpnsenseClient do
 
   # -- HTTP -----------------------------------------------------------------
 
-  defp get(%__MODULE__{} = c, path) do
+  defp get(%__MODULE__{} = c, path), do: request(c, :get, path, nil)
+
+  # API answers are small JSON documents; the largest (firewall rule search,
+  # 500 rows) stays well under this.
+  @max_body 16 * 1024 * 1024
+
+  # One request path for every call. The basic-auth credentials ride every
+  # request, so redirects are never followed (a 3xx is a failure, not a hop
+  # to wherever the box points), and the body is collected with a cap
+  # instead of buffered in full. Decoded JSON map/list on 200, else nil.
+  defp request(%__MODULE__{} = c, method, path, json) do
     opts =
       [
+        method: method,
+        url: c.base_url <> path,
         auth: {:basic, "#{c.api_key}:#{c.api_secret}"},
         connect_options: [timeout: @connect_timeout, transport_opts: tls_opts(c)],
         receive_timeout: @recv_timeout,
-        retry: false
+        retry: false,
+        redirect: false,
+        into: Orbit.Net.capped_body(@max_body),
+        decode_body: false
       ]
+      |> then(&if(json, do: Keyword.put(&1, :json, json), else: &1))
       |> maybe_test_plug()
 
-    case Req.get(c.base_url <> path, opts) do
-      {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) -> body
+    with {:ok, %{status: 200, body: raw}} when is_binary(raw) <- Req.request(opts),
+         {:ok, body} when is_map(body) or is_list(body) <- Jason.decode(raw) do
+      body
+    else
       _ -> nil
     end
   rescue

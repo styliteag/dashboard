@@ -50,7 +50,21 @@ defmodule Orbit.Notifier do
         "check_key=#{check_key} level=#{level} message=#{inspect(message)}"
     )
 
-    dispatch(title, message, check_key, instance_id, respect_routes: true)
+    if suppressed?(instance_id, check_key) do
+      Logger.info("alert suppressed instance_id=#{instance_id} check_key=#{check_key}")
+      []
+    else
+      dispatch(title, message, check_key, instance_id, respect_routes: true)
+    end
+  end
+
+  # Extension point: `config :orbit, :notification_suppressors, [mod]` —
+  # each `mod.suppress?(instance_id, check_key)`; any true drops the alert
+  # (after the audit-stream line above). Default none.
+  defp suppressed?(instance_id, check_key) do
+    :orbit
+    |> Application.get_env(:notification_suppressors, [])
+    |> Enum.any?(& &1.suppress?(instance_id, check_key))
   end
 
   @doc """
@@ -242,16 +256,37 @@ defmodule Orbit.Notifier do
   end
 
   defp send_channel("email", settings, title, message, opts) do
-    host = to_string(settings.("notify_email_smtp_host") || "")
+    host = String.trim(to_string(settings.("notify_email_smtp_host") || ""))
     from = to_string(settings.("notify_email_from") || "")
-    recipients = parse_recipients(to_string(settings.("notify_email_to") || ""))
+    to_raw = to_string(settings.("notify_email_to") || "")
+    recipients = parse_recipients(to_raw)
 
-    if host == "" or from == "" or recipients == [] do
-      %{channel: "email", status: "skipped", detail: ""}
-    else
-      send_email(settings, host, from, recipients, title, message, opts)
+    cond do
+      host == "" or from == "" or recipients == [] ->
+        %{channel: "email", status: "skipped", detail: ""}
+
+      not Orbit.Net.host_arg?(host) ->
+        %{channel: "email", status: "failed", detail: "invalid smtp host"}
+
+      header_unsafe?(from) or header_unsafe?(to_raw) ->
+        %{channel: "email", status: "failed", detail: "invalid from/to address"}
+
+      reason = smtp_host_check(opts).(host) ->
+        Logger.warning("notify.email.blocked reason=#{reason}")
+        %{channel: "email", status: "failed", detail: "smtp host refused: #{reason}"}
+
+      true ->
+        send_email(settings, host, from, recipients, title, message, opts)
     end
   end
+
+  # The relay gets the same address policy as webhooks (no loopback,
+  # link-local/metadata, ...). Test seam like :ssrf_check.
+  defp smtp_host_check(opts),
+    do: Keyword.get(opts, :smtp_host_check, &Orbit.Net.Egress.host_block_reason/1)
+
+  # CR/LF in a header value starts a new header (Bcc: injection).
+  defp header_unsafe?(value), do: String.match?(value, ~r/[\r\n\x00]/)
 
   defp parse_recipients(raw) do
     raw |> String.split(~r/[,\s]+/, trim: true) |> Enum.reject(&(&1 == ""))
@@ -273,16 +308,18 @@ defmodule Orbit.Notifier do
 
     mail =
       "From: #{from}\r\nTo: #{Enum.join(recipients, ", ")}\r\n" <>
-        "Subject: #{title}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n#{message}"
+        "Subject: #{String.replace(title, ~r/[\r\n]+/, " ")}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n#{message}"
 
     case sender.(config, mail) do
       :ok ->
         Logger.info("notify.email.sent recipients=#{length(recipients)}")
         %{channel: "email", status: "sent", detail: ""}
 
+      # The raw gen_smtp error can carry server banners and connect details
+      # of whatever host was configured: logged, not shown in the UI.
       {:error, reason} ->
         Logger.warning("notify.email.failed error=#{inspect(reason)}")
-        %{channel: "email", status: "failed", detail: to_string(inspect(reason))}
+        %{channel: "email", status: "failed", detail: "SMTP delivery failed (see server log)"}
     end
   end
 
@@ -291,6 +328,20 @@ defmodule Orbit.Notifier do
   # username is set. Blocking — runs on the caller (already a Task via
   # dispatch_async, or the synchronous test path).
   defp deliver_email(cfg, mail) do
+    envelope = {cfg.from, cfg.recipients, mail}
+
+    case :gen_smtp_client.send_blocking(envelope, smtp_options(cfg)) do
+      receipt when is_binary(receipt) -> :ok
+      {:error, _type, reason} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc false
+  # gen_smtp options. No MX lookups: the relay host passed the address
+  # policy, the MX hosts of that name never did. (gen_smtp still resolves
+  # the name itself, so a rebinding relay name is not pinned.)
+  def smtp_options(cfg) do
     tls =
       case cfg.security do
         "ssl" -> :always
@@ -298,20 +349,17 @@ defmodule Orbit.Notifier do
         _ -> :never
       end
 
-    base = [relay: cfg.host, port: cfg.port, tls: tls, ssl: cfg.security == "ssl"]
+    base = [
+      relay: cfg.host,
+      port: cfg.port,
+      tls: tls,
+      ssl: cfg.security == "ssl",
+      no_mx_lookups: true
+    ]
 
-    smtp_opts =
-      if cfg.username != "",
-        do: base ++ [username: cfg.username, password: cfg.password, auth: :always],
-        else: base
-
-    envelope = {cfg.from, cfg.recipients, mail}
-
-    case :gen_smtp_client.send_blocking(envelope, smtp_opts) do
-      receipt when is_binary(receipt) -> :ok
-      {:error, _type, reason} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
-    end
+    if cfg.username != "",
+      do: base ++ [username: cfg.username, password: cfg.password, auth: :always],
+      else: base
   end
 
   defp to_int(v, default) do
@@ -322,7 +370,17 @@ defmodule Orbit.Notifier do
   end
 
   defp post(channel, url, body, opts) do
-    base = [url: url, json: body, receive_timeout: 10_000, retry: false]
+    # No redirects: the SSRF guard vetted THIS host; a 3xx must not bounce
+    # the request (and the payload) to one it never saw.
+    # Only the status matters: the body is never read (Orbit.Probe.HTTP).
+    base = [
+      url: url,
+      json: body,
+      receive_timeout: 10_000,
+      retry: false,
+      redirect: false,
+      into: &Orbit.Probe.HTTP.discard_body/2
+    ]
 
     req_opts =
       case Keyword.get(opts, :req_plug, Application.get_env(:orbit, :notify_req_plug)) do
@@ -330,14 +388,19 @@ defmodule Orbit.Notifier do
         plug -> Keyword.put(base, :plug, plug)
       end
 
-    case Req.post(req_opts) do
-      {:ok, %{status: status}} when status < 400 ->
+    # Connects to the address the egress policy vetted (DNS rebinding).
+    case Orbit.Net.Egress.post(req_opts) do
+      {:ok, %{status: status}} when status in 200..299 ->
         Logger.info("notify.#{channel}.sent status=#{status}")
         %{channel: channel, status: "sent", detail: ""}
 
       {:ok, %{status: status}} ->
         Logger.warning("notify.#{channel}.failed status=#{status}")
         %{channel: channel, status: "failed", detail: "HTTP #{status}"}
+
+      {:error, reason} when is_binary(reason) ->
+        Logger.warning("notify.#{channel}.blocked reason=#{reason}")
+        %{channel: channel, status: "failed", detail: reason}
 
       {:error, error} ->
         Logger.warning("notify.#{channel}.failed error=#{Exception.message(error)}")
@@ -349,53 +412,10 @@ defmodule Orbit.Notifier do
 
   @doc """
   Reject a webhook URL whose host resolves to a dangerous-but-never-
-  legitimate address. Returns a reason string or nil.
+  legitimate address (`Orbit.Net.Egress` policy). Returns a reason string
+  or nil.
   """
-  def ssrf_block_reason(url) do
-    uri = URI.parse(url)
-
-    cond do
-      uri.scheme not in ["http", "https"] or uri.host in [nil, ""] ->
-        "URL must be http(s) with a host"
-
-      true ->
-        case resolve_addrs(uri.host) do
-          {:error, _} -> "host does not resolve"
-          {:ok, addrs} -> Enum.find_value(addrs, &blocked_addr_reason/1)
-        end
-    end
-  end
-
-  defp resolve_addrs(host) do
-    chars = String.to_charlist(host)
-
-    case :inet.parse_strict_address(chars) do
-      {:ok, addr} ->
-        {:ok, [addr]}
-
-      {:error, _} ->
-        v4 = :inet_res.lookup(chars, :in, :a, timeout: 5_000)
-        v6 = :inet_res.lookup(chars, :in, :aaaa, timeout: 5_000)
-        if v4 == [] and v6 == [], do: {:error, :nxdomain}, else: {:ok, v4 ++ v6}
-    end
-  end
-
-  # Loopback, link-local (incl. cloud metadata 169.254/16), reserved (240/4),
-  # multicast, unspecified. RFC1918 stays allowed on purpose (moduledoc).
-  defp blocked_addr_reason({127, _, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({169, 254, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({0, _, _, _} = a), do: blocked(a)
-  defp blocked_addr_reason({n, _, _, _} = a) when n >= 224, do: blocked(a)
-  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 0} = a), do: blocked(a)
-  defp blocked_addr_reason({0, 0, 0, 0, 0, 0, 0, 1} = a), do: blocked(a)
-
-  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFE80 and w <= 0xFEBF,
-    do: blocked(a)
-
-  defp blocked_addr_reason({w, _, _, _, _, _, _, _} = a) when w >= 0xFF00, do: blocked(a)
-  defp blocked_addr_reason(_), do: nil
-
-  defp blocked(addr), do: "blocked address #{addr |> :inet.ntoa() |> to_string()}"
+  defdelegate ssrf_block_reason(url), to: Orbit.Net.Egress
 
   # -- helpers ---------------------------------------------------------------
 

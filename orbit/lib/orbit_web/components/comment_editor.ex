@@ -194,8 +194,13 @@ defmodule OrbitWeb.Components.CommentEditor do
 
   @doc "Handle a comment_save event; returns the (unchanged) socket."
   def save(socket, %{"instance_id" => raw, "kind" => kind} = params) do
-    text = String.trim(params["comment"] || "")
-    write(socket, raw, kind, params["entity_key"] || "", text)
+    case params["comment"] || "" do
+      text when is_binary(text) ->
+        write(socket, raw, kind, params["entity_key"] || "", String.trim(text))
+
+      _ ->
+        socket
+    end
   end
 
   @doc "Handle a comment_clear event."
@@ -216,9 +221,17 @@ defmodule OrbitWeb.Components.CommentEditor do
   end
 
   # Instance notes column.
+  # Audited only when the write happened (a refused value is not a change).
   defp do_write(inst, user, "notes", _ek, text) do
-    Orbit.Instances.update_instance(inst, %{"notes" => text})
-    audit(user, inst.id, if(text == "", do: "comment.delete", else: "comment.set"), "notes", "")
+    with {:ok, _} <- Orbit.Instances.update_instance(inst, %{"notes" => text}),
+         do:
+           audit(
+             user,
+             inst.id,
+             if(text == "", do: "comment.delete", else: "comment.set"),
+             "notes",
+             ""
+           )
   end
 
   # EntityComment row.
@@ -228,10 +241,9 @@ defmodule OrbitWeb.Components.CommentEditor do
   end
 
   defp do_write(inst, user, kind, entity_key, text) do
-    if Orbit.Comments.valid_kind?(kind) do
-      Orbit.Comments.upsert(inst.id, kind, entity_key, text, user.username)
-      audit(user, inst.id, "comment.set", kind, entity_key)
-    end
+    with true <- Orbit.Comments.valid_kind?(kind),
+         {:ok, _} <- Orbit.Comments.upsert(inst.id, kind, entity_key, text, user.username),
+         do: audit(user, inst.id, "comment.set", kind, entity_key)
   end
 
   defp audit(user, instance_id, action, kind, entity_key) do

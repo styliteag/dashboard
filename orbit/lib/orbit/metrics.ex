@@ -224,6 +224,14 @@ defmodule Orbit.Metrics do
 
   def uptime_to_seconds(_), do: nil
 
+  @max_disks 64
+  @max_ifaces 128
+
+  defp capped(list, max) when is_list(list),
+    do: list |> Enum.filter(&is_map/1) |> Enum.take(max)
+
+  defp capped(_other, _max), do: []
+
   @doc """
   Map one raw agent push (converters.py input shape) onto `{metric, value}`
   rows. Metric names are bit-identical to the python writer — same table,
@@ -257,13 +265,15 @@ defmodule Orbit.Metrics do
         []
       end
 
+    # Series names come from the push (mountpoints, interface names): capped
+    # so one push cannot mint unbounded series; non-map entries skipped.
     disk_rows =
-      for d <- data["disks"] || [] do
+      for d <- capped(data["disks"], @max_disks) do
         {"disk.#{disk_label(d["mountpoint"])}.used_pct", num(d["used_pct"])}
       end
 
     iface_rows =
-      Enum.flat_map(data["interfaces"] || [], fn i ->
+      Enum.flat_map(capped(data["interfaces"], @max_ifaces), fn i ->
         safe = iface_label(i["name"])
 
         [

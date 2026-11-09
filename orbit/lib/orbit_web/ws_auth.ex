@@ -16,7 +16,6 @@ defmodule OrbitWeb.WSAuth do
 
   import Plug.Conn
 
-  alias Orbit.Accounts
   alias Orbit.Accounts.User
 
   @write_roles ~w(admin user)
@@ -39,19 +38,22 @@ defmodule OrbitWeb.WSAuth do
 
   defp check_origin(conn) do
     case get_req_header(conn, "origin") do
-      [] -> :ok
       [origin | _] -> if origin_allowed?(origin), do: :ok, else: {:error, 4403}
+      [] -> {:error, 4403}
     end
   end
 
-  # Reject a cross-site WS handshake (hub.py _ws_origin_ok). No Origin
-  # (non-browser) passes; localhost/127.0.0.1 always pass (dev).
+  # Reject a cross-site WS handshake (hub.py _ws_origin_ok). These sockets
+  # (root shell, packet capture) are only opened by the dashboard page, so a
+  # browser Origin is required: no header, the opaque "null" origin
+  # (sandboxed iframe, file:, data:) and host-less values are refused.
+  # localhost/127.0.0.1 always pass (dev).
   defp origin_allowed?(origin) do
     host = origin |> URI.parse() |> Map.get(:host) |> to_string() |> String.downcase()
 
     cond do
+      host == "" -> false
       host in ~w(localhost 127.0.0.1 ::1) -> true
-      host == "" -> true
       true -> host in allowed_origin_hosts()
     end
   end
@@ -72,16 +74,11 @@ defmodule OrbitWeb.WSAuth do
     [webauthn_host | extra] |> Enum.reject(&(&1 == "")) |> MapSet.new()
   end
 
+  # Same rules as REST and LiveView (user, password version, disabled, MFA,
+  # `:session_validators`), via the one shared check.
   defp check_session(conn) do
-    user_id = get_session(conn, :user_id)
-    pwv = get_session(conn, :password_version)
-    mfa = get_session(conn, :mfa_passed)
-
-    with true <- is_integer(user_id) and not is_nil(pwv) and mfa == true,
-         %User{} = user <- Accounts.get_user(user_id),
-         true <- user.password_version == pwv and not user.disabled do
-      {:ok, user}
-    else
+    case OrbitWeb.UserAuth.user_from_session(get_session(conn)) do
+      %User{} = user -> {:ok, user}
       _ -> {:error, 4401}
     end
   end

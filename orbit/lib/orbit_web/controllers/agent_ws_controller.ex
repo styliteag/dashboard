@@ -11,10 +11,14 @@ defmodule OrbitWeb.AgentWSController do
 
   use OrbitWeb, :controller
 
-  import Ecto.Query
-
+  alias Orbit.AgentBinding
   alias Orbit.Instances.Instance
-  alias Orbit.Repo
+
+  # Agent frames carry pushes incl. logfiles and config backups; the cap
+  # bounds what one socket can make the server buffer (Bandit's default is
+  # unlimited).
+  @doc false
+  def ws_options, do: [timeout: 120_000, max_frame_size: 64 * 1024 * 1024]
 
   def connect(conn, _params) do
     upgrade_arg =
@@ -23,7 +27,7 @@ defmodule OrbitWeb.AgentWSController do
           %{auth_error: {4001, "missing token"}}
 
         token ->
-          case instance_for_token(token) do
+          case AgentBinding.instance_for_token(token) do
             %Instance{} = instance ->
               # The address the fleet reaches us from — shown as "Connects
               # from" next to the box's own public IP. Via Orbit.Net, never
@@ -38,7 +42,7 @@ defmodule OrbitWeb.AgentWSController do
       end
 
     conn
-    |> WebSockAdapter.upgrade(OrbitWeb.AgentSocket, upgrade_arg, timeout: 120_000)
+    |> WebSockAdapter.upgrade(OrbitWeb.AgentSocket, upgrade_arg, ws_options())
     |> halt()
   end
 
@@ -47,14 +51,5 @@ defmodule OrbitWeb.AgentWSController do
       ["Bearer " <> token | _] when token != "" -> token
       _ -> nil
     end
-  end
-
-  # Token → live push-mode instance (ws.py:101-109 parity).
-  defp instance_for_token(token) do
-    Repo.one(
-      from(i in Instance,
-        where: i.agent_token == ^token and i.transport == "push" and is_nil(i.deleted_at)
-      )
-    )
   end
 end

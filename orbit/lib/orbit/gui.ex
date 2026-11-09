@@ -29,13 +29,13 @@ defmodule Orbit.GUI do
 
   @doc """
   The open flow shared by the controller and the LiveView button: ensure
-  the forwarder, mint a 60s handoff token, opt-in replay the firewall login
+  the forwarder, mint a 60s handoff token bound to `user`, opt-in replay the firewall login
   and stash its cookies, and return the handoff URL.
   Callers own scoping + the agent.gui_open audit.
   """
-  def open_flow(%Instance{} = inst, path) do
+  def open_flow(%Instance{} = inst, path, user) do
     Orbit.GUI.TunnelManager.ensure(inst.id)
-    token = Auth.sign(inst.id, 60)
+    token = handoff_token(inst.id, user)
     maybe_stash_login(inst, token)
     handoff_url(inst, token, path)
   end
@@ -43,7 +43,13 @@ defmodule Orbit.GUI do
   defp maybe_stash_login(%Instance{gui_login_enabled: true, id: id}, token) do
     case Orbit.Hub.send_command(id, "gui.login", %{}, 20_000) do
       %{"success" => true, "cookies" => cookies} when is_list(cookies) ->
-        pairs = for c <- cookies, is_map(c), do: {c["name"], c["value"]}
+        pairs =
+          for c <- cookies,
+              is_map(c),
+              pair = {c["name"], c["value"]},
+              safe_cookie?(pair),
+              do: pair
+
         Orbit.GUI.SessionStash.put(token, pairs, 60)
 
       other ->
@@ -56,14 +62,77 @@ defmodule Orbit.GUI do
   defp maybe_stash_login(_inst, _token), do: :ok
 
   @doc """
+  An agent-reported firewall cookie `{name, value}` that may be replayed as
+  a Set-Cookie: RFC 6265 token name, value without separators, whitespace
+  or control characters (no attribute or header injection).
+  """
+  def safe_cookie?({name, value}) when is_binary(name) and is_binary(value) do
+    Regex.match?(~r/\A[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}\z/, name) and
+      Regex.match?(~r/\A[^;,\s\x00-\x1f\x7f"\\]{0,4096}\z/, value)
+  end
+
+  def safe_cookie?(_), do: false
+
+  # Lifetime of the `orbit_gui` cookie. Short-ish on purpose: the binding
+  # below catches password changes, disabling and scope changes, but not a
+  # plain dashboard logout (the session registry is bookkeeping only).
+  @cookie_ttl 2 * 3600
+
+  # Same gate as the GUI open button and POST /api/.../gui/open.
+  @write_roles ~w(admin user)
+
+  @doc "A 60 s handoff token for `instance_id` (`/__orbit/auth?t=`), bound to `user`."
+  def handoff_token(instance_id, user),
+    do: Auth.sign_bound(instance_id, user.id, pv(user), :handoff, 60)
+
+  @doc "A fresh `orbit_gui` cookie value for `instance_id`, bound to `user`."
+  def cookie_token(instance_id, user),
+    do: Auth.sign_bound(instance_id, user.id, pv(user), :cookie, @cookie_ttl)
+
+  @doc """
+  True when `token` is a bound GUI token of `purpose` (`:handoff` or
+  `:cookie`) for `instance_id` whose user still exists, is enabled, has the
+  same password_version, still holds a write role (opening the GUI is
+  write-gated) and can still see the instance (Scope). Checked on the
+  handoff and on every proxied request.
+  """
+  def authorized?(token, instance_id, purpose) do
+    with {:ok, %{instance_id: ^instance_id, user_id: uid, password_version: v, purpose: ^purpose}} <-
+           Auth.verify_bound(token),
+         %Orbit.Accounts.User{disabled: disabled} = user when disabled != true <-
+           Orbit.Accounts.get_user(uid),
+         true <- pv(user) == v,
+         true <- user.role in @write_roles,
+         %Instance{} <- Orbit.Auth.Scope.get_instance(instance_id, user) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  @doc "The user a bound token was minted for (handoff → cookie)."
+  def token_user(token) do
+    case Auth.verify_bound(token) do
+      {:ok, %{user_id: uid}} -> Orbit.Accounts.get_user(uid)
+      :error -> nil
+    end
+  end
+
+  defp pv(user), do: user.password_version || 0
+
+  @doc """
   Clamp a handoff deep-link to a same-origin absolute path (open-redirect
   defense): only "/..." passes; absolute URLs, protocol-relative "//host"
   and backslash variants (browsers normalize to "//") all collapse to "/".
   """
   def safe_next(path)
       when is_binary(path) do
+    # Control characters (incl. TAB/CR/LF, which browsers strip, turning
+    # "/\t/host" into "//host") and backslashes anywhere, plus encoded
+    # CR/LF, never pass.
     if String.starts_with?(path, "/") and not String.starts_with?(path, "//") and
-         not String.contains?(path, "\\") do
+         not String.contains?(path, "\\") and not String.match?(path, ~r/[\x00-\x1f\x7f]/) and
+         not String.match?(path, ~r/%0[0-9a-f]|%1[0-9a-f]|%7f/i) do
       path
     else
       "/"

@@ -55,6 +55,50 @@ defmodule Orbit.Alerts.LifecycleTest do
     assert [{_, 1, false}] = plan.touch
   end
 
+  # Checkmk states are NOT ordered numerically: UNKNOWN (3) ranks below WARN
+  # (1). "Increase" means ServiceCheck.severity/1 rank, so UNKNOWN→CRIT must
+  # break a snooze and WARN/CRIT→UNKNOWN must not.
+  for {from, to, unsnooze?} <- [
+        {1, 2, true},
+        {3, 2, true},
+        {3, 1, true},
+        {1, 1, false},
+        {2, 1, false},
+        {1, 3, false},
+        {2, 3, false},
+        {3, 3, false}
+      ] do
+    test "live snooze, severity #{from} → #{to} unsnoozes? #{unsnooze?}" do
+      live = state(%{severity: unquote(from), snoozed_until: DateTime.add(@now, 3600)})
+      plan = Lifecycle.plan(%{{1, "cpu"} => unquote(to)}, [live], @now)
+      assert [{_, unquote(to), unquote(unsnooze?)}] = plan.touch
+    end
+  end
+
+  describe "bucket/2" do
+    test "no lifecycle row yet (reconciler lag) is active" do
+      assert Lifecycle.bucket(nil, @now) == :active
+    end
+
+    for {name, attrs, expected} <- [
+          {"fresh row", %{}, :active},
+          {"acked", %{acked_at: ~U[2026-08-07 11:00:00Z]}, :acked},
+          {"live snooze", %{snoozed_until: ~U[2026-08-07 13:00:00Z]}, :snoozed},
+          {"snooze ending exactly now", %{snoozed_until: ~U[2026-08-07 12:00:00Z]}, :active},
+          {"expired snooze", %{snoozed_until: ~U[2026-08-07 11:00:00Z]}, :active},
+          {"acked + live snooze",
+           %{acked_at: ~U[2026-08-07 11:00:00Z], snoozed_until: ~U[2026-08-07 13:00:00Z]},
+           :snoozed},
+          {"acked + expired snooze",
+           %{acked_at: ~U[2026-08-07 11:00:00Z], snoozed_until: ~U[2026-08-07 11:30:00Z]}, :acked}
+        ] do
+      test name do
+        ls = state(unquote(Macro.escape(attrs)))
+        assert Lifecycle.bucket(ls, @now) == unquote(expected)
+      end
+    end
+  end
+
   test "a vanished alert resolves — and a reappearing one would insert fresh" do
     s = state(%{acked_by: "admin", acked_at: @now})
     plan = Lifecycle.plan(%{}, [s], @now)

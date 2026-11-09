@@ -84,6 +84,24 @@ defmodule Orbit.Net do
 
   def ip_address?(_), do: false
 
+  @plain_host ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/
+
+  @doc """
+  Safe as a host argument of a root-run tool (`ping` on the box or over SSH):
+  an IP literal or a plain host name. A leading `-` would make the value an
+  OPTION of that tool (`-f` flood ping) — security hotfix, see
+  test/orbit/option_injection_test.exs.
+  """
+  @spec host_arg?(term()) :: boolean()
+  def host_arg?(value) when is_binary(value) do
+    case value |> String.to_charlist() |> :inet.parse_strict_address() do
+      {:ok, _} -> true
+      _ -> Regex.match?(@plain_host, value)
+    end
+  end
+
+  def host_arg?(_), do: false
+
   @doc """
   First sensible ping target inside a traffic selector: the network's first
   host address (`"192.168.0.0/20"` → `"192.168.0.1"`), the address itself
@@ -171,4 +189,19 @@ defmodule Orbit.Net do
   defp public_tuple?({a, _, _, _, _, _, _, _}) when a >= 0xFF00, do: false
   defp public_tuple?({_, _, _, _, _, _, _, _}), do: true
   defp public_tuple?(_), do: false
+
+  @doc """
+  A Req `:into` collector that buffers the body up to `max_bytes`; beyond
+  that it stops reading and leaves `body: :too_large` on the response.
+  """
+  @spec capped_body(pos_integer()) :: (term(), {Req.Request.t(), Req.Response.t()} -> term())
+  def capped_body(max_bytes) do
+    fn {:data, data}, {req, resp} ->
+      body = if is_binary(resp.body), do: resp.body <> data, else: data
+
+      if byte_size(body) > max_bytes,
+        do: {:halt, {req, %{resp | body: :too_large}}},
+        else: {:cont, {req, %{resp | body: body}}}
+    end
+  end
 end

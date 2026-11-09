@@ -31,8 +31,28 @@ defmodule Orbit.Comments do
   `{:ok, comment}` or `{:error, changeset}`.
   """
   @spec upsert(integer(), String.t(), String.t(), String.t(), String.t()) ::
-          {:ok, EntityComment.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, EntityComment.t()} | {:error, Ecto.Changeset.t() | :invalid}
   def upsert(instance_id, kind, entity_key, text, username) do
+    if valid_input?(entity_key, text),
+      do: do_upsert(instance_id, kind, entity_key, text, username),
+      else: {:error, :invalid}
+  end
+
+  @max_text 10_000
+  @max_key 255
+
+  @doc """
+  Bounded strings: entity_key within its #{@max_key}-character column, text
+  at most #{@max_text} characters (operator prose, not a document store).
+  """
+  @spec valid_input?(term(), term()) :: boolean()
+  def valid_input?(entity_key, text) do
+    is_binary(entity_key) and is_binary(text) and String.valid?(entity_key) and
+      String.valid?(text) and String.length(entity_key) <= @max_key and
+      String.length(text) <= @max_text
+  end
+
+  defp do_upsert(instance_id, kind, entity_key, text, username) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     %EntityComment{}

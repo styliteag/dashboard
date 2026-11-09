@@ -23,9 +23,24 @@ defmodule OrbitWeb.ApiKeysLive do
      |> reload()}
   end
 
-  defp reload(socket), do: assign(socket, keys: ApiKeys.list(), groups: all_groups())
+  defp reload(socket) do
+    user = socket.assigns.current_user
+    assign(socket, keys: ApiKeys.list(user), groups: bindable_groups(user))
+  end
 
-  defp all_groups, do: Orbit.Repo.all(Orbit.Accounts.Group) |> Enum.sort_by(& &1.name)
+  # A group-scoped admin can only bind his own groups — listing every
+  # tenant's group name in the form leaked them for nothing.
+  defp bindable_groups(%{is_superadmin: true}),
+    do: Orbit.Repo.all(Orbit.Accounts.Group) |> Enum.sort_by(& &1.name)
+
+  defp bindable_groups(user), do: Enum.sort_by(user.groups || [], & &1.name)
+
+  defp parse_id(raw) do
+    case Integer.parse(to_string(raw)) do
+      {id, ""} when id > 0 -> id
+      _ -> nil
+    end
+  end
 
   @impl true
   def handle_event("toggle_create", _p, socket) do
@@ -51,16 +66,19 @@ defmodule OrbitWeb.ApiKeysLive do
   end
 
   def handle_event("revoke", %{"id" => raw}, socket) do
-    id = String.to_integer(raw)
-    ApiKeys.revoke(id)
-    audit(socket, "apikey.revoke", id, nil)
-    {:noreply, socket |> assign(error: nil, revealed: nil) |> reload()}
+    with id when is_integer(id) <- parse_id(raw),
+         :ok <- ApiKeys.revoke(id, socket.assigns.current_user) do
+      audit(socket, "apikey.revoke", id, nil)
+      {:noreply, socket |> assign(error: nil, revealed: nil) |> reload()}
+    else
+      _ -> {:noreply, assign(socket, error: "unknown key")}
+    end
   end
 
   def handle_event("purge", %{"id" => raw}, socket) do
-    id = String.to_integer(raw)
+    id = parse_id(raw)
 
-    case ApiKeys.purge(id) do
+    case id && ApiKeys.purge(id, socket.assigns.current_user) do
       :ok ->
         audit(socket, "apikey.delete", id, nil)
         {:noreply, socket |> assign(error: nil) |> reload()}
@@ -68,13 +86,16 @@ defmodule OrbitWeb.ApiKeysLive do
       {:error, :not_revoked} ->
         {:noreply,
          assign(socket, error: "revoke the key first — purge removes only revoked keys")}
+
+      _ ->
+        {:noreply, assign(socket, error: "unknown key")}
     end
   end
 
   def handle_event("reveal", %{"id" => raw}, socket) do
-    id = String.to_integer(raw)
+    id = parse_id(raw)
 
-    case ApiKeys.reveal(id, socket.assigns.current_user) do
+    case id && ApiKeys.reveal(id, socket.assigns.current_user) do
       nil ->
         {:noreply, assign(socket, error: "not revealable", revealed: nil)}
 
@@ -97,6 +118,15 @@ defmodule OrbitWeb.ApiKeysLive do
       target_id: target_id,
       detail: detail
     )
+  end
+
+  # Extension point: extra links next to "New key" from `config :orbit,
+  # :apikeys_extra_links` ({label, path, :all | :superadmin}) — a downstream
+  # build's own token screens.
+  defp extra_links(user) do
+    for {label, path, who} <- Application.get_env(:orbit, :apikeys_extra_links, []),
+        who == :all or (who == :superadmin and user.is_superadmin),
+        do: {label, path}
   end
 
   defp error_text(:name_required), do: "name is required"
@@ -122,6 +152,13 @@ defmodule OrbitWeb.ApiKeysLive do
           <.btn variant={:primary} phx-click="toggle_create">
             {if @show_create, do: "Cancel", else: "New key"}
           </.btn>
+          <.link
+            :for={{label, path} <- extra_links(@current_user)}
+            navigate={path}
+            class="text-sm text-primary hover:underline"
+          >
+            {label}
+          </.link>
         </div>
 
         <p class="mb-4 max-w-3xl text-xs text-base-content/70">

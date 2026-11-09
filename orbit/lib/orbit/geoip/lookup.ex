@@ -14,11 +14,17 @@ defmodule Orbit.GeoIP.Lookup do
 
   @db_id :orbit_geoip
 
-  @doc "Start the async loader (idempotent; safe to call without a db file)."
+  @doc """
+  Start the async loader (idempotent; safe to call without a db file). Not
+  with the kill switch on (`DASH_GEOIP_DISABLE`, e.g. when a proxy in front
+  does the country filtering): nothing is looked up then, and a loader for a
+  missing file would only log a load error every 30 s.
+  """
   def start do
     path = Application.get_env(:orbit, :geoip_db_path, "")
+    disabled? = Application.get_env(:orbit, :geoip_disable, false)
 
-    if path != "" do
+    if path != "" and not disabled? do
       case :locus.start_loader(@db_id, path) do
         :ok -> :ok
         {:error, {:already_started, _}} -> :ok

@@ -19,15 +19,20 @@ defmodule OrbitWeb.CaptureWSController do
   alias Orbit.Instances.Instance
   alias OrbitWeb.WSAuth
 
+  # Browser → capture frames are control messages only.
+  @doc false
+  def ws_options, do: [timeout: 60_000, max_frame_size: 64 * 1024]
+
   def connect(conn, %{"instance_id" => raw_id} = params) do
     arg = authorize(conn, raw_id, params)
-    conn |> WebSockAdapter.upgrade(OrbitWeb.CaptureSocket, arg, timeout: 60_000) |> halt()
+    conn |> WebSockAdapter.upgrade(OrbitWeb.CaptureSocket, arg, ws_options()) |> halt()
   end
 
   defp authorize(conn, raw_id, params) do
     with {:ok, user} <- WSAuth.authenticate(conn, write: true),
          {id, ""} <- Integer.parse(raw_id),
          %Instance{} = _inst <- Scope.get_instance(id, user),
+         :ok <- capture_params(params),
          :ok <- agent_present(id) do
       Logger.info(
         "capture.open instance_id=#{id} user_id=#{user.id} interface=#{params["interface"]} filter=#{params["filter"]}"
@@ -41,10 +46,11 @@ defmodule OrbitWeb.CaptureWSController do
         "interface" => to_string(params["interface"] || "")
       })
 
+      # Forward exactly what Params.validate/2 checked (trimmed).
       %{
         instance_id: id,
-        interface: params["interface"] || "",
-        filter: params["filter"] || ""
+        interface: String.trim(params["interface"] || ""),
+        filter: String.trim(params["filter"] || "")
       }
     else
       {:error, code} ->
@@ -75,6 +81,17 @@ defmodule OrbitWeb.CaptureWSController do
       source_ip: Orbit.Net.client_ip(conn),
       detail: detail
     )
+  end
+
+  # Interface/filter become tcpdump argv as root on the box: an option-like
+  # value is refused before any agent sees it (security hotfix: option
+  # injection; also protects boxes still on an older agent). 4403 like the
+  # other refusals of this route.
+  defp capture_params(params) do
+    case Orbit.Capture.Params.validate(params["interface"], params["filter"]) do
+      :ok -> :ok
+      {:error, _} -> {:error, 4403}
+    end
   end
 
   defp agent_present(instance_id) do

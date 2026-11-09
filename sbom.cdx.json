@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "stylite-orbit-dashboard",
       "name": "stylite-orbit-dashboard",
-      "version": "4.1.1"
+      "version": "4.4.9"
     }
   },
   "components": [
@@ -41,10 +41,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/bandit@1.12.0",
+      "bom-ref": "pkg:hex/bandit@1.14.1",
       "name": "bandit",
-      "version": "1.12.0",
-      "purl": "pkg:hex/bandit@1.12.0",
+      "version": "1.14.1",
+      "purl": "pkg:hex/bandit@1.14.1",
       "licenses": [
         {
           "license": {
@@ -125,10 +125,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/decimal@3.1.1",
+      "bom-ref": "pkg:hex/decimal@3.2.0",
       "name": "decimal",
-      "version": "3.1.1",
-      "purl": "pkg:hex/decimal@3.1.1",
+      "version": "3.2.0",
+      "purl": "pkg:hex/decimal@3.2.0",
       "licenses": [
         {
           "license": {
@@ -153,10 +153,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/ecto@3.14.1",
+      "bom-ref": "pkg:hex/ecto@3.14.3",
       "name": "ecto",
-      "version": "3.14.1",
-      "purl": "pkg:hex/ecto@3.14.1",
+      "version": "3.14.3",
+      "purl": "pkg:hex/ecto@3.14.3",
       "licenses": [
         {
           "license": {
@@ -265,10 +265,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/hpax@1.0.4",
+      "bom-ref": "pkg:hex/hpax@1.1.0",
       "name": "hpax",
-      "version": "1.0.4",
-      "purl": "pkg:hex/hpax@1.0.4",
+      "version": "1.1.0",
+      "purl": "pkg:hex/hpax@1.1.0",
       "licenses": [
         {
           "license": {
@@ -321,10 +321,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/mint@1.9.3",
+      "bom-ref": "pkg:hex/mint@1.11.0",
       "name": "mint",
-      "version": "1.9.3",
-      "purl": "pkg:hex/mint@1.9.3",
+      "version": "1.11.0",
+      "purl": "pkg:hex/mint@1.11.0",
       "licenses": [
         {
           "license": {
@@ -405,10 +405,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix_html@4.3.0",
+      "bom-ref": "pkg:hex/phoenix_html@4.4.0",
       "name": "phoenix_html",
-      "version": "4.3.0",
-      "purl": "pkg:hex/phoenix_html@4.3.0",
+      "version": "4.4.0",
+      "purl": "pkg:hex/phoenix_html@4.4.0",
       "licenses": [
         {
           "license": {
@@ -433,10 +433,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix_live_view@1.2.7",
+      "bom-ref": "pkg:hex/phoenix_live_view@1.2.13",
       "name": "phoenix_live_view",
-      "version": "1.2.7",
-      "purl": "pkg:hex/phoenix_live_view@1.2.7",
+      "version": "1.2.13",
+      "purl": "pkg:hex/phoenix_live_view@1.2.13",
       "licenses": [
         {
           "license": {
@@ -489,10 +489,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/plug_crypto@2.1.1",
+      "bom-ref": "pkg:hex/plug_crypto@2.2.1",
       "name": "plug_crypto",
-      "version": "2.1.1",
-      "purl": "pkg:hex/plug_crypto@2.1.1",
+      "version": "2.2.1",
+      "purl": "pkg:hex/plug_crypto@2.2.1",
       "licenses": [
         {
           "license": {
@@ -531,10 +531,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/ssl_verify_fun@1.1.7",
+      "bom-ref": "pkg:hex/ssl_verify_fun@1.1.9",
       "name": "ssl_verify_fun",
-      "version": "1.1.7",
-      "purl": "pkg:hex/ssl_verify_fun@1.1.7",
+      "version": "1.1.9",
+      "purl": "pkg:hex/ssl_verify_fun@1.1.9",
       "licenses": [
         {
           "license": {
@@ -587,10 +587,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/thousand_island@1.5.0",
+      "bom-ref": "pkg:hex/thousand_island@1.6.0",
       "name": "thousand_island",
-      "version": "1.5.0",
-      "purl": "pkg:hex/thousand_island@1.5.0",
+      "version": "1.6.0",
+      "purl": "pkg:hex/thousand_island@1.6.0",
       "licenses": [
         {
           "license": {

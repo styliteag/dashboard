@@ -17,6 +17,8 @@ defmodule Orbit.Logs.Store do
   @keep_per_name 3
   @max_bytes 1_000_000
   @name_max 64
+  # Snapshots per push: each one is a DB row plus extracted events.
+  @max_entries 32
 
   @doc "Newest-snapshots-per-name retention window."
   def keep_per_name, do: @keep_per_name
@@ -30,7 +32,8 @@ defmodule Orbit.Logs.Store do
   @doc "Clean an agent `logfiles` payload into `{name, content}` pairs (drop empty)."
   @spec sanitize([map()]) :: [{String.t(), String.t()}]
   def sanitize(raw) when is_list(raw) do
-    for entry <- raw,
+    for entry <- Enum.take(raw, @max_entries),
+        is_map(entry),
         name =
           entry
           |> Map.get("name", "")

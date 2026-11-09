@@ -286,10 +286,13 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   # Readable diagnostic bundle for one tunnel (ipsec.diagnose relay) — raw
   # text per section, deliberately not over-parsed (python parity).
+  # Write-gated like its button (the Diagnose cell renders only for writable
+  # sessions): it starts an agent command or an SSH session on the box.
   def handle_event("ipsec_diagnose", %{"id" => id}, socket) do
     inst = socket.assigns.instance
 
-    if socket.assigns.diagnosis_busy do
+    if socket.assigns.diagnosis_busy || not socket.assigns.writable ||
+         not Orbit.Ipsec.Ids.tunnel_id?(id) do
       {:noreply, socket}
     else
       {:noreply,
@@ -496,14 +499,19 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   def handle_event("ipsec_" <> kind, %{"id" => id} = params, socket)
       when kind in ["connect", "disconnect", "reconnect"] do
+    uid = params["uid"] || ""
+
     cond do
       not socket.assigns.writable or MapSet.member?(socket.assigns.ipsec_busy, id) ->
         {:noreply, socket}
 
+      # Both ids become swanctl argv on the box — strict format (Ipsec.Ids).
+      not Orbit.Ipsec.Ids.tunnel_id?(id) or not Orbit.Ipsec.Ids.unique_id?(uid) ->
+        {:noreply, assign(socket, ipsec_msg: {:error, "invalid tunnel id"})}
+
       true ->
         inst = socket.assigns.instance
         user = socket.assigns.current_user
-        uid = params["uid"] || ""
 
         {:noreply,
          socket
@@ -601,7 +609,9 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Agent lifecycle (AgentSection parity; management.py port). All
   # write-gated; the slow relay calls run in start_async.
   def handle_event("agent_enable", _params, %{assigns: %{writable: true}} = socket) do
-    case Orbit.Instances.enable_agent(socket.assigns.instance) do
+    # Orbit.AgentBinding owns the binding transitions: enable on a bound
+    # instance rotates the token and evicts the old token's socket.
+    case Orbit.AgentBinding.enable(socket.assigns.instance) do
       {:ok, inst, _token} ->
         audit_agent(socket, "agent.enable", "ok")
         {:noreply, socket |> assign(instance: inst) |> load_metrics()}
@@ -612,9 +622,11 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("agent_disable", _params, %{assigns: %{writable: true}} = socket) do
-    case Orbit.Instances.disable_agent(socket.assigns.instance) do
+    # AgentBinding.disable evicts the live socket. Not Hub.unregister/1: it
+    # is pid-identity-checked against THIS LiveView, answered :stale and
+    # left the revoked agent connected (pushing, taking commands).
+    case Orbit.AgentBinding.disable(socket.assigns.instance) do
       {:ok, inst} ->
-        Hub.unregister(inst.id)
         audit_agent(socket, "agent.disable", "ok")
         {:noreply, socket |> assign(instance: inst, show_token: false) |> load_metrics()}
 
@@ -740,7 +752,7 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("conn_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
-    {id, ""} = Integer.parse(raw)
+    id = OrbitWeb.ParamId.parse(raw) || 0
     :ok = Orbit.Monitors.delete_connectivity(socket.assigns.instance.id, id)
     audit_agent(socket, "connectivity.monitor.delete", "ok")
     {:noreply, socket |> assign(conn_editor: nil, conn_test: nil) |> load_monitors()}
@@ -852,7 +864,8 @@ defmodule OrbitWeb.InstanceDetailLive do
   end
 
   def handle_event("p2mon_delete", %{"id" => raw}, %{assigns: %{writable: true}} = socket) do
-    {id, ""} = Integer.parse(raw)
+    # A non-numeric id deletes nothing (id 0 never exists), audited as asked.
+    id = OrbitWeb.ParamId.parse(raw) || 0
     :ok = Orbit.Monitors.delete_ipsec(socket.assigns.instance.id, id)
     audit_agent(socket, "ipsec.ping_monitor.delete", "ok")
     {:noreply, socket |> assign(ping_editor: nil, ping_test: nil) |> load_monitors()}
@@ -890,7 +903,7 @@ defmodule OrbitWeb.InstanceDetailLive do
     inst = socket.assigns.instance
 
     if socket.assigns.writable and Orbit.GUI.openable(inst) == :ok do
-      url = Orbit.GUI.open_flow(inst, nil)
+      url = Orbit.GUI.open_flow(inst, nil, socket.assigns.current_user)
 
       Audit.write(
         action: "agent.gui_open",
@@ -996,9 +1009,9 @@ defmodule OrbitWeb.InstanceDetailLive do
     if result["success"] do
       # Ack received — the box tears the agent down; drop agent mode so the
       # dashboard stops expecting pushes (enroll.py uninstall parity).
-      case Orbit.Instances.disable_agent(inst) do
+      # AgentBinding.disable also closes the socket (Hub.evict).
+      case Orbit.AgentBinding.disable(inst) do
         {:ok, updated} ->
-          Hub.unregister(inst.id)
           {:ok, {:instance, updated}, "agent uninstalling — instance back to direct transport"}
 
         _ ->
@@ -1666,6 +1679,7 @@ defmodule OrbitWeb.InstanceDetailLive do
 
     assign(socket,
       connected: Hub.get(socket.assigns.instance.id) != nil,
+      instance_badges: instance_badges(socket.assigns.instance),
       cpu: get_in(status, ["cpu", "total_pct"]),
       memory: status["memory"],
       disks: status["disks"] || [],
@@ -1705,7 +1719,8 @@ defmodule OrbitWeb.InstanceDetailLive do
       certificates: entry["certificates"] || [],
       pf_top: entry["pf_top"] || %{},
       firewall_log: Enum.take(entry["firewall_log"] || [], 15),
-      check_history: check_history(socket.assigns.instance.id),
+      # recent check transitions (CheckHistorySection parity)
+      check_history: Orbit.Checks.History.recent(socket.assigns.instance.id),
       checks: instance_checks(socket.assigns.instance),
       # Raw Checkmk-agent dump retained by the hub (linux nodes) — the Checkmk tab.
       checkmk_output: entry["checkmk_output"],
@@ -1744,22 +1759,6 @@ defmodule OrbitWeb.InstanceDetailLive do
     # A pool checkout exits rather than raising; same fallback, or a stressed
     # database takes the whole page down instead of one panel.
     _kind, _reason -> MapSet.new()
-  end
-
-  # Recent check transitions (CheckHistorySection parity) — shared table,
-  # written by both stacks' ingest.
-  defp check_history(instance_id) do
-    Orbit.Repo.query!(
-      "SELECT ts, check_key, old_state, new_state, summary FROM check_events " <>
-        "WHERE instance_id = ? ORDER BY id DESC LIMIT 20",
-      [instance_id]
-    ).rows
-  rescue
-    _ -> []
-  catch
-    # A pool checkout exits rather than raising; same fallback, or a stressed
-    # database takes the whole page down instead of one panel.
-    _kind, _reason -> []
   end
 
   # Per-instance evaluated checks — same evaluate→overlay chain as the exports
@@ -1893,6 +1892,13 @@ defmodule OrbitWeb.InstanceDetailLive do
             title={agent_badge_hint(@instance, @connected)}
           >
             {agent_badge(@instance, @connected)}
+          </span>
+          <span
+            :for={badge <- assigns[:instance_badges] || []}
+            class="rounded bg-warning/20 px-2 py-0.5 text-xs text-warning"
+            title={badge.title}
+          >
+            {badge.label}
           </span>
           <a
             :if={@instance.shell_enabled}
@@ -2053,8 +2059,11 @@ defmodule OrbitWeb.InstanceDetailLive do
               <tbody>
                 <tr :for={c <- @checks} class="border-b border-base-300/50 last:border-0">
                   <td class="w-16 py-2 pr-4 align-top">
-                    <span class={["rounded px-2 py-0.5 text-xs font-medium", state_class(c.state)]}>
-                      {state_label(c.state)}
+                    <span class={[
+                      "rounded px-2 py-0.5 text-xs font-medium",
+                      ServiceCheck.badge_class(c.state)
+                    ]}>
+                      {ServiceCheck.label(c.state)}
                     </span>
                   </td>
                   <td class="whitespace-nowrap py-2 pr-4 align-top text-base-content/70">
@@ -2352,9 +2361,9 @@ defmodule OrbitWeb.InstanceDetailLive do
             </span>
             <span
               :if={@fw_verdict}
-              class={["rounded px-1.5 py-0.5 text-xs", state_class(@fw_verdict.state)]}
+              class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(@fw_verdict.state)]}
             >
-              {state_label(@fw_verdict.state)}
+              {ServiceCheck.label(@fw_verdict.state)}
             </span>
           </h2>
 
@@ -3258,8 +3267,8 @@ defmodule OrbitWeb.InstanceDetailLive do
                     {cb_ts(ts)}
                   </td>
                   <td class="py-1.5 pr-3 align-top">
-                    <span class={["rounded px-1.5 py-0.5 text-xs", state_class(new)]}>
-                      {state_label(old)} → {state_label(new)}
+                    <span class={["rounded px-1.5 py-0.5 text-xs", ServiceCheck.badge_class(new)]}>
+                      {ServiceCheck.label(old)} → {ServiceCheck.label(new)}
                     </span>
                   </td>
                   <td class="whitespace-nowrap py-1.5 pr-3 text-base-content/70">{key}</td>
@@ -3283,8 +3292,8 @@ defmodule OrbitWeb.InstanceDetailLive do
               class="overflow-x-auto rounded bg-base-300/40 p-3 font-mono text-xs"
             >
               <div :for={c <- @checks} class="flex items-baseline gap-2 whitespace-nowrap py-0.5">
-                <span class={["rounded px-1 text-[10px] font-bold", state_class(c.state)]}>
-                  {c.state} {state_label(c.state)}
+                <span class={["rounded px-1 text-[10px] font-bold", ServiceCheck.badge_class(c.state)]}>
+                  {c.state} {ServiceCheck.label(c.state)}
                 </span>
                 <span class="text-base-content/70">{c.key}</span>
                 <span class="text-base-content/80">{c.summary}</span>
@@ -3825,6 +3834,15 @@ defmodule OrbitWeb.InstanceDetailLive do
     end)
   end
 
+  # Header badges (extension point): `config :orbit, :instance_badges` lists
+  # `{Module, :fun}`; each gets the instance and returns nil or
+  # `%{label: String.t(), title: String.t()}`. Empty upstream.
+  defp instance_badges(instance) do
+    :orbit
+    |> Application.get_env(:instance_badges, [])
+    |> Enum.flat_map(fn {mod, fun} -> List.wrap(apply(mod, fun, [instance])) end)
+  end
+
   # Vendor/extension tabs (§28): same `config :orbit, :vendor_tabs` the tab bar
   # reads, so a registered tab and its content are one declaration. Returns the
   # `{mod, fun}` component for the active tab key, or nil for a built-in tab.
@@ -3995,11 +4013,6 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp fmt_bytes(_), do: "0 B"
 
-  defp state_label(1), do: "WARN"
-  defp state_label(2), do: "CRIT"
-  defp state_label(3), do: "UNKNOWN"
-  defp state_label(_), do: "OK"
-
   # Split a raw Checkmk dump into segments for colouring: section headers
   # (`<<<name>>>`) vs the data between them. One regex split, ~one span per
   # section header, so the DOM stays small even on a large dump. Only called
@@ -4010,11 +4023,6 @@ defmodule OrbitWeb.InstanceDetailLive do
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(fn part -> %{header: String.starts_with?(part, "<<<"), text: part} end)
   end
-
-  defp state_class(2), do: "bg-error/20 text-error"
-  defp state_class(1), do: "bg-warning/20 text-warning"
-  defp state_class(3), do: "bg-base-300 text-base-content/70"
-  defp state_class(_), do: "bg-primary/20 text-primary"
 
   defp cb_ts(dt), do: local_time_tag(dt, "datetime")
 

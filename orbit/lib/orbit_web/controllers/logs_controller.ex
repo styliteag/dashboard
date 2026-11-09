@@ -21,11 +21,26 @@ defmodule OrbitWeb.LogsController do
          lf when not is_nil(lf) <- Store.get_logfile(inst.id, lid) do
       conn
       |> put_resp_content_type("text/plain")
-      |> put_resp_header("content-disposition", ~s(inline; filename="#{lf.name}"))
+      |> put_resp_header(
+        "content-disposition",
+        ~s(inline; filename="#{disposition_name(lf.name)}")
+      )
       |> send_resp(200, lf.content)
     else
       false -> conn |> put_status(403) |> json(%{detail: "admin only"})
       _ -> conn |> put_status(404) |> json(%{detail: "not found"})
+    end
+  end
+
+  @doc """
+  The logfile name as a header-safe filename: the name is agent-supplied, so
+  quotes, separators and control characters become `_` (no header
+  injection, no broken parameter).
+  """
+  def disposition_name(name) do
+    case String.replace(to_string(name), ~r/[^A-Za-z0-9._-]/, "_") do
+      "" -> "log.txt"
+      safe -> String.slice(safe, 0, 128)
     end
   end
 end

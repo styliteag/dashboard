@@ -39,7 +39,7 @@ defmodule OrbitWeb.Plugs.GeoIPTest do
     deny_all()
 
     conn =
-      conn(:get, "/api/instances")
+      conn(:get, "/api/export/prometheus")
       |> Plug.Conn.put_req_header("authorization", "Bearer orbit_abc123")
       |> call()
 

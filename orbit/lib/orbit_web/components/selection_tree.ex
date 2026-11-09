@@ -126,52 +126,44 @@ defmodule OrbitWeb.Components.SelectionTree do
   def handle_event("toggle_category", %{"cat" => cat}, socket) do
     consumer = socket.assigns.consumer
 
-    if globally_included?(socket.assigns.rules, cat) do
-      Selection.delete_rule(consumer, cat, nil)
-      audit(socket, "selection.rule.clear", %{"name" => consumer, "kind" => cat})
-    else
-      Selection.set_rule(consumer, cat, "include", nil)
-
-      audit(socket, "selection.rule.set", %{
-        "name" => consumer,
-        "mode" => "include",
-        "kind" => cat
-      })
-    end
-
-    {:noreply, load_rules(socket)}
-  end
-
-  def handle_event("toggle_service", %{"iid" => iid, "key" => key}, socket) do
-    consumer = socket.assigns.consumer
-    iid = String.to_integer(iid)
-
     cond do
-      Scope.get_instance(iid, socket.assigns.current_user) == nil ->
+      # A category toggle writes a GLOBAL rule: known selector, superadmin.
+      not (is_binary(cat) and Selection.valid_selector?(consumer, cat)) or
+          not Selection.may_write_rule?(socket.assigns.current_user, nil) ->
         {:noreply, socket}
 
-      explicit_rule?(socket.assigns.rules, iid, key) ->
-        Selection.delete_rule(consumer, key, iid)
-        audit(socket, "selection.rule.clear", %{"name" => consumer, "kind" => key})
-        {:noreply, load_rules(socket)}
-
       true ->
-        {on, _by} = Selection.resolve(consumer, key, iid, socket.assigns.rules)
-        mode = if on, do: "exclude", else: "include"
-        Selection.set_rule(consumer, key, mode, iid)
-        audit(socket, "selection.rule.set", %{"name" => consumer, "mode" => mode, "kind" => key})
-        {:noreply, load_rules(socket)}
+        toggle_global_category(socket, consumer, cat)
     end
   end
 
-  def handle_event("toggle_open", %{"iid" => iid}, socket) do
-    iid = String.to_integer(iid)
-    open = socket.assigns.open
+  def handle_event("toggle_service", %{"iid" => raw_iid, "key" => key}, socket) do
+    consumer = socket.assigns.consumer
 
-    open =
-      if MapSet.member?(open, iid), do: MapSet.delete(open, iid), else: MapSet.put(open, iid)
+    case parse_iid(raw_iid) do
+      iid when is_integer(iid) and is_binary(key) ->
+        if Selection.valid_selector?(consumer, key),
+          do: toggle_service(socket, consumer, iid, key),
+          else: {:noreply, socket}
 
-    {:noreply, assign(socket, open: open)}
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_open", %{"iid" => raw_iid}, socket) do
+    case parse_iid(raw_iid) do
+      nil ->
+        {:noreply, socket}
+
+      iid ->
+        open = socket.assigns.open
+
+        open =
+          if MapSet.member?(open, iid), do: MapSet.delete(open, iid), else: MapSet.put(open, iid)
+
+        {:noreply, assign(socket, open: open)}
+    end
   end
 
   def handle_event("refresh_preview", _params, socket) do
@@ -204,6 +196,49 @@ defmodule OrbitWeb.Components.SelectionTree do
      )}
   end
 
+  defp parse_iid(raw) do
+    case Integer.parse(to_string(raw)) do
+      {iid, ""} -> iid
+      _ -> nil
+    end
+  end
+
+  defp toggle_global_category(socket, consumer, cat) do
+    if globally_included?(socket.assigns.rules, cat) do
+      Selection.delete_rule(consumer, cat, nil)
+      audit(socket, "selection.rule.clear", %{"name" => consumer, "kind" => cat})
+    else
+      Selection.set_rule(consumer, cat, "include", nil)
+
+      audit(socket, "selection.rule.set", %{
+        "name" => consumer,
+        "mode" => "include",
+        "kind" => cat
+      })
+    end
+
+    {:noreply, load_rules(socket)}
+  end
+
+  defp toggle_service(socket, consumer, iid, key) do
+    cond do
+      Scope.get_instance(iid, socket.assigns.current_user) == nil ->
+        {:noreply, socket}
+
+      explicit_rule?(socket.assigns.rules, iid, key) ->
+        Selection.delete_rule(consumer, key, iid)
+        audit(socket, "selection.rule.clear", %{"name" => consumer, "kind" => key})
+        {:noreply, load_rules(socket)}
+
+      true ->
+        {on, _by} = Selection.resolve(consumer, key, iid, socket.assigns.rules)
+        mode = if on, do: "exclude", else: "include"
+        Selection.set_rule(consumer, key, mode, iid)
+        audit(socket, "selection.rule.set", %{"name" => consumer, "mode" => mode, "kind" => key})
+        {:noreply, load_rules(socket)}
+    end
+  end
+
   defp audit(socket, action, detail) do
     Orbit.Audit.write(
       action: action,
@@ -225,11 +260,6 @@ defmodule OrbitWeb.Components.SelectionTree do
 
   defp category_label(key), do: Map.get(@category_labels, key, key)
   defp by_note(by), do: Map.get(@by_note, by, by)
-
-  defp state_badge(0), do: {"OK", "bg-primary/20 text-primary"}
-  defp state_badge(1), do: {"WARN", "bg-warning/20 text-warning"}
-  defp state_badge(2), do: {"CRIT", "bg-error/20 text-error"}
-  defp state_badge(_), do: {"UNKNOWN", "bg-base-300 text-base-content/70"}
 
   defp device_label("opnsense"), do: "OPNsense"
   defp device_label("pfsense"), do: "pfSense"
@@ -373,9 +403,9 @@ defmodule OrbitWeb.Components.SelectionTree do
               />
               <span class={[
                 "rounded px-1.5 py-0.5",
-                elem(state_badge(c.state), 1)
+                ServiceCheck.badge_class(c.state)
               ]}>
-                {elem(state_badge(c.state), 0)}
+                {ServiceCheck.label(c.state)}
               </span>
               <span class="font-mono text-base-content/80">{c.key}</span>
               <span class="truncate text-base-content/70">{c.summary}</span>

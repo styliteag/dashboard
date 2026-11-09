@@ -63,33 +63,30 @@ defmodule OrbitWeb.AuditLive do
     {:noreply, socket |> assign(tab: String.to_existing_atom(tab)) |> load()}
   end
 
-  def handle_event("toggle_type", %{"type" => type}, socket) do
-    type = String.to_existing_atom(type)
-    types = socket.assigns.types
-
-    types =
-      if MapSet.member?(types, type),
-        do: MapSet.delete(types, type),
-        else: MapSet.put(types, type)
-
-    {:noreply, socket |> assign(types: types) |> load()}
+  def handle_event("toggle_type", %{"type" => raw}, socket) do
+    case Enum.find(@timeline_types, fn {t, _} -> Atom.to_string(t) == raw end) do
+      {type, _label} -> {:noreply, socket |> toggle_type(type) |> load()}
+      nil -> {:noreply, socket}
+    end
   end
 
   def handle_event("action_filter", params, socket) do
     hours =
-      case Integer.parse(to_string(params["hours"] || "")) do
-        {h, ""} when h > 0 -> h
+      case OrbitWeb.ParamId.parse(params["hours"]) do
+        h when is_integer(h) and h > 0 -> h
         _ -> nil
       end
 
+    q = if is_binary(params["q"]), do: String.slice(params["q"], 0, 200), else: ""
+
     {:noreply,
      socket
-     |> assign(action_q: params["q"] || "", action_hours: hours, action_limit: 100)
+     |> assign(action_q: q, action_hours: hours, action_limit: 100)
      |> load()}
   end
 
   def handle_event("action_more", _params, socket) do
-    {:noreply, socket |> assign(action_limit: socket.assigns.action_limit + 200) |> load()}
+    {:noreply, socket |> assign(action_limit: next_limit(socket.assigns.action_limit)) |> load()}
   end
 
   # Newest-first stays the DEFAULT; a header click re-orders SERVER-side
@@ -583,4 +580,22 @@ defmodule OrbitWeb.AuditLive do
   defp type_class(:access), do: "bg-info/20 text-info"
   defp type_class(:request), do: "bg-neutral text-neutral-content/80"
   defp type_class(_), do: "bg-warning/20 text-warning"
+
+  # "more" grows the LIMIT window — capped, so repeated clicks cannot ask the
+  # database for an unbounded row set.
+  @max_action_limit 5_000
+
+  @doc false
+  def next_limit(current), do: min(current + 200, @max_action_limit)
+
+  defp toggle_type(socket, type) do
+    types = socket.assigns.types
+
+    types =
+      if MapSet.member?(types, type),
+        do: MapSet.delete(types, type),
+        else: MapSet.put(types, type)
+
+    assign(socket, types: types)
+  end
 end

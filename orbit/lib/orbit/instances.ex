@@ -44,63 +44,23 @@ defmodule Orbit.Instances do
   end
 
   @doc """
-  Online when the last success is more recent than the last error — the one
-  place the transition is decided (mirror of metrics/store.is_online).
+  Online when the last success is more recent than the last error — the
+  last-outcome verdict (mirror of metrics/store.is_online), decided in
+  `Orbit.Availability.online?/2`.
   """
   @spec online?(Instance.t()) :: boolean()
-  def online?(%Instance{last_success_at: nil}), do: false
-
-  def online?(%Instance{last_success_at: succ, last_error_at: nil}) when not is_nil(succ),
-    do: true
-
   def online?(%Instance{last_success_at: succ, last_error_at: err}),
-    do: DateTime.compare(succ, err) == :gt
+    do: Orbit.Availability.online?(succ, err)
 
   @doc """
   Three-way status bucket for the list KPI tiles and row badges
-  (statusBucket parity, InstancesPage.tsx): agent-mode boxes bucket by the
-  live WS connection; polled boxes by the 5-minute success/error window.
-  Tiles are counted from the same function the badges render from, so the
-  two can never drift.
+  (statusBucket parity, InstancesPage.tsx) — the string form of
+  `Orbit.Availability.classify/3`. Tiles are counted from the same function
+  the badges render from, so the two can never drift.
   """
   @spec status_bucket(Instance.t(), boolean(), DateTime.t()) :: String.t()
   def status_bucket(%Instance{} = inst, agent_connected, now \\ DateTime.utc_now()) do
-    if Instance.agent_mode?(inst) do
-      if agent_connected, do: "online", else: "offline"
-    else
-      cutoff = DateTime.add(now, -300)
-      succ = inst.last_success_at
-      err = inst.last_error_at
-
-      cond do
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and
-            (err == nil or DateTime.compare(succ, err) == :gt) ->
-          "online"
-
-        succ != nil and DateTime.compare(succ, cutoff) != :lt and err != nil and
-          DateTime.compare(err, cutoff) != :lt and DateTime.compare(err, succ) != :lt ->
-          "degraded"
-
-        true ->
-          "offline"
-      end
-    end
-  end
-
-  @doc """
-  Switch an instance into agent (push) mode with a fresh bearer token
-  (management.py enable_agent). Returns {:ok, inst, token}.
-  """
-  def enable_agent(%Instance{} = inst) do
-    token = 48 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-
-    inst
-    |> Ecto.Changeset.change(transport: "push", agent_token: token)
-    |> Repo.update()
-    |> case do
-      {:ok, updated} -> {:ok, updated, token}
-      other -> other
-    end
+    inst |> Orbit.Availability.classify(agent_connected, now) |> Atom.to_string()
   end
 
   @doc """
@@ -111,13 +71,6 @@ defmodule Orbit.Instances do
   def move_group(%Instance{} = inst, group_id) when is_integer(group_id) do
     inst
     |> Ecto.Changeset.change(group_id: group_id)
-    |> Repo.update()
-  end
-
-  @doc "Drop agent mode: revoke the token, fall back to direct transport."
-  def disable_agent(%Instance{} = inst) do
-    inst
-    |> Ecto.Changeset.change(transport: "direct", agent_token: nil)
     |> Repo.update()
   end
 
@@ -135,7 +88,8 @@ defmodule Orbit.Instances do
   A changed push interval is live-applied to a connected agent.
   """
   def update_instance(%Instance{} = inst, params) do
-    with {:ok, changes} <- build_changes(inst, params) do
+    with :ok <- Orbit.Instances.Input.validate(params),
+         {:ok, changes} <- build_changes(inst, params) do
       inst
       |> Ecto.Changeset.change(changes)
       |> Repo.update()
@@ -239,9 +193,12 @@ defmodule Orbit.Instances do
       if params["transport"] in ["push", "direct"], do: params["transport"], else: "push"
 
     device_type = if params["device_type"] in @device_types, do: params["device_type"], else: nil
-    name = String.trim(params["name"] || "")
+    name = String.trim(to_string(params["name"] || ""))
 
     cond do
+      (bad = Orbit.Instances.Input.validate(params)) != :ok ->
+        bad
+
       name == "" ->
         {:error, :name_required}
 
@@ -373,7 +330,13 @@ defmodule Orbit.Instances do
     end
   end
 
-  @doc "Soft delete — the slug is freed for reuse (generated-column contract)."
+  @doc """
+  Soft delete — the slug is freed for reuse (generated-column contract).
+
+  Raw write: it does NOT close a connected agent socket. UI/API callers use
+  Orbit.AgentBinding.delete/2, which evicts it; call this directly only when
+  you must still talk to the agent first and close the socket yourself.
+  """
   def soft_delete(%Instance{} = inst) do
     inst
     |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now()})
@@ -415,8 +378,25 @@ defmodule Orbit.Instances do
 
     base
     |> merge_intervals(params)
+    |> drop_secrets_on_new_origin(inst, params)
     |> merge_secrets(params)
     |> merge_slug(inst, params)
+  end
+
+  # A base_url pointing at another origin (scheme, host or port) must not
+  # inherit the stored API credentials — the next poll or "Test connection"
+  # would hand them to that host. Whatever is not re-entered in the same save
+  # is replaced by the agent-mode placeholder (the columns are NOT NULL).
+  # Re-entered values are applied afterwards by merge_secrets/2.
+  defp drop_secrets_on_new_origin(changes, inst, params) do
+    if Map.has_key?(params, "base_url") and
+         Orbit.Instances.Input.new_origin?(params["base_url"], inst.base_url) do
+      changes
+      |> Map.put(:api_key_enc, Orbit.Crypto.encrypt("agent-mode-no-key"))
+      |> Map.put(:api_secret_enc, Orbit.Crypto.encrypt("agent-mode-no-secret"))
+    else
+      changes
+    end
   end
 
   @bool_fields ~w(ssl_verify gui_login_enabled shell_enabled ssh_enabled

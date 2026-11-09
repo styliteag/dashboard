@@ -45,6 +45,34 @@ defmodule Orbit.Checks.History do
   end
 
   @doc """
+  The last `limit` transitions of an instance across ALL its checks, newest
+  first, as raw rows `[ts, check_key, old_state, new_state, summary]`
+  (detail page Checks tab, re-read every 5 s while the page is open).
+
+  Ordered by `ts, id`, not `id` alone: `ix_check_event_lookup
+  (instance_id, ts)` then serves the read backwards and stops after `limit`
+  rows. `ORDER BY id DESC` made MariaDB sort every event of the box on each
+  refresh.
+  """
+  @spec recent(integer(), pos_integer()) :: [list()]
+  def recent(instance_id, limit \\ 20) when is_integer(limit) and limit > 0 do
+    Orbit.Repo.query!(recent_sql(limit), [instance_id]).rows
+  rescue
+    _ -> []
+  catch
+    # A pool checkout exits rather than raising; same fallback, or a stressed
+    # database takes the whole page down instead of one panel.
+    _kind, _reason -> []
+  end
+
+  @doc false
+  # Public for the EXPLAIN test only. `limit` is an integer (guarded above).
+  def recent_sql(limit) when is_integer(limit) and limit > 0 do
+    "SELECT ts, check_key, old_state, new_state, summary FROM check_events " <>
+      "WHERE instance_id = ? ORDER BY ts DESC, id DESC LIMIT #{limit}"
+  end
+
+  @doc """
   Recorded transitions of MANY instances' checks under one key prefix
   (fleet timeline), grouped by `{instance_id, check_key}` with the same
   event shape `read/3` returns. `lane/4` sorts its input, so only the
@@ -176,12 +204,4 @@ defmodule Orbit.Checks.History do
   def state_of(2), do: :down
   def state_of(3), do: :unknown
   def state_of(_), do: nil
-
-  @doc "Human label for a recorded state, for the transition table."
-  @spec state_label(integer() | nil) :: String.t()
-  def state_label(0), do: "OK"
-  def state_label(1), do: "WARN"
-  def state_label(2), do: "CRIT"
-  def state_label(3), do: "UNKNOWN"
-  def state_label(_), do: "—"
 end

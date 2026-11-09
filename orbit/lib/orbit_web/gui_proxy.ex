@@ -58,9 +58,12 @@ defmodule OrbitWeb.GuiProxy do
   defp handoff(conn, id) do
     token = conn.query_params["t"] || ""
 
-    if Auth.verify(token) == id do
+    # Bound handoff (Orbit.GUI.authorized?/3): the cookie inherits the user
+    # binding, so a password change / disable / scope change ends it. Only a
+    # handoff token is accepted here — a replayed cookie must not renew itself.
+    if Orbit.GUI.authorized?(token, id, :handoff) do
       conn
-      |> put_resp_cookie(@cookie, Auth.sign(id, 8 * 3600),
+      |> put_resp_cookie(@cookie, Orbit.GUI.cookie_token(id, Orbit.GUI.token_user(token)),
         http_only: true,
         secure: https?(conn),
         same_site: "Lax",
@@ -106,16 +109,37 @@ defmodule OrbitWeb.GuiProxy do
       List.first(get_req_header(conn, "x-forwarded-proto")) == "https"
   end
 
+  @methods %{
+    "GET" => :get,
+    "HEAD" => :head,
+    "POST" => :post,
+    "PUT" => :put,
+    "PATCH" => :patch,
+    "DELETE" => :delete,
+    "OPTIONS" => :options
+  }
+
+  @doc """
+  Forwardable request methods as atoms; nil for anything else (no atom is
+  ever minted from a client-chosen method name).
+  """
+  def method_atom(method), do: Map.get(@methods, method)
+
   defp gated_proxy(conn, id) do
     conn = fetch_cookies(conn)
     token = conn.req_cookies[@cookie] || ""
 
-    if Auth.verify(token) == id do
-      proxy(conn, id)
-    else
-      conn
-      |> send_resp(401, "GUI session expired — reopen from the dashboard.")
-      |> halt()
+    cond do
+      method_atom(conn.method) == nil ->
+        conn |> send_resp(405, "method not allowed") |> halt()
+
+      Orbit.GUI.authorized?(token, id, :cookie) ->
+        proxy(conn, id)
+
+      true ->
+        conn
+        |> send_resp(401, "GUI session expired — reopen from the dashboard.")
+        |> halt()
     end
   end
 
@@ -182,7 +206,7 @@ defmodule OrbitWeb.GuiProxy do
   defp forward(conn, port, body) do
     url = "https://127.0.0.1:#{port}#{conn.request_path}"
     url = if conn.query_string == "", do: url, else: url <> "?" <> conn.query_string
-    method = conn.method |> String.downcase() |> String.to_atom()
+    method = method_atom(conn.method)
 
     headers =
       conn.req_headers

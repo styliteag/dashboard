@@ -142,6 +142,13 @@ defmodule OrbitWeb.Router do
       live "/users", UsersLive
       live "/groups", GroupsLive
       live "/access-control", AccessControlLive
+
+      # Extension point: extra superadmin pages from `config :orbit,
+      # :extra_superadmin_live` ({path, module relative to OrbitWeb},
+      # compile-time) — a downstream build's own superadmin screens.
+      for {path, live_module} <- Application.compile_env(:orbit, :extra_superadmin_live, []) do
+        live path, live_module
+      end
     end
   end
 
@@ -184,6 +191,8 @@ defmodule OrbitWeb.Router do
   # orbit_ api-key auth joins this pipeline in a later slice.
   pipeline :session_api do
     plug :accepts, ["json"]
+    # nosniff & co.: these routes serve raw text (logfiles, backups, CSV).
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :track_access
@@ -206,6 +215,8 @@ defmodule OrbitWeb.Router do
   # Write-gated api mutations (require_write parity).
   pipeline :write_api do
     plug :accepts, ["json"]
+    # nosniff & co.: these routes serve raw text (logfiles, backups, CSV).
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :track_access
@@ -240,6 +251,7 @@ defmodule OrbitWeb.Router do
   # Machine exports: read_principal (session OR orbit_ read-only api key).
   # No :accepts plug — prometheus serves text/plain to */* scrapers.
   pipeline :read_api do
+    plug :put_secure_browser_headers
     plug :fetch_session
     plug :fetch_current_user
     plug :read_principal
@@ -253,6 +265,13 @@ defmodule OrbitWeb.Router do
 
     get "/export/checkmk", ExportController, :checkmk
     get "/export/prometheus", ExportController, :prometheus
+  end
+
+  # Extension point: extra forwards from `config :orbit, :extra_forwards`
+  # ({path, plug, opts}, compile-time) — a downstream build's own machine API.
+  # The forwarded plug owns auth entirely; no pipeline runs before it.
+  for {path, plug, opts} <- Application.compile_env(:orbit, :extra_forwards, []) do
+    forward path, plug, opts
   end
 
   # Enable LiveDashboard in development

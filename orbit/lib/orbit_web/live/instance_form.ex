@@ -38,6 +38,18 @@ defmodule OrbitWeb.InstanceForm do
     |> Enum.filter(fn {_field, msg} -> msg end)
   end
 
+  @doc "Operator text for an `Orbit.Instances.Input` refusal (nil for other reasons)."
+  def input_error_text(:bad_params), do: "invalid field values"
+
+  def input_error_text(:bad_base_url),
+    do: "base url must be an http:// or https:// URL with a host"
+
+  def input_error_text(:bad_ping_url), do: "ping url must be an http(s) URL or a host[:port]"
+  def input_error_text(:bad_ca_bundle), do: "CA bundle must contain a PEM certificate"
+  def input_error_text(:bad_ssh_port), do: "ssh port must be 1-65535"
+  def input_error_text(:bad_interval), do: "intervals must be 5-86400 seconds"
+  def input_error_text(_), do: nil
+
   defp name_error(name), do: if(String.trim(name || "") == "", do: "name is required")
 
   # Blank is fine (create derives one from the name; edit keeps the stored

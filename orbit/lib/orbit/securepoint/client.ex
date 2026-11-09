@@ -395,6 +395,12 @@ defmodule Orbit.Securepoint.Client do
     _ -> 0
   end
 
+  # spcgi answers are small JSON documents (interface and rule lists).
+  @max_body 16 * 1024 * 1024
+
+  # The login credentials ride in the JSON body: redirects are never
+  # followed (Req re-sends the body on 307/308 to wherever the box points),
+  # and the body is collected with a cap instead of buffered in full.
   defp post(%__MODULE__{} = c, payload) do
     base = [
       url: c.base_url <> @spcgi_path,
@@ -402,14 +408,23 @@ defmodule Orbit.Securepoint.Client do
       headers: [{"accept", "application/json"}],
       connect_options: [transport_opts: tls_opts(c)],
       receive_timeout: 10_000,
-      retry: false
+      retry: false,
+      redirect: false,
+      into: Orbit.Net.capped_body(@max_body),
+      decode_body: false
     ]
 
     req_opts = if c.req_plug, do: Keyword.put(base, :plug, c.req_plug), else: base
 
     case Req.post(req_opts) do
-      {:ok, %{status: status, body: body}} when status < 400 and is_map(body) ->
-        {:ok, body}
+      {:ok, %{status: status, body: :too_large}} when status < 400 ->
+        {:error, "POST #{@spcgi_path}: response too large"}
+
+      {:ok, %{status: status, body: raw}} when status < 400 and is_binary(raw) ->
+        case Jason.decode(raw) do
+          {:ok, body} when is_map(body) -> {:ok, body}
+          _ -> {:error, "POST #{@spcgi_path}: HTTP #{status}"}
+        end
 
       {:ok, %{status: status}} ->
         {:error, "POST #{@spcgi_path}: HTTP #{status}"}

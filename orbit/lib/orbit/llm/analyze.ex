@@ -75,7 +75,14 @@ defmodule Orbit.LLM.Analyze do
 
         base = presence(settings.("llm_#{p.id}_base_url")) || p.base_url
         {url, headers, body} = build_chat_request(p, base, key, model, anonymized)
-        post(p, url, headers, body, model, opts)
+        # The request carries the API key: an operator-set base URL gets the
+        # same egress guard as the notifier webhooks (Orbit.Net.Egress).
+        ssrf_check = Keyword.get(opts, :ssrf_check, &Orbit.Net.Egress.ssrf_block_reason/1)
+
+        case ssrf_check.(url) do
+          nil -> post(p, url, headers, body, model, opts)
+          reason -> {:error, "Base URL rejected: #{reason}"}
+        end
       end
     else
       nil -> {:error, "unknown provider"}
@@ -132,13 +139,27 @@ defmodule Orbit.LLM.Analyze do
     end
   end
 
+  # A chat completion is a few KB of JSON; anything far beyond is refused.
+  @max_body 4 * 1024 * 1024
+
+  defp log_failure(p, %{status: status, body: body}) do
+    Logger.warning(
+      "llm.analyze_failed provider=#{p.id} status=#{status} " <>
+        "body=#{String.slice(inspect(body), 0, 300)}"
+    )
+  end
+
   defp post(p, url, headers, body, model, opts) do
     base_opts = [
       url: url,
       headers: headers,
       json: body,
       receive_timeout: @timeout_ms,
-      retry: false
+      retry: false,
+      # The guard vetted this host; a 3xx must not carry the key elsewhere.
+      redirect: false,
+      into: Orbit.Net.capped_body(@max_body),
+      decode_body: false
     ]
 
     req_opts =
@@ -147,12 +168,28 @@ defmodule Orbit.LLM.Analyze do
         plug -> Keyword.put(base_opts, :plug, plug)
       end
 
-    case Req.post(req_opts) do
-      {:ok, %{status: 200, body: data}} when is_map(data) ->
-        {:ok, %{provider: p.id, model: model, findings: parse_chat_response(p.style, data)}}
+    # Connects to the address the egress policy vetted (DNS rebinding).
+    case Orbit.Net.Egress.post(req_opts) do
+      {:ok, %{status: 200, body: :too_large}} ->
+        {:error, "Provider answer too large"}
 
-      {:ok, %{status: status, body: body}} ->
-        {:error, "HTTP #{status}: #{String.slice(inspect(body), 0, 300)}"}
+      {:ok, %{status: 200, body: raw} = resp} when is_binary(raw) ->
+        case Jason.decode(raw) do
+          {:ok, data} when is_map(data) ->
+            {:ok, %{provider: p.id, model: model, findings: parse_chat_response(p.style, data)}}
+
+          _ ->
+            log_failure(p, resp)
+            {:error, "Unreadable answer from the provider"}
+        end
+
+      # The body is the far side's text — logged capped, never echoed to the UI.
+      {:ok, %{status: status} = resp} ->
+        log_failure(p, resp)
+        {:error, "HTTP #{status} from the provider"}
+
+      {:error, reason} when is_binary(reason) ->
+        {:error, "Base URL rejected: #{reason}"}
 
       {:error, error} ->
         Logger.warning("llm.analyze_failed provider=#{p.id} error=#{Exception.message(error)}")

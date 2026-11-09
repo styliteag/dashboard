@@ -57,7 +57,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.15"
+__version__ = "4.2.16"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -210,6 +210,39 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return r.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
+
+
+# Values that end up in the argv of a root-run tool (ping, tcpdump) come from
+# the dashboard. A leading "-" turns such a value into an OPTION (security
+# hotfix, test_option_injection.py: `-f` flood ping, tcpdump `-w … -z cmd`).
+# Only IP literals and plain names pass; callers also end options with "--".
+_PLAIN_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
+_IFACE_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
+
+
+def _safe_host_arg(value) -> str:
+    """``value`` if it is an IP literal or a plain host name, else ""."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        ipaddress.ip_address(text)
+        return text
+    except ValueError:
+        pass
+    return text if _PLAIN_ARG_RE.match(text) else ""
+
+
+def _safe_iface_arg(value) -> str:
+    """``value`` if it is a plain interface name (no leading "-"), else ""."""
+    text = str(value or "").strip()
+    return text if _IFACE_ARG_RE.match(text) else ""
+
+
+def _tcpdump_filter_args(filt: str) -> list:
+    """The BPF expression as ONE argument after "--" — never split into argv
+    tokens, where its words would be parsed as tcpdump options."""
+    return ["--", filt] if filt else []
 # <<< shared:run-helper
 
 
@@ -1454,7 +1487,9 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     outage. ``-S`` binds the source; an unowned source fails immediately with no
     loss summary, which we read as error.
     """
-    if not dest:
+    # Option injection guard (security hotfix): dest/source come from the
+    # dashboard; a value like "-f" would become a ping option, run as root.
+    if not dest or not _safe_host_arg(dest) or (source and not _safe_host_arg(source)):
         return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
     # Pace packets 0.3s apart (sub-second interval needs root, which the agent has)
     # so a healthy tunnel answers in well under a second instead of the default
@@ -1467,7 +1502,7 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-t", str(timeout)]
     if source:
         cmd += ["-S", source]
-    cmd.append(dest)
+    cmd += ["--", dest]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
     except (subprocess.TimeoutExpired, OSError):
@@ -3040,6 +3075,53 @@ _RELAY_DROP_HEADERS = frozenset({
     "authorization", "cookie",
 })
 
+# Request side: only what the dashboard actually sends is forwarded. Methods
+# the relay callers use (firewall rules, API probe) — nothing else reaches the
+# local API with the injected root-equivalent credentials.
+_RELAY_METHODS = frozenset({"GET", "POST", "PUT", "DELETE"})
+# Content negotiation only: never a header that could stand in for or override
+# the injected Authorization (Cookie, X-API-Key, Proxy-Authorization, ...).
+_RELAY_FORWARD_HEADERS = frozenset({"accept", "content-type"})
+# Control characters (incl. CR/LF/TAB), space, backslash and a fragment marker.
+_RELAY_PATH_BAD_CHARS = re.compile(r"[\x00-\x20\x7f\\#]")
+# Encoded dot, slash, backslash and control characters.
+_RELAY_PATH_BAD_ESCAPES = re.compile(r"%(2e|2f|5c|[01][0-9a-f]|7f)", re.I)
+
+
+def _relay_safe_path(raw: object) -> str | None:
+    """`api/...` path of a relay request (one optional leading "/"), or None.
+
+    Refused: anything outside api/, non-ASCII (fullwidth dots/slashes and
+    Unicode spaces some stacks normalise), "." / ".." segments, empty segments
+    ("//"), backslashes, control characters, fragments and percent-encoded
+    dots, slashes or control characters — the path must not leave the local
+    API."""
+    if not isinstance(raw, str) or not raw.isascii():
+        return None
+    path = raw[1:] if raw.startswith("/") else raw
+    if not path.startswith("api/"):
+        return None
+    if _RELAY_PATH_BAD_CHARS.search(path) or _RELAY_PATH_BAD_ESCAPES.search(path):
+        return None
+    route = path.split("?", 1)[0]
+    if "//" in route or any(seg in (".", "..") for seg in route.split("/")):
+        return None
+    return path
+
+
+def _relay_forward_headers(raw: object) -> dict:
+    """Allow-listed request headers with clean values (no CR/LF/NUL)."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v
+        for k, v in raw.items()
+        if isinstance(k, str)
+        and isinstance(v, str)
+        and k.lower() in _RELAY_FORWARD_HEADERS
+        and not re.search(r"[\r\n\x00]", v)
+    }
+
 # OPNsense's own User model mints the key (and the crypt-SHA512 secret) — we never
 # hash anything ourselves. Idempotent: reuses the `orbit` user, and DROPS every
 # existing key before adding exactly one, so a lost agent cache (which re-triggers
@@ -3522,18 +3604,18 @@ def _relay_http(params: dict, cfg: Config | None) -> dict:
     key, secret = creds
 
     method = str(params.get("method", "GET")).upper()
-    path = str(params.get("path", "")).lstrip("/")
+    path = _relay_safe_path(params.get("path", ""))
+    if method not in _RELAY_METHODS:
+        return {"success": False, "status": 0, "output": "relay request refused: method"}
+    if path is None:
+        return {"success": False, "status": 0, "output": "relay request refused: path"}
     url = f"{cfg.local_api_url.rstrip('/')}/{path}"
     try:
         body = base64.b64decode(params.get("body") or "", validate=True)
     except (ValueError, TypeError):
         body = b""
 
-    headers = {
-        k: v
-        for k, v in (params.get("headers") or {}).items()
-        if k.lower() not in _RELAY_DROP_HEADERS
-    }
+    headers = _relay_forward_headers(params.get("headers"))
     cred = base64.b64encode(f"{key}:{secret}".encode()).decode()
     headers["Authorization"] = f"Basic {cred}"
     if body:
@@ -4509,7 +4591,9 @@ def _cmd_packet_capture(params: dict) -> dict:
     Enforces time + byte limits in Python using non-blocking reads + select so the
     handler always returns promptly.
     """
-    iface = str(params.get("interface") or "").strip() or "em0"
+    iface = _safe_iface_arg(str(params.get("interface") or "").strip() or "em0")
+    if not iface:
+        return {"success": False, "output": "invalid interface name"}
     filt = str(params.get("filter") or "").strip()
     max_sec = max(1, min(int(params.get("max_seconds", 30) or 30), 600))
     max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
@@ -4525,8 +4609,7 @@ def _cmd_packet_capture(params: dict) -> dict:
         final_filt = agent_excl
     else:
         final_filt = ""
-    if final_filt:
-        cmd += final_filt.split()
+    cmd += _tcpdump_filter_args(final_filt)
 
     try:
         proc = subprocess.Popen(
@@ -5729,7 +5812,12 @@ class _TunnelManager:
         if stream in self._captures:
             await self._send(stream, "close")
             return
-        iface = interface.strip() or "em0"
+        iface = _safe_iface_arg(interface.strip() or "em0")
+        if not iface:
+            log.warning("capture %s: refused interface %r", stream, interface)
+            await self._send(stream, "error", "invalid interface name")
+            await self._send(stream, "close")
+            return
         # Robust lookup: agent's daemon env may have minimal PATH (no /usr/sbin)
         # while interactive root shell does. Common locations on OPNsense/pfSense.
         search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
@@ -5745,8 +5833,7 @@ class _TunnelManager:
             final_filt = agent_excl
         else:
             final_filt = ""
-        if final_filt:
-            cmd += final_filt.split()
+        cmd += _tcpdump_filter_args(final_filt)
         log.info("capture %s: exec %s", stream, " ".join(cmd))
         try:
             env = os.environ.copy()

@@ -144,15 +144,20 @@ defmodule OrbitWeb.InstancesLive do
   end
 
   def handle_event("toggle_select", %{"id" => raw_id}, socket) do
-    {id, ""} = Integer.parse(raw_id)
-    selected = socket.assigns.selected
+    case OrbitWeb.ParamId.parse(raw_id) do
+      nil ->
+        {:noreply, socket}
 
-    selected =
-      if MapSet.member?(selected, id),
-        do: MapSet.delete(selected, id),
-        else: MapSet.put(selected, id)
+      id ->
+        selected = socket.assigns.selected
 
-    {:noreply, assign(socket, selected: selected)}
+        selected =
+          if MapSet.member?(selected, id),
+            do: MapSet.delete(selected, id),
+            else: MapSet.put(selected, id)
+
+        {:noreply, assign(socket, selected: selected)}
+    end
   end
 
   def handle_event("select_all", _params, socket) do
@@ -179,15 +184,20 @@ defmodule OrbitWeb.InstancesLive do
          MapSet.size(socket.assigns.selected) == 0 do
       {:noreply, socket}
     else
-      names =
+      # Frozen here: bulk_run acts on exactly these ids (the boxes the dialog
+      # names), whatever the selection does in between.
+      targets =
         socket.assigns.instances
         |> Enum.filter(&MapSet.member?(socket.assigns.selected, &1.id))
-        |> Enum.map(& &1.name)
-        |> Enum.sort()
+        |> Enum.sort_by(& &1.name)
 
       {:noreply,
        assign(socket,
-         confirm: %{action: action, names: names},
+         confirm: %{
+           action: action,
+           names: Enum.map(targets, & &1.name),
+           ids: Enum.map(targets, & &1.id)
+         },
          confirm_typed: ""
        )}
     end
@@ -213,7 +223,7 @@ defmodule OrbitWeb.InstancesLive do
         {:noreply, socket}
 
       true ->
-        ids = MapSet.to_list(socket.assigns.selected)
+        ids = confirm.ids
         user = socket.assigns.current_user
         action = confirm.action
 
@@ -235,7 +245,8 @@ defmodule OrbitWeb.InstancesLive do
     with true <- socket.assigns.writable,
          {id, ""} <- Integer.parse(raw_id),
          %Instance{} = inst <- Orbit.Auth.Scope.get_instance(id, socket.assigns.current_user) do
-      {:ok, _} = Instances.soft_delete(inst)
+      # Evicts the agent socket too (its binding dies with the instance).
+      {:ok, _} = Orbit.AgentBinding.delete(inst)
 
       Audit.write(
         action: "instance.delete",

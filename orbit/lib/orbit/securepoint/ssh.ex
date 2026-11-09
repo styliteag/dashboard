@@ -261,17 +261,26 @@ defmodule Orbit.Securepoint.SSH do
   end
 
   def ping(conn, source, dest, count) do
-    count = max(count || 3, 1)
+    case exec(conn, String.to_charlist(ping_command(source, dest, count))) do
+      {:ok, out} -> classify(out)
+      {:error, _} -> %{"ping_state" => "error", "ping_loss_pct" => nil, "ping_rtt_ms" => nil}
+    end
+  end
+
+  @doc """
+  The shell line `ping/4` runs. `count` is interpolated into a shell string,
+  so only an integer 1..20 is accepted; anything else (a string from a form,
+  out of range) falls back to 3 — defense in depth behind
+  `Orbit.Monitors.clamp_ping_count/1`.
+  """
+  @spec ping_command(String.t() | nil, String.t(), term()) :: String.t()
+  def ping_command(source, dest, count) do
+    count = if is_integer(count) and count in 1..20, do: count, else: 3
     # Pace 0.3s apart so a healthy target answers well inside the deadline.
     # -W is the busybox spelling and iputils accepts it too (both checked on a
     # live box); -I binds the source on either.
     src = if present(source), do: " -I #{shell_arg(source)}", else: ""
-    cmd = "ping -n -i 0.3 -c #{count} -W #{max(count, 2)}#{src} #{shell_arg(dest)} 2>&1"
-
-    case exec(conn, String.to_charlist(cmd)) do
-      {:ok, out} -> classify(out)
-      {:error, _} -> %{"ping_state" => "error", "ping_loss_pct" => nil, "ping_rtt_ms" => nil}
-    end
+    "ping -n -i 0.3 -c #{count} -W #{max(count, 2)}#{src} #{shell_arg(dest)} 2>&1"
   end
 
   defp classify(out) do
@@ -304,9 +313,13 @@ defmodule Orbit.Securepoint.SSH do
 
   # Monitor sources/destinations are operator-entered. Refuse anything that is
   # not a plain host/IP token rather than interpolating it into a shell command.
-  defp shell_arg(v) do
+  # The first character must not be "-": `ping -f` (flood) and friends would
+  # otherwise be options (security hotfix: option injection). "--" is the
+  # refusal sentinel — ping then has no target and fails as misconfigured.
+  @doc false
+  def shell_arg(v) do
     v = String.trim(to_string(v))
-    if Regex.match?(~r/^[A-Za-z0-9._:\-]+$/, v), do: v, else: "--"
+    if Regex.match?(~r/^[A-Za-z0-9.:][A-Za-z0-9._:\-]*$/, v), do: v, else: "--"
   end
 
   @doc """

@@ -61,10 +61,14 @@ defmodule OrbitWeb.UsersLive do
   end
 
   def handle_event("edit", %{"id" => raw}, socket) do
-    id = String.to_integer(raw)
+    case OrbitWeb.ParamId.parse(raw) do
+      nil ->
+        {:noreply, socket}
 
-    {:noreply,
-     assign(socket, editing: if(socket.assigns.editing == id, do: nil, else: id), error: nil)}
+      id ->
+        {:noreply,
+         assign(socket, editing: if(socket.assigns.editing == id, do: nil, else: id), error: nil)}
+    end
   end
 
   def handle_event("create_user", %{"user" => params}, socket) do
@@ -124,8 +128,8 @@ defmodule OrbitWeb.UsersLive do
   end
 
   defp find_user(socket, raw_id) do
-    id = String.to_integer(raw_id)
-    Enum.find(socket.assigns.users, &(&1.id == id))
+    id = OrbitWeb.ParamId.parse(raw_id)
+    id && Enum.find(socket.assigns.users, &(&1.id == id))
   end
 
   defp checked_ids(params) do
@@ -145,6 +149,12 @@ defmodule OrbitWeb.UsersLive do
 
   defp error_text(:username_required), do: "username is required"
   defp error_text(:password_too_short), do: "password needs at least 8 characters"
+  defp error_text(:password_too_long), do: "password may have at most 256 characters"
+  defp error_text(:password_invalid), do: "password is not valid text"
+
+  defp error_text(:username_invalid),
+    do: "username: 1-64 characters, no spaces or control characters"
+
   defp error_text(:conflict), do: "username already exists"
   defp error_text(:bad_role), do: "unknown role"
   defp error_text(:unknown_groups), do: "unknown group ids"

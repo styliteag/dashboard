@@ -11,7 +11,7 @@ defmodule OrbitWeb.Plugs.GeoIP do
 
   Exemptions mirror the ADR: agent WS + enroll (firewalls connect from
   customer sites worldwide), /api/health (uptime probes), `orbit_` bearer
-  keys (machine reads, read-only by construction). The /live websocket
+  keys on the key-only machine endpoints (see `api_key?/1`). The /live websocket
   bypasses the plug pipeline entirely (endpoint `socket` macro) — that hole
   is closed by OrbitWeb.GeoGate in every live_session.
 
@@ -57,11 +57,33 @@ defmodule OrbitWeb.Plugs.GeoIP do
 
   defp exempt_path?(path), do: Enum.any?(@exempt_prefixes, &String.starts_with?(path, &1))
 
+  # The `orbit_` bearer exemption is only safe where the bearer key is the
+  # ONLY credential the route accepts (a forged key is a 401 there, never a
+  # session fallback): the read_principal export endpoints, plus whatever
+  # `config :orbit, :geoip_key_auth_prefixes` adds (an extension point for
+  # forwards that own bearer auth). Anywhere else the header is ignored — it
+  # used to exempt any request that merely carried it, session cookie and all.
+  # Exact "Bearer " like UserAuth.bearer_orbit_key/1: a spelling key auth
+  # does not accept must not be exempt either.
+  @key_auth_paths ["/api/export/checkmk", "/api/export/prometheus"]
+
   defp api_key?(conn) do
-    case get_req_header(conn, "authorization") do
-      [auth | _] -> auth |> String.downcase() |> String.starts_with?("bearer orbit_")
-      [] -> false
-    end
+    key_auth_path?(conn.request_path) and
+      match?(["Bearer orbit_" <> _ | _], get_req_header(conn, "authorization"))
+  end
+
+  defp key_auth_path?(path) do
+    path in @key_auth_paths or
+      Enum.any?(key_auth_prefixes(), &(path == &1 or String.starts_with?(path, &1 <> "/")))
+  end
+
+  # Only real path prefixes count: "/" or "" would exempt every path, and a
+  # misconfigured entry must not crash the plug.
+  defp key_auth_prefixes do
+    :orbit
+    |> Application.get_env(:geoip_key_auth_prefixes, [])
+    |> List.wrap()
+    |> Enum.filter(&(is_binary(&1) and byte_size(&1) > 1 and String.starts_with?(&1, "/")))
   end
 
   defp enforce(conn) do

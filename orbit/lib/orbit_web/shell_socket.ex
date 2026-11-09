@@ -123,13 +123,19 @@ defmodule OrbitWeb.ShellSocket do
 
   def handle_in({text, [opcode: :text]}, state) do
     case Jason.decode(text) do
-      {:ok, %{"type" => "resize", "rows" => rows, "cols" => cols}} ->
-        case state.transport do
-          :ssh -> Orbit.Securepoint.SSH.resize(state.ssh_conn, state.ssh_chan, rows, cols)
-          _ -> Hub.tunnel_resize(state.stream, rows, cols)
-        end
+      {:ok, %{"type" => "resize", "rows" => r, "cols" => c}} ->
+        case resize_dims(r, c) do
+          {:ok, rows, cols} ->
+            case state.transport do
+              :ssh -> Orbit.Securepoint.SSH.resize(state.ssh_conn, state.ssh_chan, rows, cols)
+              _ -> Hub.tunnel_resize(state.stream, rows, cols)
+            end
 
-        {:ok, touch(state)}
+            {:ok, touch(state)}
+
+          :error ->
+            {:ok, state}
+        end
 
       _ ->
         {:ok, state}
@@ -234,4 +240,11 @@ defmodule OrbitWeb.ShellSocket do
   defp schedule_ping, do: Process.send_after(self(), :ping, @ping_interval_ms)
   defp schedule_sweep, do: Process.send_after(self(), :sweep, @sweep_interval_ms)
   defp now_ms, do: System.monotonic_time(:millisecond)
+
+  @doc "Terminal size from the browser: integers 1..1000, else `:error`."
+  def resize_dims(rows, cols)
+      when is_integer(rows) and is_integer(cols) and rows in 1..1000 and cols in 1..1000,
+      do: {:ok, rows, cols}
+
+  def resize_dims(_rows, _cols), do: :error
 end

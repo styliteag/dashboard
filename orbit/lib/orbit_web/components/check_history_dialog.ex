@@ -22,6 +22,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
   import OrbitWeb.CoreComponents, only: [btn: 1]
 
   alias Orbit.Checks.History
+  alias Orbit.Checks.ServiceCheck
 
   attr :history, :map,
     default: nil,
@@ -82,7 +83,7 @@ defmodule OrbitWeb.Components.CheckHistoryDialog do
             <tr :for={e <- @history.events} class="border-b border-base-300/50 last:border-0">
               <td class="py-1 pr-3 font-mono text-base-content/70">{fmt_ts(e.ts)}</td>
               <td class={["py-1 pr-3", state_color(e.new_state)]}>
-                {History.state_label(e.old_state)} → {History.state_label(e.new_state)}
+                {ServiceCheck.label(e.old_state)} → {ServiceCheck.label(e.new_state)}
               </td>
               <td class="py-1 text-base-content/70">{e.summary}</td>
             </tr>

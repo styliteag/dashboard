@@ -6,8 +6,9 @@ defmodule OrbitWeb.UserAuth do
   - A full session carries `user_id`, `password_version` and `mfa_passed`.
     `password_version` is checked against the DB row on every request — a
     password change invalidates every existing session (US-1.2).
-  - The password step alone stores only `mfa_user_id`/`mfa_pw_version`
-    (pending-MFA state, no session privileges).
+  - The password step alone stores only `mfa_user_id`/`mfa_pw_version` plus
+    the pending kind `login_state` (pending_verify | pending_enroll — see
+    Orbit.Auth.LoginFlow); no session privileges.
   - Disabled accounts die on the next request, not just at login.
   - The bootstrap admin is the only password-only account (`mfa_passed` is
     set at login for it because `Accounts.login_step/3` returned `:done`).
@@ -20,6 +21,7 @@ defmodule OrbitWeb.UserAuth do
 
   alias Orbit.Accounts
   alias Orbit.Accounts.User
+  alias Orbit.Auth.LoginFlow
 
   @doc "Mint the fully-authenticated session (after the second factor passed)."
   def log_in_user(conn, user) do
@@ -36,20 +38,32 @@ defmodule OrbitWeb.UserAuth do
     |> put_session(:sid, sid)
   end
 
-  @doc "Store the pending-MFA state: password passed, second factor missing."
-  def put_pending_mfa(conn, user) do
+  @doc """
+  Store the pending-MFA state: password passed, second factor missing.
+  `state` is the LoginFlow pending state the password step chose — it decides
+  which second-factor actions this session may reach.
+  """
+  def put_pending_mfa(conn, user, state) when state in [:pending_verify, :pending_enroll] do
     conn
     |> renew_session()
     |> put_session(:mfa_user_id, user.id)
     |> put_session(:mfa_pw_version, user.password_version)
+    |> put_session(:login_state, LoginFlow.to_session(state))
   end
 
+  @doc "The LoginFlow state this session is in (pending kinds only; else :anonymous)."
+  def pending_login_state(conn), do: LoginFlow.from_session(get_session(conn, :login_state))
+
   @doc """
-  Load the pending-MFA user, or nil. The stored password_version must still
-  match — a password change between the steps voids the pending state.
+  Load the pending-MFA user for a second-factor action, or nil. The session's
+  pending state must allow `event` (LoginFlow) — a pending_verify session can
+  never reach the enroll events and vice versa. The stored password_version
+  must still match — a password change between the steps voids the pending
+  state.
   """
-  def pending_mfa_user(conn) do
-    with user_id when is_integer(user_id) <- get_session(conn, :mfa_user_id),
+  def pending_mfa_user(conn, event) do
+    with true <- LoginFlow.allowed?(pending_login_state(conn), event),
+         user_id when is_integer(user_id) <- get_session(conn, :mfa_user_id),
          %Accounts.User{} = user <- Accounts.get_user(user_id),
          true <- get_session(conn, :mfa_pw_version) == user.password_version,
          false <- user.disabled do
@@ -62,11 +76,25 @@ defmodule OrbitWeb.UserAuth do
   def log_out_user(conn) do
     # Close the registry row BEFORE the session is renewed away (DR-AL3).
     Orbit.Access.Store.close_session(get_session(conn, :sid), "logout")
+    # Read before the session is renewed away: it may need session data.
+    target = logout_redirect(conn)
 
     conn
     |> renew_session()
-    |> redirect(to: ~p"/login")
+    |> redirect_after_logout(target)
   end
+
+  # Extension point `config :orbit, :logout_redirects` (modules exporting
+  # `logout_redirect(conn) :: url | nil`): the first URL wins, else /login.
+  # PRO uses it for RP-initiated OIDC logout at the provider.
+  defp logout_redirect(conn) do
+    :orbit
+    |> Application.get_env(:logout_redirects, [])
+    |> Enum.find_value(& &1.logout_redirect(conn))
+  end
+
+  defp redirect_after_logout(conn, nil), do: redirect(conn, to: ~p"/login")
+  defp redirect_after_logout(conn, url), do: redirect(conn, external: url)
 
   @doc """
   Plug: count this request in the access accounting (DR-AL2) — runs after
@@ -126,7 +154,8 @@ defmodule OrbitWeb.UserAuth do
          true <- get_session(conn, :mfa_passed) == true,
          %Accounts.User{} = user <- Accounts.get_user(user_id),
          true <- get_session(conn, :password_version) == user.password_version,
-         false <- user.disabled do
+         false <- user.disabled,
+         true <- session_valid?(user, get_session(conn)) do
       assign(conn, :current_user, user)
     else
       _ -> assign(conn, :current_user, nil)
@@ -208,16 +237,31 @@ defmodule OrbitWeb.UserAuth do
     end
   end
 
+  @doc "The user a (string-keyed) session map authenticates right now, or nil."
+  def user_from_session(session), do: live_user_from_session(session)
+
   defp live_user_from_session(session) do
     with user_id when is_integer(user_id) <- session["user_id"],
          true <- session["mfa_passed"] == true,
          %User{} = user <- Accounts.get_user(user_id),
          true <- session["password_version"] == user.password_version,
-         false <- user.disabled do
+         false <- user.disabled,
+         true <- session_valid?(user, session) do
       user
     else
       _ -> nil
     end
+  end
+
+  # Extension point `config :orbit, :session_validators` (modules exporting
+  # `valid_session?(user, session)`, string-keyed session map): every one must
+  # accept, on each request and LiveView mount. PRO uses it for the absolute
+  # lifetime and back-channel revocation of OIDC sessions.
+  @doc false
+  def session_valid?(user, session) do
+    :orbit
+    |> Application.get_env(:session_validators, [])
+    |> Enum.all?(& &1.valid_session?(user, session))
   end
 
   @live_touch_ms 60_000

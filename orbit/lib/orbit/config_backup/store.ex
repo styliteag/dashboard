@@ -38,16 +38,12 @@ defmodule Orbit.ConfigBackup.Store do
 
   def decode_payload(_), do: :error
 
-  # Post-gunzip length cap. A streaming cap (reject before full inflate) is a
-  # documented hardening seam; the agent is signed + trusted and this runs off
-  # the hub loop in a Task.
+  # Streaming length cap: inflation stops past @max_bytes (gzip bomb).
   defp gunzip_capped(gz) do
-    raw = :zlib.gunzip(gz)
-    if byte_size(raw) > @max_bytes, do: :error, else: {:ok, raw}
-  rescue
-    _ -> :error
-  catch
-    _, _ -> :error
+    case Orbit.Gzip.gunzip_bounded(gz, @max_bytes) do
+      {:ok, raw} -> {:ok, raw}
+      {:error, _} -> :error
+    end
   end
 
   @doc """

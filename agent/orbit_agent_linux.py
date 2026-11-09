@@ -31,6 +31,7 @@ import pty
 import pwd
 import random
 import re
+import shlex
 import signal
 import shutil
 import ssl
@@ -179,6 +180,39 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return r.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
+
+
+# Values that end up in the argv of a root-run tool (ping, tcpdump) come from
+# the dashboard. A leading "-" turns such a value into an OPTION (security
+# hotfix, test_option_injection.py: `-f` flood ping, tcpdump `-w … -z cmd`).
+# Only IP literals and plain names pass; callers also end options with "--".
+_PLAIN_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
+_IFACE_ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
+
+
+def _safe_host_arg(value) -> str:
+    """``value`` if it is an IP literal or a plain host name, else ""."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        ipaddress.ip_address(text)
+        return text
+    except ValueError:
+        pass
+    return text if _PLAIN_ARG_RE.match(text) else ""
+
+
+def _safe_iface_arg(value) -> str:
+    """``value`` if it is a plain interface name (no leading "-"), else ""."""
+    text = str(value or "").strip()
+    return text if _IFACE_ARG_RE.match(text) else ""
+
+
+def _tcpdump_filter_args(filt: str) -> list:
+    """The BPF expression as ONE argument after "--" — never split into argv
+    tokens, where its words would be parsed as tcpdump options."""
+    return ["--", filt] if filt else []
 # <<< shared:run-helper
 
 
@@ -291,7 +325,9 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     outage. ``-S`` binds the source; an unowned source fails immediately with no
     loss summary, which we read as error.
     """
-    if not dest:
+    # Option injection guard (security hotfix): dest/source come from the
+    # dashboard; a value like "-f" would become a ping option, run as root.
+    if not dest or not _safe_host_arg(dest) or (source and not _safe_host_arg(source)):
         return {"ping_state": "error", "ping_loss_pct": None, "ping_rtt_ms": None}
     # Pace packets 0.3s apart (sub-second interval needs root, which the agent has)
     # so a healthy tunnel answers in well under a second instead of the default
@@ -307,7 +343,7 @@ def _ping_once(source: str, dest: str, count: int) -> dict:
     cmd = ["ping", "-n", "-i", "0.3", "-c", str(count), "-w", str(timeout)]
     if source:
         cmd += ["-I", source]
-    cmd.append(dest)
+    cmd += ["--", dest]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
     except (subprocess.TimeoutExpired, OSError):
@@ -1111,7 +1147,9 @@ def _cmd_packet_capture(params: dict) -> dict:
     Enforces time + byte limits in Python using non-blocking reads + select so the
     handler always returns promptly.
     """
-    iface = str(params.get("interface") or "").strip() or "em0"
+    iface = _safe_iface_arg(str(params.get("interface") or "").strip() or "em0")
+    if not iface:
+        return {"success": False, "output": "invalid interface name"}
     filt = str(params.get("filter") or "").strip()
     max_sec = max(1, min(int(params.get("max_seconds", 30) or 30), 600))
     max_b = max(1024, min(int(params.get("max_bytes", 1_000_000) or 1_000_000), 20_000_000))
@@ -1127,8 +1165,7 @@ def _cmd_packet_capture(params: dict) -> dict:
         final_filt = agent_excl
     else:
         final_filt = ""
-    if final_filt:
-        cmd += final_filt.split()
+    cmd += _tcpdump_filter_args(final_filt)
 
     try:
         proc = subprocess.Popen(
@@ -1723,26 +1760,38 @@ async def _send_update_result(ws: WebSocket, request_id: str, success: bool, out
 
 def _build_uninstall_script(install_dir: str) -> str:
     """Build the detached teardown script (linux/systemd). Order matters: the
-    supervisor dies first, else it respawns the agent mid-removal."""
+    supervisor dies first, else it respawns the agent mid-removal.
+
+    A host may be re-added (fresh install, new config with a new enroll code)
+    while this script still waits: it remembers the config's checksum and the
+    agent's pids BEFORE the wait, and stops touching anything as soon as the
+    config changed — only the old agent's own processes are ever killed."""
+    cfg = shlex.quote(CONFIG_PATH)
     return (
         "#!/bin/sh\n"
+        f'orig="$(cksum < {cfg} 2>/dev/null)"\n'
+        f"ours() {{ [ \"$(cksum < {cfg} 2>/dev/null)\" = \"$orig\" ]; }}\n"
+        '_pids="$(pgrep -f run-agent.sh 2>/dev/null) $(pgrep -f orbit_agent.py 2>/dev/null)"\n'
         "sleep 3\n"  # let the ack flush over the WS before we kill the agent
+        "ours || exit 0\n"  # re-installed meanwhile: leave the new agent alone
         # Stop + disable the unit first (systemd would otherwise respawn the
-        # supervisor), then SIGKILL any stragglers in a retry loop — a single
-        # pass can race a respawn.
+        # supervisor), then SIGKILL the old agent's stragglers in a retry loop.
         "systemctl disable --now orbit-agent >/dev/null 2>&1\n"
         "i=0\n"
         "while [ $i -lt 6 ]; do\n"
-        '  pids="$(pgrep -f run-agent.sh 2>/dev/null) $(pgrep -f orbit_agent.py 2>/dev/null)"\n'
-        "  [ -z \"$(echo $pids | tr -d ' ')\" ] && break\n"
-        '  for p in $pids; do kill -9 "$p" 2>/dev/null; done\n'
+        "  ours || exit 0\n"
+        "  alive=\n"
+        '  for p in $_pids; do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done\n'
+        '  [ -z "$alive" ] && break\n'
+        '  for p in $alive; do kill -9 "$p" 2>/dev/null; done\n'
         "  sleep 1\n"
         "  i=$((i + 1))\n"
         "done\n"
+        "ours || exit 0\n"
         "rm -f /etc/systemd/system/orbit-agent.service\n"
         "systemctl daemon-reload >/dev/null 2>&1\n"
-        f"rm -rf {install_dir}\n"
-        f"rm -f {CONFIG_PATH}\n"
+        f"rm -rf {shlex.quote(install_dir)}\n"
+        f"rm -f {cfg}\n"
     )
 
 
@@ -2214,7 +2263,12 @@ class _TunnelManager:
         if stream in self._captures:
             await self._send(stream, "close")
             return
-        iface = interface.strip() or "em0"
+        iface = _safe_iface_arg(interface.strip() or "em0")
+        if not iface:
+            log.warning("capture %s: refused interface %r", stream, interface)
+            await self._send(stream, "error", "invalid interface name")
+            await self._send(stream, "close")
+            return
         # Robust lookup: agent's daemon env may have minimal PATH (no /usr/sbin)
         # while interactive root shell does. Common locations on OPNsense/pfSense.
         search_path = os.environ.get("PATH", "") + ":/usr/sbin:/sbin:/usr/local/sbin"
@@ -2230,8 +2284,7 @@ class _TunnelManager:
             final_filt = agent_excl
         else:
             final_filt = ""
-        if final_filt:
-            cmd += final_filt.split()
+        cmd += _tcpdump_filter_args(final_filt)
         log.info("capture %s: exec %s", stream, " ".join(cmd))
         try:
             env = os.environ.copy()

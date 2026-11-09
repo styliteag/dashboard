@@ -166,41 +166,82 @@ defmodule Orbit.Accounts do
   end
 
   @doc """
+  True when the user has no second factor at all (no enabled TOTP, no
+  passkey) — the only users login-time enrollment may serve. Pass a FRESH
+  row: the TOTP half reads the struct, the passkey half reads the DB.
+  """
+  @spec enrollable?(User.t()) :: boolean()
+  def enrollable?(%User{} = user), do: factor_state(user) == %{totp: false, webauthn: false}
+
+  @doc """
   Start TOTP enrollment (mfa_routes.setup_totp port): mint a fresh secret,
   store it fernet-encrypted with totp_enabled STILL false — it only becomes
-  a factor after the first code confirms. Returns {secret, otpauth_uri}.
+  a factor after the first code confirms. Returns {:ok, {secret,
+  otpauth_uri}}, or {:error, :factor_enrolled} for a user who already has a
+  factor: overwriting totp_secret_enc would destroy the real factor (MFA
+  enroll bypass regression).
   """
+  @spec begin_totp_enrollment(User.t()) ::
+          {:ok, {String.t(), String.t()}} | {:error, :factor_enrolled}
   def begin_totp_enrollment(%User{} = user) do
     secret = Orbit.Auth.TOTP.generate_secret()
 
-    {:ok, _} =
-      user
-      |> Ecto.Changeset.change(%{
-        totp_secret_enc: Orbit.Crypto.encrypt(secret),
-        totp_enabled: false
-      })
-      |> Repo.update()
-
-    issuer = Application.get_env(:orbit, :mfa_issuer, "Orbit Dashboard")
-    {secret, Orbit.Auth.TOTP.provisioning_uri(secret, user.username, issuer)}
+    # The factor-free condition is part of the UPDATE itself, not just the
+    # enrollable?/1 read before it: a confirm or passkey add landing between
+    # a check and an unconditional write would leave an ENABLED factor
+    # carrying a secret this session minted.
+    with true <- enrollable?(user),
+         {1, _} <-
+           Repo.update_all(factor_free(user.id),
+             set: [totp_secret_enc: Orbit.Crypto.encrypt(secret), totp_enabled: false]
+           ) do
+      issuer = Application.get_env(:orbit, :mfa_issuer, "Orbit Dashboard")
+      {:ok, {secret, Orbit.Auth.TOTP.provisioning_uri(secret, user.username, issuer)}}
+    else
+      _ -> {:error, :factor_enrolled}
+    end
   end
 
   @doc """
   Finish enrollment (mfa_routes.confirm_totp port): verify the first code
   against the pending secret, flip totp_enabled. Returns the updated user
-  or an error (no enrollment in progress / invalid code).
+  or an error (no enrollment in progress / already has a factor / invalid
+  code).
   """
   def confirm_totp_enrollment(%User{totp_secret_enc: nil}, _code),
     do: {:error, :no_enrollment}
 
   def confirm_totp_enrollment(%User{} = user, code) do
-    secret = Orbit.Crypto.decrypt!(user.totp_secret_enc)
+    cond do
+      not enrollable?(user) ->
+        {:error, :factor_enrolled}
 
-    if Orbit.Auth.TOTP.verify(secret, code) do
-      user |> Ecto.Changeset.change(%{totp_enabled: true}) |> Repo.update()
-    else
-      {:error, :invalid_code}
+      Orbit.Auth.TOTP.verify(Orbit.Crypto.decrypt!(user.totp_secret_enc), code) ->
+        enable_pending_totp(user)
+
+      true ->
+        {:error, :invalid_code}
     end
+  end
+
+  # Flip ONLY the secret this code was checked against, and only while the
+  # user is still factor-free: another session may have minted a new pending
+  # secret (or enrolled a factor) since `user` was read.
+  defp enable_pending_totp(%User{id: id, totp_secret_enc: enc}) do
+    query = from(u in factor_free(id), where: u.totp_secret_enc == ^enc)
+
+    case Repo.update_all(query, set: [totp_enabled: true]) do
+      {1, _} -> {:ok, Repo.get!(User, id)}
+      _ -> {:error, :factor_enrolled}
+    end
+  end
+
+  defp factor_free(user_id) do
+    from(u in User,
+      where:
+        u.id == ^user_id and u.totp_enabled == false and
+          fragment("NOT EXISTS (SELECT 1 FROM webauthn_credentials c WHERE c.user_id = ?)", u.id)
+    )
   end
 
   @doc """
