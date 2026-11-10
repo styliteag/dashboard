@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Linux agent: a Checkmk agent the host has installed (`/usr/bin/check_mk_agent`, then
+  `/usr/local/bin/check_mk_agent`) now runs instead of the vendored copy, which stays the
+  fallback. A host with the full agent runs one version of the script, the one its plugins
+  belong to. The hello still reports the hash of the vendored copy, so the dashboard keeps
+  that copy current without pushing `checkmk.update` on every connect.
+
 ## [4.9.2] - 2026-11-10
 
 ### Added

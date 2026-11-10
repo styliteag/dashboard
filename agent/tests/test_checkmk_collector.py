@@ -124,15 +124,40 @@ def test_checkmk_update_writes_atomically_with_exec_bit(monkeypatch, tmp_path) -
     assert [p.name for p in target.parent.iterdir()] == [target.name]
 
 
+def test_installed_agent_wins_over_the_vendored_copy(monkeypatch, tmp_path) -> None:
+    """A Checkmk agent the host has installed is the one that runs; our
+    vendored copy is the fallback, so the script never runs in two versions."""
+    assert agent._CHECKMK_CANDIDATES == (
+        "/usr/bin/check_mk_agent",
+        "/usr/local/bin/check_mk_agent",
+        agent._CHECKMK_DEPLOY_PATH,
+    )
+    installed = tmp_path / "installed"
+    installed.write_text("#!/bin/sh\n")
+    installed.chmod(0o755)
+    vendored = _script(tmp_path, "true")
+    monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (str(installed), vendored))
+    assert agent._checkmk_script() == str(installed)
+    installed.unlink()
+    assert agent._checkmk_script() == vendored
+
+
 def test_checkmk_script_sha_reports_deployed_copy(monkeypatch, tmp_path) -> None:
+    """The hello sha is the managed copy's, never the installed agent's: the
+    backend compares it with the script it serves, and an installed agent's
+    sha would make it push checkmk.update on every connect."""
     import hashlib
 
     path = _script(tmp_path, "true")
+    installed = tmp_path / "installed"
+    installed.write_text("#!/bin/sh\necho other\n")
+    installed.chmod(0o755)
     monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
-    monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (path,))
+    monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (str(installed), path))
+    monkeypatch.setattr(agent, "_CHECKMK_DEPLOY_PATH", path)
     expected = hashlib.sha256(open(path, "rb").read()).hexdigest()
     assert agent._checkmk_script_sha() == expected
-    monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (str(tmp_path / "missing"),))
+    monkeypatch.setattr(agent, "_CHECKMK_DEPLOY_PATH", str(tmp_path / "missing"))
     assert agent._checkmk_script_sha() == ""
     monkeypatch.setattr(agent, "detect_platform", lambda: "pfsense")
     assert agent._checkmk_script_sha() == ""

@@ -697,13 +697,21 @@ def collect_logfiles() -> list:
 
 
 # --- Checkmk-agent bridge (generic Linux nodes; §25/DR-10) -------------------
-# On linux the vendored upstream check_mk_agent.linux does the data collection;
-# orbit_agent only transports its raw output. Parsing lives in the backend, so
-# evaluating a new Checkmk section never needs an agent rollout.
+# On linux a Checkmk agent script does the data collection; orbit_agent only
+# transports its raw output. Parsing lives in the backend, so evaluating a
+# new Checkmk section never needs an agent rollout.
+
+# Where checkmk.update deploys/refreshes our managed copy (a distro-installed
+# /usr/bin/check_mk_agent is never touched).
+_CHECKMK_DEPLOY_PATH = "/usr/local/orbit-agent/check_mk_agent.linux"
+
+# An agent the host has installed wins (distro package, or the one a
+# monitoring server rolled out): the host then runs one version of the
+# script, the one its plugins belong to. Our vendored copy is the fallback.
 _CHECKMK_CANDIDATES = (
-    "/usr/local/orbit-agent/check_mk_agent.linux",  # deployed alongside the agent
     "/usr/bin/check_mk_agent",  # distro package (checkmk-agent)
     "/usr/local/bin/check_mk_agent",
+    _CHECKMK_DEPLOY_PATH,  # deployed alongside the agent
 )
 _CHECKMK_TIMEOUT = 30  # stock sections finish in ~1-3s; local plugins get headroom
 _CHECKMK_MAX = 2_000_000  # raw cap — a runaway plugin must not blow the WS frame
@@ -717,20 +725,18 @@ def _checkmk_script() -> str | None:
     return None
 
 
-# Where checkmk.update deploys/refreshes our managed copy (first candidate —
-# a distro-installed /usr/bin/check_mk_agent is never touched).
-_CHECKMK_DEPLOY_PATH = "/usr/local/orbit-agent/check_mk_agent.linux"
-
-
 def _checkmk_script_sha() -> str:
-    """sha256 of the active Checkmk script ('' when absent / non-linux)."""
+    """sha256 of our managed Checkmk script ('' when absent / non-linux).
+
+    Always the managed copy, also while an installed agent is the one that
+    runs: the backend compares this with the script it serves and pushes
+    checkmk.update on a difference, so an installed agent's sha would make
+    it push on every connect.
+    """
     if detect_platform() != "linux":
         return ""
-    script = _checkmk_script()
-    if script is None:
-        return ""
     try:
-        with open(script, "rb") as f:
+        with open(_CHECKMK_DEPLOY_PATH, "rb") as f:
             return hashlib.sha256(f.read()).hexdigest()
     except OSError:
         return ""
@@ -773,7 +779,8 @@ def _cmd_checkmk_update(params: dict) -> dict:
 def collect_checkmk() -> dict:
     """Raw Checkmk-agent output for backend-side parsing (linux only).
 
-    Pure transport (DR-10): run the vendored GPLv2 script, ship stdout as
+    Pure transport (DR-10): run the Checkmk agent script (the installed one,
+    else our vendored GPLv2 copy; `_CHECKMK_CANDIDATES`), ship stdout as
     gzip+base64. Other platform / no script / failure / empty / oversize → {}
     so the backend never sees a checkmk_raw section and emits no checks
     (absent data must never alarm). Oversize output is dropped, not
