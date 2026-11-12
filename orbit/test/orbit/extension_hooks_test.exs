@@ -29,6 +29,28 @@ defmodule Orbit.ExtensionHooksTest do
       assert_received {:suppress?, 7, "test:suppressed"}
     end
 
+    test "the suppressor that dropped an alert is told what it dropped" do
+      put_hook(:notification_suppressors, [Suppressor])
+
+      Notifier.send_notification("title", "msg", 7, "error", "test:suppressed")
+
+      assert_received {:alert_suppressed, 7,
+                       %{
+                         title: "title",
+                         message: "msg",
+                         level: "error",
+                         check_key: "test:suppressed"
+                       }}
+
+      Notifier.send_notification("t", "m", 7, "warn", "cpu")
+      refute_received {:alert_suppressed, _, _}
+    end
+
+    test "a suppressor without alert_suppressed/2 still suppresses" do
+      put_hook(:notification_suppressors, [OrbitWeb.TestHooks.PlainSuppressor])
+      assert Notifier.send_notification("t", "m", 7, "warn", "cpu") == []
+    end
+
     test "a suppressor answering false lets the alert through" do
       put_hook(:notification_suppressors, [Suppressor])
 

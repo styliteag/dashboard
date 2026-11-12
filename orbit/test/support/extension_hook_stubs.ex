@@ -80,11 +80,22 @@ defmodule OrbitWeb.TestHooks do
   end
 
   defmodule Suppressor do
-    @moduledoc "`:notification_suppressors` stub: drops `test:suppressed` alerts."
+    @moduledoc """
+    `:notification_suppressors` stub: drops `test:suppressed` alerts and is
+    told about each one it dropped (optional `alert_suppressed/2`).
+    """
     def suppress?(instance_id, check_key) do
       send(self(), {:suppress?, instance_id, check_key})
       check_key == "test:suppressed"
     end
+
+    def alert_suppressed(instance_id, alert),
+      do: send(self(), {:alert_suppressed, instance_id, alert})
+  end
+
+  defmodule PlainSuppressor do
+    @moduledoc "`:notification_suppressors` stub without `alert_suppressed/2`: drops everything."
+    def suppress?(_instance_id, _check_key), do: true
   end
 
   defmodule LogoutRedirect do

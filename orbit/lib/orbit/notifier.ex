@@ -50,21 +50,35 @@ defmodule Orbit.Notifier do
         "check_key=#{check_key} level=#{level} message=#{inspect(message)}"
     )
 
-    if suppressed?(instance_id, check_key) do
-      Logger.info("alert suppressed instance_id=#{instance_id} check_key=#{check_key}")
-      []
-    else
-      dispatch(title, message, check_key, instance_id, respect_routes: true)
+    case suppressors_for(instance_id, check_key) do
+      [] ->
+        dispatch(title, message, check_key, instance_id, respect_routes: true)
+
+      mods ->
+        Logger.info("alert suppressed instance_id=#{instance_id} check_key=#{check_key}")
+        alert = %{title: title, message: message, level: level, check_key: check_key}
+        tell_suppressed(mods, instance_id, alert)
+        []
     end
   end
 
   # Extension point: `config :orbit, :notification_suppressors, [mod]` —
   # each `mod.suppress?(instance_id, check_key)`; any true drops the alert
-  # (after the audit-stream line above). Default none.
-  defp suppressed?(instance_id, check_key) do
+  # (after the audit-stream line above). Default none. Returns the modules
+  # that answered true.
+  defp suppressors_for(instance_id, check_key) do
     :orbit
     |> Application.get_env(:notification_suppressors, [])
-    |> Enum.any?(& &1.suppress?(instance_id, check_key))
+    |> Enum.filter(& &1.suppress?(instance_id, check_key))
+  end
+
+  # Optional `alert_suppressed(instance_id, alert)` of a suppressor that
+  # dropped the alert: it may want to send it later (e.g. when it stops
+  # suppressing). Runs in this notification task; must return at once.
+  defp tell_suppressed(mods, instance_id, alert) do
+    for mod <- mods, function_exported?(mod, :alert_suppressed, 2) do
+      mod.alert_suppressed(instance_id, alert)
+    end
   end
 
   @doc """

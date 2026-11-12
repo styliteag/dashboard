@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard sent `checkmk.update` with an empty signature, which a node with a baked signing key
   refuses, so a newer vendored script never reached the linux nodes.
 
+- `:notification_suppressors` (extension point): a suppressor that dropped an alert may export
+  `alert_suppressed/2` and then gets the dropped alert (title, message, level, check key), so it
+  can send it later. Open registers no suppressor; no behaviour change.
+
 ### Changed
 
 - Linux agent: the Checkmk script runs at most once per minute on its own clock instead of
