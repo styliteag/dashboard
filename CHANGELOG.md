@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-11-12
+
 ### Added
 
 - Install snippet: choose the dashboard URL (name and port) and, for a lab, skip TLS
