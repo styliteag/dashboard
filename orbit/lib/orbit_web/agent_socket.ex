@@ -45,12 +45,15 @@ defmodule OrbitWeb.AgentSocket do
      }}
   end
 
-  # Linux-line nodes only: no other platform runs the vendored script.
-  defp maybe_refresh_checkmk(instance_id, device_type, reported_sha) do
-    served = Orbit.Agent.Package.checkmk_sha256()
+  # A linux node always runs the vendored script; a firewall only while the
+  # welcome asks it to (`checkmk`, set by a `:agent_welcome_fields` hook) —
+  # otherwise its script is never delivered.
+  defp maybe_refresh_checkmk(instance_id, device_type, reported_sha, welcome) do
+    line = Orbit.Agent.Package.line_for(device_type)
+    served = Orbit.Agent.Package.checkmk_sha256(line)
 
     cond do
-      not Orbit.Agent.Package.linux_line?(device_type) ->
+      line == :firewall and welcome["checkmk"] != true ->
         :ok
 
       is_nil(served) ->
@@ -60,7 +63,7 @@ defmodule OrbitWeb.AgentSocket do
         :ok
 
       true ->
-        case Orbit.Agent.Package.checkmk_update_params() do
+        case Orbit.Agent.Package.checkmk_update_params(line) do
           {:ok, params} ->
             result = Orbit.Hub.send_command(instance_id, "checkmk.update", params, 60_000)
 
@@ -189,16 +192,24 @@ defmodule OrbitWeb.AgentSocket do
     # path and best-effort: the agent verifies sha256 AND the Ed25519
     # signature before writing, so a failure here costs one cycle, nothing
     # more.
-    Task.start(fn ->
-      maybe_refresh_checkmk(state.instance_id, hello["platform"], hello["checkmk_sha256"])
-    end)
+    welcome =
+      state.instance_id
+      |> welcome_extra()
+      |> Map.merge(%{
+        "type" => "welcome",
+        "instance_id" => state.instance_id,
+        "instance_name" => state.instance_name,
+        "push_interval" => state.push_interval
+      })
 
-    welcome = %{
-      "type" => "welcome",
-      "instance_id" => state.instance_id,
-      "instance_name" => state.instance_name,
-      "push_interval" => state.push_interval
-    }
+    Task.start(fn ->
+      maybe_refresh_checkmk(
+        state.instance_id,
+        hello["platform"],
+        hello["checkmk_sha256"],
+        welcome
+      )
+    end)
 
     # Re-push the monitor sets right after the welcome — the agent's sets
     # start EMPTY on every (re)connect and are only populated by a
@@ -208,6 +219,29 @@ defmodule OrbitWeb.AgentSocket do
     Task.start(fn -> Orbit.Monitors.push_to_agent(state.instance_id) end)
 
     {:push, {:text, Jason.encode!(welcome)}, %{state | hello_seen: true}}
+  end
+
+  # Extension point `:agent_welcome_fields` (docs/extension-points.md):
+  # per-instance settings a downstream build sends the agent on every
+  # connect, e.g. `"checkmk" => true`. Open's own keys win; a raising or
+  # odd module is skipped (logged) so a connect never fails on it.
+  defp welcome_extra(instance_id) do
+    for mod <- Application.get_env(:orbit, :agent_welcome_fields) || [], reduce: %{} do
+      acc ->
+        try do
+          case mod.welcome_fields(instance_id) do
+            %{} = fields -> Map.merge(acc, fields)
+            _ -> acc
+          end
+        rescue
+          e ->
+            Logger.warning(
+              "agent.welcome_fields_failed module=#{inspect(mod)} error=#{inspect(e.__struct__)}"
+            )
+
+            acc
+        end
+    end
   end
 
   @impl true

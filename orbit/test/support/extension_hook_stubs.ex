@@ -112,6 +112,15 @@ defmodule OrbitWeb.TestHooks do
     end
   end
 
+  defmodule WelcomeFields do
+    @moduledoc """
+    `:agent_welcome_fields` stub: asks for the Checkmk script and tries to
+    override an open key (open must win); instance id 13 raises.
+    """
+    def welcome_fields(13), do: raise("welcome hook broke")
+    def welcome_fields(_id), do: %{"checkmk" => true, "push_interval" => 1}
+  end
+
   defmodule Badge do
     @moduledoc "`:instance_badges` stub: a badge on instances named `badge-*`."
     def badge(%{name: "badge-" <> _}), do: %{label: "test badge", title: "set by the hook"}

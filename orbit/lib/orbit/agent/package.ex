@@ -99,14 +99,17 @@ defmodule Orbit.Agent.Package do
 
   defp agent_path(line), do: Path.join(agent_dir(), Map.fetch!(@agent_files, line))
 
+  # The vendored Checkmk agent script per agent line (§25/DR-10).
+  @checkmk_files %{linux: "check_mk_agent.linux", firewall: "check_mk_agent.freebsd"}
+
   @doc """
-  sha256 of the vendored Checkmk agent script we serve, or nil when it is
-  missing. Compared against the `checkmk_sha256` a Linux node reports in its
-  hello frame to decide whether it needs a refresh.
+  sha256 of the vendored Checkmk agent script we serve for a line, or nil
+  when it is missing. Compared against the `checkmk_sha256` a node reports in
+  its hello frame to decide whether it needs a refresh.
   """
-  @spec checkmk_sha256() :: String.t() | nil
-  def checkmk_sha256 do
-    case File.read(checkmk_path()) do
+  @spec checkmk_sha256(:firewall | :linux) :: String.t() | nil
+  def checkmk_sha256(line \\ :linux) do
+    case File.read(checkmk_path(line)) do
       {:ok, code} -> :crypto.hash(:sha256, code) |> Base.encode16(case: :lower)
       _ -> nil
     end
@@ -117,12 +120,12 @@ defmodule Orbit.Agent.Package do
   agent self-update: sha256 plus the offline Ed25519 signature, which the
   agent verifies against its baked-in public key before writing anything.
   """
-  @spec checkmk_update_params() :: {:ok, map()} | {:error, :unavailable}
-  def checkmk_update_params do
-    case File.read(checkmk_path()) do
+  @spec checkmk_update_params(:firewall | :linux) :: {:ok, map()} | {:error, :unavailable}
+  def checkmk_update_params(line \\ :linux) do
+    case File.read(checkmk_path(line)) do
       {:ok, code} ->
         signature =
-          case File.read(checkmk_path() <> ".sig") do
+          case File.read(checkmk_path(line) <> ".sig") do
             {:ok, sig} -> String.trim(sig)
             _ -> ""
           end
@@ -139,5 +142,6 @@ defmodule Orbit.Agent.Package do
     end
   end
 
-  defp checkmk_path, do: Path.join([agent_dir(), "vendor", "check_mk_agent.linux"])
+  defp checkmk_path(line),
+    do: Path.join([agent_dir(), "vendor", Map.fetch!(@checkmk_files, line)])
 end

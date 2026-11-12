@@ -790,6 +790,32 @@ defmodule Orbit.Hub do
        when is_binary(text) and text != "" do
     meta = %{interval: data["checkmk_interval"]}
 
+    meta =
+      if data["checkmk_transport_only"], do: Map.put(meta, :transport_only, true), else: meta
+
+    call_checkmk_receivers(instance_id, text, meta)
+  end
+
+  # A firewall run that did not count (exit code, timeout, too few
+  # sections): no output, the receivers get "" and the reason, so they can
+  # still forward what the dashboard knows itself.
+  defp notify_checkmk_receivers(
+         instance_id,
+         %{"checkmk_status" => %{"ok" => false, "reason" => reason} = status}
+       )
+       when is_binary(reason) do
+    meta = %{
+      interval: Orbit.Hub.Cache.checkmk_interval(status["interval"]),
+      transport_only: true,
+      failed: String.slice(reason, 0, 120)
+    }
+
+    call_checkmk_receivers(instance_id, "", meta)
+  end
+
+  defp notify_checkmk_receivers(_instance_id, _data), do: :ok
+
+  defp call_checkmk_receivers(instance_id, text, meta) do
     for mod <- Application.get_env(:orbit, :checkmk_output_receivers) || [] do
       try do
         mod.checkmk_output(instance_id, text, meta)
@@ -804,8 +830,6 @@ defmodule Orbit.Hub do
 
     :ok
   end
-
-  defp notify_checkmk_receivers(_instance_id, _data), do: :ok
 
   defp error_name(%{__struct__: struct}), do: inspect(struct)
   defp error_name(reason) when is_atom(reason), do: inspect(reason)

@@ -63,6 +63,28 @@ defmodule Orbit.Hub.CheckmkCarryTest do
     refute Map.has_key?(status(stale), "memory")
   end
 
+  test "a firewall's transport-only output is never expanded into its values" do
+    raw = %{"output_gz_b64" => @fixture, "interval" => 60, "transport_only" => true}
+
+    push = %{
+      "cpu" => %{"total_pct" => 5.0},
+      "memory" => %{"used_pct" => 10.0},
+      "checkmk_raw" => raw
+    }
+
+    {data, :unchanged} = Cache.expand(%{}, 7, push, @t0)
+    entry = %{} |> Cache.ingest(7, data, @t0) |> Cache.entry(7)
+
+    # the firewall's own collectors stay the source of its values
+    assert entry["status"]["cpu"] == %{"total_pct" => 5.0}
+    assert entry["status"]["memory"] == %{"used_pct" => 10.0}
+    refute Map.has_key?(entry["status"], "disks")
+    refute Map.has_key?(entry, "checkmk_sections")
+    # the raw text still goes to the receivers
+    assert data["checkmk_output"] =~ "<<<check_mk>>>"
+    assert data["checkmk_interval"] == 60
+  end
+
   test "a fresh run reports its interval; without one nothing is carried" do
     {data, _cpu} = Cache.expand(%{}, 7, %{"checkmk_raw" => fresh()}, @t0)
     assert data["checkmk_interval"] == 60

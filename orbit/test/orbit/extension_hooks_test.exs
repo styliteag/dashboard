@@ -83,6 +83,20 @@ defmodule Orbit.ExtensionHooksTest do
       refute_received {:checkmk_output, 7, _, _}
     end
 
+    test "a failed firewall run reaches the receivers with its reason, no output",
+         %{hub: hub} do
+      put_hook(:checkmk_output_receivers, [OrbitWeb.TestHooks.CheckmkReceiver])
+
+      Orbit.Hub.ingest_metrics(hub, 7, %{
+        "checkmk_status" => %{"ok" => false, "reason" => "only 1 section", "interval" => 60}
+      })
+
+      assert Orbit.Hub.cache_entry(hub, 7)["checkmk_status"]["reason"] == "only 1 section"
+
+      assert_received {:checkmk_output, 7, "",
+                       %{failed: "only 1 section", interval: 60, transport_only: true}}
+    end
+
     test "a raising receiver never breaks ingest", %{hub: hub} do
       put_hook(:checkmk_output_receivers, [OrbitWeb.TestHooks.CheckmkReceiver])
 

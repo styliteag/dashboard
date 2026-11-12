@@ -23,7 +23,8 @@ defmodule Orbit.Hub.Cache do
 
   @type t :: %{optional(integer()) => map()}
 
-  @truthy_sections ~w(gateways ipsec services certificates firmware pf_top storage)
+  # checkmk_status: verdict of a firewall's Checkmk run (sent only on runs)
+  @truthy_sections ~w(gateways ipsec services certificates firmware pf_top storage checkmk_status)
   @presence_sections ~w(connectivity firewall_log)
   # Vendor/extension passthrough: any pushed section whose key starts with
   # `x_` is stored verbatim (truthy-guarded like the real sections). This is
@@ -38,6 +39,19 @@ defmodule Orbit.Hub.Cache do
   # `config` = the box's last config revision (collect_config) — pushed on
   # every cycle like the other status sections, shown on the detail page.
   @status_sections ~w(ts system uptime loadavg cpu memory disks pf ntp interfaces collect_ms section_ms config zfs)
+
+  defp transport_only(data, raw) do
+    case Orbit.Hub.Checkmk.raw_text(raw) do
+      text when is_binary(text) ->
+        data
+        |> Map.put("checkmk_output", text)
+        |> Map.put("checkmk_interval", checkmk_interval(raw["interval"]))
+        |> Map.put("checkmk_transport_only", true)
+
+      _ ->
+        data
+    end
+  end
 
   # Status sections a Checkmk run produces (Orbit.Hub.Checkmk.parse/2); only
   # these are carried, `services` is a truthy-guarded section and stays anyway.
@@ -97,6 +111,12 @@ defmodule Orbit.Hub.Cache do
     prev = Map.get(cache, instance_id, %{})
 
     case data["checkmk_raw"] do
+      # A firewall's output is transport only (agent marks it): its values
+      # come from the firewall's own collectors, the raw text only goes to
+      # the receivers. Never parsed, never carried.
+      %{"transport_only" => true} = raw ->
+        {transport_only(data, raw), :unchanged}
+
       raw when is_map(raw) and map_size(raw) > 0 ->
         {parsed, cpu_state} = Orbit.Hub.Checkmk.parse(raw, prev["checkmk_cpu"])
 

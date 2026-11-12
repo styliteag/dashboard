@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reason (`checkmk_status`). The bridge code is now one source for both lines
   (`agent/src/shared/checkmk.py`); the linux line behaves as before. Firewall agent 4.2.21,
   linux agent 4.4.13.
+- Dashboard side of the firewall Checkmk output: a firewall's output is transport only (never
+  expanded into its CPU, memory or interface values, which stay with the firewall's own
+  collectors); it goes to the `:checkmk_output_receivers` hook, as does a failed run's reason
+  (`checkmk_status`, kept in the cache). New extension point `config :orbit,
+  :agent_welcome_fields` (empty in open): per-instance keys in the welcome frame; a firewall
+  whose welcome says `checkmk: true` also gets the signed FreeBSD script delivered.
 - The image now ships the vendored Checkmk scripts with their `.sig` files: without them the
   dashboard sent `checkmk.update` with an empty signature, which a node with a baked signing key
   refuses, so a newer vendored script never reached the linux nodes.
