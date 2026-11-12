@@ -57,7 +57,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.21"
+__version__ = "4.2.22"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -3753,8 +3753,9 @@ def _provision_api_credentials() -> tuple[str, str] | None:
 
     OPNsense: an API key via its own User model (key+secret). pfSense: a dedicated
     `orbit` local user for the pfRest package's BasicAuth (username+password) — but
-    ONLY if pfRest is already installed (the install is an explicit relay.enable
-    step, never an automatic side-effect). Returns None on unknown platform/failure.
+    ONLY if pfRest is already installed (the install is an explicit step — relay.enable,
+    or a downstream command that honours ``relay_provision`` — never a side effect of
+    provisioning). Returns None on unknown platform/failure.
     """
     platform_name = detect_platform()
     if platform_name == "opnsense":
