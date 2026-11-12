@@ -61,6 +61,8 @@ defmodule OrbitWeb.InstanceDetailLive do
         Process.send_after(self(), :charts_refresh, @charts_refresh_ms)
       end
 
+      agent_urls = OrbitWeb.AgentUrls.list()
+
       socket =
         socket
         |> assign(
@@ -74,6 +76,9 @@ defmodule OrbitWeb.InstanceDetailLive do
           upgrade_log: [],
           upgrade_started: nil,
           enroll_code: nil,
+          agent_urls: agent_urls,
+          agent_url: hd(agent_urls),
+          agent_insecure: false,
           agent_busy: false,
           agent_msg: nil,
           ai_busy: false,
@@ -639,6 +644,16 @@ defmodule OrbitWeb.InstanceDetailLive do
   # live agent tier, and a LiveView patch drops the browser's `open` state, so
   # the panel snapped shut a second after every click — reproduced in dev, the
   # block was unusable and the copy button unreachable.
+  def handle_event("install_opts", params, socket) do
+    urls = socket.assigns.agent_urls
+
+    {:noreply,
+     assign(socket,
+       agent_url: OrbitWeb.AgentUrls.pick(urls, params["agent_url"]),
+       agent_insecure: params["insecure"] == "true"
+     )}
+  end
+
   def handle_event("toggle_install", _params, socket) do
     {:noreply, assign(socket, install_open: not socket.assigns.install_open)}
   end
@@ -1064,8 +1079,10 @@ defmodule OrbitWeb.InstanceDetailLive do
 
   defp dash_url, do: OrbitWeb.Endpoint.url()
 
-  defp dash_ws_url do
-    uri = URI.parse(dash_url())
+  defp install_opts(assigns), do: [base_url: assigns.agent_url, insecure: assigns.agent_insecure]
+
+  defp dash_ws_url(base) do
+    uri = URI.parse(base)
     proto = if uri.scheme == "https", do: "wss", else: "ws"
     "#{proto}://#{uri.host}#{if uri.port not in [80, 443], do: ":#{uri.port}"}/api/ws/agent"
   end
@@ -1074,10 +1091,18 @@ defmodule OrbitWeb.InstanceDetailLive do
   # The three install steps as ONE pasteable script. Blank lines between the
   # steps keep it readable; nothing else separates them, because a root shell
   # takes the whole thing in one paste.
-  def install_script(%Instance{} = inst, enroll_code) do
+  #
+  # Options: `:base_url` (default: the endpoint URL; the UI offers
+  # `OrbitWeb.AgentUrls`) and `:insecure` (skip TLS verification for a lab CA
+  # the box does not trust: `curl -k`, `fetch --no-verify-peer` and
+  # `"insecure_tls": true` for the agent itself).
+  def install_script(%Instance{} = inst, enroll_code, opts \\ []) do
+    base = Keyword.get(opts, :base_url) || dash_url()
+    insecure = Keyword.get(opts, :insecure, false)
+
     [
-      install_download_cmds(inst),
-      install_config_cmd(inst, enroll_code),
+      install_download_cmds(inst, base, insecure),
+      install_config_cmd(inst, enroll_code, base, insecure),
       install_start_cmd(inst)
     ]
     |> Enum.join("\n\n")
@@ -1086,39 +1111,39 @@ defmodule OrbitWeb.InstanceDetailLive do
   # Dispatch on the agent LINE, not on device_type == "linux": proxmox and
   # truenas are Debian-based too — the FreeBSD block's fetch/rc.d/sysrc
   # simply don't exist there ("Proxmox has no fetch", 2026-08-06).
-  defp install_download_cmds(%Instance{device_type: type} = inst) do
+  defp install_download_cmds(%Instance{device_type: type}, base, insecure) do
     if Orbit.Agent.Package.linux_line?(type),
-      do: install_download_linux(),
-      else: install_download_freebsd(inst)
+      do: install_download_linux(base, insecure),
+      else: install_download_freebsd(base, insecure)
   end
 
-  defp install_download_linux do
-    base = dash_url()
+  defp install_download_linux(base, insecure) do
+    curl = if insecure, do: "curl -kfsSo", else: "curl -fsSo"
 
     """
     mkdir -p /usr/local/orbit-agent /usr/local/etc
-    curl -fsSo /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script-linux
-    curl -fsSo /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
-    curl -fsSo /usr/local/orbit-agent/check_mk_agent.linux #{base}/api/agent/checkmk
+    #{curl} /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script-linux
+    #{curl} /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
+    #{curl} /usr/local/orbit-agent/check_mk_agent.linux #{base}/api/agent/checkmk
     chmod 755 /usr/local/orbit-agent/run-agent.sh /usr/local/orbit-agent/check_mk_agent.linux
-    curl -fsSo /etc/systemd/system/orbit-agent.service #{base}/api/agent/systemd\
+    #{curl} /etc/systemd/system/orbit-agent.service #{base}/api/agent/systemd\
     """
   end
 
-  defp install_download_freebsd(_inst) do
-    base = dash_url()
+  defp install_download_freebsd(base, insecure) do
+    fetch = if insecure, do: "fetch --no-verify-peer -o", else: "fetch -o"
 
     """
     mkdir -p /usr/local/orbit-agent
-    fetch -o /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script
-    fetch -o /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
+    #{fetch} /usr/local/orbit-agent/orbit_agent.py #{base}/api/agent/script
+    #{fetch} /usr/local/orbit-agent/run-agent.sh #{base}/api/agent/run
     chmod 755 /usr/local/orbit-agent/run-agent.sh
-    fetch -o /usr/local/etc/rc.d/orbit_agent #{base}/api/agent/rc
+    #{fetch} /usr/local/etc/rc.d/orbit_agent #{base}/api/agent/rc
     chmod 755 /usr/local/etc/rc.d/orbit_agent\
     """
   end
 
-  defp install_config_cmd(inst, enroll_code) do
+  defp install_config_cmd(inst, enroll_code, base, insecure) do
     interval = if Orbit.Agent.Package.linux_line?(inst.device_type), do: 120, else: 30
 
     cred =
@@ -1128,10 +1153,9 @@ defmodule OrbitWeb.InstanceDetailLive do
       end
 
     cfg =
-      Map.merge(
-        %{"dashboard_url" => dash_ws_url(), "push_interval" => interval, "log_level" => "INFO"},
-        cred
-      )
+      %{"dashboard_url" => dash_ws_url(base), "push_interval" => interval, "log_level" => "INFO"}
+      |> Map.merge(cred)
+      |> then(&if(insecure, do: Map.put(&1, "insecure_tls", true), else: &1))
 
     """
     printf '%s\\n' '#{Jason.encode!(cfg)}' > /usr/local/etc/orbit-agent.conf
@@ -2265,7 +2289,7 @@ defmodule OrbitWeb.InstanceDetailLive do
                   type="button"
                   id="copy-install-script"
                   phx-hook="CopyValue"
-                  data-copy={install_script(@instance, @enroll_code)}
+                  data-copy={install_script(@instance, @enroll_code, install_opts(assigns))}
                   title="Copy to clipboard"
                   aria-label="Copy install instructions"
                   class="flex shrink-0 items-center gap-1 rounded border border-base-content/20 px-2 py-1 text-base-content/70 hover:bg-base-300 hover:text-base-content"
@@ -2273,10 +2297,35 @@ defmodule OrbitWeb.InstanceDetailLive do
                   <Icons.icon name={:copy} class="h-3.5 w-3.5" /> Copy
                 </button>
               </div>
+              <form
+                id="install-opts"
+                phx-change="install_opts"
+                class="flex flex-wrap items-center gap-3"
+              >
+                <label :if={length(@agent_urls) > 1} class="flex items-center gap-1">
+                  <span class="text-base-content/70">Dashboard URL</span>
+                  <select name="agent_url" class="select select-xs">
+                    <option :for={u <- @agent_urls} value={u} selected={u == @agent_url}>{u}</option>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1">
+                  <input type="hidden" name="insecure" value="false" />
+                  <input
+                    type="checkbox"
+                    name="insecure"
+                    value="true"
+                    checked={@agent_insecure}
+                    class="checkbox checkbox-xs"
+                  />
+                  <span class="text-base-content/70">
+                    Skip TLS verification (lab CA only, never production)
+                  </span>
+                </label>
+              </form>
               <%!-- ONE block, not three: the three steps used to sit in
                    separate <pre>s, so pasting them meant three selections and
                    three round trips to a root shell. They are one script. --%>
-              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_script(@instance, @enroll_code)}</pre>
+              <pre class="overflow-x-auto rounded bg-base-100 p-2 font-mono text-base-content/80">{install_script(@instance, @enroll_code, install_opts(assigns))}</pre>
             </div>
           </div>
 

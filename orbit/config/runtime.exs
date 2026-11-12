@@ -22,6 +22,11 @@ end
 
 config :orbit, OrbitWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Dashboard URLs offered in the agent install snippet (name and port choice),
+# e.g. "https://dash.lab.home,https://dash.lab.home:8443". Parsed and
+# validated by OrbitWeb.AgentUrls; unset = the endpoint URL only.
+config :orbit, :agent_urls_raw, System.get_env("DASH_AGENT_URLS")
+
 # Fernet key for the shared *_enc columns — same env var as the python
 # backend (DASH_ prefix). Optional at boot: modules that decrypt fetch it via
 # Orbit.Crypto.master_key!/0 which raises a clear error when unset.

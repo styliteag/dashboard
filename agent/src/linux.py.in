@@ -54,7 +54,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.4.9"
+__version__ = "4.4.10"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -93,6 +93,8 @@ class Config:
         # an agent with a stale/missing .sig without re-signing. Also settable via the
         # AGENT_INSECURE_SKIP_SIG=1 env var (for a locally-run agent). NEVER in prod.
         self.insecure_skip_sig: bool = False
+        # lab only: do not verify the dashboard's TLS certificate (enroll + WebSocket)
+        self.insecure_tls: bool = False
         # Enrollment: a one-time code exchanged for an agent_token at first start
         # (so the admin needn't paste the token). enroll_url overrides the URL
         # derived from dashboard_url.
@@ -114,6 +116,7 @@ class Config:
         # Relay/GUI keys a pre-split combined config may still contain are
         # simply ignored — the linux line has no local API relay (§28).
         self.insecure_skip_sig = bool(data.get("insecure_skip_sig", self.insecure_skip_sig))
+        self.insecure_tls = bool(data.get("insecure_tls", self.insecure_tls))
         self.enroll_code = data.get("enroll_code", self.enroll_code)
         self.enroll_url = data.get("enroll_url", self.enroll_url)
 

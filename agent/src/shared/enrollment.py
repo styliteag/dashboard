@@ -48,9 +48,18 @@ def _enroll(cfg: Config) -> bool:
     body = json.dumps({"code": cfg.enroll_code}).encode()
     try:
         # Remote dashboard: MUST verify TLS — this exchanges the one-time enroll
-        # code (bootstrap secret) for the long-lived agent token.
+        # code (bootstrap secret) for the long-lived agent token. Only an explicit
+        # lab-only `insecure_tls` in the config turns that off.
+        insecure = bool(getattr(cfg, "insecure_tls", False))
+        if insecure:
+            log.warning("enroll: insecure_tls is set, NOT verifying the dashboard's TLS certificate")
         status, _, data = _http_request(
-            url, "POST", {"Content-Type": "application/json"}, body, timeout=15, verify=True
+            url,
+            "POST",
+            {"Content-Type": "application/json"},
+            body,
+            timeout=15,
+            verify=not insecure,
         )
     except (OSError, http.client.HTTPException) as exc:
         log.error("enroll: request to %s failed: %s", url, exc)

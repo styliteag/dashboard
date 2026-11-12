@@ -54,7 +54,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.4.9"
+__version__ = "4.4.10"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -93,6 +93,8 @@ class Config:
         # an agent with a stale/missing .sig without re-signing. Also settable via the
         # AGENT_INSECURE_SKIP_SIG=1 env var (for a locally-run agent). NEVER in prod.
         self.insecure_skip_sig: bool = False
+        # lab only: do not verify the dashboard's TLS certificate (enroll + WebSocket)
+        self.insecure_tls: bool = False
         # Enrollment: a one-time code exchanged for an agent_token at first start
         # (so the admin needn't paste the token). enroll_url overrides the URL
         # derived from dashboard_url.
@@ -114,6 +116,7 @@ class Config:
         # Relay/GUI keys a pre-split combined config may still contain are
         # simply ignored — the linux line has no local API relay (§28).
         self.insecure_skip_sig = bool(data.get("insecure_skip_sig", self.insecure_skip_sig))
+        self.insecure_tls = bool(data.get("insecure_tls", self.insecure_tls))
         self.enroll_code = data.get("enroll_code", self.enroll_code)
         self.enroll_url = data.get("enroll_url", self.enroll_url)
 
@@ -1419,6 +1422,21 @@ class WebSocket:
             self._writer.close()
 
 
+def _dashboard_ssl_context() -> ssl.SSLContext:
+    """TLS context for the connections to the dashboard (enroll is separate).
+
+    Verifies by default. ``insecure_tls`` in the config turns verification off for
+    a lab dashboard behind a CA the box does not trust; it is never implied and
+    logs on every use so it cannot go unnoticed.
+    """
+    ctx = ssl.create_default_context()
+    if getattr(_STATE.config, "insecure_tls", False):
+        log.warning("insecure_tls is set: NOT verifying the dashboard's TLS certificate")
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSocket:
     """Open a WebSocket connection (ws:// or wss://) and perform the handshake."""
     parts = urlsplit(url)
@@ -1429,7 +1447,7 @@ async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSoc
     if parts.query:
         path += "?" + parts.query
 
-    ssl_ctx = ssl.create_default_context() if secure else None
+    ssl_ctx = _dashboard_ssl_context() if secure else None
     reader, writer = await asyncio.open_connection(
         host, port, ssl=ssl_ctx, server_hostname=host if secure else None
     )
@@ -2571,9 +2589,18 @@ def _enroll(cfg: Config) -> bool:
     body = json.dumps({"code": cfg.enroll_code}).encode()
     try:
         # Remote dashboard: MUST verify TLS — this exchanges the one-time enroll
-        # code (bootstrap secret) for the long-lived agent token.
+        # code (bootstrap secret) for the long-lived agent token. Only an explicit
+        # lab-only `insecure_tls` in the config turns that off.
+        insecure = bool(getattr(cfg, "insecure_tls", False))
+        if insecure:
+            log.warning("enroll: insecure_tls is set, NOT verifying the dashboard's TLS certificate")
         status, _, data = _http_request(
-            url, "POST", {"Content-Type": "application/json"}, body, timeout=15, verify=True
+            url,
+            "POST",
+            {"Content-Type": "application/json"},
+            body,
+            timeout=15,
+            verify=not insecure,
         )
     except (OSError, http.client.HTTPException) as exc:
         log.error("enroll: request to %s failed: %s", url, exc)

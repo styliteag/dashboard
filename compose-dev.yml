@@ -96,6 +96,7 @@ services:
       DASH_WEBAUTHN_ORIGIN: ${DASH_WEBAUTHN_ORIGIN:-http://localhost:5173}
       ORBIT_WEBAUTHN_ORIGIN: ${ORBIT_WEBAUTHN_ORIGIN:-http://localhost:8000,http://localhost:5173}
       DASH_WS_ALLOWED_ORIGIN_HOSTS: ${DASH_WS_ALLOWED_ORIGIN_HOSTS:-}
+      DASH_AGENT_URLS: ${DASH_AGENT_URLS:-}
       # GeoIP gate (shared mmdb volume;
       # the python updater keeps the db fresh until cutover).
       DASH_GEOIP_DISABLE: ${DASH_GEOIP_DISABLE:-false}

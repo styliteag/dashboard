@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Install snippet: choose the dashboard URL (name and port) and, for a lab, skip TLS
+  verification. `DASH_AGENT_URLS` (comma-separated plain origins, first = default) fills a
+  selector on the instance's install instructions; unset keeps the endpoint URL. "Skip TLS
+  verification" adds `-k` (`--no-verify-peer` for `fetch`) to the downloads and
+  `"insecure_tls": true` to the agent config. Both agent lines (linux 4.4.10, firewall
+  4.2.18) honour `insecure_tls` for the enroll request and the WebSocket; it is off by
+  default, logs a warning on every use and is meant for a lab CA the box does not trust.
+  A dashboard behind a port-mapped proxy (`https://dash.example:8443`) no longer needs a
+  hand-edited snippet.
+
 ### Changed
 
 - Linux agent: a Checkmk agent the host has installed (`/usr/bin/check_mk_agent`, then

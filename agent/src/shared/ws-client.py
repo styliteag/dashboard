@@ -110,6 +110,21 @@ class WebSocket:
             self._writer.close()
 
 
+def _dashboard_ssl_context() -> ssl.SSLContext:
+    """TLS context for the connections to the dashboard (enroll is separate).
+
+    Verifies by default. ``insecure_tls`` in the config turns verification off for
+    a lab dashboard behind a CA the box does not trust; it is never implied and
+    logs on every use so it cannot go unnoticed.
+    """
+    ctx = ssl.create_default_context()
+    if getattr(_STATE.config, "insecure_tls", False):
+        log.warning("insecure_tls is set: NOT verifying the dashboard's TLS certificate")
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSocket:
     """Open a WebSocket connection (ws:// or wss://) and perform the handshake."""
     parts = urlsplit(url)
@@ -120,7 +135,7 @@ async def ws_connect(url: str, headers: dict[str, str], max_size: int) -> WebSoc
     if parts.query:
         path += "?" + parts.query
 
-    ssl_ctx = ssl.create_default_context() if secure else None
+    ssl_ctx = _dashboard_ssl_context() if secure else None
     reader, writer = await asyncio.open_connection(
         host, port, ssl=ssl_ctx, server_hostname=host if secure else None
     )
