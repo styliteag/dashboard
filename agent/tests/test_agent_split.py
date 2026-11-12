@@ -49,6 +49,8 @@ FIREWALL_SECTIONS = (
     "certificates",
     "logfiles",
     "config_backup",
+    "checkmk_raw",
+    "checkmk_status",
 )
 
 LINUX_SECTIONS = (
@@ -107,10 +109,15 @@ def test_linux_command_surface_is_pinned():
     assert LINUX_COMMANDS <= set(orbit_agent_linux._COMMANDS)
 
 
-def test_checkmk_is_linux_line_only():
-    assert "checkmk.update" not in orbit_agent._COMMANDS
-    assert not hasattr(orbit_agent, "collect_checkmk")
-    assert "checkmk.update" in orbit_agent_linux._COMMANDS
+def test_checkmk_bridge_is_on_both_lines():
+    # one shared source (agent/src/shared/checkmk.py), each line its own script
+    for mod in (orbit_agent, orbit_agent_linux):
+        assert "checkmk.update" in mod._COMMANDS
+        assert hasattr(mod, "collect_checkmk")
+    assert orbit_agent._CHECKMK_DEPLOY_PATH.endswith("check_mk_agent.freebsd")
+    assert orbit_agent_linux._CHECKMK_DEPLOY_PATH.endswith("check_mk_agent.linux")
+    # the linux line registers no status section; its values come from the output
+    assert "checkmk_status" not in dict(orbit_agent_linux._SNAPSHOT_SECTIONS)
 
 
 def test_firewall_line_has_no_linux_helpers():
@@ -120,7 +127,6 @@ def test_firewall_line_has_no_linux_helpers():
         "_dnf_update_check",
         "_read_linux_version",
         "_collect_logfiles_linux",
-        "collect_checkmk",
     ):
         assert not hasattr(orbit_agent, name), name
         assert hasattr(orbit_agent_linux, name), name

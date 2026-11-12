@@ -212,7 +212,7 @@ fi
 git add VERSION CHANGELOG.md
 # Both agent lines are signed (§28); stage every refreshed .sig, not just one.
 for sig in agent/orbit_agent.py.sig agent/orbit_agent_linux.py.sig \
-    agent/vendor/check_mk_agent.linux.sig; do
+    agent/vendor/check_mk_agent.linux.sig agent/vendor/check_mk_agent.freebsd.sig; do
     [[ -f "$sig" ]] && git add "$sig"
 done
 git commit -m "chore: bump version to $NEW_VERSION"

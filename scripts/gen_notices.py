@@ -147,19 +147,24 @@ def collect_vendored() -> list[dict]:
     package manager knows about it. The script is its own complete source.
     """
     rows: list[dict] = []
-    cmk = ROOT / "agent" / "vendor" / "check_mk_agent.linux"
-    if cmk.exists():
+    for name, label in (
+        ("check_mk_agent.linux", "Checkmk Linux agent"),
+        ("check_mk_agent.freebsd", "Checkmk FreeBSD agent"),
+    ):
+        cmk = ROOT / "agent" / "vendor" / name
+        if not cmk.exists():
+            continue
         src = cmk.read_text(errors="replace")
         m = re.search(r'^\s*echo "Version: ([^"]+)"', src, re.M)
         rows.append(
             {
-                "name": "check_mk_agent.linux (Checkmk Linux agent, vendored unmodified)",
+                "name": f"{name} ({label}, vendored unmodified)",
                 "version": m.group(1) if m else "unknown",
                 "license": "GPL-2.0-only",
                 "url": "https://github.com/Checkmk/checkmk",
                 "text": (
                     "Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.\n"
-                    "Vendored unmodified from the Checkmk sources (agents/check_mk_agent.linux);\n"
+                    f"Vendored unmodified from the Checkmk sources (agents/{name});\n"
                     "the shell script is its own complete corresponding source.\n"
                     "Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt"
                 ),
@@ -252,11 +257,12 @@ def _cdx_vendored(rows: list[dict]) -> list[dict]:
         if r["version"] == "unknown":
             continue
         purl = f"pkg:github/checkmk/checkmk@v{r['version']}"
+        fname = r["name"].split(" ", 1)[0]
         comps.append(
             {
                 "type": "application",
-                "bom-ref": purl,
-                "name": "check_mk_agent.linux",
+                "bom-ref": f"{purl}#{fname}",
+                "name": fname,
                 "version": r["version"],
                 "purl": purl,
                 "licenses": [{"license": {"id": "GPL-2.0-only"}}],

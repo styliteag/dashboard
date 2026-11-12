@@ -131,7 +131,7 @@ def _deploy_params(code: bytes) -> dict:
 def test_checkmk_update_rejects_non_linux(monkeypatch) -> None:
     monkeypatch.setattr(agent, "detect_platform", lambda: "opnsense")
     result = agent._cmd_checkmk_update(_deploy_params(b"#!/bin/bash\n"))
-    assert result["success"] is False and "linux-only" in result["output"]
+    assert result["success"] is False and "not supported" in result["output"]
 
 
 def test_checkmk_update_rejects_sha_mismatch(monkeypatch) -> None:

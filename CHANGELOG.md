@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the linux line, so a downstream build can add a firewall command or `x_*` section without
   editing `firewall.py.in`. Empty in open; firewall agent 4.2.20 (no behaviour change).
 
+- Firewall agent (OPNsense, pfSense): can run the Checkmk FreeBSD agent script and ship its
+  output (`checkmk_raw`, marked transport only) like the linux line, for a dashboard that
+  forwards it to a Checkmk server. Off unless the dashboard asks for it (`checkmk` in the
+  welcome / config_update frame; open never does). Our signed copy only
+  (`agent/vendor/check_mk_agent.freebsd`, Checkmk 2.4.0p38, vendored unmodified), delivered
+  with `checkmk.update` (signature checked before writing) to `/usr/local/orbit-agent/`, run as
+  `/bin/sh <path>` (no bash on the firewalls), at most once per minute, never twice at once. A
+  run that exits non-zero, times out or yields fewer than 3 sections ships nothing but a short
+  reason (`checkmk_status`). The bridge code is now one source for both lines
+  (`agent/src/shared/checkmk.py`); the linux line behaves as before. Firewall agent 4.2.21,
+  linux agent 4.4.13.
+- The image now ships the vendored Checkmk scripts with their `.sig` files: without them the
+  dashboard sent `checkmk.update` with an empty signature, which a node with a baked signing key
+  refuses, so a newer vendored script never reached the linux nodes.
+
 ### Changed
 
 - Linux agent: the Checkmk script runs at most once per minute on its own clock instead of

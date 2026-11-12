@@ -65,6 +65,7 @@ tooling is excluded as it is not part of the distributed artifact.
 | Component | Version | License |
 |---|---|---|
 | check_mk_agent.linux (Checkmk Linux agent, vendored unmodified) | 2.5.0p8 | GPL-2.0-only |
+| check_mk_agent.freebsd (Checkmk FreeBSD agent, vendored unmodified) | 2.4.0p38 | GPL-2.0-only |
 
 ---
 
@@ -3306,6 +3307,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.
 Vendored unmodified from the Checkmk sources (agents/check_mk_agent.linux);
+the shell script is its own complete corresponding source.
+Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+```
+
+### check_mk_agent.freebsd (Checkmk FreeBSD agent, vendored unmodified) 2.4.0p38 — GPL-2.0-only
+
+<https://github.com/Checkmk/checkmk>
+
+```
+Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.
+Vendored unmodified from the Checkmk sources (agents/check_mk_agent.freebsd);
 the shell script is its own complete corresponding source.
 Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
 ```

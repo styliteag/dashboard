@@ -74,7 +74,11 @@ COPY --chown=nobody:root agent/orbit_agent_linux.py agent/orbit_agent_linux.py.s
 COPY --chown=nobody:root agent/run-agent.sh /app/agent/
 COPY --chown=nobody:root agent/rc.d/orbit_agent /app/agent/rc.d/
 COPY --chown=nobody:root agent/systemd/orbit-agent.service /app/agent/systemd/
-COPY --chown=nobody:root agent/vendor/check_mk_agent.linux /app/agent/vendor/
+# Vendored Checkmk scripts WITH their .sig: checkmk.update sends the signature
+# and the node refuses an unsigned script (without the .sig the refresh could
+# never succeed).
+COPY --chown=nobody:root agent/vendor/check_mk_agent.linux agent/vendor/check_mk_agent.linux.sig \
+    agent/vendor/check_mk_agent.freebsd agent/vendor/check_mk_agent.freebsd.sig /app/agent/vendor/
 ENV AGENT_DIR=/app/agent
 
 COPY --from=builder --chown=nobody:root /app/_build/prod/rel/orbit ./

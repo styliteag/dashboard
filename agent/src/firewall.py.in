@@ -57,7 +57,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.20"
+__version__ = "4.2.21"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -191,6 +191,12 @@ class _AgentState:
         # most every _EXTIP_INTERVAL and cached so every push carries it.
         self.extip_cache: dict = {}
         self.extip_ts: float = 0.0
+        # Checkmk script (see collect_checkmk): off until the dashboard asks for
+        # it (`checkmk` in welcome / config_update); start time of the last run
+        # (own 60 s clock) and its verdict for collect_checkmk_status.
+        self.checkmk_enabled: bool = False
+        self.checkmk_ts: float = 0.0
+        self.checkmk_status: "dict | None" = None
         # Probation healthiness signal — set on the first server frame after a
         # self-update; the watchdog rolls back if it never fires (see §5).
         self.healthy: "asyncio.Event | None" = None
@@ -2972,6 +2978,55 @@ def _timed(timings: dict, name: str, fn, *args):
         timings[name] = round((time.monotonic() - t0) * 1000, 1)
 
 
+# --- Checkmk agent script (FreeBSD, §25/DR-10 on the firewall line) ----------
+# Off by default: the box runs it only while the dashboard asks for it (the
+# `checkmk` flag of welcome / config_update), e.g. to forward the output to a
+# Checkmk server. The output is transport only: the firewall's own collectors
+# stay the source of its values (payload "transport_only"). Always our signed
+# copy in the agent's directory (checkmk.update), never a script of the base
+# system or a package: a ports/package check_mk_agent wants bash, which the
+# firewalls do not have. Started as `/bin/sh <path>`, so its bash shebang does
+# not matter.
+_CHECKMK_PLATFORMS = ("opnsense", "pfsense")
+_CHECKMK_DEPLOY_PATH = "/usr/local/orbit-agent/check_mk_agent.freebsd"
+_CHECKMK_CANDIDATES = (_CHECKMK_DEPLOY_PATH,)
+_CHECKMK_TRANSPORT_ONLY = True
+# Fewer sections = the script died early (it runs under /bin/sh, not bash).
+_CHECKMK_MIN_SECTIONS = 3
+
+
+def _checkmk_argv(script: str) -> list:
+    return ["/bin/sh", script]
+
+
+def _checkmk_wanted() -> bool:
+    return _STATE.checkmk_enabled
+
+
+def _checkmk_failure(rc: int, raw: bytes) -> str | None:
+    """Why a finished run does not count (the dashboard then relays only its
+    own checks), or None."""
+    if rc != 0:
+        return "exit code %d" % rc
+    sections = _checkmk_sections(raw)
+    if sections < _CHECKMK_MIN_SECTIONS:
+        return "only %d section%s" % (sections, "" if sections == 1 else "s")
+    return None
+
+
+def _apply_checkmk_enabled(value: object) -> None:
+    """Switch the Checkmk script on/off as the dashboard says; on = run at the
+    next push. Anything but a bool is ignored."""
+    if not isinstance(value, bool) or value == _STATE.checkmk_enabled:
+        return
+    _STATE.checkmk_enabled = value
+    _STATE.checkmk_ts = 0.0
+    log.info("checkmk script %s by the dashboard", "enabled" if value else "disabled")
+
+
+# @@shared: checkmk
+
+
 # Snapshot sections in push order: (key, collector function name). Every collector
 # is a zero-arg callable; its result lands under `key` in the metrics frame. A
 # raising collector aborts the whole cycle (caught in _push_loop) — same as before.
@@ -3001,6 +3056,8 @@ _SNAPSHOT_SECTIONS = (
     ("certificates", "collect_certificates"),
     ("logfiles", "collect_logfiles"),
     ("config_backup", "collect_config_backup"),
+    ("checkmk_raw", "collect_checkmk"),
+    ("checkmk_status", "collect_checkmk_status"),
 ) + tuple(_DROPIN_SECTIONS)
 
 
@@ -4712,6 +4769,7 @@ _COMMANDS = {
     "ping": _cmd_ping,
     "packet_capture": _cmd_packet_capture,
     "get_aliases": _cmd_get_aliases,
+    "checkmk.update": _cmd_checkmk_update,
 }
 _COMMANDS.update(_DROPIN_COMMANDS)
 
@@ -4953,6 +5011,9 @@ async def agent_loop(cfg: Config) -> None:
                 "agent_version": __version__,
                 "hostname": platform.node(),
                 "platform": detect_platform(),
+                # Deployed Checkmk-script sha — the backend pushes a signed
+                # refresh via checkmk.update when it differs.
+                "checkmk_sha256": _checkmk_script_sha(),
             }))
 
             # Run push, listen and keepalive concurrently
@@ -5162,6 +5223,9 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                 # Dashboard may pin our push cadence (per-instance override or the
                 # global default); the push loop reads cfg each cycle, so it sticks.
                 _apply_push_interval(msg.get("push_interval"))
+                # Every welcome restates whether to run the Checkmk script; a
+                # dashboard that does not say so wants it off.
+                _apply_checkmk_enabled(msg.get("checkmk") is True)
                 # Force one config-backup baseline push per connection — a send
                 # that died mid-flight on the old connection is otherwise lost
                 # (the server dedupes by sha256, so this is cheap when in sync).
@@ -5223,6 +5287,7 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                     _STATE.config_push_mtime = -1.0
                     _STATE.config_push_sha = ""
                     _STATE.extip_ts = 0.0
+                    _STATE.checkmk_ts = 0.0
                     try:
                         snapshot = await asyncio.get_event_loop().run_in_executor(
                             None, collect_all
@@ -5278,6 +5343,7 @@ async def _listen_loop_inner(ws: WebSocket, tunnels: _TunnelManager) -> None:
                     )
                     log.info("applied %d connectivity monitor(s)", len(_STATE.conn_monitors))
                 _apply_push_interval(data.get("push_interval"))
+                _apply_checkmk_enabled(data.get("checkmk"))
 
             elif msg_type == "ping":
                 await ws.send(json.dumps({"type": "pong"}))

@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "stylite-orbit-dashboard",
       "name": "stylite-orbit-dashboard",
-      "version": "4.4.9"
+      "version": "4.10.0"
     }
   },
   "components": [
@@ -671,10 +671,24 @@
     },
     {
       "type": "application",
-      "bom-ref": "pkg:github/checkmk/checkmk@v2.5.0p8",
+      "bom-ref": "pkg:github/checkmk/checkmk@v2.5.0p8#check_mk_agent.linux",
       "name": "check_mk_agent.linux",
       "version": "2.5.0p8",
       "purl": "pkg:github/checkmk/checkmk@v2.5.0p8",
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-only"
+          }
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "pkg:github/checkmk/checkmk@v2.4.0p38#check_mk_agent.freebsd",
+      "name": "check_mk_agent.freebsd",
+      "version": "2.4.0p38",
+      "purl": "pkg:github/checkmk/checkmk@v2.4.0p38",
       "licenses": [
         {
           "license": {

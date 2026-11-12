@@ -83,12 +83,12 @@ def _verify_one(path: str, pub_hex: str) -> None:
     print(f"{path}: signature verifies against baked _UPDATE_PUBKEY. OK")
 
 
-def _verify(agent_paths: list[str], vendor_path: str | None = None) -> None:
+def _verify(agent_paths: list[str], vendor_paths: list[str] | None = None) -> None:
     """Release guard: every committed .sig must verify against the baked pubkey.
 
     Exits non-zero (with a clear message) if signing is enabled but a signature
     is missing or stale — stale agent .sig = deployed agents reject every future
-    update; stale vendor .sig = linux nodes refuse the Checkmk-agent deploy.
+    update; stale vendor .sig = nodes refuse the Checkmk-agent deploy.
     Each agent line (§28: orbit_agent.py + orbit_agent_linux.py) verifies
     against its OWN baked _UPDATE_PUBKEY. The vendor script has no baked key
     of its own; it verifies against the first agent's _UPDATE_PUBKEY (one key
@@ -102,13 +102,17 @@ def _verify(agent_paths: list[str], vendor_path: str | None = None) -> None:
             continue
         first_pub = first_pub or pub_hex
         _verify_one(agent_path, pub_hex)
-    if first_pub and vendor_path and Path(vendor_path).exists():
-        _verify_one(vendor_path, first_pub)
+    for vendor_path in vendor_paths or []:
+        if first_pub and Path(vendor_path).exists():
+            _verify_one(vendor_path, first_pub)
 
 
 # Both single-file agent lines (§28). Signing/verifying always covers both —
 # a forgotten linux .sig would make every linux node reject its next update.
 _AGENT_FILES = ["agent/orbit_agent.py", "agent/orbit_agent_linux.py"]
+# Vendored Checkmk agent scripts (§25/DR-10), one per line, signed with the same
+# key so a node verifies the script before it writes and runs it as root.
+_VENDOR_FILES = ["agent/vendor/check_mk_agent.linux", "agent/vendor/check_mk_agent.freebsd"]
 
 
 def main() -> None:
@@ -118,9 +122,14 @@ def main() -> None:
         default=None,
         help="sign/verify only this agent file (default: both lines)",
     )
-    # Vendored Checkmk agent (§25/DR-10) — signed with the same key so linux
-    # nodes can verify it before running it as root. Skipped when absent.
-    ap.add_argument("--vendor", default="agent/vendor/check_mk_agent.linux")
+    # Vendored Checkmk agents (§25/DR-10) — signed with the same key so a node
+    # can verify one before running it as root. Absent files are skipped.
+    ap.add_argument(
+        "--vendor",
+        action="append",
+        default=None,
+        help="sign/verify only this vendored script (repeatable; default: all)",
+    )
     ap.add_argument("--key-file", help="file containing the base64 raw private key")
     ap.add_argument("--gen", action="store_true", help="generate a keypair and exit")
     ap.add_argument(
@@ -135,8 +144,9 @@ def main() -> None:
         if not Path(agent_path).exists():
             sys.exit(f"{agent_path} not found — both agent lines must exist (§28).")
 
+    vendors = args.vendor or _VENDOR_FILES
     if args.verify:
-        _verify(agents, args.vendor)
+        _verify(agents, vendors)
         return
 
     if args.gen:
@@ -149,9 +159,7 @@ def main() -> None:
         return
 
     priv = _load_private_key(args.key_file)
-    targets = list(agents)
-    if args.vendor and Path(args.vendor).exists():
-        targets.append(args.vendor)
+    targets = list(agents) + [v for v in vendors if Path(v).exists()]
     for target in targets:
         code = Path(target).read_bytes()
         Path(target + ".sig").write_text(base64.b64encode(priv.sign(code)).decode() + "\n")

@@ -30,6 +30,8 @@ _SECTIONS = {
     "certificates": [],
     "logfiles": {},
     "config_backup": {},
+    "checkmk_raw": {},
+    "checkmk_status": {},
 }
 
 _STUB_FN = {
@@ -55,6 +57,8 @@ _STUB_FN = {
     "certificates": "collect_certificates",
     "logfiles": "collect_logfiles",
     "config_backup": "collect_config_backup",
+    "checkmk_raw": "collect_checkmk",
+    "checkmk_status": "collect_checkmk_status",
 }
 
 
