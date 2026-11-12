@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"insecure_tls": true` to the agent config. Both agent lines (linux 4.4.10, firewall
   4.2.18) honour `insecure_tls` for the enroll request and the WebSocket; it is off by
   default, logs a warning on every use and is meant for a lab CA the box does not trust.
-  A dashboard behind a port-mapped proxy (`https://dash.example:8443`) no longer needs a
+  The warning names no single server, so a downstream build can use the same setting for other
+  connections of the agent. A dashboard behind a port-mapped proxy (`https://dash.example:8443`) no longer needs a
   hand-edited snippet.
 
 ### Changed

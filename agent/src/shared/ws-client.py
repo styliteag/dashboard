@@ -111,15 +111,16 @@ class WebSocket:
 
 
 def _dashboard_ssl_context() -> ssl.SSLContext:
-    """TLS context for the connections to the dashboard (enroll is separate).
+    """TLS context for the agent's own connections (dashboard WebSocket; a downstream
+    build also uses it for package downloads). The enroll request is separate.
 
     Verifies by default. ``insecure_tls`` in the config turns verification off for
-    a lab dashboard behind a CA the box does not trust; it is never implied and
+    a lab server behind a CA the box does not trust; it is never implied and
     logs on every use so it cannot go unnoticed.
     """
     ctx = ssl.create_default_context()
     if getattr(_STATE.config, "insecure_tls", False):
-        log.warning("insecure_tls is set: NOT verifying the dashboard's TLS certificate")
+        log.warning("insecure_tls is set: NOT verifying TLS certificates")
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
     return ctx
