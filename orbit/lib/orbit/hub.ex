@@ -557,7 +557,7 @@ defmodule Orbit.Hub do
     # Linux nodes push one checkmk blob instead of per-section numbers —
     # expand it here, once, so the cache AND the metric-history writer below
     # see the same sections (expanding inside ingest left the series flat).
-    {data, cpu_state} = Orbit.Hub.Cache.expand(state.cache, instance_id, data)
+    {data, cpu_state} = Orbit.Hub.Cache.expand(state.cache, instance_id, data, now)
     cache = Orbit.Hub.Cache.ingest(state.cache, instance_id, data, now, cpu_state)
     maybe_persist_logfiles(instance_id, data)
     maybe_persist_config_backup(instance_id, data)

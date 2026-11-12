@@ -39,6 +39,17 @@ defmodule Orbit.Hub.Cache do
   # every cycle like the other status sections, shown on the detail page.
   @status_sections ~w(ts system uptime loadavg cpu memory disks pf ntp interfaces collect_ms section_ms config zfs)
 
+  # Status sections a Checkmk run produces (Orbit.Hub.Checkmk.parse/2); only
+  # these are carried, `services` is a truthy-guarded section and stays anyway.
+  @carry_keys ~w(memory cpu disks interfaces uptime loadavg ntp zfs)
+  # An agent that reports no interval (older than the own-clock change) runs
+  # the script on every push, so nothing ever needs carrying for it; 60 s is
+  # only the expiry base.
+  @default_checkmk_interval 60
+  # Carried values expire after this many intervals without a run, so a
+  # broken script still shows as missing data (omon's freshness rule, too).
+  @carry_intervals 3
+
   @doc "Apply one metrics push to the cache map; returns the updated cache."
   @spec ingest(t(), integer(), map(), DateTime.t()) :: t()
   def ingest(cache, instance_id, data, now, cpu_state \\ :unchanged) when is_map(data) do
@@ -51,6 +62,7 @@ defmodule Orbit.Hub.Cache do
       |> apply_presence_guards(data)
       |> apply_extra_sections(data)
       |> apply_checkmk_output(data)
+      |> put_checkmk_run(data, now)
       |> put_external_ip(data)
       |> put_cpu_state(cpu_state)
 
@@ -73,14 +85,26 @@ defmodule Orbit.Hub.Cache do
 
   Returns `{data, cpu_state}`; `cpu_state` is `:unchanged` for every
   non-Linux push so `ingest/5` leaves the stored baseline alone.
+
+  The agent runs the Checkmk script on its own clock (at most once per
+  `interval`, which it reports in the payload), not on every push. A push in
+  between carries no output; it gets the status sections of the last run
+  (`carry_over/3`), or the node would read "no CPU, no memory" every other
+  push and its checks would vanish and come back each cycle.
   """
-  @spec expand(t(), integer(), map()) :: {map(), map() | nil | :unchanged}
-  def expand(cache, instance_id, data) when is_map(data) do
+  @spec expand(t(), integer(), map(), DateTime.t()) :: {map(), map() | nil | :unchanged}
+  def expand(cache, instance_id, data, now \\ DateTime.utc_now()) when is_map(data) do
+    prev = Map.get(cache, instance_id, %{})
+
     case data["checkmk_raw"] do
       raw when is_map(raw) and map_size(raw) > 0 ->
-        prev = Map.get(cache, instance_id, %{})
         {parsed, cpu_state} = Orbit.Hub.Checkmk.parse(raw, prev["checkmk_cpu"])
-        data = Map.merge(data, parsed)
+
+        data =
+          data
+          |> Map.merge(parsed)
+          |> Map.put("checkmk_keys", parsed |> Map.keys() |> Enum.filter(&(&1 in @carry_keys)))
+          |> Map.put("checkmk_interval", checkmk_interval(raw["interval"]))
 
         data =
           case Orbit.Hub.Checkmk.raw_text(raw) do
@@ -91,9 +115,43 @@ defmodule Orbit.Hub.Cache do
         {data, cpu_state}
 
       _ ->
-        {data, :unchanged}
+        {carry_over(prev, data, now), :unchanged}
     end
   end
+
+  @doc "The run interval a Checkmk payload reports (10..3600 s), else nil."
+  @spec checkmk_interval(term()) :: pos_integer() | nil
+  def checkmk_interval(n) when is_integer(n) and n >= 10 and n <= 3600, do: n
+  def checkmk_interval(_), do: nil
+
+  # Bounded by the last run's age; the marker makes ingest keep the carried
+  # interfaces' rates instead of diffing identical counters to zero.
+  defp carry_over(prev, data, now) do
+    with [_ | _] = keys <- prev["checkmk_keys"],
+         %DateTime{} = ran_at <- prev["checkmk_ts"],
+         interval = prev["checkmk_interval"] || @default_checkmk_interval,
+         true <- DateTime.diff(now, ran_at) <= interval * @carry_intervals do
+      carried = Map.take(prev["status"] || %{}, keys)
+
+      data
+      |> Map.merge(carried)
+      |> Map.put("checkmk_carried", true)
+    else
+      _ -> data
+    end
+  end
+
+  # Bookkeeping of the last Checkmk run (carry_over/3). In-memory: a
+  # rehydrated entry has no DateTime here, so nothing is carried until the
+  # next run — at most one interval.
+  defp put_checkmk_run(entry, %{"checkmk_keys" => keys} = data, now) do
+    entry
+    |> Map.put("checkmk_keys", keys)
+    |> Map.put("checkmk_interval", data["checkmk_interval"])
+    |> Map.put("checkmk_ts", now)
+  end
+
+  defp put_checkmk_run(entry, _data, _now), do: entry
 
   # Retain the raw Checkmk-agent dump for the instance's Checkmk view. Truthy-
   # guard: a push without checkmk_raw must not wipe it. In-memory only — the
@@ -149,6 +207,10 @@ defmodule Orbit.Hub.Cache do
   """
   # 15 min — comfortably above 4× the longest normal push interval.
   @max_rate_window 900
+
+  # Carried interfaces (no Checkmk run this push) already hold the last
+  # run's rates; diffing their identical counters would report zero.
+  def with_iface_rates(_prev, %{"checkmk_carried" => true} = data, _now), do: data
 
   def with_iface_rates(prev, data, now) do
     ifaces = data["interfaces"]
