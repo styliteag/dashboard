@@ -95,7 +95,7 @@ def test_ssh_host_keys_known_vector_sorted_deduped(tmp_path, monkeypatch: pytest
             "ssh_host_b64_key.pub": "ssh-rsa !!!notbase64!!! c\n",
         },
     )
-    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOB", pattern)
+    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOBS", (pattern,))
     keys = agent._ssh_host_keys()
     assert _FP in keys
     assert keys == sorted(set(keys))
@@ -104,17 +104,33 @@ def test_ssh_host_keys_known_vector_sorted_deduped(tmp_path, monkeypatch: pytest
     assert all(k.startswith(("ssh-ed25519 SHA256:", "ecdsa-sha2-nistp256 SHA256:")) for k in keys)
 
 
+def test_ssh_host_keys_from_every_directory(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """OPNsense keeps the keys in /conf/sshd, pfSense in /etc/ssh: both are read."""
+    etc, conf = tmp_path / "etc", tmp_path / "conf"
+    etc.mkdir()
+    conf.mkdir()
+    rsa = _PUB.replace("ssh-ed25519", "ssh-rsa", 1)
+    (conf / "ssh_host_ed25519_key.pub").write_text(_PUB + "\n")
+    (etc / "ssh_host_rsa_key.pub").write_text(rsa + "\n")
+    monkeypatch.setattr(
+        agent,
+        "_SSH_HOST_KEY_GLOBS",
+        (str(etc / "ssh_host_*_key.pub"), str(conf / "ssh_host_*_key.pub")),
+    )
+    assert agent._ssh_host_keys() == sorted([_FP, _FP.replace("ssh-ed25519", "ssh-rsa", 1)])
+
+
 def test_ssh_host_keys_unreadable_skipped(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     pattern = _key_dir(tmp_path, {"ssh_host_ed25519_key.pub": _PUB})
     (tmp_path / "ssh_host_dir_key.pub").mkdir()  # open() raises IsADirectoryError
-    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOB", pattern)
+    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOBS", (pattern,))
     assert agent._ssh_host_keys() == [_FP]
 
 
 def test_system_info_ssh_host_keys_present_and_omitted(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent, "_run", _fake_run({}))
-    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOB", str(tmp_path / "none_*"))
+    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOBS", (str(tmp_path / "none_*"),))
     assert "ssh_host_keys" not in agent.collect_system_info()
     pattern = _key_dir(tmp_path, {"ssh_host_ed25519_key.pub": _PUB})
-    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOB", pattern)
+    monkeypatch.setattr(agent, "_SSH_HOST_KEY_GLOBS", (pattern,))
     assert agent.collect_system_info()["ssh_host_keys"] == [_FP]

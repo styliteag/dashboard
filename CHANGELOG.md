@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Firewall agent 4.2.23: reports the SSH host key fingerprints on OPNsense too. That box keeps
+  sshd's host keys in `/conf/sshd`, the agent only read `/etc/ssh` (pfSense), so
+  `system.ssh_host_keys` stayed empty there.
+
 ## [4.11.0] - 2026-11-12
 
 ### Added

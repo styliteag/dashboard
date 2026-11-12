@@ -57,7 +57,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.22"
+__version__ = "4.2.23"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -2207,7 +2207,9 @@ def _machine_id() -> str | None:
     return hmac.new(raw.encode("utf-8"), _IDENTITY_CONTEXT, hashlib.sha256).hexdigest()
 
 
-_SSH_HOST_KEY_GLOB = "/etc/ssh/ssh_host_*_key.pub"
+# pfSense keeps sshd's host keys in /etc/ssh, OPNsense in /conf/sshd (its
+# sshd_config names them there; /etc/ssh does not exist on that box).
+_SSH_HOST_KEY_GLOBS = ("/etc/ssh/ssh_host_*_key.pub", "/conf/sshd/ssh_host_*_key.pub")
 
 
 def _ssh_fingerprint(line: str) -> str | None:
@@ -2229,7 +2231,7 @@ def _ssh_fingerprint(line: str) -> str | None:
 def _ssh_host_keys() -> list[str]:
     """Sorted, deduped host key fingerprints; unreadable files are skipped."""
     found: set[str] = set()
-    for path in glob.glob(_SSH_HOST_KEY_GLOB):
+    for path in (p for pattern in _SSH_HOST_KEY_GLOBS for p in glob.glob(pattern)):
         try:
             with open(path, encoding="utf-8") as fh:
                 fingerprint = _ssh_fingerprint(fh.readline())
