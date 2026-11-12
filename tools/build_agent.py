@@ -14,6 +14,7 @@ Sources live under agent/src/:
   - linux.py.in             the linux line template
   - linux.d/*.py            build-time drop-in parts (empty in the open build;
                             a downstream/pro build adds collectors here)
+  - firewall.d/*.py         the same for the firewall line
   - <line>.version          optional version override (pro-only, e.g.
                             linux.version) — keeps a downstream agent version
                             out of the tracked template so an upstream bump

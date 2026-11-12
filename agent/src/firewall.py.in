@@ -57,7 +57,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.19"
+__version__ = "4.2.20"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -197,6 +197,15 @@ class _AgentState:
 
 
 _STATE = _AgentState()
+
+# Build-time drop-in extensions (see tools/build_agent.py), as in the linux line.
+# Empty in the open build; a downstream build adds collectors/commands as
+# agent/src/firewall.d/*.py parts that define their function and append to
+# these. Applied to the registries below, after all parts have run. A part is
+# spliced in before the registries, so a helper it calls that is defined further
+# down (e.g. _http_request) is resolved at call time, never at import.
+_DROPIN_SECTIONS: "list[tuple[str, str]]" = []
+_DROPIN_COMMANDS: "dict[str, object]" = {}
 
 
 # =============================================================================
@@ -2968,6 +2977,7 @@ def _timed(timings: dict, name: str, fn, *args):
 # raising collector aborts the whole cycle (caught in _push_loop) — same as before.
 # Names, not function references: collect_all resolves them via globals() at call
 # time so monkeypatching a collector on the module (as the tests do) still works.
+# @@dropins: firewall.d
 _SNAPSHOT_SECTIONS = (
     ("system", "collect_system_info"),
     ("uptime", "collect_uptime"),
@@ -2991,7 +3001,7 @@ _SNAPSHOT_SECTIONS = (
     ("certificates", "collect_certificates"),
     ("logfiles", "collect_logfiles"),
     ("config_backup", "collect_config_backup"),
-)
+) + tuple(_DROPIN_SECTIONS)
 
 
 def collect_all() -> dict:
@@ -4703,6 +4713,7 @@ _COMMANDS = {
     "packet_capture": _cmd_packet_capture,
     "get_aliases": _cmd_get_aliases,
 }
+_COMMANDS.update(_DROPIN_COMMANDS)
 
 
 def execute_command(action: str, params: dict) -> dict:

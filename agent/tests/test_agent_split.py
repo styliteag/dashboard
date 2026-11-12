@@ -86,7 +86,10 @@ def test_both_versions_are_purely_numeric_dotted():
 
 
 def test_registries_are_pinned_per_line():
-    assert tuple(k for k, _ in orbit_agent._SNAPSHOT_SECTIONS) == FIREWALL_SECTIONS
+    # Core sections pinned on both lines; drop-in parts (agent/src/<line>.d)
+    # may append x_* sections only.
+    fw_keys = [k for k, _ in orbit_agent._SNAPSHOT_SECTIONS]
+    assert tuple(k for k in fw_keys if not k.startswith("x_")) == FIREWALL_SECTIONS
     # The linux line's CORE sections are pinned; a downstream/pro build may
     # append drop-in sections (agent/src/linux.d parts), which push under the
     # x_* vendor namespace the hub passthrough stores (§28). Anything not in
@@ -100,7 +103,7 @@ def test_registries_are_pinned_per_line():
 def test_linux_command_surface_is_pinned():
     # Every core command must be present; a downstream/pro build may add more
     # via drop-in parts (e.g. "zfs.scrub"), so this is a subset check, not
-    # equality. The firewall line has no drop-ins and stays exact elsewhere.
+    # equality (the firewall line takes firewall.d parts the same way).
     assert LINUX_COMMANDS <= set(orbit_agent_linux._COMMANDS)
 
 
@@ -173,3 +176,35 @@ def test_both_lines_bake_the_same_update_pubkey():
     # One key chain for all root-run code (§25) — and signing must stay ON.
     assert orbit_agent_linux._UPDATE_PUBKEY == orbit_agent._UPDATE_PUBKEY
     assert orbit_agent._UPDATE_PUBKEY
+
+
+def test_firewall_line_takes_drop_in_parts(tmp_path, monkeypatch):
+    """agent/src/firewall.d/*.py parts are spliced into the firewall line like
+    linux.d into the linux line: a part's command lands in _COMMANDS and its
+    section at the end of _SNAPSHOT_SECTIONS (a downstream build adds
+    firewall commands without editing firewall.py.in)."""
+    import shutil
+    import types
+
+    build = _build_agent()
+    src = tmp_path / "src"
+    shutil.copytree(build.SRC, src)
+    (src / "firewall.d").mkdir(exist_ok=True)
+    (src / "firewall.d" / "50-probe.py").write_text(
+        "def _cmd_probe(params):\n"
+        "    return {'success': True, 'output': 'probe'}\n"
+        "\n"
+        "def collect_probe():\n"
+        "    return {}\n"
+        "\n"
+        "_DROPIN_COMMANDS['probe.run'] = _cmd_probe\n"
+        "_DROPIN_SECTIONS.append(('x_probe', 'collect_probe'))\n"
+    )
+    monkeypatch.setattr(build, "SRC", src)
+    (src / "firewall.version").unlink(missing_ok=True)
+
+    module = types.ModuleType("orbit_agent_probe")
+    exec(compile(build.build("firewall.py.in"), "orbit_agent_probe", "exec"), module.__dict__)
+
+    assert module._COMMANDS["probe.run"]({})["output"] == "probe"
+    assert module._SNAPSHOT_SECTIONS[-1] == ("x_probe", "collect_probe")

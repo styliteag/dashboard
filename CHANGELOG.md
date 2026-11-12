@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box's Checkmk export entry; vendor tabs also get the viewer's `writable` flag and `current_user`
   (`docs/extension-points.md`).
 
+- Firewall agent: build-time drop-in parts (`agent/src/firewall.d/*.py`), like `linux.d` on
+  the linux line, so a downstream build can add a firewall command or `x_*` section without
+  editing `firewall.py.in`. Empty in open; firewall agent 4.2.20 (no behaviour change).
+
 ### Changed
 
 - Linux agent: the Checkmk script runs at most once per minute on its own clock instead of
