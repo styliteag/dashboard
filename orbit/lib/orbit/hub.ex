@@ -564,6 +564,7 @@ defmodule Orbit.Hub do
     maybe_persist_metrics(instance_id, now, data)
     maybe_persist_snapshot(instance_id, cache)
     maybe_persist_ipsec_events(instance_id, now, prev_ipsec, prev_push_ts, data)
+    notify_checkmk_receivers(instance_id, data)
 
     {:noreply,
      state
@@ -778,6 +779,37 @@ defmodule Orbit.Hub do
       Task.start(fn -> Orbit.Metrics.write_push(instance_id, now, data) end)
     end
   end
+
+  # Extension point `:checkmk_output_receivers` (docs/extension-points.md):
+  # each fresh Checkmk-agent output (a push that carried a run of the script,
+  # never a carried one) goes to every receiver with the run interval the
+  # agent reported. Runs in the hub process, so a receiver must hand off at
+  # once (cast/send); one that raises is logged — module and error only,
+  # never the output — and skipped, so a broken receiver never breaks ingest.
+  defp notify_checkmk_receivers(instance_id, %{"checkmk_output" => text} = data)
+       when is_binary(text) and text != "" do
+    meta = %{interval: data["checkmk_interval"]}
+
+    for mod <- Application.get_env(:orbit, :checkmk_output_receivers) || [] do
+      try do
+        mod.checkmk_output(instance_id, text, meta)
+      catch
+        kind, reason ->
+          Logger.warning(
+            "checkmk.receiver_failed instance=#{instance_id} module=#{inspect(mod)} " <>
+              "kind=#{kind} error=#{error_name(reason)}"
+          )
+      end
+    end
+
+    :ok
+  end
+
+  defp notify_checkmk_receivers(_instance_id, _data), do: :ok
+
+  defp error_name(%{__struct__: struct}), do: inspect(struct)
+  defp error_name(reason) when is_atom(reason), do: inspect(reason)
+  defp error_name(_reason), do: "other"
 
   # IPsec state transitions feed the tunnel-history dialog. Diffed against
   # the pre-ingest cache; an empty/absent ipsec section in the push is a

@@ -3367,6 +3367,9 @@ defmodule OrbitWeb.InstanceDetailLive do
               # Vendor tables sort via the shared "tsort" event; the map is
               # display-scoped, so a tab uses only the keys it declared.
               table_sort: @table_sort,
+              # The viewer's write role (server-side), for a tab with a switch;
+              # the tab's own event handler must still check it.
+              writable: @writable,
               __changed__: nil
             }
           ])}

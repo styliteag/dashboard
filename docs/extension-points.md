@@ -29,6 +29,7 @@ needs a recompile); "runtime" keys with `Application.get_env` on each use.
 | `:notification_suppressors` | runtime | modules with `suppress?(instance_id, check_key) :: boolean` | Any `true` drops the alert in `Orbit.Notifier.send_notification/5`, after the `alert ...` event-stream log line; a `alert suppressed ...` line is logged instead of dispatching. |
 | `:vendor_metrics` | compile-time | `{module, fun}`; `fun(push) :: [{name, value}]` | Extra series persisted with each push (generic `metrics` rows, no schema change). |
 | `:vendor_checks` | compile-time | `{module, fun}`; `fun(entry) :: [ServiceCheck]` | Extra check families on every check surface (Checks, Alerts, Checkmk export, Prometheus). |
+| `:checkmk_output_receivers` | runtime | modules with `checkmk_output(instance_id, output, meta)`; `output` = the decompressed Checkmk-agent text, `meta` = `%{interval: seconds \| nil}` | Called by `Orbit.Hub` for every push that carries a fresh run of a Linux node's Checkmk script (never for a push between runs), after the cache ingest. Runs in the hub process: a receiver must hand off at once (cast/send); one that raises is logged (`checkmk.receiver_failed`, module and error only) and skipped. `interval` is the agent's reported run interval (10..3600 s; nil from an agent that runs it on every push). `Orbit.Checks.Export.checkmk_for/2` gives the box's Checkmk export entry, if a receiver ships the dashboard's checks along. |
 
 ## Web: routing and auth
 
@@ -49,4 +50,4 @@ needs a recompile); "runtime" keys with `Application.get_env` on each use.
 | `:apikeys_extra_links` | runtime | `{label, path, :all \| :superadmin}` | Links next to "New key" on `/apikeys`; `:superadmin` entries only for superadmins. |
 | `:instance_badges` | runtime | `{module, fun}`; `fun(instance) :: nil \| %{label, title}` | Extra badges in the instance detail header (after the agent badge). |
 | `:vendor_sections` | compile-time | `%{section, component: {module, fun}}` | Overview cards for instances whose cache carries the `x_*` section. |
-| `:vendor_tabs` | compile-time | `%{key, label, device_types, agent, component, visible}` | Extra tabs on the instance detail page. |
+| `:vendor_tabs` | compile-time | `%{key, label, device_types, agent, component, visible}` | Extra tabs on the instance detail page. The component gets `entry` (cache entry), `instance`, `chart_range`, `table_sort` and `writable` (the viewer may change things; a tab's own event handler must check it again). |

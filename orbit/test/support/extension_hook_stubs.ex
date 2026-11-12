@@ -97,6 +97,21 @@ defmodule OrbitWeb.TestHooks do
     def valid_session?(_user, session), do: session["test_session_revoked"] != true
   end
 
+  defmodule CheckmkReceiver do
+    @moduledoc """
+    `:checkmk_output_receivers` stub. Runs in the hub process, so it reports
+    to the pid stored under `:checkmk_receiver_test_pid`; instance 13 raises.
+    """
+    def checkmk_output(13, _output, _meta), do: raise("receiver broke")
+
+    def checkmk_output(instance_id, output, meta) do
+      send(
+        Application.fetch_env!(:orbit, :checkmk_receiver_test_pid),
+        {:checkmk_output, instance_id, output, meta}
+      )
+    end
+  end
+
   defmodule Badge do
     @moduledoc "`:instance_badges` stub: a badge on instances named `badge-*`."
     def badge(%{name: "badge-" <> _}), do: %{label: "test badge", title: "set by the hook"}

@@ -61,13 +61,30 @@ defmodule Orbit.Checks.Export do
     if Orbit.Settings.effective("checkmk_blackout") do
       %{version: 1, instances: []}
     else
-      principal
-      |> evaluated(now)
-      |> checkmk_body(
-        &Orbit.Selection.is_on_live("checkmk", &1, &2),
-        Orbit.Settings.effective("checkmk_aggregate")
-      )
+      principal |> evaluated(now) |> checkmk_live_body()
     end
+  end
+
+  @doc """
+  The Checkmk export entry of ONE already-scoped instance — exactly what
+  `checkmk/2` exports for it (selection, aggregate), or nil during the
+  blackout. For a downstream build that ships a box's checks along with its
+  own data instead of through the export URL.
+  """
+  @spec checkmk_for(Instance.t(), DateTime.t()) :: map() | nil
+  def checkmk_for(%Instance{} = inst, now) do
+    unless Orbit.Settings.effective("checkmk_blackout") do
+      %{instances: [entry]} = checkmk_live_body([{inst_view(inst), checks_for(inst, now)}])
+      entry
+    end
+  end
+
+  defp checkmk_live_body(pairs) do
+    checkmk_body(
+      pairs,
+      &Orbit.Selection.is_on_live("checkmk", &1, &2),
+      Orbit.Settings.effective("checkmk_aggregate")
+    )
   end
 
   @doc """

@@ -39,6 +39,65 @@ defmodule Orbit.ExtensionHooksTest do
     end
   end
 
+  describe ":checkmk_output_receivers" do
+    @fixture Path.join([__DIR__, "..", "support", "fixtures", "checkmk_linux.b64"])
+             |> Path.expand()
+             |> File.read!()
+             |> String.trim()
+
+    setup do
+      put_hook(:checkmk_receiver_test_pid, self())
+      %{hub: start_supervised!({Orbit.Hub, name: nil})}
+    end
+
+    defp push(hub, id, raw) do
+      Orbit.Hub.ingest_metrics(hub, id, %{"checkmk_raw" => raw})
+      # A call after the cast: the ingest has run once this returns.
+      Orbit.Hub.cache_entry(hub, id)
+    end
+
+    defp fresh, do: %{"output_gz_b64" => @fixture, "interval" => 60}
+
+    test "unset: ingest runs as before, nothing is called", %{hub: hub} do
+      delete_hook(:checkmk_output_receivers)
+
+      assert push(hub, 7, fresh())["checkmk_output"] =~ "<<<check_mk>>>"
+      refute_received {:checkmk_output, _, _, _}
+    end
+
+    test "a fresh output reaches every receiver with its interval", %{hub: hub} do
+      put_hook(:checkmk_output_receivers, [OrbitWeb.TestHooks.CheckmkReceiver])
+
+      push(hub, 7, fresh())
+
+      assert_received {:checkmk_output, 7, "<<<check_mk>>>" <> _, %{interval: 60}}
+    end
+
+    test "a push without a run of the script calls nothing", %{hub: hub} do
+      put_hook(:checkmk_output_receivers, [OrbitWeb.TestHooks.CheckmkReceiver])
+
+      push(hub, 7, fresh())
+      assert_received {:checkmk_output, 7, _, _}
+      push(hub, 7, %{})
+
+      refute_received {:checkmk_output, 7, _, _}
+    end
+
+    test "a raising receiver never breaks ingest", %{hub: hub} do
+      put_hook(:checkmk_output_receivers, [OrbitWeb.TestHooks.CheckmkReceiver])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert push(hub, 13, fresh())["status"]["memory"]["total_mb"] == 1895
+        end)
+
+      assert log =~ "checkmk.receiver_failed"
+      refute log =~ "<<<"
+      assert push(hub, 7, fresh())["checkmk_output"]
+      assert_received {:checkmk_output, 7, _, _}
+    end
+  end
+
   describe ":extra_children" do
     test "unset: no extra children" do
       delete_hook(:extra_children)
