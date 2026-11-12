@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.1] - 2026-11-12
+
 ### Fixed
 
 - Firewall agent 4.2.23: reports the SSH host key fingerprints on OPNsense too. That box keeps
