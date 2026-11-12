@@ -240,4 +240,21 @@ defmodule Orbit.Hub.CheckmkTest do
              "mountpoint" => "/rpool/data"
            }
   end
+
+  describe "size cap (agents cap the raw output at 2 MB)" do
+    defp payload_of(bytes),
+      do: %{"output_gz_b64" => bytes |> :zlib.gzip() |> Base.encode64()}
+
+    test "output just above the agent's cap is dropped, never parsed" do
+      text = "<<<mem>>>\nMemTotal: 1 kB\n" <> :binary.copy("x", 2_100_000)
+
+      assert {%{}, :prev} = Checkmk.parse(payload_of(text), :prev)
+      assert Checkmk.raw_text(payload_of(text)) == nil
+    end
+
+    test "output at the agent's cap still parses" do
+      text = "<<<uptime>>>\n100 50\n" <> :binary.copy("#", 1_990_000)
+      assert Checkmk.raw_text(payload_of(text)) == text
+    end
+  end
 end

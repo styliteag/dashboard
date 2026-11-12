@@ -31,7 +31,14 @@ defmodule Orbit.Hub.Checkmk do
 
   require Logger
 
-  @max_decompressed 8 * 1024 * 1024
+  # Both agent lines drop output above 2_000_000 bytes (_CHECKMK_MAX), so
+  # anything bigger is not from a well-behaved agent: stop inflating just
+  # past that (64 KiB margin) and drop it unparsed. The base64 text of such
+  # output is refused before decoding (gzip never grows data by more than a
+  # few bytes per 16 KiB block; base64 is 4/3).
+  @agent_max 2_000_000
+  @max_decompressed @agent_max + 64 * 1024
+  @max_b64 div((@agent_max + 64 * 1024) * 4, 3) + 4
 
   @doc """
   Decode + parse one `checkmk_raw` payload into `{sections, cpu_state}`.
@@ -188,6 +195,8 @@ defmodule Orbit.Hub.Checkmk do
   defp zpool_healthy?(_), do: nil
 
   # -- decoding ---------------------------------------------------------------
+
+  defp decode64(b64) when byte_size(b64) > @max_b64, do: {:error, "payload too large"}
 
   defp decode64(b64) do
     case Base.decode64(b64) do
