@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output (`checkmk_raw`, marked transport only) like the linux line, for a dashboard that
   forwards it to a Checkmk server. Off unless the dashboard asks for it (`checkmk` in the
   welcome / config_update frame; open never does). Our signed copy only
-  (`agent/vendor/check_mk_agent.freebsd`, Checkmk 2.4.0p38, vendored unmodified), delivered
+  (`agent/vendor/check_mk_agent.freebsd`: Checkmk 2.4.0p38 FreeBSD agent from the omon-agent fork, byte for byte; the fork replaces one bash-only `${line//"/}` that ended the output under FreeBSD `/bin/sh` on OPNsense), delivered
   with `checkmk.update` (signature checked before writing) to `/usr/local/orbit-agent/`, run as
   `/bin/sh <path>` (no bash on the firewalls), at most once per minute, never twice at once. A
   run that exits non-zero, times out or yields fewer than 3 sections ships nothing but a short

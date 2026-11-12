@@ -65,7 +65,7 @@ tooling is excluded as it is not part of the distributed artifact.
 | Component | Version | License |
 |---|---|---|
 | check_mk_agent.linux (Checkmk Linux agent, vendored unmodified) | 2.5.0p8 | GPL-2.0-only |
-| check_mk_agent.freebsd (Checkmk FreeBSD agent, vendored unmodified) | 2.4.0p38 | GPL-2.0-only |
+| check_mk_agent.freebsd (Checkmk FreeBSD agent from the omon-agent fork, one change) | 2.4.0p38 | GPL-2.0-only |
 
 ---
 
@@ -3311,13 +3311,15 @@ the shell script is its own complete corresponding source.
 Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
 ```
 
-### check_mk_agent.freebsd (Checkmk FreeBSD agent, vendored unmodified) 2.4.0p38 — GPL-2.0-only
+### check_mk_agent.freebsd (Checkmk FreeBSD agent from the omon-agent fork, one change) 2.4.0p38 — GPL-2.0-only
 
 <https://github.com/Checkmk/checkmk>
 
 ```
 Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.
-Vendored unmodified from the Checkmk sources (agents/check_mk_agent.freebsd);
+Vendored byte for byte from omon-agent (https://github.com/styliteag/omon-agent,
+agents/check_mk_agent.freebsd), a fork of the Checkmk sources; changed for
+FreeBSD /bin/sh on 2026-11-12 by STYLiTE AG (notice in the file header);
 the shell script is its own complete corresponding source.
 Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
 ```

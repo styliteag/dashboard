@@ -14,6 +14,8 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
+import os
+from pathlib import Path
 
 import orbit_agent as agent
 import pytest
@@ -136,3 +138,35 @@ def test_the_dashboard_flag_switches_it(monkeypatch):
     assert agent._STATE.checkmk_enabled is True
     agent._apply_checkmk_enabled(False)
     assert agent._STATE.checkmk_enabled is False
+
+
+_REPO = Path(__file__).resolve().parents[2]
+_VENDORED = _REPO / "agent" / "vendor" / "check_mk_agent.freebsd"
+
+
+def _fork_script():
+    """agents/check_mk_agent.freebsd of an omon-agent checkout next to this
+    one ($OMON_AGENT_DIR, else ../omon-agent or ../../omon-agent), or None."""
+    env = os.environ.get("OMON_AGENT_DIR")
+    roots = [Path(env)] if env else [_REPO.parent / "omon-agent", _REPO.parent.parent / "omon-agent"]
+    for root in roots:
+        path = root / "agents" / "check_mk_agent.freebsd"
+        if path.is_file():
+            return path
+    return None
+
+
+def test_vendored_freebsd_script_is_the_forks_file():
+    """The dashboard vendors omon-agent's FreeBSD script byte for byte (the
+    fork carries the /bin/sh fix and its GPL change notice)."""
+    fork = _fork_script()
+    if fork is None:
+        pytest.skip("no omon-agent checkout next to this repo")
+    assert _VENDORED.read_bytes() == fork.read_bytes()
+
+
+def test_vendored_freebsd_script_has_no_bash_only_substitution():
+    """FreeBSD /bin/sh has no ${var//pat/rep}: it raised "Bad substitution"
+    in section_checkmk on OPNsense and ended the whole output."""
+    code = [ln for ln in _VENDORED.read_bytes().splitlines() if not ln.lstrip().startswith(b"#")]
+    assert not [ln for ln in code if b"${line//" in ln]

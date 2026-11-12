@@ -2,6 +2,11 @@
 # Copyright (C) 2019 Checkmk GmbH - License: GNU General Public License v2
 # This file is part of Checkmk (https://checkmk.com). It is subject to the terms and
 # conditions defined in the file COPYING, which is part of this source code package.
+# Modified for omon-agent, 2026-11-12, by Wim Bonis <wb@stylite.de>, STYLiTE AG:
+# section_checkmk strips the quotes of /etc/os-release with tr instead of the
+# bash-only ${line//\"/}, so the script also runs under FreeBSD /bin/sh
+# (OPNsense and pfSense have no bash; the Orbit dashboard agent runs it as
+# `/bin/sh check_mk_agent.freebsd`).
 
 # Author: Lars Michelsen <lm@mathias-kettner.de>
 #         Florian Heigl <florian.heigl@gmail.com>
@@ -346,7 +351,7 @@ section_checkmk() {
     echo "OSType: unix"
 
     while read -r line; do
-        raw_line="${line//\"/}"
+        raw_line="$(printf '%s' "$line" | tr -d '"')"
         case $line in
             NAME=*) echo "OSName: ${raw_line##*=}" ;;
             VERSION_ID=*) echo "OSVersion: ${raw_line##*=}" ;;

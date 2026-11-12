@@ -147,9 +147,19 @@ def collect_vendored() -> list[dict]:
     package manager knows about it. The script is its own complete source.
     """
     rows: list[dict] = []
-    for name, label in (
-        ("check_mk_agent.linux", "Checkmk Linux agent"),
-        ("check_mk_agent.freebsd", "Checkmk FreeBSD agent"),
+    for name, label, origin in (
+        (
+            "check_mk_agent.linux",
+            "Checkmk Linux agent, vendored unmodified",
+            "Vendored unmodified from the Checkmk sources (agents/check_mk_agent.linux);\n",
+        ),
+        (
+            "check_mk_agent.freebsd",
+            "Checkmk FreeBSD agent from the omon-agent fork, one change",
+            "Vendored byte for byte from omon-agent (https://github.com/styliteag/omon-agent,\n"
+            "agents/check_mk_agent.freebsd), a fork of the Checkmk sources; changed for\n"
+            "FreeBSD /bin/sh on 2026-11-12 by STYLiTE AG (notice in the file header);\n",
+        ),
     ):
         cmk = ROOT / "agent" / "vendor" / name
         if not cmk.exists():
@@ -158,13 +168,13 @@ def collect_vendored() -> list[dict]:
         m = re.search(r'^\s*echo "Version: ([^"]+)"', src, re.M)
         rows.append(
             {
-                "name": f"{name} ({label}, vendored unmodified)",
+                "name": f"{name} ({label})",
                 "version": m.group(1) if m else "unknown",
                 "license": "GPL-2.0-only",
                 "url": "https://github.com/Checkmk/checkmk",
                 "text": (
                     "Copyright (C) 2019 Checkmk GmbH — GNU General Public License v2.\n"
-                    f"Vendored unmodified from the Checkmk sources (agents/{name});\n"
+                    f"{origin}"
                     "the shell script is its own complete corresponding source.\n"
                     "Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt"
                 ),
