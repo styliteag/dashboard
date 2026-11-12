@@ -54,7 +54,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.4.13"
+__version__ = "4.4.14"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -511,6 +511,39 @@ def _linux_update_check() -> "tuple[bool, str, str, bool, dict]":
 
 
 
+# A push right after _cmd_firmware_update set fw_update_ts may land before
+# apt-get/dnf shows up in the process table; within this window the update
+# counts as still starting (no check, which would race it for the dpkg lock).
+_PKG_UPDATE_START_GRACE_S = 15.0
+
+
+def _pkg_manager_running() -> bool:
+    """True while apt-get/apt/dpkg/dnf is running (ours or anyone's)."""
+    procs = _run(
+        ["sh", "-c", "pgrep -x apt-get; pgrep -x apt; pgrep -x dpkg; pgrep -x dnf"], timeout=10
+    )
+    return bool(procs.strip())
+
+
+def _expire_verdict_after_update() -> None:
+    """Drop the cached verdict once a firmware.update run has finished.
+
+    _cmd_upgrade_status does this only when something polls it (the instance
+    page's progress tracking). A bulk "Update" never polls, so without this the
+    pre-update "N pending" stayed for the whole ~12h window (lab ubn1
+    2026-11-12: 4 libc updates installed, UI kept "4 pending, 4 security").
+    Costs one pgrep per push, and only while an update is armed.
+    """
+    started = _STATE.fw_update_ts
+    if not started or time.time() - started < _PKG_UPDATE_START_GRACE_S:
+        return
+    if _pkg_manager_running():
+        return
+    _STATE.fw_verdict = {}
+    _STATE.fw_check_ts = 0.0
+    _STATE.fw_update_ts = 0.0
+
+
 def collect_firmware() -> dict:
     """Package-update state on every push; network check every ~12h.
 
@@ -521,6 +554,7 @@ def collect_firmware() -> dict:
     transient apt/dnf lock or mirror hiccup never pins a WARN for 12h).
     """
     version = _read_linux_version()
+    _expire_verdict_after_update()
     now = time.monotonic()
     if _STATE.fw_verdict and now - _STATE.fw_check_ts < _FW_CHECK_INTERVAL_S:
         return {"product_version": version, **_STATE.fw_verdict}
@@ -1004,10 +1038,7 @@ def _cmd_upgrade_status(params: dict) -> dict:
     processes exist, else "done" — with the dpkg (or dnf) log tail as the
     visible log. On done the update-check throttle is re-armed so the next
     push reports fresh pending counts instead of the pre-upgrade verdict."""
-    procs = _run(
-        ["sh", "-c", "pgrep -x apt-get; pgrep -x apt; pgrep -x dpkg; pgrep -x dnf"], timeout=10
-    )
-    running = bool(procs.strip())
+    running = _pkg_manager_running()
     tail = _run(
         [
             "sh",
@@ -1022,6 +1053,7 @@ def _cmd_upgrade_status(params: dict) -> dict:
         # (time.monotonic() starts near 0 at boot, so now-0 < interval).
         _STATE.fw_verdict = {}
         _STATE.fw_check_ts = 0.0
+        _STATE.fw_update_ts = 0.0
     return {
         "success": True,
         "status": "running" if running else "done",

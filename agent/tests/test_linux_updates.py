@@ -259,3 +259,63 @@ def test_collect_firmware_failed_check_retries_early(monkeypatch) -> None:
     assert remaining <= agent._FW_FAILED_RETRY_S + 5
     agent._STATE.fw_verdict = {}
     agent._STATE.fw_check_ts = 0.0
+
+
+def _cached_verdict_with_update(monkeypatch, started_ago: float, pgrep_out: str) -> list:
+    """Fresh cached verdict ("4 pending") + an update started ``started_ago`` s
+    ago that nobody tracks via upgrade_status. Returns the fresh-check call log."""
+    monkeypatch.setattr(agent, "_read_linux_version", lambda: "Ubuntu 26.04.1 LTS")
+    monkeypatch.setattr(
+        agent, "_run", lambda cmd, timeout=5: pgrep_out if "pgrep" in cmd[-1] else ""
+    )
+    calls: list[int] = []
+
+    def fresh_check():
+        calls.append(1)
+        return False, "Ubuntu 26.04.1 LTS", "0 update(s) pending, 0 security", False, {
+            "updates_available": 0
+        }
+
+    monkeypatch.setattr(agent, "_linux_update_check", fresh_check)
+    agent._STATE.fw_verdict = {"upgrade_available": True, "updates_available": 4}
+    agent._STATE.fw_check_ts = agent.time.monotonic()
+    agent._STATE.fw_update_ts = agent.time.time() - started_ago
+    return calls
+
+
+def _reset_fw_state() -> None:
+    agent._STATE.fw_verdict = {}
+    agent._STATE.fw_check_ts = 0.0
+    agent._STATE.fw_update_ts = 0.0
+
+
+def test_collect_firmware_rechecks_after_untracked_update_finished(monkeypatch) -> None:
+    """Bulk "Update" never polls upgrade_status, so only the push loop can notice
+    the finished apt run. Regression (lab ubn1 2026-11-12): 4 libc updates
+    installed at 22:16, the UI kept "4 pending, 4 security" for the ~12h window."""
+    calls = _cached_verdict_with_update(monkeypatch, started_ago=60.0, pgrep_out="")
+    fw = agent.collect_firmware()
+    assert calls, "stale verdict served after the untracked update finished"
+    assert fw["updates_available"] == 0
+    assert agent._STATE.fw_update_ts == 0.0  # one re-check per update, not per push
+    _reset_fw_state()
+
+
+def test_collect_firmware_keeps_verdict_while_update_runs(monkeypatch) -> None:
+    # A check now would fight the running apt-get for the dpkg lock.
+    calls = _cached_verdict_with_update(monkeypatch, started_ago=60.0, pgrep_out="4242\n")
+    fw = agent.collect_firmware()
+    assert not calls
+    assert fw["updates_available"] == 4
+    assert agent._STATE.fw_update_ts != 0.0  # still armed for the push after apt exits
+    _reset_fw_state()
+
+
+def test_collect_firmware_waits_out_the_start_grace(monkeypatch) -> None:
+    # fw_update_ts is set just before Popen: a push in that gap sees no apt-get
+    # yet and must not start apt-get update next to the starting upgrade.
+    calls = _cached_verdict_with_update(monkeypatch, started_ago=1.0, pgrep_out="")
+    agent.collect_firmware()
+    assert not calls
+    assert agent._STATE.fw_update_ts != 0.0
+    _reset_fw_state()

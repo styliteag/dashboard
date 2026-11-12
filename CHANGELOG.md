@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux agent 4.4.14: after a package update started from the bulk action ("Update firmware" on
+  several instances), the pending-update count refreshes once apt/dnf has finished. Until now
+  only the instance page's progress tracking dropped the cached result, so a bulk update kept
+  showing the old "N pending" for up to ~13h.
+
 ## [4.11.1] - 2026-11-12
 
 ### Fixed
