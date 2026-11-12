@@ -13,8 +13,18 @@ import gzip
 import hashlib
 import stat
 
+import pytest
+
 # Linux-only functionality lives in the linux line since the split (§28).
 import orbit_agent_linux as agent
+
+
+@pytest.fixture(autouse=True)
+def _fresh_checkmk_clock():
+    """Each test starts with no previous run (the gate is module state)."""
+    agent._STATE.checkmk_ts = 0.0
+    yield
+    agent._STATE.checkmk_ts = 0.0
 
 
 def _script(tmp_path, body: str) -> str:
@@ -67,6 +77,38 @@ def test_hanging_script_times_out_to_empty(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (path,))
     monkeypatch.setattr(agent, "_CHECKMK_TIMEOUT", 0.2)
     assert agent.collect_checkmk() == {}
+
+
+def _linux_script(monkeypatch, tmp_path) -> None:
+    path = _script(tmp_path, 'printf "<<<check_mk>>>\\nVersion: x\\n"')
+    monkeypatch.setattr(agent, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(agent, "_CHECKMK_CANDIDATES", (path,))
+
+
+def test_runs_at_most_once_per_interval(monkeypatch, tmp_path) -> None:
+    """Own clock, not every push: a push inside the interval ships nothing."""
+    _linux_script(monkeypatch, tmp_path)
+    clock = [1000.0]
+    monkeypatch.setattr(agent.time, "monotonic", lambda: clock[0])
+
+    first = agent.collect_checkmk()
+    assert first["interval"] == agent._CHECKMK_INTERVAL == 60
+    clock[0] += 30
+    assert agent.collect_checkmk() == {}
+    clock[0] += 30
+    assert agent.collect_checkmk()["output_gz_b64"]
+
+
+def test_no_second_run_while_one_is_going(monkeypatch, tmp_path) -> None:
+    """status.refresh runs collect_all in a thread next to the push loop."""
+    _linux_script(monkeypatch, tmp_path)
+    assert agent._CHECKMK_LOCK.acquire(blocking=False)
+    try:
+        assert agent.collect_checkmk() == {}
+    finally:
+        agent._CHECKMK_LOCK.release()
+    # The refused call did not consume the interval.
+    assert agent.collect_checkmk()["output_gz_b64"]
 
 
 def test_registered_as_snapshot_section() -> None:

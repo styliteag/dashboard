@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Linux agent: the Checkmk script runs at most once per minute on its own clock instead of
+  on every push (twice a minute at the default 30 s push interval), and never twice at the
+  same time ("Refresh now" next to the push loop). The output tells the dashboard its run
+  interval; a push in between keeps the last run's CPU, memory, disk and interface values
+  on the dashboard for up to three intervals, so a broken script still shows. "Full
+  refresh" still runs it at once. Linux agent 4.4.12.
+
 ## [4.10.0] - 2026-11-12
 
 ### Added
