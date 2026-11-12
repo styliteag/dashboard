@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extension point `config :orbit, :checkmk_output_receivers` (empty in open, no behaviour
   change): a downstream build gets each fresh Checkmk-agent output of a Linux node with the
   agent's run interval, e.g. to forward it. `Orbit.Checks.Export.checkmk_for/2` gives one
-  box's Checkmk export entry; vendor tabs also get the viewer's `writable` flag
+  box's Checkmk export entry; vendor tabs also get the viewer's `writable` flag and `current_user`
   (`docs/extension-points.md`).
 
 ### Changed

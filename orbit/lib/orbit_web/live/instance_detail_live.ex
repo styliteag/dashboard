@@ -3368,8 +3368,10 @@ defmodule OrbitWeb.InstanceDetailLive do
               # display-scoped, so a tab uses only the keys it declared.
               table_sort: @table_sort,
               # The viewer's write role (server-side), for a tab with a switch;
-              # the tab's own event handler must still check it.
+              # the tab's own event handler must still check it. The viewer
+              # too, so such a switch can write its audit row.
               writable: @writable,
+              current_user: @current_user,
               __changed__: nil
             }
           ])}
