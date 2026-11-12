@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box's Checkmk export entry; vendor tabs also get the viewer's `writable` flag and `current_user`
   (`docs/extension-points.md`).
 
+- Checks name the cache section they are evaluated from (`ServiceCheck.source`), the hub
+  records which sections a Linux node's last Checkmk run produced (`checkmk_sections`), and
+  `Orbit.Checks.Export.checkmk_for/3` takes a filter. A downstream build can leave out of its
+  own Checkmk data the checks a Checkmk server already derives from the same agent output.
+  No visible change.
 - Firewall agent: build-time drop-in parts (`agent/src/firewall.d/*.py`), like `linux.d` on
   the linux line, so a downstream build can add a firewall command or `x_*` section without
   editing `firewall.py.in`. Empty in open; firewall agent 4.2.20 (no behaviour change).

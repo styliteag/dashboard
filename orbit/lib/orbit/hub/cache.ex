@@ -104,6 +104,9 @@ defmodule Orbit.Hub.Cache do
           data
           |> Map.merge(parsed)
           |> Map.put("checkmk_keys", parsed |> Map.keys() |> Enum.filter(&(&1 in @carry_keys)))
+          # every section this run produced (also `services`), for
+          # ServiceCheck.source: which checks a Checkmk server derives itself
+          |> Map.put("checkmk_sections", parsed |> Map.keys() |> Enum.sort())
           |> Map.put("checkmk_interval", checkmk_interval(raw["interval"]))
 
         data =
@@ -147,6 +150,7 @@ defmodule Orbit.Hub.Cache do
   defp put_checkmk_run(entry, %{"checkmk_keys" => keys} = data, now) do
     entry
     |> Map.put("checkmk_keys", keys)
+    |> Map.put("checkmk_sections", data["checkmk_sections"] || keys)
     |> Map.put("checkmk_interval", data["checkmk_interval"])
     |> Map.put("checkmk_ts", now)
   end

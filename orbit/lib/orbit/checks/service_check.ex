@@ -6,12 +6,24 @@ defmodule Orbit.Checks.ServiceCheck do
   the export maps 1:1. Severity ordering is NOT the numeric order: UNKNOWN
   ("could not check") sorts BELOW WARN — `severity/1` gives the sort rank
   CRIT > WARN > UNKNOWN > OK.
+
+  `source` names the cache section the check is evaluated from (`"memory"`,
+  `"disks"`, `"gateways"`, …; set by `Orbit.Checks.Evaluate` for the core
+  families), nil when it is not tied to one (overlay, vendor checks). With
+  the cache entry's `checkmk_sections` it tells a check derived from a Linux
+  node's Checkmk output from one only the dashboard has.
   """
 
   @enforce_keys [:key, :state, :summary]
-  defstruct [:key, :state, :summary, metrics: []]
+  defstruct [:key, :state, :summary, metrics: [], source: nil]
 
-  @type t :: %__MODULE__{key: String.t(), state: 0..3, summary: String.t(), metrics: [map()]}
+  @type t :: %__MODULE__{
+          key: String.t(),
+          state: 0..3,
+          summary: String.t(),
+          metrics: [map()],
+          source: String.t() | nil
+        }
 
   # Checkmk convention.
   def ok, do: 0

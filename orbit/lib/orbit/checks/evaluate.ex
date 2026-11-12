@@ -54,28 +54,44 @@ defmodule Orbit.Checks.Evaluate do
   def evaluate(sections) when is_map(sections) do
     status = sections["status"] || sections
 
+    # Each family is tagged with the section it reads (ServiceCheck.source).
     [
-      memory_check(status["memory"]),
-      swap_check(status["memory"]),
-      cpu_check(status["cpu"]),
-      load_check(status["loadavg"]),
-      pf_states_check(status["pf"]),
-      ntp_check(status["ntp"]),
-      collect_check(status["collect_ms"]),
-      firmware_check(status["firmware"] || sections["firmware"]),
-      storage_check(status["storage"] || sections["storage"])
+      from(memory_check(status["memory"]), "memory"),
+      from(swap_check(status["memory"]), "memory"),
+      from(cpu_check(status["cpu"]), "cpu"),
+      from(load_check(status["loadavg"]), "loadavg"),
+      from(pf_states_check(status["pf"]), "pf"),
+      from(ntp_check(status["ntp"]), "ntp"),
+      from(collect_check(status["collect_ms"]), "collect_ms"),
+      from(firmware_check(status["firmware"] || sections["firmware"]), "firmware"),
+      from(storage_check(status["storage"] || sections["storage"]), "storage")
     ]
-    |> Enum.concat(disk_checks(status["disks"] || []))
-    |> Enum.concat(iface_error_checks(status["interfaces"] || []))
-    |> Enum.concat(gateway_checks(status["gateways"] || sections["gateways"] || []))
-    |> Enum.concat(ipsec_checks(status["ipsec"] || sections["ipsec"]))
-    |> Enum.concat(service_checks(status["services"] || sections["services"] || []))
-    |> Enum.concat(cert_checks(status["certificates"] || sections["certificates"] || []))
-    |> Enum.concat(connectivity_checks(status["connectivity"] || sections["connectivity"] || []))
-    |> Enum.concat(zfs_checks(status["zfs"]))
+    |> Enum.concat(from(disk_checks(status["disks"] || []), "disks"))
+    |> Enum.concat(from(iface_error_checks(status["interfaces"] || []), "interfaces"))
+    |> Enum.concat(
+      from(gateway_checks(status["gateways"] || sections["gateways"] || []), "gateways")
+    )
+    |> Enum.concat(from(ipsec_checks(status["ipsec"] || sections["ipsec"]), "ipsec"))
+    |> Enum.concat(
+      from(service_checks(status["services"] || sections["services"] || []), "services")
+    )
+    |> Enum.concat(
+      from(cert_checks(status["certificates"] || sections["certificates"] || []), "certificates")
+    )
+    |> Enum.concat(
+      from(
+        connectivity_checks(status["connectivity"] || sections["connectivity"] || []),
+        "connectivity"
+      )
+    )
+    |> Enum.concat(from(zfs_checks(status["zfs"]), "zfs"))
     |> Enum.concat(vendor_checks(sections))
     |> Enum.reject(&is_nil/1)
   end
+
+  defp from(nil, _source), do: nil
+  defp from(%ServiceCheck{} = check, source), do: %{check | source: source}
+  defp from(checks, source) when is_list(checks), do: Enum.map(checks, &from(&1, source))
 
   # Extra check families a downstream build registers (§28). Each entry is an
   # `{module, function}` whose `fun(entry)` returns `[ServiceCheck]` from the
