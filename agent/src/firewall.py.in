@@ -31,6 +31,7 @@ import pty
 import pwd
 import random
 import re
+import shlex
 import signal
 import shutil
 import ssl
@@ -57,7 +58,7 @@ UTC = timezone.utc
 # in docs/agent-architecture.md). This keeps the agent installable on locked-down
 # boxes (e.g. pfSense CE) and makes self-update a single-file swap.
 
-__version__ = "4.2.23"
+__version__ = "4.2.24"
 
 # Ensure OPNsense tools are reachable — daemon(8) starts without /usr/local/sbin in PATH
 os.environ["PATH"] = (
@@ -4889,7 +4890,16 @@ def _build_uninstall_script(
 
     extra_cleanup is a platform-specific shell line (e.g. removing the pfRest package
     on pfSense) run after the orbit user is deprovisioned.
+
+    A box may be re-added (fresh install, new config with a new enroll code) while
+    this script still waits: it remembers the config's checksum before the wait and
+    stops touching anything as soon as the config changed (same guard as linux,
+    lab B12). Unlike linux it keeps finding the processes by name in every pass:
+    daemon(8) respawns the supervisor, so pids taken before the wait can be stale.
+    The checksum is checked right before each pass; an installer writes the new
+    config before it starts the new agent.
     """
+    cfg = shlex.quote(CONFIG_PATH)
     deprovision_line = (
         f"[ -x /usr/local/bin/php ] && /usr/local/bin/php {php_path} >/dev/null 2>&1\n"
         if deprovision and php_path
@@ -4897,7 +4907,10 @@ def _build_uninstall_script(
     )
     return (
         "#!/bin/sh\n"
+        f'orig="$(cksum < {cfg} 2>/dev/null)"\n'
+        f"ours() {{ [ \"$(cksum < {cfg} 2>/dev/null)\" = \"$orig\" ]; }}\n"
         "sleep 3\n"  # let the ack flush over the WS before we kill the agent
+        "ours || exit 0\n"  # re-installed meanwhile: leave the new agent alone
         # SIGKILL the whole tree: the daemon(8) wrapper (respawns the supervisor),
         # the supervisor (run-agent.sh, respawns the agent), and the agent. SIGTERM
         # is unreliable (asyncio handler + executor threads linger). Retry in a loop
@@ -4905,6 +4918,7 @@ def _build_uninstall_script(
         # FreeBSD (kill the wrapper first each pass so nothing comes back).
         "i=0\n"
         "while [ $i -lt 6 ]; do\n"
+        "  ours || exit 0\n"
         '  pids="$(pgrep -f \'daemon.*orbit_agent\' 2>/dev/null) '
         "$(pgrep -f run-agent.sh 2>/dev/null) $(pgrep -f orbit_agent.py 2>/dev/null)\"\n"
         '  [ -z "$(echo $pids | tr -d \' \')" ] && break\n'
@@ -4912,12 +4926,13 @@ def _build_uninstall_script(
         "  sleep 1\n"
         "  i=$((i + 1))\n"
         "done\n"
+        "ours || exit 0\n"
         "sysrc -x orbit_agent_enable >/dev/null 2>&1\n"  # don't revive on reboot
         f"rm -f {rc_script}\n"
         + deprovision_line
         + extra_cleanup
         + f"rm -rf {install_dir}\n"
-        f"rm -f {CONFIG_PATH} /usr/local/etc/opnsense-dash-agent.conf\n"
+        f"rm -f {cfg} /usr/local/etc/opnsense-dash-agent.conf\n"
         f"rm -f {_APIKEY_CACHE} /usr/local/etc/opnsense-dash-agent.apikey\n"
         f"rm -f {php_path}\n"
     )

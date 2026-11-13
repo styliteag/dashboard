@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Firewall agent 4.2.24: an OPNsense or pfSense box re-added right after its uninstall keeps its
+  new agent. The detached teardown waited 3 s and then removed the agent, its rc.d script, its
+  config and the `orbit` user regardless, so a re-install in that window was wiped. It now stops
+  as soon as the agent config changed (same guard as the Linux agent since lab B12).
+
 ## [4.11.2] - 2026-11-13
 
 ### Fixed

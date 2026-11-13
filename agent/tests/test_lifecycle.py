@@ -57,6 +57,96 @@ def test_uninstall_pfsense_removes_restapi_package() -> None:
     assert script.index("pkg-static delete") < script.index("rm -rf /usr/local/orbit-agent")
 
 
+# --- firewall uninstall must not wipe an immediate re-install ----------------
+
+
+def _run_firewall_uninstall(tmp_path, monkeypatch, reinstall_after_sleeps):
+    """Run the generated FreeBSD teardown with stubbed pgrep/sleep/sysrc against a
+    real dummy "agent" process (kill is a shell builtin). A re-install (new config
+    with a new enroll code) lands after the given number of sleeps (None: never).
+    Returns the paths, the call log and whether the dummy agent still runs."""
+    import os
+    import subprocess
+
+    inst = tmp_path / "orbit-agent"
+    inst.mkdir()
+    (inst / "orbit_agent.py").write_text("agent")
+    conf = tmp_path / "orbit-agent.conf"
+    conf.write_text('{"enroll_code": "OLD"}')
+    rc = tmp_path / "rc.d-orbit_agent"
+    rc.write_text("rc")
+    monkeypatch.setattr(agent, "CONFIG_PATH", str(conf))
+    monkeypatch.setattr(agent, "_APIKEY_CACHE", str(tmp_path / "apikey"))
+    script = tmp_path / "orbit-uninstall.sh"
+    script.write_text(
+        agent._build_uninstall_script(str(inst), str(rc), str(tmp_path / "d.php"), True)
+    )
+
+    dummy = subprocess.Popen(["/bin/sleep", "60"])
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "calls.log"
+    count = tmp_path / "sleeps"
+    reinstall = ""
+    if reinstall_after_sleeps is not None:
+        reinstall = (
+            f"n=$(($(cat {count} 2>/dev/null || echo 0) + 1)); echo $n > {count}\n"
+            f"[ $n -ge {reinstall_after_sleeps} ] && "
+            f"printf '%s' '{{\"enroll_code\": \"NEW\"}}' > {conf}\n"
+            "exit 0\n"
+        )
+    stubs = {
+        # the "agent" (only for the orbit_agent.py pattern) while it is alive
+        "pgrep": (
+            f'echo "pgrep $*" >> {log}\n'
+            f'case "$*" in *orbit_agent.py*) kill -0 {dummy.pid} 2>/dev/null '
+            f"&& echo {dummy.pid} && exit 0;; esac\nexit 1\n"
+        ),
+        "sleep": f'echo "sleep $*" >> {log}\n{reinstall}',
+        "sysrc": f'echo "sysrc $*" >> {log}\n',
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text("#!/bin/sh\n" + body)
+        (bin_dir / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    try:
+        subprocess.run(["/bin/sh", str(script)], env=env, check=True, timeout=30)
+        alive = dummy.poll() is None
+    finally:
+        dummy.kill()
+        dummy.wait()
+    return inst, conf, rc, (log.read_text() if log.exists() else ""), alive
+
+
+def test_firewall_uninstall_removes_the_agent(tmp_path, monkeypatch) -> None:
+    inst, conf, rc, calls, alive = _run_firewall_uninstall(tmp_path, monkeypatch, None)
+    assert not alive
+    assert "sysrc -x orbit_agent_enable" in calls
+    assert not inst.exists()
+    assert not conf.exists()
+    assert not rc.exists()
+
+
+def test_firewall_uninstall_spares_a_reinstall_made_meanwhile(tmp_path, monkeypatch) -> None:
+    """Same race as linux B12: a firewall re-added right after its decommission
+    must keep the new agent, its rc.d script, its config and its orbit user."""
+    inst, conf, rc, calls, alive = _run_firewall_uninstall(tmp_path, monkeypatch, 1)
+    assert alive
+    assert "sysrc" not in calls
+    assert inst.exists()
+    assert rc.exists()
+    assert "NEW" in conf.read_text()
+
+
+def test_firewall_uninstall_stops_when_a_reinstall_lands_mid_kill(tmp_path, monkeypatch) -> None:
+    # the old agent was killed, but the config changed before the files went
+    inst, conf, rc, calls, _alive = _run_firewall_uninstall(tmp_path, monkeypatch, 2)
+    assert "sysrc" not in calls
+    assert inst.exists()
+    assert rc.exists()
+    assert "NEW" in conf.read_text()
+
+
 # --- linux uninstall: escape the service cgroup + PrivateTmp -----------------
 
 
