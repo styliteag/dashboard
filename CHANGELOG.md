@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.3] - 2026-11-13
+
 ### Fixed
 
 - Firewall agent 4.2.24: an OPNsense or pfSense box re-added right after its uninstall keeps its
