@@ -175,6 +175,19 @@ defmodule OrbitWeb.UserAuth do
   end
 
   @doc """
+  Plug: admin role only, everyone else bounces home. Use after
+  `require_authenticated_user/2`. It is the HTTP half of the `:require_admin`
+  on_mount hook, for admin routes that are no LiveView of ours (the system
+  dashboard and its assets).
+  """
+  def require_admin_user(conn, _opts) do
+    case conn.assigns[:current_user] do
+      %User{role: "admin"} -> conn
+      _ -> conn |> redirect(to: ~p"/") |> halt()
+    end
+  end
+
+  @doc """
   LiveView on_mount hook: assign :current_user from the session, or redirect
   to /login. Same validation as fetch_current_user (password_version + not
   disabled). Use as `on_mount OrbitWeb.UserAuth` in a live route.

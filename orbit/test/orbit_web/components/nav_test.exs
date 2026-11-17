@@ -97,6 +97,12 @@ defmodule OrbitWeb.Components.NavTest do
     assert nav(user(role: "admin", groups: [%Group{id: 1, name: "A"}])) =~ ~s|href="/hub"|
   end
 
+  test "System (the system dashboard) is admin-only like Hub" do
+    refute nav(user(role: "view_only", is_superadmin: true)) =~ ~s|href="/admin/dashboard"|
+    refute nav(user(groups: [%Group{id: 1, name: "A"}])) =~ ~s|href="/admin/dashboard"|
+    assert nav(user(role: "admin")) =~ ~s|href="/admin/dashboard"|
+  end
+
   test "Settings stays admin-only, Audit is admin-or-superadmin" do
     plain = nav(user(groups: [%Group{id: 1, name: "A"}]))
     refute plain =~ ~s|href="/settings"|

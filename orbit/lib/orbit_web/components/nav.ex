@@ -193,6 +193,7 @@ defmodule OrbitWeb.Components.Nav do
     [
       {:hub, ~p"/hub", "Hub", admin?(user)},
       {:settings, ~p"/settings", "Settings", admin?(user)},
+      {:system, ~p"/admin/dashboard", "System", admin?(user)},
       {:audit, ~p"/audit", "Audit", admin?(user) or superadmin?(user)},
       {:users, ~p"/users", "Users", superadmin?(user)},
       {:groups, ~p"/groups", "Groups", superadmin?(user)},

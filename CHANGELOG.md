@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- System dashboard for admins (Admin menu → "System", `/admin/dashboard`): processes, memory,
+  metrics and ETS tables of the server, plus MariaDB statistics (table and index sizes, unused
+  indexes, connections). It shows the whole server, not only the admin's groups.
+
+### Changed
+
+- The LiveDashboard of development builds moved from `/dev/dashboard` to `/admin/dashboard` and
+  now needs an admin login.
+
 ## [4.11.3] - 2026-11-13
 
 ### Fixed

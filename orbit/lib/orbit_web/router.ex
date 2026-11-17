@@ -5,6 +5,7 @@ defmodule OrbitWeb.Router do
     only: [
       fetch_current_user: 2,
       require_authenticated_user: 2,
+      require_admin_user: 2,
       require_authenticated_api: 2,
       require_write_api: 2,
       read_principal: 2,
@@ -274,19 +275,23 @@ defmodule OrbitWeb.Router do
     forward path, plug, opts
   end
 
-  # Enable LiveDashboard in development
-  if Application.compile_env(:orbit, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
-    import Phoenix.LiveDashboard.Router
+  # System dashboard (Phoenix LiveDashboard + MariaDB statistics), in every
+  # build. Admin role only, like Hub: it shows process state and ETS tables of
+  # the whole server, so it is fleet-wide and NOT group-scoped (invariant 5).
+  # An admin limited to some groups can read other groups' in-memory data
+  # here. That was accepted when the page was opened for production; do not
+  # widen the gate to other roles or to the superadmin (rights management
+  # only). The plug guards the HTTP request and the dashboard's assets, the
+  # on_mount hooks guard the LiveView socket (GeoGate: the socket bypasses the
+  # plug pipeline).
+  import Phoenix.LiveDashboard.Router
 
-    scope "/dev" do
-      pipe_through :browser
+  scope "/admin" do
+    pipe_through [:browser, :require_authenticated_user, :require_admin_user]
 
-      live_dashboard "/dashboard", metrics: OrbitWeb.Telemetry
-    end
+    live_dashboard "/dashboard",
+      metrics: OrbitWeb.Telemetry,
+      ecto_repos: [Orbit.Repo],
+      on_mount: [{OrbitWeb.UserAuth, :require_admin}, OrbitWeb.GeoGate]
   end
 end
