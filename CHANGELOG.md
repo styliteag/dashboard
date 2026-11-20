@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.4] - 2026-11-20
+
 ### Added
 
 - System dashboard for admins (Admin menu → "System", `/admin/dashboard`): processes, memory,
