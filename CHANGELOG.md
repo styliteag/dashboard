@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Browser tabs show the app and the suite first ("Dashboard · Orbit · <page>"), so they stay visible
+  when tabs get narrow.
 - The LiveDashboard of development builds moved from `/dev/dashboard` to `/admin/dashboard` and
   now needs an admin login.
 
