@@ -14,7 +14,7 @@ tooling is excluded as it is not part of the distributed artifact.
 |---|---|---|
 | argon2_elixir | 4.1.3 | Apache-2.0 |
 | asn1_compiler | 0.1.1 | MIT |
-| bandit | 1.14.1 | MIT |
+| bandit | 1.15.0 | MIT |
 | cbor | 1.0.2 | MIT |
 | cc_precompiler | 0.1.11 | Apache-2.0 |
 | comeonin | 5.5.1 | BSD-3-Clause |
@@ -25,10 +25,10 @@ tooling is excluded as it is not part of the distributed artifact.
 | ecto | 3.14.3 | Apache-2.0 |
 | ecto_mysql_extras | 0.6.3 | Apache-2.0 |
 | ecto_sql | 3.14.0 | Apache-2.0 |
-| elixir_make | 0.9.0 | Apache-2.0 |
+| elixir_make | 0.10.1 | Apache-2.0 |
 | eqrcode | 0.2.1 | MIT |
 | finch | 0.23.0 | MIT |
-| fine | 0.1.6 | Apache-2.0 |
+| fine | 0.2.0 | Apache-2.0 |
 | gen_smtp | 1.3.0 | BSD-2-Clause |
 | heroicons | 0435d4ca364a | MIT |
 | hpax | 1.1.0 | Apache-2.0 |
@@ -39,26 +39,26 @@ tooling is excluded as it is not part of the distributed artifact.
 | myxql | 0.9.0 | Apache-2.0 |
 | nimble_options | 1.1.1 | Apache-2.0 |
 | nimble_pool | 1.1.0 | Apache-2.0 |
-| phoenix | 1.8.9 | MIT |
+| phoenix | 1.8.17 | MIT |
 | phoenix_ecto | 4.7.0 | MIT |
 | phoenix_html | 4.4.0 | MIT |
 | phoenix_live_dashboard | 0.8.7 | MIT |
-| phoenix_live_view | 1.2.13 | MIT |
-| phoenix_pubsub | 2.2.0 | MIT |
-| phoenix_template | 1.0.4 | MIT |
-| plug | 1.20.3 | Apache-2.0 |
+| phoenix_live_view | 1.2.15 | MIT |
+| phoenix_pubsub | 2.4.1 | MIT |
+| phoenix_template | 1.1.0 | MIT |
+| plug | 1.20.4 | Apache-2.0 |
 | plug_crypto | 2.2.1 | Apache-2.0 |
 | ranch | 2.2.0 | ISC |
 | req | 0.6.3 | Apache-2.0 |
 | ssl_verify_fun | 1.1.9 | MIT |
-| telemetry | 1.4.2 | Apache-2.0 |
+| telemetry | 1.4.3 | Apache-2.0 |
 | telemetry_metrics | 1.1.0 | Apache-2.0 |
 | telemetry_poller | 1.3.0 | Apache-2.0 |
 | thousand_island | 1.6.0 | MIT |
 | tls_certificate_check | 1.33.0 | MIT |
 | wax_ | 0.7.0 | Apache-2.0 |
 | websock | 0.5.3 | MIT |
-| websock_adapter | 0.6.0 | MIT |
+| websock_adapter | 0.7.2 | MIT |
 | x509 | 0.9.2 | BSD-3-Clause |
 
 ## Vendored (shipped verbatim)
@@ -283,7 +283,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### bandit 1.14.1 — MIT
+### bandit 1.15.0 — MIT
 
 <https://hex.pm/packages/bandit>
 
@@ -1008,7 +1008,7 @@ Apache License
 
 _No license file bundled by the distributor; see the link above._
 
-### elixir_make 0.9.0 — Apache-2.0
+### elixir_make 0.10.1 — Apache-2.0
 
 <https://hex.pm/packages/elixir_make>
 
@@ -1058,7 +1058,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### fine 0.1.6 — Apache-2.0
+### fine 0.2.0 — Apache-2.0
 
 <https://hex.pm/packages/fine>
 
@@ -2084,7 +2084,7 @@ Apache License
 
 _No license file bundled by the distributor; see the link above._
 
-### phoenix 1.8.9 — MIT
+### phoenix 1.8.17 — MIT
 
 <https://hex.pm/packages/phoenix>
 
@@ -2196,7 +2196,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### phoenix_live_view 1.2.13 — MIT
+### phoenix_live_view 1.2.15 — MIT
 
 <https://hex.pm/packages/phoenix_live_view>
 
@@ -2225,7 +2225,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### phoenix_pubsub 2.2.0 — MIT
+### phoenix_pubsub 2.4.1 — MIT
 
 <https://hex.pm/packages/phoenix_pubsub>
 
@@ -2254,7 +2254,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### phoenix_template 1.0.4 — MIT
+### phoenix_template 1.1.0 — MIT
 
 <https://hex.pm/packages/phoenix_template>
 
@@ -2283,7 +2283,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### plug 1.20.3 — Apache-2.0
+### plug 1.20.4 — Apache-2.0
 
 <https://hex.pm/packages/plug>
 
@@ -2579,7 +2579,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### telemetry 1.4.2 — Apache-2.0
+### telemetry 1.4.3 — Apache-2.0
 
 <https://hex.pm/packages/telemetry>
 
@@ -3420,7 +3420,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### websock_adapter 0.6.0 — MIT
+### websock_adapter 0.7.2 — MIT
 
 <https://hex.pm/packages/websock_adapter>
 

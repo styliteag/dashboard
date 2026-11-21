@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "stylite-orbit-dashboard",
       "name": "stylite-orbit-dashboard",
-      "version": "4.11.3"
+      "version": "4.11.4"
     }
   },
   "components": [
@@ -41,10 +41,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/bandit@1.14.1",
+      "bom-ref": "pkg:hex/bandit@1.15.0",
       "name": "bandit",
-      "version": "1.14.1",
-      "purl": "pkg:hex/bandit@1.14.1",
+      "version": "1.15.0",
+      "purl": "pkg:hex/bandit@1.15.0",
       "licenses": [
         {
           "license": {
@@ -195,10 +195,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/elixir_make@0.9.0",
+      "bom-ref": "pkg:hex/elixir_make@0.10.1",
       "name": "elixir_make",
-      "version": "0.9.0",
-      "purl": "pkg:hex/elixir_make@0.9.0",
+      "version": "0.10.1",
+      "purl": "pkg:hex/elixir_make@0.10.1",
       "licenses": [
         {
           "license": {
@@ -237,10 +237,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/fine@0.1.6",
+      "bom-ref": "pkg:hex/fine@0.2.0",
       "name": "fine",
-      "version": "0.1.6",
-      "purl": "pkg:hex/fine@0.1.6",
+      "version": "0.2.0",
+      "purl": "pkg:hex/fine@0.2.0",
       "licenses": [
         {
           "license": {
@@ -391,10 +391,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix@1.8.9",
+      "bom-ref": "pkg:hex/phoenix@1.8.17",
       "name": "phoenix",
-      "version": "1.8.9",
-      "purl": "pkg:hex/phoenix@1.8.9",
+      "version": "1.8.17",
+      "purl": "pkg:hex/phoenix@1.8.17",
       "licenses": [
         {
           "license": {
@@ -447,10 +447,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix_live_view@1.2.13",
+      "bom-ref": "pkg:hex/phoenix_live_view@1.2.15",
       "name": "phoenix_live_view",
-      "version": "1.2.13",
-      "purl": "pkg:hex/phoenix_live_view@1.2.13",
+      "version": "1.2.15",
+      "purl": "pkg:hex/phoenix_live_view@1.2.15",
       "licenses": [
         {
           "license": {
@@ -461,10 +461,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix_pubsub@2.2.0",
+      "bom-ref": "pkg:hex/phoenix_pubsub@2.4.1",
       "name": "phoenix_pubsub",
-      "version": "2.2.0",
-      "purl": "pkg:hex/phoenix_pubsub@2.2.0",
+      "version": "2.4.1",
+      "purl": "pkg:hex/phoenix_pubsub@2.4.1",
       "licenses": [
         {
           "license": {
@@ -475,10 +475,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/phoenix_template@1.0.4",
+      "bom-ref": "pkg:hex/phoenix_template@1.1.0",
       "name": "phoenix_template",
-      "version": "1.0.4",
-      "purl": "pkg:hex/phoenix_template@1.0.4",
+      "version": "1.1.0",
+      "purl": "pkg:hex/phoenix_template@1.1.0",
       "licenses": [
         {
           "license": {
@@ -489,10 +489,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/plug@1.20.3",
+      "bom-ref": "pkg:hex/plug@1.20.4",
       "name": "plug",
-      "version": "1.20.3",
-      "purl": "pkg:hex/plug@1.20.3",
+      "version": "1.20.4",
+      "purl": "pkg:hex/plug@1.20.4",
       "licenses": [
         {
           "license": {
@@ -559,10 +559,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/telemetry@1.4.2",
+      "bom-ref": "pkg:hex/telemetry@1.4.3",
       "name": "telemetry",
-      "version": "1.4.2",
-      "purl": "pkg:hex/telemetry@1.4.2",
+      "version": "1.4.3",
+      "purl": "pkg:hex/telemetry@1.4.3",
       "licenses": [
         {
           "license": {
@@ -657,10 +657,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:hex/websock_adapter@0.6.0",
+      "bom-ref": "pkg:hex/websock_adapter@0.7.2",
       "name": "websock_adapter",
-      "version": "0.6.0",
-      "purl": "pkg:hex/websock_adapter@0.6.0",
+      "version": "0.7.2",
+      "purl": "pkg:hex/websock_adapter@0.7.2",
       "licenses": [
         {
           "license": {
